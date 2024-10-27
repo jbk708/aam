@@ -294,7 +294,7 @@ def fit_taxonomy_regressor(
             intermediate_activation=p_intermediate_activation,
         )
 
-        optimizer = tf.keras.optimizers.AdamW(cos_decay_with_warmup(), beta_2=0.95)
+        optimizer = tf.keras.optimizers.AdamW(cos_decay_with_warmup(1e-4), beta_2=0.95)
         token_shape = tf.TensorShape([None, None, 150])
         count_shape = tf.TensorShape([None, None, 1])
         model.build([token_shape, count_shape])
