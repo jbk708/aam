@@ -187,6 +187,7 @@ def fit_unifrac_regressor(
 @click.option("--i-table", required=True, type=click.Path(exists=True), help=TABLE_DESC)
 @click.option("--i-taxonomy", required=True, type=click.Path(exists=True))
 @click.option("--p-tax-level", default=7, type=int)
+@click.option("--p-batch-size", default=8, show_default=True, required=False, type=int)
 @click.option("--p-max-bp", required=True, type=int)
 @click.option("--p-epochs", default=1000, show_default=True, type=int)
 @click.option("--p-dropout", default=0.1, show_default=True, type=float)
@@ -206,6 +207,7 @@ def fit_taxonomy_regressor(
     i_table: str,
     i_taxonomy: str,
     p_tax_level: int,
+    p_batch_size: int,
     p_max_bp: int,
     p_epochs: int,
     p_dropout: float,
@@ -254,6 +256,7 @@ def fit_taxonomy_regressor(
         max_token_per_sample=p_asv_limit,
         shuffle=True,
         gen_new_tables=True,
+        batch_size=p_batch_size,
     )
     train_data = train_gen.get_data()
 
@@ -263,6 +266,7 @@ def fit_taxonomy_regressor(
         tax_level=p_tax_level,
         max_token_per_sample=p_asv_limit,
         shuffle=False,
+        batch_size=p_batch_size,
     )
     val_data = val_gen.get_data()
 
