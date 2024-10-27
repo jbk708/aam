@@ -292,6 +292,7 @@ def fit_taxonomy_regressor(
             attention_layers=p_attention_layers,
             intermediate_size=p_intermediate_size,
             intermediate_activation=p_intermediate_activation,
+            include_alpha=False,
         )
 
         optimizer = tf.keras.optimizers.AdamW(cos_decay_with_warmup(1e-4), beta_2=0.95)

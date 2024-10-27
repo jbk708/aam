@@ -22,6 +22,7 @@ class TaxonomyEncoder(tf.keras.Model):
         intermediate_size: int = 1024,
         intermediate_activation: str = "gelu",
         max_bp: int = 150,
+        include_alpha: bool = True,
         **kwargs,
     ):
         super(TaxonomyEncoder, self).__init__(**kwargs)
@@ -35,6 +36,7 @@ class TaxonomyEncoder(tf.keras.Model):
         self.intermediate_size = intermediate_size
         self.intermediate_activation = intermediate_activation
         self.max_bp = max_bp
+        self.include_alpha = include_alpha
 
         self.loss_tracker = tf.keras.metrics.Mean()
         self.tax_loss = tf.keras.losses.SparseCategoricalCrossentropy(
@@ -58,12 +60,13 @@ class TaxonomyEncoder(tf.keras.Model):
             name="base_encoder",
         )
 
-        self._tax_alpha = self.add_weight(
-            name="tax_alpha",
-            initializer=tf.keras.initializers.Zeros(),
-            trainable=True,
-            dtype=tf.float32,
-        )
+        if include_alpha:
+            self._tax_alpha = self.add_weight(
+                name="tax_alpha",
+                initializer=tf.keras.initializers.Zeros(),
+                trainable=True,
+                dtype=tf.float32,
+            )
 
         self.tax_encoder = TransformerEncoder(
             num_layers=self.attention_layers,
@@ -201,7 +204,10 @@ class TaxonomyEncoder(tf.keras.Model):
         tax_pred = tax_gated_embeddings[:, 1:, :]
         tax_pred = self.tax_level_logits(tax_pred)
 
-        tax_embeddings = sample_embeddings + tax_gated_embeddings * self._tax_alpha
+        if self.include_alpha:
+            tax_embeddings = sample_embeddings + tax_gated_embeddings * self._tax_alpha
+        else:
+            tax_embeddings = sample_embeddings + tax_gated_embeddings
 
         return [tax_embeddings, tax_pred, nuc_embeddings]
 
