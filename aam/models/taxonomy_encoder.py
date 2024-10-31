@@ -211,6 +211,73 @@ class TaxonomyEncoder(tf.keras.Model):
 
         return [tax_embeddings, tax_pred, nuc_embeddings]
 
+    def base_embeddings(
+        self, inputs: tuple[tf.Tensor, tf.Tensor], training: bool = False
+    ) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+        # keras cast all input to float so we need to manually cast to expected type
+        tokens, counts = inputs
+        tokens = tf.cast(tokens, dtype=tf.int32)
+        counts = tf.cast(counts, dtype=tf.int32)
+
+        sample_embeddings, nuc_embeddings, asv_embeddings = (
+            self.base_encoder.base_embeddings(tokens, training=training)
+        )
+
+        # account for <SAMPLE> token
+        count_mask = float_mask(counts, dtype=tf.int32)
+        count_mask = tf.pad(count_mask, [[0, 0], [1, 0], [0, 0]], constant_values=1)
+        count_attention_mask = count_mask
+
+        unifrac_gated_embeddings = self.unifrac_encoder(
+            sample_embeddings, mask=count_attention_mask, training=training
+        )
+        unifrac_pred = unifrac_gated_embeddings[:, 0, :]
+        unifrac_pred = self.unifrac_ff(unifrac_pred)
+
+        unifrac_embeddings = (
+            sample_embeddings + unifrac_gated_embeddings * self._tax_alpha
+        )
+
+        return [unifrac_embeddings, unifrac_pred, nuc_embeddings, asv_embeddings]
+
+    def asv_embeddings(
+        self, inputs: tuple[tf.Tensor, tf.Tensor], training: bool = False
+    ) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+        # keras cast all input to float so we need to manually cast to expected type
+        tokens, counts = inputs
+        tokens = tf.cast(tokens, dtype=tf.int32)
+        counts = tf.cast(counts, dtype=tf.int32)
+
+        asv_embeddings = self.base_encoder.asv_embeddings(tokens, training=training)
+
+        return asv_embeddings
+
+    def asv_gradient(
+        self, inputs: tuple[tf.Tensor, tf.Tensor], asv_embeddings
+    ) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
+        # keras cast all input to float so we need to manually cast to expected type
+        tokens, counts = inputs
+        tokens = tf.cast(tokens, dtype=tf.int32)
+        counts = tf.cast(counts, dtype=tf.int32)
+
+        sample_embeddings = self.base_encoder.asv_gradient(tokens, asv_embeddings)
+
+        # account for <SAMPLE> token
+        count_mask = float_mask(counts, dtype=tf.int32)
+        count_mask = tf.pad(count_mask, [[0, 0], [1, 0], [0, 0]], constant_values=1)
+        count_attention_mask = count_mask
+
+        tax_gated_embeddings = self.tax_encoder(
+            sample_embeddings, mask=count_attention_mask
+        )
+
+        if self.include_alpha:
+            tax_embeddings = sample_embeddings + tax_gated_embeddings * self._tax_alpha
+        else:
+            tax_embeddings = sample_embeddings + tax_gated_embeddings
+
+        return tax_embeddings
+
     def get_config(self):
         config = super(TaxonomyEncoder, self).get_config()
         config.update(

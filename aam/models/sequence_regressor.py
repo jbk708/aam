@@ -371,6 +371,102 @@ class SequenceRegressor(tf.keras.Model):
             nuc_embeddings,
         )
 
+    def base_embeddings(
+        self, inputs: tuple[tf.Tensor, tf.Tensor], training: bool = False
+    ) -> Union[
+        tuple[tf.Tensor, tf.Tensor, tf.Tensor],
+        tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor],
+    ]:
+        # keras cast all input to float so we need to manually cast to expected type
+        tokens, counts = inputs
+        tokens = tf.cast(tokens, dtype=tf.int32)
+        counts = tf.cast(counts, dtype=tf.int32)
+
+        count_mask = float_mask(counts, dtype=tf.int32)
+        rel_abundance = self._relative_abundance(counts)
+
+        # account for <SAMPLE> token
+        count_mask = tf.pad(count_mask, [[0, 0], [1, 0], [0, 0]], constant_values=1)
+        rel_abundance = tf.pad(
+            rel_abundance, [[0, 0], [1, 0], [0, 0]], constant_values=1
+        )
+        count_attention_mask = count_mask
+        base_embeddings, base_pred, nuc_embeddings, asv_embeddings = (
+            self.base_model.base_embeddings((tokens, counts), training=training)
+        )
+
+        count_gated_embeddings, count_pred = self._compute_count_embeddings(
+            base_embeddings,
+            rel_abundance,
+            attention_mask=count_attention_mask,
+            training=training,
+        )
+        count_embeddings = base_embeddings + count_gated_embeddings * self._count_alpha
+
+        target_embeddings, target_out = self._compute_target_embeddings(
+            count_embeddings, attention_mask=count_attention_mask, training=training
+        )
+
+        return (
+            asv_embeddings,
+            self.target_activation(target_out),
+        )
+
+    def asv_embeddings(
+        self, inputs: tuple[tf.Tensor, tf.Tensor], training: bool = False
+    ) -> Union[
+        tuple[tf.Tensor, tf.Tensor, tf.Tensor],
+        tuple[tf.Tensor, tf.Tensor, tf.Tensor, tf.Tensor],
+    ]:
+        # keras cast all input to float so we need to manually cast to expected type
+        tokens, counts = inputs
+        tokens = tf.cast(tokens, dtype=tf.int32)
+        counts = tf.cast(counts, dtype=tf.int32)
+
+        count_mask = float_mask(counts, dtype=tf.int32)
+        rel_abundance = self._relative_abundance(counts)
+
+        # account for <SAMPLE> token
+        count_mask = tf.pad(count_mask, [[0, 0], [1, 0], [0, 0]], constant_values=1)
+        rel_abundance = tf.pad(
+            rel_abundance, [[0, 0], [1, 0], [0, 0]], constant_values=1
+        )
+        asv_embeddings = self.base_model.asv_embeddings(
+            (tokens, counts), training=training
+        )
+
+        return asv_embeddings
+
+    def asv_gradient(self, inputs, asv_embeddings):
+        # keras cast all input to float so we need to manually cast to expected type
+        tokens, counts = inputs
+        tokens = tf.cast(tokens, dtype=tf.int32)
+        counts = tf.cast(counts, dtype=tf.int32)
+
+        count_mask = float_mask(counts, dtype=tf.int32)
+        rel_abundance = self._relative_abundance(counts)
+
+        # account for <SAMPLE> token
+        count_mask = tf.pad(count_mask, [[0, 0], [1, 0], [0, 0]], constant_values=1)
+        rel_abundance = tf.pad(
+            rel_abundance, [[0, 0], [1, 0], [0, 0]], constant_values=1
+        )
+        count_attention_mask = count_mask
+        base_embeddings = self.base_model.asv_gradient((tokens, counts), asv_embeddings)
+
+        count_gated_embeddings, count_pred = self._compute_count_embeddings(
+            base_embeddings,
+            rel_abundance,
+            attention_mask=count_attention_mask,
+        )
+        count_embeddings = base_embeddings + count_gated_embeddings * self._count_alpha
+
+        target_embeddings, target_out = self._compute_target_embeddings(
+            count_embeddings, attention_mask=count_attention_mask
+        )
+
+        return self.target_activation(target_out)
+
     def get_config(self):
         config = super(SequenceRegressor, self).get_config()
         config.update(

@@ -260,7 +260,7 @@ class GeneratorDataset:
             encoder_target = self.encoder_target
         encoder_output = self._encoder_output(encoder_target, s_ids, s_obj_ids)
 
-        return s_counts, s_tokens, y_output, encoder_output
+        return s_counts, s_tokens, y_output, encoder_output, s_obj_ids
 
     def _epoch_complete(self, processed):
         if processed < self.steps_per_epoch:
@@ -298,7 +298,7 @@ class GeneratorDataset:
 
         return table_data, y_data, encoder_target, sample_indices
 
-    def _create_epoch_generator(self):
+    def _create_epoch_generator(self, include_seq_id):
         def generator():
             processed = 0
             table_data = self.table_data
@@ -322,7 +322,9 @@ class GeneratorDataset:
                     )
 
                 while not self._epoch_complete(processed):
-                    counts, tokens, y_output, encoder_out = sample_data(minibatch)
+                    counts, tokens, y_output, encoder_out, ob_ids = sample_data(
+                        minibatch
+                    )
 
                     if counts is not None:
                         max_len = max([len(c) for c in counts])
@@ -331,6 +333,12 @@ class GeneratorDataset:
                         )
                         padded_tokens = np.array(
                             [np.pad(t, [[0, max_len - len(t)], [0, 0]]) for t in tokens]
+                        )
+                        padded_ob_ids = np.array(
+                            [
+                                np.pad(o, [[0, max_len - len(o)]], constant_values="")
+                                for o in ob_ids
+                            ]
                         )
 
                         processed += 1
@@ -351,6 +359,11 @@ class GeneratorDataset:
                                     output,
                                     encoder_out.astype(self.encoder_dtype),
                                 )
+                        if include_seq_id:
+                            output = (
+                                *output,
+                                padded_ob_ids,
+                            )
 
                         if output is not None:
                             yield (table_output, output)
@@ -386,8 +399,8 @@ class GeneratorDataset:
 
         return generator
 
-    def get_data(self):
-        generator = self._create_epoch_generator()
+    def get_data(self, include_seq_id=False):
+        generator = self._create_epoch_generator(include_seq_id)
         output_sig = (
             tf.TensorSpec(shape=[self.batch_size, None, self.max_bp], dtype=tf.int32),
             tf.TensorSpec(shape=[self.batch_size, None, 1], dtype=tf.int32),
@@ -404,7 +417,15 @@ class GeneratorDataset:
                 y_output_sig = (y_output_sig, self.encoder_output_type)
 
         if y_output_sig is not None:
+            if include_seq_id:
+                y_output_sig = (
+                    *y_output_sig,
+                    tf.TensorSpec(
+                        shape=(self.batch_size, None), dtype=tf.string, name=None
+                    ),
+                )
             output_sig = (output_sig, y_output_sig)
+
         dataset: tf.data.Dataset = tf.data.Dataset.from_generator(
             generator,
             output_signature=output_sig,
