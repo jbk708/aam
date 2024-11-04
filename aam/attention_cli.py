@@ -635,11 +635,12 @@ def fit_sample_regressor(
             output_dir,
             fold_label,
         )
+        metric = "mae" if not p_is_categorical else "loss"
         model_cv.fit_fold(
             loss,
             p_epochs,
             os.path.join(model_path, f"model_f{fold_label}.keras"),
-            metric="loss",
+            metric=metric,
             patience=p_patience,
             early_stop_warmup=p_early_stop_warmup,
             callbacks=[*callbacks],
