@@ -206,7 +206,7 @@ class GeneratorDataset:
         if not self.is_categorical:
             return y_data.loc[sample_ids].to_numpy().reshape(-1, 1)
 
-        return y_data.loc[sample_ids].to_numpy().reshape(-1, 1) - 1
+        return y_data.loc[sample_ids].to_numpy().reshape(-1, 1)
 
     def _create_table_data(
         self, table: Table
@@ -436,7 +436,15 @@ class GeneratorDataset:
                     ),
                 )
             output_sig = (output_sig, y_output_sig)
-
+        class_weights = None
+        if self.is_categorical:
+            counts = self._metadata.value_counts().to_dict()
+            counts[0.0] = 0
+            class_weights = [0] * len(counts)
+            for k, v in counts.items():
+                class_weights[int(k)] = 1 / np.sqrt(v)
+            class_weights[0] = 0
+        print(class_weights)
         dataset: tf.data.Dataset = tf.data.Dataset.from_generator(
             generator,
             output_signature=output_sig,
@@ -449,6 +457,7 @@ class GeneratorDataset:
             "scale": self.scale,
             "size": self.size,
             "steps_pre_epoch": self.steps_per_epoch,
+            "class_weights": class_weights,
         }
         return data_obj
 

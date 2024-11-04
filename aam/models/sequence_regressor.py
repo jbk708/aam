@@ -36,6 +36,7 @@ class SequenceRegressor(tf.keras.Model):
         out_dim: int = 1,
         classifier: bool = False,
         add_token: bool = True,
+        class_weights: list = None,
         **kwargs,
     ):
         super(SequenceRegressor, self).__init__(**kwargs)
@@ -59,6 +60,7 @@ class SequenceRegressor(tf.keras.Model):
         self.out_dim = out_dim
         self.classifier = classifier
         self.add_token = add_token
+        self.class_weights = class_weights
         self.loss_tracker = tf.keras.metrics.Mean()
 
         # layers used in model
@@ -172,9 +174,11 @@ class SequenceRegressor(tf.keras.Model):
 
         y_true = tf.cast(y_true, dtype=tf.int32)
         y_true = tf.reshape(y_true, shape=[-1])
+        weights = tf.gather(self.class_weights, y_true)
         y_true = tf.one_hot(y_true, self.out_dim)
         y_pred = tf.reshape(y_pred, shape=[-1, self.out_dim])
-        loss = self.loss(y_true, y_pred)
+        y_pred = tf.keras.activations.softmax(y_pred, axis=-1)
+        loss = self.loss(y_true, y_pred)  # * weights
         return tf.reduce_mean(loss)
 
     @masked_loss(sparse_cat=False)
@@ -563,6 +567,7 @@ class SequenceRegressor(tf.keras.Model):
                 "out_dim": self.out_dim,
                 "classifier": self.classifier,
                 "add_token": self.add_token,
+                "class_weights": self.class_weights,
             }
         )
         return config

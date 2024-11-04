@@ -44,9 +44,7 @@ class TaxonomyEncoder(tf.keras.Model):
         self.vocab_size = vocab_size
         self.add_token = add_token
         self.loss_tracker = tf.keras.metrics.Mean()
-        self.tax_loss = tf.keras.losses.CategoricalFocalCrossentropy(
-            from_logits=True, reduction="none"
-        )
+        self.tax_loss = tf.keras.losses.CategoricalHinge(reduction="none")
         self.tax_tracker = tf.keras.metrics.Mean()
 
         # layers used in model
@@ -106,7 +104,8 @@ class TaxonomyEncoder(tf.keras.Model):
         y_true = tf.one_hot(y_true, depth=self.num_tax_levels)
         y_true = y_true[mask]
         y_pred = tf.reshape(tax_pred, [-1, self.num_tax_levels])
-        y_pred = y_pred[mask]
+        y_pred = tf.keras.activations.softmax(y_pred[mask], axis=-1)
+
         loss = tf.reduce_mean(self.tax_loss(y_true, y_pred))
         return loss
 

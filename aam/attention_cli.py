@@ -532,13 +532,13 @@ def fit_sample_regressor(
         table_fold = table.filter(fold_ids, axis="sample", inplace=False)
         df_fold = df.loc[fold_ids]
 
-        if shuffle:
-            keep = []
-            for i in range(1, 5):
-                cat_ids = list(df_fold.loc[df_fold[m_metadata_column] == i].index)
-                np.random.shuffle(cat_ids)
-                keep += cat_ids[:12]
-            df_fold = df.loc[df.index.isin(keep)]
+        # if shuffle:
+        #     keep = []
+        #     for i in range(1, 5):
+        #         cat_ids = list(df_fold.loc[df_fold[m_metadata_column] == i].index)
+        #         np.random.shuffle(cat_ids)
+        #         keep += cat_ids[:12]
+        #     df_fold = df.loc[df.index.isin(keep)]
         gen = generator(
             table_fold, df_fold, shuffle, shift, scale, epochs, gen_new_tables
         )
@@ -602,6 +602,7 @@ def fit_sample_regressor(
             classifier=p_is_categorical,
             out_dim=p_output_dim,
             add_token=p_add_token,
+            class_weights=train_data["class_weights"],
         )
         token_shape = tf.TensorShape([None, None, p_max_bp])
         count_shape = tf.TensorShape([None, None, 1])
@@ -622,12 +623,10 @@ def fit_sample_regressor(
                 )
             ]
         else:
-            # loss = tf.keras.losses.CategoricalFocalCrossentropy(
-            #     from_logits=True, reduction="none"
-            # )
-            loss = tf.keras.losses.CategoricalCrossentropy(
-                from_logits=True, reduction="none"
+            loss = tf.keras.losses.CategoricalFocalCrossentropy(
+                from_logits=False, reduction="none"
             )
+            # loss = tf.keras.losses.CategoricalHinge(reduction="none")
             callbacks = [
                 ConfusionMatrx(
                     monitor="val_target_loss",
