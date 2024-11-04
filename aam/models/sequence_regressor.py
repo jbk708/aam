@@ -203,7 +203,6 @@ class SequenceRegressor(tf.keras.Model):
         y_target, base_target = y_true
 
         target_embeddings, count_pred, y_pred, base_pred, nuc_pred = outputs
-
         target_loss = self._compute_target_loss(y_target, y_pred, train_step)
         count_loss = self._compute_count_loss(counts, count_pred)
 
@@ -213,7 +212,7 @@ class SequenceRegressor(tf.keras.Model):
                 self.base_losses["base_loss"](base_target, base_pred) * self.penalty
             )
             loss += base_loss
-            if True:  # self.is_16S:
+            if self.is_16S:
                 nuc_loss = (
                     self.base_losses["nuc_entropy"](nuc_tokens, nuc_pred)
                     * self.nuc_penalty
@@ -502,12 +501,13 @@ class SequenceRegressor(tf.keras.Model):
         rel_abundance = self._relative_abundance(counts)
 
         # account for <SAMPLE> token
-        count_mask = tf.pad(count_mask, [[0, 0], [1, 0], [0, 0]], constant_values=1)
-        rel_abundance = tf.pad(
-            rel_abundance, [[0, 0], [1, 0], [0, 0]], constant_values=1
-        )
+        if self.add_token:
+            count_mask = tf.pad(count_mask, [[0, 0], [1, 0], [0, 0]], constant_values=1)
+            rel_abundance = tf.pad(
+                rel_abundance, [[0, 0], [1, 0], [0, 0]], constant_values=1
+            )
         asv_embeddings = self.base_model.asv_embeddings(
-            (tokens, counts), training=training
+            (tokens, counts), training=False
         )
 
         return asv_embeddings
@@ -522,22 +522,28 @@ class SequenceRegressor(tf.keras.Model):
         rel_abundance = self._relative_abundance(counts)
 
         # account for <SAMPLE> token
-        count_mask = tf.pad(count_mask, [[0, 0], [1, 0], [0, 0]], constant_values=1)
-        rel_abundance = tf.pad(
-            rel_abundance, [[0, 0], [1, 0], [0, 0]], constant_values=1
-        )
+        if self.add_token:
+            count_mask = tf.pad(count_mask, [[0, 0], [1, 0], [0, 0]], constant_values=1)
+            rel_abundance = tf.pad(
+                rel_abundance, [[0, 0], [1, 0], [0, 0]], constant_values=1
+            )
         count_attention_mask = count_mask
-        base_embeddings = self.base_model.asv_gradient((tokens, counts), asv_embeddings)
+        base_embeddings = self.base_model.asv_gradient(
+            (tokens, counts), asv_embeddings=asv_embeddings
+        )
 
         count_gated_embeddings, count_pred = self._compute_count_embeddings(
             base_embeddings,
             rel_abundance,
             attention_mask=count_attention_mask,
+            training=False,
         )
-        count_embeddings = base_embeddings + count_gated_embeddings * self._count_alpha
+        # count_embeddings = base_embeddings + count_gated_embeddings
+        count_embeddings = count_gated_embeddings
+        # count_embeddings = self.count_norm(count_embeddings)
 
         target_embeddings, target_out = self._compute_target_embeddings(
-            count_embeddings, attention_mask=count_attention_mask
+            count_embeddings, attention_mask=count_attention_mask, training=False
         )
 
         return self.target_activation(target_out)

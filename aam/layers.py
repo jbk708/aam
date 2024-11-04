@@ -1,6 +1,7 @@
 import tensorflow as tf
 import tensorflow_models as tfm
 
+from aam.models.conv_block import ConvModule
 from aam.utils import float_mask
 
 
@@ -53,19 +54,20 @@ class ASVEncoder(tf.keras.layers.Layer):
         self.num_tokens = self.base_tokens * self.max_bp + 2
         self.emb_layer = tf.keras.layers.Embedding(
             self.num_tokens,
-            32,
+            128,
             input_length=self.max_bp,
             embeddings_initializer=tf.keras.initializers.GlorotNormal(),
         )
 
-        self.avs_attention = NucleotideAttention(
-            max_bp=self.max_bp,
-            num_heads=self.attention_heads,
-            num_layers=self.attention_layers,
-            dropout=self.dropout_rate,
-            intermediate_ff=intermediate_ff,
-            intermediate_activation=self.intermediate_activation,
-        )
+        # self.avs_attention = NucleotideAttention(
+        #     max_bp=self.max_bp,
+        #     num_heads=self.attention_heads,
+        #     num_layers=self.attention_layers,
+        #     dropout=self.dropout_rate,
+        #     intermediate_ff=intermediate_ff,
+        #     intermediate_activation=self.intermediate_activation,
+        # )
+        self.avs_attention = tf.keras.layers.TimeDistributed(ConvModule(5))
         self.asv_token = self.num_tokens - 1
         self.nucleotide_position = tf.range(
             0, self.base_tokens * self.max_bp, self.base_tokens, dtype=tf.int32
@@ -80,7 +82,9 @@ class ASVEncoder(tf.keras.layers.Layer):
             seq = tf.pad(seq, [[0, 0], [0, 0], [0, 1]], constant_values=self.asv_token)
 
         output = self.emb_layer(seq)
+        output = tf.transpose(output, perm=[1, 0, 2, 3])
         output = self.avs_attention(output, training=training)
+        output = tf.transpose(output, perm=[1, 0, 2, 3])
 
         return output
 

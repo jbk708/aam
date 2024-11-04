@@ -537,7 +537,7 @@ def fit_sample_regressor(
         #     for i in range(1, 5):
         #         cat_ids = list(df_fold.loc[df_fold[m_metadata_column] == i].index)
         #         np.random.shuffle(cat_ids)
-        #         keep += cat_ids[:12]
+        #         keep += cat_ids[:100]
         #     df_fold = df.loc[df.index.isin(keep)]
         gen = generator(
             table_fold, df_fold, shuffle, shift, scale, epochs, gen_new_tables

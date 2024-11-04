@@ -252,7 +252,7 @@ class TaxonomyEncoder(tf.keras.Model):
         tokens = tf.cast(tokens, dtype=tf.int32)
         counts = tf.cast(counts, dtype=tf.int32)
 
-        asv_embeddings = self.base_encoder.asv_embeddings(tokens, training=training)
+        asv_embeddings = self.base_encoder.get_asv_embeddings(tokens, training=training)
 
         return asv_embeddings
 
@@ -268,17 +268,21 @@ class TaxonomyEncoder(tf.keras.Model):
 
         # account for <SAMPLE> token
         count_mask = float_mask(counts, dtype=tf.int32)
-        count_mask = tf.pad(count_mask, [[0, 0], [1, 0], [0, 0]], constant_values=1)
+        if self.add_token:
+            count_mask = tf.pad(count_mask, [[0, 0], [1, 0], [0, 0]], constant_values=1)
         count_attention_mask = count_mask
 
         tax_gated_embeddings = self.tax_encoder(
-            sample_embeddings, mask=count_attention_mask
+            sample_embeddings, mask=count_attention_mask, training=False
         )
+        tax_pred = tax_gated_embeddings
+        if self.add_token:
+            tax_pred = tax_pred[:, 1:, :]
+        tax_pred = self.tax_level_logits(tax_pred)
 
-        if self.include_alpha:
-            tax_embeddings = sample_embeddings + tax_gated_embeddings * self._tax_alpha
-        else:
-            tax_embeddings = sample_embeddings + tax_gated_embeddings
+        # tax_embeddings = sample_embeddings + tax_gated_embeddings
+        tax_embeddings = tax_gated_embeddings
+        # tax_embeddings = self.tax_norm(tax_embeddings)
 
         return tax_embeddings
 
