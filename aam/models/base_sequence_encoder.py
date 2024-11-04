@@ -103,12 +103,6 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
                 initializer="glorot_uniform",  # tf.keras.initializers.Zeros(),
                 trainable=True,
             )
-        self._base_alpha = self.add_weight(
-            name="base_alpha",
-            initializer=tf.keras.initializers.Zeros(),
-            trainable=True,
-            dtype=tf.float32,
-        )
 
         self.linear_activation = tf.keras.layers.Activation("linear", dtype=tf.float32)
 
@@ -171,9 +165,7 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
         sample_gated_embeddings = self.sample_encoder(
             sample_embeddings, mask=asv_mask, training=training
         )
-        sample_embeddings = (
-            sample_embeddings + sample_gated_embeddings * self._base_alpha
-        )
+        sample_embeddings = sample_embeddings + sample_gated_embeddings
         sample_embeddings = self.sample_norm(sample_embeddings)
         return sample_embeddings, nucleotides
 
