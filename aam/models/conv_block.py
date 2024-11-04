@@ -8,12 +8,14 @@ class ConvBlock(tf.keras.layers.Layer):
         activation="gelu",
         use_bias=True,
         norm_epsilon=1e-6,
+        dilation=1,
         **kwargs,
     ):
         super(ConvBlock, self).__init__(**kwargs)
         self._activation = activation
         self._use_bias = use_bias
         self._norm_epsilon = norm_epsilon
+        self._dilation = dilation
 
         self.conv_norm = tf.keras.layers.LayerNormalization(epsilon=self._norm_epsilon)
 
@@ -28,6 +30,7 @@ class ConvBlock(tf.keras.layers.Layer):
             strides=1,
             padding="same",
             activation=self._activation,
+            dilation_rate=self._dilation,
         )
         self.ff = tf.keras.layers.Dense(
             emb_dim, use_bias=self._use_bias, activation=self._activation
@@ -38,6 +41,7 @@ class ConvBlock(tf.keras.layers.Layer):
             "activation": self._activation,
             "use_bias": self._use_bias,
             "norm_epsilon": self._norm_epsilon,
+            "dilation": self._dilation,
         }
         base_config = super(ConvBlock, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
@@ -81,9 +85,15 @@ class ConvModule(tf.keras.layers.Layer):
         self._norm_epsilon = norm_epsilon
 
         self.conv_blocks = []
+        dilation = 1
         for i in range(self.layers):
             self.conv_blocks.append(
-                ConvBlock(self._activation, self._use_bias, self._norm_epsilon)
+                ConvBlock(
+                    self._activation,
+                    self._use_bias,
+                    self._norm_epsilon,
+                    dilation=(2**i) * dilation,
+                )
             )
 
     def get_config(self):
