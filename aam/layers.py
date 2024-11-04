@@ -67,7 +67,8 @@ class ASVEncoder(tf.keras.layers.Layer):
         #     intermediate_ff=intermediate_ff,
         #     intermediate_activation=self.intermediate_activation,
         # )
-        self.avs_attention = tf.keras.layers.TimeDistributed(ConvModule(5))
+        # self.avs_attention = tf.keras.layers.TimeDistributed(ConvModule(5))
+        self.avs_attention = ConvModule(5)
         self.asv_token = self.num_tokens - 1
         self.nucleotide_position = tf.range(
             0, self.base_tokens * self.max_bp, self.base_tokens, dtype=tf.int32
@@ -82,9 +83,15 @@ class ASVEncoder(tf.keras.layers.Layer):
             seq = tf.pad(seq, [[0, 0], [0, 0], [0, 1]], constant_values=self.asv_token)
 
         output = self.emb_layer(seq)
-        output = tf.transpose(output, perm=[1, 0, 2, 3])
+        # output = tf.transpose(output, perm=[1, 0, 2, 3])
+        shape = tf.shape(output)
+        batch_dim = shape[0]
+        seq_dim = shape[1]
+        nuc_dim = shape[2]
+        emb_dim = shape[3]
+        output = tf.reshape(output, shape=[batch_dim * seq_dim, nuc_dim, emb_dim])
         output = self.avs_attention(output, training=training)
-        output = tf.transpose(output, perm=[1, 0, 2, 3])
+        output = tf.reshape(output, shape=[batch_dim, seq_dim, nuc_dim, emb_dim])
 
         return output
 
