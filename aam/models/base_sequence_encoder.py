@@ -60,6 +60,7 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
                 0.0,
                 nuc_intermediate_size,
                 intermediate_activation=self.intermediate_activation,
+                add_token=self.add_token,
                 name="asv_encoder",
             )
         else:
@@ -128,13 +129,19 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
         return embeddings
 
     def _split_asvs(self, embeddings):
+        nuc_embeddings = embeddings
+        asv_embeddings = embeddings
         if self.is_16S:
-            nuc_embeddings = embeddings[:, :, :-1, :]
+            if not self.add_token:
+                nuc_embeddings = embeddings[:, :, :-1, :]
+                asv_embeddings = asv_embeddings[:, :, 0, :]
+            else:
+                nuc_embeddings = tf.reduce_mean(embeddings, axis=2)
+                asv_embeddings = tf.reduce_mean(asv_embeddings, axis=2)
         else:
-            nuc_embeddings = embeddings
+            asv_embeddings = asv_embeddings[:, :, 0, :]
 
         nucleotides = self.nuc_logits(nuc_embeddings)
-        asv_embeddings = embeddings[:, :, 0, :]
         asv_embeddings = asv_embeddings + self.asv_pos(asv_embeddings)
         return asv_embeddings, nucleotides
 

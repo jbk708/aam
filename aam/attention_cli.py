@@ -389,6 +389,7 @@ def fit_taxonomy_regressor(
 @click.option("--p-add-token", default=True, required=False, type=bool)
 @click.option("--p-gotu", default=False, required=False, type=bool)
 @click.option("--p-is-categorical", default=False, required=False, type=bool)
+@click.option("--p-rarefy-depth", default=5000, required=False, type=int)
 def fit_sample_regressor(
     i_table: str,
     i_base_model_path: str,
@@ -424,6 +425,7 @@ def fit_sample_regressor(
     p_add_token: bool,
     p_gotu: bool,
     p_is_categorical: bool,
+    p_rarefy_depth: int,
 ):
     from aam.callbacks import ConfusionMatrx, MeanAbsoluteError
     from aam.data_handlers import TaxonomyGenerator, UniFracGenerator
@@ -463,7 +465,7 @@ def fit_sample_regressor(
     common_kwargs = {
         "metadata_column": m_metadata_column,
         "max_token_per_sample": p_asv_limit,
-        "rarefy_depth": 5000,
+        "rarefy_depth": p_rarefy_depth,
         "batch_size": p_batch_size,
         "is_16S": is_16S,
         "is_categorical": p_is_categorical,

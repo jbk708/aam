@@ -38,6 +38,7 @@ class ASVEncoder(tf.keras.layers.Layer):
         dropout_rate,
         intermediate_ff,
         intermediate_activation="gelu",
+        add_token=True,
         **kwargs,
     ):
         super(ASVEncoder, self).__init__(**kwargs)
@@ -47,6 +48,7 @@ class ASVEncoder(tf.keras.layers.Layer):
         self.dropout_rate = dropout_rate
         self.intermediate_ff = intermediate_ff
         self.intermediate_activation = intermediate_activation
+        self.add_token = add_token
         self.base_tokens = 6
         self.num_tokens = self.base_tokens * self.max_bp + 2
         self.emb_layer = tf.keras.layers.Embedding(
@@ -74,7 +76,8 @@ class ASVEncoder(tf.keras.layers.Layer):
         seq = seq + self.nucleotide_position
 
         # add <ASV> token
-        seq = tf.pad(seq, [[0, 0], [0, 0], [0, 1]], constant_values=self.asv_token)
+        if self.add_token:
+            seq = tf.pad(seq, [[0, 0], [0, 0], [0, 1]], constant_values=self.asv_token)
 
         output = self.emb_layer(seq)
         output = self.avs_attention(output, training=training)
@@ -97,6 +100,7 @@ class ASVEncoder(tf.keras.layers.Layer):
                 "dropout_rate": self.dropout_rate,
                 "intermediate_ff": self.intermediate_ff,
                 "intermediate_activation": self.intermediate_activation,
+                "add_token": self.add_token,
             }
         )
         return config
