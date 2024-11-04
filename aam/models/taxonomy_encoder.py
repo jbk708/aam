@@ -44,7 +44,7 @@ class TaxonomyEncoder(tf.keras.Model):
         self.vocab_size = vocab_size
         self.add_token = add_token
         self.loss_tracker = tf.keras.metrics.Mean()
-        self.tax_loss = tf.keras.losses.CategoricalHinge(reduction="none")
+        self.tax_loss = tf.keras.losses.CategoricalFocalCrossentropy(reduction="none")
         self.tax_tracker = tf.keras.metrics.Mean()
 
         # layers used in model
