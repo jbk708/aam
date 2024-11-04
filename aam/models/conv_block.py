@@ -28,7 +28,7 @@ class ConvBlock(tf.keras.layers.Layer):
             seq_dim,
             kernel_size=3,
             strides=1,
-            padding="same",
+            padding="valid",
             activation=self._activation,
             dilation_rate=self._dilation,
         )
@@ -61,10 +61,10 @@ class ConvBlock(tf.keras.layers.Layer):
         """
         conv_inputs = tf.transpose(encoder_inputs, perm=[0, 2, 1])
         conv_outputs = tf.transpose(self.conv1d(conv_inputs), perm=[0, 2, 1])
-        conv_outputs = encoder_inputs + self.conv_norm(conv_outputs)
+        conv_outputs = self.conv_norm(conv_outputs)
 
         ff_outputs = self.ff(conv_outputs)
-        output = conv_outputs + self.ff_norm(ff_outputs)
+        output = encoder_inputs + self.ff_norm(ff_outputs)
         return output
 
 
