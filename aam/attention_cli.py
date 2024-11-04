@@ -386,9 +386,9 @@ def fit_taxonomy_regressor(
 @click.option("--p-max-bp", default=150, show_default=True, type=int)
 @click.option("--output-dir", required=True, type=click.Path(exists=False))
 @click.option("--p-output-dim", default=1, required=False, type=int)
-@click.option("--p-add_token", default=True, required=False, type=bool)
-# @click.option("--p-is-16S", default=True, required=False, type=bool)
-# @click.option("--p-is-categorical", default=False, required=False, type=bool)
+@click.option("--p-add-token", default=True, required=False, type=bool)
+@click.option("--p-gotu", default=False, required=False, type=bool)
+@click.option("--p-is-categorical", default=False, required=False, type=bool)
 def fit_sample_regressor(
     i_table: str,
     i_base_model_path: str,
@@ -422,15 +422,16 @@ def fit_sample_regressor(
     output_dir: str,
     p_output_dim: int,
     p_add_token: bool,
-    # p_is_16S: bool,
-    # p_is_categorical: bool,
+    p_gotu: bool,
+    p_is_categorical: bool,
 ):
     from aam.callbacks import ConfusionMatrx, MeanAbsoluteError
     from aam.data_handlers import TaxonomyGenerator, UniFracGenerator
     from aam.models import SequenceRegressor, TaxonomyEncoder, UniFracEncoder
 
-    p_is_16S = False
-    p_is_categorical = True
+    # p_is_16S = False
+    is_16S = not p_gotu
+    # p_is_categorical = True
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
@@ -464,7 +465,7 @@ def fit_sample_regressor(
         "max_token_per_sample": p_asv_limit,
         "rarefy_depth": 5000,
         "batch_size": p_batch_size,
-        "is_16S": p_is_16S,
+        "is_16S": is_16S,
         "is_categorical": p_is_categorical,
     }
 
@@ -587,7 +588,7 @@ def fit_sample_regressor(
             penalty=p_penalty,
             nuc_penalty=p_nuc_penalty,
             max_bp=p_max_bp,
-            is_16S=p_is_16S,
+            is_16S=is_16S,
             vocab_size=vocab_size,
             classifier=p_is_categorical,
             out_dim=p_output_dim,

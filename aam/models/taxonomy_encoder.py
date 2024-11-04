@@ -68,14 +68,6 @@ class TaxonomyEncoder(tf.keras.Model):
             name="base_encoder",
         )
 
-        if include_alpha:
-            self._tax_alpha = self.add_weight(
-                name="tax_alpha",
-                initializer=tf.keras.initializers.Zeros(),
-                trainable=True,
-                dtype=tf.float32,
-            )
-
         self.tax_encoder = TransformerEncoder(
             num_layers=self.attention_layers,
             num_attention_heads=self.attention_heads,
@@ -220,7 +212,7 @@ class TaxonomyEncoder(tf.keras.Model):
         tax_pred = self.tax_level_logits(tax_pred)
 
         if self.include_alpha:
-            tax_embeddings = sample_embeddings + tax_gated_embeddings * self._tax_alpha
+            tax_embeddings = sample_embeddings + tax_gated_embeddings
         else:
             tax_embeddings = sample_embeddings + tax_gated_embeddings
         tax_embeddings = self.tax_norm(tax_embeddings)

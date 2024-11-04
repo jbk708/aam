@@ -69,13 +69,6 @@ class UniFracEncoder(tf.keras.Model):
         if not self.add_token:
             self.reduce_asvs = tf.keras.layers.Dense(1)
 
-        self._unifrac_alpha = self.add_weight(
-            name="unifrac_alpha",
-            initializer=tf.keras.initializers.Zeros(),
-            trainable=True,
-            dtype=tf.float32,
-        )
-
         self.unifrac_encoder = TransformerEncoder(
             num_layers=self.attention_layers,
             num_attention_heads=self.attention_heads,
@@ -207,9 +200,7 @@ class UniFracEncoder(tf.keras.Model):
             unifrac_pred /= tf.reduce_sum(mask, axis=1)
 
         unifrac_pred = self.unifrac_ff(unifrac_pred)
-        unifrac_embeddings = (
-            sample_embeddings + unifrac_gated_embeddings * self._unifrac_alpha
-        )
+        unifrac_embeddings = sample_embeddings + unifrac_gated_embeddings
         unifrac_embeddings = self.unifrac_norm(unifrac_embeddings)
         return [unifrac_embeddings, unifrac_pred, nuc_embeddings]
 

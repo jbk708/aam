@@ -172,7 +172,6 @@ class GeneratorDataset:
             metadata = (metadata - self.shift) / self.scale
         self._metadata = metadata.reindex(table.ids())
         self._table = table
-        print("Generator metadata", self._metadata.value_counts())
 
     def _table_data(self, table: Table) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         table = table.copy()
