@@ -6,7 +6,7 @@ import tensorflow as tf
 
 from aam.models.base_sequence_encoder import BaseSequenceEncoder
 from aam.models.transformers import TransformerEncoder
-from aam.utils import float_mask, masked_loss
+from aam.utils import float_mask
 
 
 @tf.keras.saving.register_keras_serializable(package="TaxonomyEncoder")
@@ -23,6 +23,9 @@ class TaxonomyEncoder(tf.keras.Model):
         intermediate_activation: str = "gelu",
         max_bp: int = 150,
         include_alpha: bool = True,
+        is_16S: bool = True,
+        vocab_size: int = 6,
+        add_token: bool = True,
         **kwargs,
     ):
         super(TaxonomyEncoder, self).__init__(**kwargs)
@@ -37,10 +40,12 @@ class TaxonomyEncoder(tf.keras.Model):
         self.intermediate_activation = intermediate_activation
         self.max_bp = max_bp
         self.include_alpha = include_alpha
-
+        self.is_16S = is_16S
+        self.vocab_size = vocab_size
+        self.add_token = add_token
         self.loss_tracker = tf.keras.metrics.Mean()
-        self.tax_loss = tf.keras.losses.SparseCategoricalCrossentropy(
-            ignore_class=0, from_logits=True, reduction="none"
+        self.tax_loss = tf.keras.losses.CategoricalFocalCrossentropy(
+            from_logits=True, reduction="none"
         )
         self.tax_tracker = tf.keras.metrics.Mean()
 
@@ -57,6 +62,9 @@ class TaxonomyEncoder(tf.keras.Model):
             nuc_attention_layers=3,
             nuc_intermediate_size=128,
             intermediate_activation=self.intermediate_activation,
+            is_16S=self.is_16S,
+            vocab_size=self.vocab_size,
+            add_token=self.add_token,
             name="base_encoder",
         )
 
@@ -76,6 +84,7 @@ class TaxonomyEncoder(tf.keras.Model):
             activation=self.intermediate_activation,
             name="tax_encoder",
         )
+        self.tax_norm = tf.keras.layers.LayerNormalization(epsilon=1e-12)
 
         self.tax_level_logits = tf.keras.layers.Dense(
             self.num_tax_levels,
@@ -94,15 +103,19 @@ class TaxonomyEncoder(tf.keras.Model):
     def _compute_nuc_loss(self, nuc_tokens, nuc_pred):
         return self.base_encoder._compute_nuc_loss(nuc_tokens, nuc_pred)
 
-    @masked_loss(sparse_cat=True)
     def _compute_tax_loss(
         self,
         tax_tokens: tf.Tensor,
         tax_pred: tf.Tensor,
         sample_weights: Optional[tf.Tensor] = None,
     ) -> tf.Tensor:
-        loss = self.tax_loss(tax_tokens, tax_pred)
-
+        y_true = tf.reshape(tax_tokens, [-1])
+        mask = float_mask(y_true) > 0
+        y_true = tf.one_hot(y_true, depth=self.num_tax_levels)
+        y_true = y_true[mask]
+        y_pred = tf.reshape(tax_pred, [-1, self.num_tax_levels])
+        y_pred = y_pred[mask]
+        loss = tf.reduce_mean(self.tax_loss(y_true, y_pred))
         return loss
 
     def _compute_loss(
@@ -194,21 +207,23 @@ class TaxonomyEncoder(tf.keras.Model):
 
         # account for <SAMPLE> token
         count_mask = float_mask(counts, dtype=tf.int32)
-        count_mask = tf.pad(count_mask, [[0, 0], [1, 0], [0, 0]], constant_values=1)
+        if self.add_token:
+            count_mask = tf.pad(count_mask, [[0, 0], [1, 0], [0, 0]], constant_values=1)
         count_attention_mask = count_mask
 
         tax_gated_embeddings = self.tax_encoder(
             sample_embeddings, mask=count_attention_mask, training=training
         )
-
-        tax_pred = tax_gated_embeddings[:, 1:, :]
+        tax_pred = tax_gated_embeddings
+        if self.add_token:
+            tax_pred = tax_pred[:, 1:, :]
         tax_pred = self.tax_level_logits(tax_pred)
 
         if self.include_alpha:
             tax_embeddings = sample_embeddings + tax_gated_embeddings * self._tax_alpha
         else:
             tax_embeddings = sample_embeddings + tax_gated_embeddings
-
+        tax_embeddings = self.tax_norm(tax_embeddings)
         return [tax_embeddings, tax_pred, nuc_embeddings]
 
     def base_embeddings(
@@ -291,6 +306,9 @@ class TaxonomyEncoder(tf.keras.Model):
                 "intermediate_size": self.intermediate_size,
                 "intermediate_activation": self.intermediate_activation,
                 "max_bp": self.max_bp,
+                "is_16S": self.is_16S,
+                "vocab_size": self.vocab_size,
+                "add_token": self.add_token,
             }
         )
         return config

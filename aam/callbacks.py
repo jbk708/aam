@@ -37,17 +37,17 @@ def _mean_absolute_error(pred_val, true_val, fname, labels=None):
 def _confusion_matrix(pred_val, true_val, fname, cat_labels=None):
     cf_matrix = tf.math.confusion_matrix(true_val, pred_val).numpy()
     group_counts = ["{0:0.0f}".format(value) for value in cf_matrix.flatten()]
-    group_percentages = [
-        "{0:.2%}".format(value) for value in cf_matrix.flatten() / np.sum(cf_matrix)
-    ]
+
+    cf_matrix = cf_matrix / np.sum(cf_matrix, axis=-1, keepdims=True)
+    group_percentages = ["{0:.2%}".format(value) for value in cf_matrix.flatten()]
     labels = [f"{v1}\n{v2}" for v1, v2 in zip(group_counts, group_percentages)]
     labels = np.asarray(labels).reshape(cf_matrix.shape)
     fig, ax = plt.subplots(figsize=(10, 10))
     ax = sns.heatmap(
         cf_matrix,
         annot=labels,
-        xticklabels=cat_labels,
-        yticklabels=cat_labels,
+        # xticklabels=cat_labels,
+        # yticklabels=cat_labels,
         fmt="",
     )
     import textwrap
@@ -85,16 +85,29 @@ class MeanAbsoluteError(tf.keras.callbacks.Callback):
 
 
 class ConfusionMatrx(tf.keras.callbacks.Callback):
-    def __init__(self, dataset, output_dir, report_back, labels, **kwargs):
+    def __init__(
+        self,
+        dataset,
+        output_dir,
+        report_back,
+        labels=None,
+        monitor="val_loss",
+        **kwargs,
+    ):
         super().__init__(**kwargs)
         self.output_dir = output_dir
         self.report_back = report_back
         self.dataset = dataset
         self.labels = labels
+        self.best_metric = None
+        self.monitor = monitor
 
     def on_epoch_end(self, epoch, logs=None):
-        y_pred, y_true = self.model.predict(self.dataset)
-        _confusion_matrix(y_pred, y_true, self.output_dir, self.labels)
+        metric = logs[self.monitor]
+        if True:  # self.best_metric is None or self.best_metric > metric:
+            y_pred, y_true = self.model.predict(self.dataset)
+            _confusion_matrix(y_pred, y_true, self.output_dir, self.labels)
+            self.best_metric = metric
 
 
 class SaveModel(tf.keras.callbacks.Callback):

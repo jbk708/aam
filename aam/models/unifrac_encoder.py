@@ -22,6 +22,10 @@ class UniFracEncoder(tf.keras.Model):
         intermediate_size: int = 1024,
         intermediate_activation: str = "gelu",
         max_bp: int = 150,
+        include_alpha: bool = True,
+        is_16S: bool = True,
+        vocab_size: int = 6,
+        add_token: bool = True,
         **kwargs,
     ):
         super(UniFracEncoder, self).__init__(**kwargs)
@@ -34,6 +38,10 @@ class UniFracEncoder(tf.keras.Model):
         self.intermediate_size = intermediate_size
         self.intermediate_activation = intermediate_activation
         self.max_bp = max_bp
+        self.include_alpha = include_alpha
+        self.is_16S = is_16S
+        self.vocab_size = vocab_size
+        self.add_token = add_token
 
         self.loss_tracker = tf.keras.metrics.Mean()
         self.unifrac_loss = PairwiseLoss()
@@ -52,8 +60,14 @@ class UniFracEncoder(tf.keras.Model):
             nuc_attention_layers=3,
             nuc_intermediate_size=128,
             intermediate_activation=self.intermediate_activation,
+            is_16S=self.is_16S,
+            vocab_size=self.vocab_size,
+            add_token=self.add_token,
             name="base_encoder",
         )
+
+        if not self.add_token:
+            self.reduce_asvs = tf.keras.layers.Dense(1)
 
         self._unifrac_alpha = self.add_weight(
             name="unifrac_alpha",
@@ -70,7 +84,7 @@ class UniFracEncoder(tf.keras.Model):
             activation=self.intermediate_activation,
             name="unifrac_encoder",
         )
-
+        self.unifrac_norm = tf.keras.layers.LayerNormalization(epsilon=1e-12)
         self.unifrac_ff = tf.keras.layers.Dense(
             self.embedding_dim, use_bias=False, dtype=tf.float32, name="unifrac_ff"
         )
@@ -177,32 +191,37 @@ class UniFracEncoder(tf.keras.Model):
 
         # account for <SAMPLE> token
         count_mask = float_mask(counts, dtype=tf.int32)
-        count_mask = tf.pad(count_mask, [[0, 0], [1, 0], [0, 0]], constant_values=1)
+        if self.add_token:
+            count_mask = tf.pad(count_mask, [[0, 0], [1, 0], [0, 0]], constant_values=1)
         count_attention_mask = count_mask
 
         unifrac_gated_embeddings = self.unifrac_encoder(
             sample_embeddings, mask=count_attention_mask, training=training
         )
-        unifrac_pred = unifrac_gated_embeddings[:, 0, :]
-        unifrac_pred = self.unifrac_ff(unifrac_pred)
 
+        if self.add_token:
+            unifrac_pred = unifrac_gated_embeddings[:, 0, :]
+        else:
+            mask = tf.cast(count_mask, dtype=tf.float32)
+            unifrac_pred = tf.reduce_sum(unifrac_gated_embeddings * mask, axis=1)
+            unifrac_pred /= tf.reduce_sum(mask, axis=1)
+
+        unifrac_pred = self.unifrac_ff(unifrac_pred)
         unifrac_embeddings = (
             sample_embeddings + unifrac_gated_embeddings * self._unifrac_alpha
         )
-
+        unifrac_embeddings = self.unifrac_norm(unifrac_embeddings)
         return [unifrac_embeddings, unifrac_pred, nuc_embeddings]
 
     def base_embeddings(
-        self, inputs: tuple[tf.Tensor, tf.Tensor], training: bool = False
+        self, inputs: tuple[tf.Tensor, tf.Tensor]
     ) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
         # keras cast all input to float so we need to manually cast to expected type
         tokens, counts = inputs
         tokens = tf.cast(tokens, dtype=tf.int32)
         counts = tf.cast(counts, dtype=tf.int32)
 
-        sample_embeddings, nuc_embeddings, asv_embeddings = (
-            self.base_encoder.base_embeddings(tokens, training=training)
-        )
+        sample_embeddings = self.base_encoder.base_embeddings(tokens)
 
         # account for <SAMPLE> token
         count_mask = float_mask(counts, dtype=tf.int32)
@@ -210,7 +229,7 @@ class UniFracEncoder(tf.keras.Model):
         count_attention_mask = count_mask
 
         unifrac_gated_embeddings = self.unifrac_encoder(
-            sample_embeddings, mask=count_attention_mask, training=training
+            sample_embeddings, mask=count_attention_mask
         )
         unifrac_pred = unifrac_gated_embeddings[:, 0, :]
         unifrac_pred = self.unifrac_ff(unifrac_pred)
@@ -219,7 +238,7 @@ class UniFracEncoder(tf.keras.Model):
             sample_embeddings + unifrac_gated_embeddings * self._unifrac_alpha
         )
 
-        return [unifrac_embeddings, unifrac_pred, nuc_embeddings, asv_embeddings]
+        return unifrac_embeddings
 
     def asv_embeddings(
         self, inputs: tuple[tf.Tensor, tf.Tensor], training: bool = False
@@ -272,6 +291,10 @@ class UniFracEncoder(tf.keras.Model):
                 "intermediate_size": self.intermediate_size,
                 "intermediate_activation": self.intermediate_activation,
                 "max_bp": self.max_bp,
+                "include_alpha": self.include_alpha,
+                "is_16S": self.is_16S,
+                "vocab_size": self.vocab_size,
+                "add_token": self.add_token,
             }
         )
         return config

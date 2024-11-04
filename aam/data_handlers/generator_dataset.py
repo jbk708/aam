@@ -55,7 +55,6 @@ class GeneratorDataset:
         table: Union[str, Table],
         metadata: Optional[Union[str, pd.DataFrame]] = None,
         metadata_column: Optional[str] = None,
-        is_categorical: Optional[bool] = None,
         shift: Optional[Union[str, float]] = None,
         scale: Union[str, float] = "minmax",
         max_token_per_sample: int = 1024,
@@ -65,12 +64,15 @@ class GeneratorDataset:
         gen_new_tables: bool = False,
         batch_size: int = 8,
         max_bp: int = 150,
+        is_16S: bool = True,
+        is_categorical: Optional[bool] = None,
     ):
         table, metadata
         self.table = table
 
         self.metadata_column = metadata_column
         self.is_categorical = is_categorical
+        self.include_sample_weight = is_categorical
         self.shift = shift
         self.scale = scale
         self.metadata = metadata
@@ -84,6 +86,7 @@ class GeneratorDataset:
 
         self.batch_size = batch_size
         self.max_bp = max_bp
+        self.is_16S = is_16S
 
         self.preprocessed_table = self.table
         self.obs_ids = self.preprocessed_table.ids(axis="observation")
@@ -142,7 +145,7 @@ class GeneratorDataset:
             return
         self._validate_dataframe(metadata)
         if isinstance(metadata, str):
-            metadata = pd.read_csv(metadata, sep="\t", index_col=0)
+            metadata = pd.read_csv(metadata, sep="\t", index_col=0, dtype={0: str})
 
         if self.metadata_column not in metadata.columns:
             raise Exception(f"Invalid metadata column {self.metadata_column}")
@@ -169,6 +172,7 @@ class GeneratorDataset:
             metadata = (metadata - self.shift) / self.scale
         self._metadata = metadata.reindex(table.ids())
         self._table = table
+        print("Generator metadata", self._metadata.value_counts())
 
     def _table_data(self, table: Table) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         table = table.copy()
@@ -200,7 +204,10 @@ class GeneratorDataset:
         if not (y_data, pd.Series):
             raise Exception(f"Invalid y_data object: {type(y_data)}")
 
-        return y_data.loc[sample_ids].to_numpy().reshape(-1, 1)
+        if not self.is_categorical:
+            return y_data.loc[sample_ids].to_numpy().reshape(-1, 1)
+
+        return y_data.loc[sample_ids].to_numpy().reshape(-1, 1) - 1
 
     def _create_table_data(
         self, table: Table
@@ -208,10 +215,12 @@ class GeneratorDataset:
         obs_ids = table.ids(axis="observation")
         sample_ids = table.ids()
 
-        obs_encodings = tf.cast(
-            tf.strings.unicode_decode(obs_ids, "UTF-8"), dtype=tf.int64
-        )
-        obs_encodings = self.lookup_table.lookup(obs_encodings).numpy()
+        obs_encodings = None
+        if self.is_16S:
+            obs_encodings = tf.cast(
+                tf.strings.unicode_decode(obs_ids, "UTF-8"), dtype=tf.int64
+            )
+            obs_encodings = self.lookup_table.lookup(obs_encodings).numpy()
 
         table_data, row, col, shape = self._table_data(table)
 
@@ -233,7 +242,11 @@ class GeneratorDataset:
             s_mask = row == s
             s_counts = counts[s_mask]
             s_obs_indices = col[s_mask]
-            s_tokens = obs_encodings[s_obs_indices]
+            if self.is_16S:
+                s_tokens = obs_encodings[s_obs_indices]
+            else:
+                s_tokens = np.reshape(s_obs_indices, newshape=(-1, 1)) + 1
+
             sorted_order = np.argsort(s_counts)
             sorted_order = sorted_order[::-1]
             s_counts = s_counts[sorted_order].reshape(-1, 1)
@@ -364,7 +377,6 @@ class GeneratorDataset:
                                 *output,
                                 padded_ob_ids,
                             )
-
                         if output is not None:
                             yield (table_output, output)
                         else:

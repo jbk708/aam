@@ -385,6 +385,10 @@ def fit_taxonomy_regressor(
 @click.option("--p-warmup-steps", default=10000, show_default=True, type=int)
 @click.option("--p-max-bp", default=150, show_default=True, type=int)
 @click.option("--output-dir", required=True, type=click.Path(exists=False))
+@click.option("--p-output-dim", default=1, required=False, type=int)
+@click.option("--p-add_token", default=True, required=False, type=bool)
+# @click.option("--p-is-16S", default=True, required=False, type=bool)
+# @click.option("--p-is-categorical", default=False, required=False, type=bool)
 def fit_sample_regressor(
     i_table: str,
     i_base_model_path: str,
@@ -416,11 +420,17 @@ def fit_sample_regressor(
     p_warmup_steps,
     p_max_bp: int,
     output_dir: str,
+    p_output_dim: int,
+    p_add_token: bool,
+    # p_is_16S: bool,
+    # p_is_categorical: bool,
 ):
-    from aam.callbacks import MeanAbsoluteError
+    from aam.callbacks import ConfusionMatrx, MeanAbsoluteError
     from aam.data_handlers import TaxonomyGenerator, UniFracGenerator
     from aam.models import SequenceRegressor, TaxonomyEncoder, UniFracEncoder
 
+    p_is_16S = False
+    p_is_categorical = True
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
@@ -433,11 +443,14 @@ def fit_sample_regressor(
         os.makedirs(model_path)
 
     table = load_table(i_table)
-    df = pd.read_csv(m_metadata_file, sep="\t", index_col=0)[[m_metadata_column]]
+    df = pd.read_csv(m_metadata_file, sep="\t", index_col=0, dtype={0: str})[
+        [m_metadata_column]
+    ]
     ids, table, df = validate_metadata(table, df, p_missing_samples)
     num_ids = len(ids)
 
     fold_indices = np.arange(num_ids)
+    np.random.shuffle(fold_indices)
     if p_test_size > 0:
         test_size = int(num_ids * p_test_size)
         train_size = num_ids - test_size
@@ -448,10 +461,11 @@ def fit_sample_regressor(
 
     common_kwargs = {
         "metadata_column": m_metadata_column,
-        "is_categorical": False,
         "max_token_per_sample": p_asv_limit,
         "rarefy_depth": 5000,
         "batch_size": p_batch_size,
+        "is_16S": p_is_16S,
+        "is_categorical": p_is_categorical,
     }
 
     def tax_gen(table, df, shuffle, shift, scale, epochs, gen_new_tables):
@@ -526,10 +540,19 @@ def fit_sample_regressor(
             data["num_tokens"] = None
         return data
 
-    kfolds = KFold(p_cv)
+    if not p_is_categorical:
+        print("non-stratified folds")
+        kfolds = KFold(p_cv)
+        splits = kfolds.split(fold_indices)
+    else:
+        print("stratified folds...")
+        kfolds = StratifiedKFold(p_cv)
+        train_ids = ids[fold_indices]
+        train_classes = df.loc[df.index.isin(train_ids), m_metadata_column].values
+        splits = kfolds.split(fold_indices, train_classes)
 
     models = []
-    for i, (train_ind, val_ind) in enumerate(kfolds.split(fold_indices)):
+    for i, (train_ind, val_ind) in enumerate(splits):
         train_data = _get_fold(
             train_ind,
             shuffle=True,
@@ -547,7 +570,7 @@ def fit_sample_regressor(
         with open(os.path.join(model_path, f"f{i}_val_ids.txt"), "w") as f:
             for id in ids[val_ind]:
                 f.write(id + "\n")
-
+        vocab_size = 6 if not p_is_categorical else 2000
         model = SequenceRegressor(
             token_limit=p_asv_limit,
             embedding_dim=p_embedding_dim,
@@ -564,13 +587,44 @@ def fit_sample_regressor(
             penalty=p_penalty,
             nuc_penalty=p_nuc_penalty,
             max_bp=p_max_bp,
+            is_16S=p_is_16S,
+            vocab_size=vocab_size,
+            classifier=p_is_categorical,
+            out_dim=p_output_dim,
+            add_token=p_add_token,
         )
         token_shape = tf.TensorShape([None, None, p_max_bp])
         count_shape = tf.TensorShape([None, None, 1])
         model.build([token_shape, count_shape])
         model.summary()
-        loss = tf.keras.losses.MeanSquaredError(reduction="none")
+
         fold_label = i + 1
+        if not p_is_categorical:
+            loss = tf.keras.losses.MeanSquaredError(reduction="none")
+            callbacks = [
+                MeanAbsoluteError(
+                    monitor="val_mae",
+                    dataset=val_data["dataset"],
+                    output_dir=os.path.join(
+                        figure_path, f"model_f{fold_label}-val.png"
+                    ),
+                    report_back=p_report_back,
+                )
+            ]
+        else:
+            loss = tf.keras.losses.CategoricalFocalCrossentropy(
+                from_logits=True, reduction="none"
+            )
+            callbacks = [
+                ConfusionMatrx(
+                    monitor="val_loss",
+                    dataset=val_data["dataset"],
+                    output_dir=os.path.join(
+                        figure_path, f"model_f{fold_label}-val.png"
+                    ),
+                    report_back=p_report_back,
+                )
+            ]
         model_cv = CVModel(
             model,
             train_data,
@@ -582,19 +636,10 @@ def fit_sample_regressor(
             loss,
             p_epochs,
             os.path.join(model_path, f"model_f{fold_label}.keras"),
-            metric="mae",
+            metric="loss",
             patience=p_patience,
             early_stop_warmup=p_early_stop_warmup,
-            callbacks=[
-                MeanAbsoluteError(
-                    monitor="val_mae",
-                    dataset=val_data["dataset"],
-                    output_dir=os.path.join(
-                        figure_path, f"model_f{fold_label}-val.png"
-                    ),
-                    report_back=p_report_back,
-                )
-            ],
+            callbacks=[*callbacks],
             lr=p_lr,
             warmup_steps=p_warmup_steps,
         )

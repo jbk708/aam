@@ -33,7 +33,7 @@ class CVModel:
         loss,
         epochs,
         model_save_path,
-        metric="mae",
+        metric="loss",
         patience=10,
         early_stop_warmup=50,
         callbacks=[],
