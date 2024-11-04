@@ -151,6 +151,12 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
             embeddings = self.asv_encoder(asv_input, training=training)
             embeddings = self.asv_scale(embeddings)
         else:
+            # if training:
+            #     random_mask = (
+            #         tf.random.uniform(tf.shape(asv_mask), minval=0.0, maxval=1.0) > 0.1
+            #     )
+            #     random_mask = tf.cast(random_mask, dtype=tf.int32)
+            #     asv_input *= random_mask
             embeddings = self.asv_embeddings(asv_input)
         asv_embeddings, nucleotides = self._split_asvs(embeddings)
 

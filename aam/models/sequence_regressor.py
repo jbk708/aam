@@ -409,9 +409,9 @@ class SequenceRegressor(tf.keras.Model):
             attention_mask=count_attention_mask,
             training=training,
         )
-        # count_embeddings = base_embeddings + count_gated_embeddings * self._count_alpha
-        count_embeddings = base_embeddings + count_gated_embeddings
-        count_embeddings = self.count_norm(count_embeddings)
+        # count_embeddings = base_embeddings + count_gated_embeddings
+        count_embeddings = count_gated_embeddings
+        # count_embeddings = self.count_norm(count_embeddings)
 
         target_embeddings, target_out = self._compute_target_embeddings(
             count_embeddings, attention_mask=count_attention_mask, training=training

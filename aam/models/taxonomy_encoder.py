@@ -211,11 +211,9 @@ class TaxonomyEncoder(tf.keras.Model):
             tax_pred = tax_pred[:, 1:, :]
         tax_pred = self.tax_level_logits(tax_pred)
 
-        if self.include_alpha:
-            tax_embeddings = sample_embeddings + tax_gated_embeddings
-        else:
-            tax_embeddings = sample_embeddings + tax_gated_embeddings
-        tax_embeddings = self.tax_norm(tax_embeddings)
+        # tax_embeddings = sample_embeddings + tax_gated_embeddings
+        tax_embeddings = tax_gated_embeddings
+        # tax_embeddings = self.tax_norm(tax_embeddings)
         return [tax_embeddings, tax_pred, nuc_embeddings]
 
     def base_embeddings(

@@ -532,6 +532,13 @@ def fit_sample_regressor(
         table_fold = table.filter(fold_ids, axis="sample", inplace=False)
         df_fold = df.loc[fold_ids]
 
+        if shuffle:
+            keep = []
+            for i in range(1, 5):
+                cat_ids = list(df_fold.loc[df_fold[m_metadata_column] == i].index)
+                np.random.shuffle(cat_ids)
+                keep += cat_ids[:12]
+            df_fold = df.loc[df.index.isin(keep)]
         gen = generator(
             table_fold, df_fold, shuffle, shift, scale, epochs, gen_new_tables
         )
@@ -615,12 +622,15 @@ def fit_sample_regressor(
                 )
             ]
         else:
-            loss = tf.keras.losses.CategoricalFocalCrossentropy(
+            # loss = tf.keras.losses.CategoricalFocalCrossentropy(
+            #     from_logits=True, reduction="none"
+            # )
+            loss = tf.keras.losses.CategoricalCrossentropy(
                 from_logits=True, reduction="none"
             )
             callbacks = [
                 ConfusionMatrx(
-                    monitor="val_loss",
+                    monitor="val_target_loss",
                     dataset=val_data["dataset"],
                     output_dir=os.path.join(
                         figure_path, f"model_f{fold_label}-val.png"
@@ -635,7 +645,7 @@ def fit_sample_regressor(
             output_dir,
             fold_label,
         )
-        metric = "mae" if not p_is_categorical else "loss"
+        metric = "mae" if not p_is_categorical else "target_loss"
         model_cv.fit_fold(
             loss,
             p_epochs,

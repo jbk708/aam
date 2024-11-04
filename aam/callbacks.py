@@ -104,7 +104,8 @@ class ConfusionMatrx(tf.keras.callbacks.Callback):
 
     def on_epoch_end(self, epoch, logs=None):
         metric = logs[self.monitor]
-        if True:  # self.best_metric is None or self.best_metric > metric:
+        print(self.best_metric, metric)
+        if self.best_metric is None or self.best_metric > metric:
             y_pred, y_true = self.model.predict(self.dataset)
             _confusion_matrix(y_pred, y_true, self.output_dir, self.labels)
             self.best_metric = metric
