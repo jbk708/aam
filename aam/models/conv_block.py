@@ -25,10 +25,10 @@ class ConvBlock(tf.keras.layers.Layer):
         seq_dim = input_shape[1]
         emb_dim = input_shape[2]
         self.conv1d = tf.keras.layers.Conv1D(
-            seq_dim,
+            emb_dim,
             kernel_size=3,
             strides=1,
-            padding="valid",
+            padding="same",
             activation=self._activation,
             dilation_rate=self._dilation,
         )
@@ -59,8 +59,10 @@ class ConvBlock(tf.keras.layers.Layer):
           Output of encoder which is a `float32` tensor with shape
             `(batch_size, input_length, hidden_size)`.
         """
-        conv_inputs = tf.transpose(encoder_inputs, perm=[0, 2, 1])
-        conv_outputs = tf.transpose(self.conv1d(conv_inputs), perm=[0, 2, 1])
+        # conv_inputs = tf.transpose(encoder_inputs, perm=[0, 2, 1])
+        # conv_outputs = tf.transpose(self.conv1d(conv_inputs), perm=[0, 2, 1])
+        conv_inputs = encoder_inputs
+        conv_outputs = self.conv1d(conv_inputs)
         conv_outputs = self.conv_norm(conv_outputs)
 
         ff_outputs = self.ff(conv_outputs)

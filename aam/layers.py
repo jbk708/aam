@@ -54,7 +54,7 @@ class ASVEncoder(tf.keras.layers.Layer):
         self.num_tokens = self.base_tokens * self.max_bp + 2
         self.emb_layer = tf.keras.layers.Embedding(
             self.num_tokens,
-            32,
+            128,
             input_length=self.max_bp,
             embeddings_initializer=tf.keras.initializers.GlorotNormal(),
         )
@@ -68,7 +68,7 @@ class ASVEncoder(tf.keras.layers.Layer):
         #     intermediate_activation=self.intermediate_activation,
         # )
         # self.avs_attention = tf.keras.layers.TimeDistributed(ConvModule(5))
-        self.avs_attention = ConvModule(4)
+        self.avs_attention = ConvModule(5)
         self.asv_token = self.num_tokens - 1
         self.nucleotide_position = tf.range(
             0, self.base_tokens * self.max_bp, self.base_tokens, dtype=tf.int32
