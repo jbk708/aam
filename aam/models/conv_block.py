@@ -5,8 +5,8 @@ import tensorflow as tf
 class ConvBlock(tf.keras.layers.Layer):
     def __init__(
         self,
-        activation="gelu",
-        use_bias=True,
+        activation="relu",
+        use_bias=False,
         norm_epsilon=1e-6,
         dilation=1,
         **kwargs,
@@ -63,7 +63,7 @@ class ConvBlock(tf.keras.layers.Layer):
         # conv_outputs = tf.transpose(self.conv1d(conv_inputs), perm=[0, 2, 1])
         conv_inputs = encoder_inputs
         conv_outputs = self.conv1d(conv_inputs)
-        conv_outputs = self.conv_norm(conv_outputs)
+        # conv_outputs = self.conv_norm(conv_inputs + conv_outputs)
 
         ff_outputs = self.ff(conv_outputs)
         output = encoder_inputs + self.ff_norm(ff_outputs)
@@ -75,8 +75,8 @@ class ConvModule(tf.keras.layers.Layer):
     def __init__(
         self,
         layers,
-        activation="gelu",
-        use_bias=True,
+        activation="relu",
+        use_bias=False,
         norm_epsilon=1e-6,
         **kwargs,
     ):
