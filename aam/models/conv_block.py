@@ -5,8 +5,8 @@ import tensorflow as tf
 class ConvBlock(tf.keras.layers.Layer):
     def __init__(
         self,
-        activation="relu",
-        use_bias=False,
+        activation="gelu",
+        use_bias=True,
         norm_epsilon=1e-6,
         dilation=1,
         **kwargs,
@@ -25,7 +25,7 @@ class ConvBlock(tf.keras.layers.Layer):
         seq_dim = input_shape[1]
         emb_dim = input_shape[2]
         self.conv1d = tf.keras.layers.Conv1D(
-            emb_dim,
+            seq_dim,
             kernel_size=3,
             strides=1,
             padding="same",
@@ -59,14 +59,12 @@ class ConvBlock(tf.keras.layers.Layer):
           Output of encoder which is a `float32` tensor with shape
             `(batch_size, input_length, hidden_size)`.
         """
-        # conv_inputs = tf.transpose(encoder_inputs, perm=[0, 2, 1])
-        # conv_outputs = tf.transpose(self.conv1d(conv_inputs), perm=[0, 2, 1])
-        conv_inputs = encoder_inputs
-        conv_outputs = self.conv1d(conv_inputs)
-        # conv_outputs = self.conv_norm(conv_inputs + conv_outputs)
+        conv_inputs = tf.transpose(encoder_inputs, perm=[0, 2, 1])
+        conv_outputs = tf.transpose(self.conv1d(conv_inputs), perm=[0, 2, 1])
+        conv_outputs = encoder_inputs + self.conv_norm(conv_outputs)
 
         ff_outputs = self.ff(conv_outputs)
-        output = encoder_inputs + self.ff_norm(ff_outputs)
+        output = conv_outputs + self.ff_norm(ff_outputs)
         return output
 
 
@@ -75,8 +73,8 @@ class ConvModule(tf.keras.layers.Layer):
     def __init__(
         self,
         layers,
-        activation="relu",
-        use_bias=False,
+        activation="gelu",
+        use_bias=True,
         norm_epsilon=1e-6,
         **kwargs,
     ):
