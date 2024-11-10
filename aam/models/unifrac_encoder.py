@@ -6,7 +6,7 @@ import tensorflow as tf
 
 from aam.models.base_sequence_encoder import BaseSequenceEncoder
 from aam.models.transformers import TransformerEncoder
-from aam.utils import float_mask
+from aam.utils import apply_random_mask, float_mask
 
 
 @tf.keras.saving.register_keras_serializable(package="UniFracEncoder")
@@ -25,6 +25,7 @@ class UniFracEncoder(tf.keras.Model):
         is_16S: bool = True,
         vocab_size: int = 6,
         add_token: bool = True,
+        asv_dropout_rate: float = 0.0,
         **kwargs,
     ):
         super(UniFracEncoder, self).__init__(**kwargs)
@@ -41,6 +42,7 @@ class UniFracEncoder(tf.keras.Model):
         self.is_16S = is_16S
         self.vocab_size = vocab_size
         self.add_token = add_token
+        self.asv_dropout_rate = asv_dropout_rate
 
         self.loss_tracker = tf.keras.metrics.Mean()
         # self.unifrac_loss = PairwiseLoss()
@@ -183,10 +185,16 @@ class UniFracEncoder(tf.keras.Model):
         tokens = tf.cast(tokens, dtype=tf.int32)
         counts = tf.cast(counts, dtype=tf.int32)
 
-        sample_embeddings, nuc_embeddings = self.base_encoder(tokens, training=training)
-
         # account for <SAMPLE> token
         count_mask = float_mask(counts, dtype=tf.int32)
+        random_mask = None
+        if training and self.asv_dropout_rate > 0:
+            random_mask = apply_random_mask(count_mask, self.asv_dropout_rate)
+
+        sample_embeddings, nuc_embeddings = self.base_encoder(
+            tokens, random_mask=random_mask, training=training
+        )
+
         if self.add_token:
             count_mask = tf.pad(count_mask, [[0, 0], [1, 0], [0, 0]], constant_values=1)
         count_attention_mask = count_mask
@@ -289,6 +297,7 @@ class UniFracEncoder(tf.keras.Model):
                 "is_16S": self.is_16S,
                 "vocab_size": self.vocab_size,
                 "add_token": self.add_token,
+                "asv_dropout_rate": self.asv_dropout_rate,
             }
         )
         return config

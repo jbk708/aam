@@ -553,7 +553,6 @@ class SequenceRegressor(tf.keras.Model):
         config.update(
             {
                 "token_limit": self.token_limit,
-                "base_model": tf.keras.saving.serialize_keras_object(self.base_model),
                 "num_classes": self.num_classes,
                 "shift": self.shift,
                 "scale": self.scale,
@@ -564,6 +563,7 @@ class SequenceRegressor(tf.keras.Model):
                 "attention_layers": self.attention_layers,
                 "intermediate_size": self.intermediate_size,
                 "intermediate_activation": self.intermediate_activation,
+                "base_model": tf.keras.saving.serialize_keras_object(self.base_model),
                 "freeze_base": self.freeze_base,
                 "penalty": self.penalty,
                 "nuc_penalty": self.nuc_penalty,

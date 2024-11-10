@@ -77,6 +77,7 @@ def validate_metadata(table, metadata, missing_samples_flag):
 @click.option("--p-batch-size", default=8, show_default=True, required=False, type=int)
 @click.option("--p-epochs", default=1000, show_default=True, type=int)
 @click.option("--p-dropout", default=0.0, show_default=True, type=float)
+@click.option("--p-asv-dropout", default=0.0, show_default=True, type=float)
 @click.option("--p-patience", default=10, show_default=True, type=int)
 @click.option("--p-early-stop-warmup", default=50, show_default=True, type=int)
 @click.option("--i-model", default=None, required=False, type=str)
@@ -106,6 +107,7 @@ def fit_unifrac_regressor(
     p_batch_size: int,
     p_epochs: int,
     p_dropout: float,
+    p_asv_dropout: float,
     p_patience: int,
     p_early_stop_warmup: int,
     i_model: Union[None, str],
@@ -153,6 +155,7 @@ def fit_unifrac_regressor(
             include_alpha=False,
             is_16S=True,
             add_token=p_add_token,
+            asv_dropout_rate=p_asv_dropout,
         )
 
         optimizer = tf.keras.optimizers.AdamW(
@@ -577,7 +580,7 @@ def fit_sample_regressor(
         else:
             raise Exception(f"Unsupported base model {type(base_model)}")
         if not p_no_freeze_base_weights:
-            raise Warning("base_model's weights are set to trainable.")
+            print("base_model's weights are set to trainable.")
 
     def _get_fold(
         indices,
