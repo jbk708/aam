@@ -98,6 +98,7 @@ def validate_metadata(table, metadata, missing_samples_flag):
 @click.option("--p-gotu", default=False, required=False, type=bool)
 @click.option("--p-is-categorical", default=False, required=False, type=bool)
 @click.option("--p-rarefy-depth", default=5000, required=False, type=int)
+@click.option("--p-weight-decay", default=0.004, show_default=True, type=float)
 def fit_unifrac_regressor(
     i_table: str,
     i_tree: str,
@@ -126,6 +127,7 @@ def fit_unifrac_regressor(
     p_gotu: bool,
     p_is_categorical: bool,
     p_rarefy_depth: int,
+    p_weight_decay: float,
 ):
     from biom import load_table
 
@@ -428,6 +430,7 @@ def fit_taxonomy_regressor(
 @click.option("--p-early-stop-warmup", default=50, show_default=True, type=int)
 @click.option("--p-batch-size", default=8, show_default=True, required=False, type=int)
 @click.option("--p-dropout", default=0.1, show_default=True, type=float)
+@click.option("--p-asv-dropout", default=0.0, show_default=True, type=float)
 @click.option("--p-report-back", default=5, show_default=True, type=int)
 @click.option("--p-asv-limit", default=1024, show_default=True, type=int)
 @click.option("--p-penalty", default=1.0, show_default=True, type=float)
@@ -452,6 +455,7 @@ def fit_taxonomy_regressor(
 @click.option("--p-gotu", default=False, required=False, type=bool)
 @click.option("--p-is-categorical", default=False, required=False, type=bool)
 @click.option("--p-rarefy-depth", default=5000, required=False, type=int)
+@click.option("--p-weight-decay", default=0.004, show_default=True, type=float)
 def fit_sample_regressor(
     i_table: str,
     i_base_model_path: str,
@@ -466,6 +470,7 @@ def fit_sample_regressor(
     p_early_stop_warmup: int,
     p_batch_size: int,
     p_dropout: float,
+    p_asv_dropout: float,
     p_report_back: int,
     p_asv_limit: int,
     p_penalty: float,
@@ -488,6 +493,7 @@ def fit_sample_regressor(
     p_gotu: bool,
     p_is_categorical: bool,
     p_rarefy_depth: int,
+    p_weight_decay: float,
 ):
     from aam.callbacks import ConfusionMatrx, MeanAbsoluteError
     from aam.data_handlers import TaxonomyGenerator, UniFracGenerator
@@ -717,6 +723,7 @@ def fit_sample_regressor(
             callbacks=[*callbacks],
             lr=p_lr,
             warmup_steps=p_warmup_steps,
+            weight_decay=p_weight_decay,
         )
         models.append(model_cv)
         print(f"Fold {i+1} mae: {model_cv.metric_value}")

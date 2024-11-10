@@ -37,6 +37,7 @@ class SequenceRegressor(tf.keras.Model):
         classifier: bool = False,
         add_token: bool = True,
         class_weights: list = None,
+        asv_dropout_rate: float = 0.0,
         **kwargs,
     ):
         super(SequenceRegressor, self).__init__(**kwargs)
@@ -61,6 +62,7 @@ class SequenceRegressor(tf.keras.Model):
         self.classifier = classifier
         self.add_token = add_token
         self.class_weights = class_weights
+        self.asv_dropout_rate = asv_dropout_rate
         self.loss_tracker = tf.keras.metrics.Mean()
 
         # layers used in model
@@ -93,6 +95,7 @@ class SequenceRegressor(tf.keras.Model):
                     is_16S=self.is_16S,
                     vocab_size=self.vocab_size,
                     add_token=self.add_token,
+                    asv_dropout_rate=self.asv_dropout_rate,
                 )
             else:
                 raise Exception("Invalid base model option.")
@@ -574,6 +577,7 @@ class SequenceRegressor(tf.keras.Model):
                 "classifier": self.classifier,
                 "add_token": self.add_token,
                 "class_weights": self.class_weights,
+                "asv_dropout_rate": self.asv_dropout_rate,
             }
         )
         return config
