@@ -38,12 +38,12 @@ class TransformerEncoder(tf.keras.layers.Layer):
                     inner_dim=self._intermediate_size,
                     inner_activation=self._activation,
                     dropout_rate=self._dropout_rate,
-                    attention_dropout_rate=self._dropout_rate,
-                    use_layer_norm=True,
+                    # attention_dropout_rate=self._dropout_rate,
+                    # use_layer_norm=True,
                     name=("layer_%d" % i),
                 )
             )
-        self.output_normalization = tf.keras.layers.LayerNormalization(epsilon=1e-6)
+        self.output_normalization = tf.keras.layers.LayerNormalization()
         super(TransformerEncoder, self).build(input_shape)
 
     def get_config(self):
@@ -82,5 +82,5 @@ class TransformerEncoder(tf.keras.layers.Layer):
             encoder_inputs = self.encoder_layers[layer_idx](
                 [encoder_inputs, attention_mask], training=training
             )
-        output_tensor = encoder_inputs
+        output_tensor = self.output_normalization(encoder_inputs)
         return output_tensor

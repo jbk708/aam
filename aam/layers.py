@@ -1,7 +1,6 @@
 import tensorflow as tf
 import tensorflow_models as tfm
 
-from aam.models.conv_block import ConvModule
 from aam.utils import float_mask
 
 
@@ -59,16 +58,15 @@ class ASVEncoder(tf.keras.layers.Layer):
             embeddings_initializer=tf.keras.initializers.GlorotNormal(),
         )
 
-        # self.avs_attention = NucleotideAttention(
-        #     max_bp=self.max_bp,
-        #     num_heads=self.attention_heads,
-        #     num_layers=self.attention_layers,
-        #     dropout=self.dropout_rate,
-        #     intermediate_ff=intermediate_ff,
-        #     intermediate_activation=self.intermediate_activation,
-        # )
-        # self.avs_attention = tf.keras.layers.TimeDistributed(ConvModule(5))
-        self.avs_attention = ConvModule(5)
+        self.avs_attention = NucleotideAttention(
+            max_bp=self.max_bp,
+            num_heads=self.attention_heads,
+            num_layers=self.attention_layers,
+            dropout=self.dropout_rate,
+            intermediate_ff=intermediate_ff,
+            intermediate_activation=self.intermediate_activation,
+        )
+        # self.avs_attention = ConvModule(5)
         self.asv_token = self.num_tokens - 1
         self.nucleotide_position = tf.range(
             0, self.base_tokens * self.max_bp, self.base_tokens, dtype=tf.int32
@@ -83,15 +81,15 @@ class ASVEncoder(tf.keras.layers.Layer):
             seq = tf.pad(seq, [[0, 0], [0, 0], [0, 1]], constant_values=self.asv_token)
 
         output = self.emb_layer(seq)
-        # output = tf.transpose(output, perm=[1, 0, 2, 3])
-        shape = tf.shape(output)
-        batch_dim = shape[0]
-        seq_dim = shape[1]
-        nuc_dim = shape[2]
-        emb_dim = shape[3]
-        output = tf.reshape(output, shape=[batch_dim * seq_dim, nuc_dim, emb_dim])
         output = self.avs_attention(output, training=training)
-        output = tf.reshape(output, shape=[batch_dim, seq_dim, nuc_dim, emb_dim])
+        # shape = tf.shape(output)
+        # batch_dim = shape[0]
+        # seq_dim = shape[1]
+        # nuc_dim = shape[2]
+        # emb_dim = shape[3]
+        # output = tf.reshape(output, shape=[batch_dim * seq_dim, nuc_dim, emb_dim])
+        # output = self.avs_attention(output, training=training)
+        # output = tf.reshape(output, shape=[batch_dim, seq_dim, nuc_dim, emb_dim])
 
         return output
 
@@ -279,6 +277,12 @@ class NucleotideAttentionBlock(tf.keras.layers.Layer):
             epsilon=self.epsilon, dtype=tf.float32
         )
         self.intermediate_activation = intermediate_activation
+        self.alpha = self.add_weight(
+            name="alpha",
+            initializer=tf.keras.initializers.Zeros(),
+            trainable=True,
+            dtype=tf.float32,
+        )
 
     def build(self, input_shape):
         self._shape = input_shape
@@ -352,15 +356,15 @@ class NucleotideAttentionBlock(tf.keras.layers.Layer):
         return attention_output
 
     def call(self, attention_input, training=False):
-        # scaled dot product attention sublayer
-        attention_input = self.attention_norm(attention_input)
+        # # scaled dot product attention sublayer
+        # attention_input = self.attention_norm(attention_input)
 
         # cast for mixed precision
         _attention_input = tf.cast(attention_input, dtype=self.compute_dtype)
 
         # cast back to float32
         _attention_output = self.scaled_dot_attention(_attention_input)
-        attention_output = tf.cast(_attention_output, dtype=tf.float32)
+        attention_output = tf.cast(_attention_output, dtype=tf.float32) * self.alpha
 
         # residual connection
         attention_output = tf.add(attention_input, attention_output)
@@ -368,13 +372,14 @@ class NucleotideAttentionBlock(tf.keras.layers.Layer):
         attention_output = self.attention_dropout(attention_output, training=training)
 
         # cast for mixed precision
-        ff_input = self.ff_norm(attention_output)
+        # ff_input = self.ff_norm(attention_output)
+        ff_input = attention_output  # self.ff_norm(attention_output)
         _ff_input = tf.cast(ff_input, dtype=self.compute_dtype)
         _ff_output = self.inter_ff(_ff_input)
         _ff_output = self.outer_ff(_ff_output)
 
-        # cast back to float32
-        ff_output = tf.cast(_ff_output, dtype=tf.float32)
+        # cast back to float32, residual connection
+        ff_output = tf.cast(_ff_output, dtype=tf.float32) * self.alpha
         ff_output = tf.add(ff_input, ff_output)
 
         ff_output = tf.ensure_shape(ff_output, self._shape)

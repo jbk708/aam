@@ -49,7 +49,7 @@ class CVModel:
         core_callbacks = [
             tf.keras.callbacks.TensorBoard(
                 log_dir=self.log_dir,
-                histogram_freq=0,
+                histogram_freq=1,
             ),
             tf.keras.callbacks.EarlyStopping(
                 "val_loss", patience=patience, start_from_epoch=early_stop_warmup

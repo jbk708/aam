@@ -165,13 +165,13 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
             sample_embeddings = self._add_sample_token(asv_embeddings)
         else:
             sample_embeddings = asv_embeddings
-        sample_embeddings = self.asv_norm(sample_embeddings)
+        # sample_embeddings = self.asv_norm(sample_embeddings)
 
         sample_gated_embeddings = self.sample_encoder(
             sample_embeddings, mask=asv_mask, training=training
         )
         sample_embeddings = sample_embeddings + sample_gated_embeddings
-        sample_embeddings = self.sample_norm(sample_embeddings)
+        # sample_embeddings = self.sample_norm(sample_embeddings)
         return sample_embeddings, nucleotides
 
     # def base_embeddings(

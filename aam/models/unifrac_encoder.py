@@ -4,7 +4,6 @@ from typing import Union
 
 import tensorflow as tf
 
-from aam.losses import PairwiseLoss
 from aam.models.base_sequence_encoder import BaseSequenceEncoder
 from aam.models.transformers import TransformerEncoder
 from aam.utils import float_mask
@@ -44,7 +43,8 @@ class UniFracEncoder(tf.keras.Model):
         self.add_token = add_token
 
         self.loss_tracker = tf.keras.metrics.Mean()
-        self.unifrac_loss = PairwiseLoss()
+        # self.unifrac_loss = PairwiseLoss()
+        self.unifrac_loss = tf.keras.losses.MeanSquaredError()
         self.unifrac_tracker = tf.keras.metrics.Mean()
 
         # layers used in model
@@ -97,9 +97,10 @@ class UniFracEncoder(tf.keras.Model):
         y_true: tf.Tensor,
         unifrac_embeddings: tf.Tensor,
     ) -> tf.Tensor:
-        loss = self.unifrac_loss(y_true, unifrac_embeddings)
-        num_samples = tf.reduce_sum(float_mask(loss))
-        return tf.math.divide_no_nan(tf.reduce_sum(loss), num_samples)
+        # loss = self.unifrac_loss(y_true, unifrac_embeddings)
+        # num_samples = tf.reduce_sum(float_mask(loss))
+        # return tf.math.divide_no_nan(tf.reduce_sum(loss), num_samples)
+        return tf.reduce_mean(self.unifrac_loss(y_true, unifrac_embeddings))
 
     def _compute_loss(
         self,
@@ -201,7 +202,7 @@ class UniFracEncoder(tf.keras.Model):
 
         unifrac_pred = self.unifrac_ff(unifrac_pred)
         unifrac_embeddings = sample_embeddings + unifrac_gated_embeddings
-        unifrac_embeddings = self.unifrac_norm(unifrac_embeddings)
+        # unifrac_embeddings = self.unifrac_norm(unifrac_embeddings)
         return [unifrac_embeddings, unifrac_pred, nuc_embeddings]
 
     def base_embeddings(

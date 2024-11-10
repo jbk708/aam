@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime
 import os
-from typing import Optional
+from typing import Optional, Union
 
 import click
 import numpy as np
@@ -56,8 +56,25 @@ def validate_metadata(table, metadata, missing_samples_flag):
 @cli.command()
 @click.option("--i-table", required=True, type=click.Path(exists=True), help=TABLE_DESC)
 @click.option("--i-tree", required=True, type=click.Path(exists=True))
+@click.option(
+    "--m-metadata-file",
+    required=True,
+    help="Metadata description",
+    type=click.Path(exists=True),
+)
+@click.option(
+    "--m-metadata-column",
+    required=True,
+    type=str,
+    help="Numeric metadata column to use as prediction target.",
+)
+@click.option(
+    "--p-missing-samples",
+    default="error",
+    type=click.Choice(["error", "ignore"], case_sensitive=False),
+    help=MISSING_SAMP_DESC,
+)
 @click.option("--p-batch-size", default=8, show_default=True, required=False, type=int)
-@click.option("--p-max-bp", required=True, type=int)
 @click.option("--p-epochs", default=1000, show_default=True, type=int)
 @click.option("--p-dropout", default=0.0, show_default=True, type=float)
 @click.option("--p-patience", default=10, show_default=True, type=int)
@@ -71,24 +88,42 @@ def validate_metadata(table, metadata, missing_samples_flag):
     "--p-intermediate-activation", default="relu", show_default=True, type=str
 )
 @click.option("--p-asv-limit", default=512, show_default=True, type=int)
+@click.option("--p-gen-new-table", default=True, show_default=True, type=bool)
+@click.option("--p-lr", default=1e-4, show_default=True, type=float)
+@click.option("--p-warmup-steps", default=10000, show_default=True, type=int)
+@click.option("--p-max-bp", default=150, show_default=True, type=int)
 @click.option("--output-dir", required=True)
+@click.option("--p-add-token", default=True, required=False, type=bool)
+@click.option("--p-gotu", default=False, required=False, type=bool)
+@click.option("--p-is-categorical", default=False, required=False, type=bool)
+@click.option("--p-rarefy-depth", default=5000, required=False, type=int)
 def fit_unifrac_regressor(
     i_table: str,
     i_tree: str,
+    m_metadata_file: str,
+    m_metadata_column: str,
+    p_missing_samples: bool,
     p_batch_size: int,
-    p_max_bp: int,
     p_epochs: int,
     p_dropout: float,
     p_patience: int,
     p_early_stop_warmup: int,
-    i_model: Optional[str],
+    i_model: Union[None, str],
     p_embedding_dim: int,
     p_attention_heads: int,
     p_attention_layers: int,
     p_intermediate_size: int,
     p_intermediate_activation: str,
     p_asv_limit: int,
+    p_gen_new_table: bool,
+    p_lr: float,
+    p_warmup_steps: int,
+    p_max_bp: int,
     output_dir: str,
+    p_add_token: bool,
+    p_gotu: bool,
+    p_is_categorical: bool,
+    p_rarefy_depth: int,
 ):
     from biom import load_table
 
@@ -104,16 +139,20 @@ def fit_unifrac_regressor(
         os.makedirs(figure_path)
 
     if i_model is not None:
-        model: tf.keras.Model = tf.keras.models.load_model(i_model)
+        model = tf.keras.models.load_model(i_model)
     else:
         model: tf.keras.Model = UniFracEncoder(
             p_asv_limit,
-            embedding_dim=p_embedding_dim,
             dropout_rate=p_dropout,
+            embedding_dim=p_embedding_dim,
             attention_heads=p_attention_heads,
             attention_layers=p_attention_layers,
             intermediate_size=p_intermediate_size,
             intermediate_activation=p_intermediate_activation,
+            max_bp=p_max_bp,
+            include_alpha=False,
+            is_16S=True,
+            add_token=p_add_token,
         )
 
         optimizer = tf.keras.optimizers.AdamW(cos_decay_with_warmup(), beta_2=0.95)
@@ -140,13 +179,25 @@ def fit_unifrac_regressor(
     val_ids = ids[val_indices]
     val_table = table.filter(val_ids, inplace=False)
 
+    common_kwargs = {
+        "metadata_column": m_metadata_column,
+        "max_token_per_sample": p_asv_limit,
+        "rarefy_depth": p_rarefy_depth,
+        "batch_size": p_batch_size,
+        "is_16S": True,
+        "is_categorical": p_is_categorical,
+    }
     train_gen = UniFracGenerator(
         table=train_table,
+        metadata=df,
         tree_path=i_tree,
-        max_token_per_sample=p_asv_limit,
         shuffle=True,
+        shift=0.0,
+        scale=1.0,
+        epochs=p_epochs,
         gen_new_tables=True,
-        batch_size=p_batch_size,
+        max_bp=p_max_bp,
+        **common_kwargs,
     )
     train_data = train_gen.get_data()
 
@@ -567,7 +618,7 @@ def fit_sample_regressor(
             train_ind,
             shuffle=True,
             shift=0.0,
-            scale=100.0,
+            scale=1.0,
             gen_new_tables=p_gen_new_table,
         )
         val_data = _get_fold(
