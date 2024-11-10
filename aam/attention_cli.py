@@ -87,7 +87,7 @@ def validate_metadata(table, metadata, missing_samples_flag):
 @click.option(
     "--p-intermediate-activation", default="relu", show_default=True, type=str
 )
-@click.option("--p-asv-limit", default=512, show_default=True, type=int)
+@click.option("--p-asv-limit", default=1024, show_default=True, type=int)
 @click.option("--p-gen-new-table", default=True, show_default=True, type=bool)
 @click.option("--p-lr", default=1e-4, show_default=True, type=float)
 @click.option("--p-warmup-steps", default=10000, show_default=True, type=int)
@@ -155,7 +155,9 @@ def fit_unifrac_regressor(
             add_token=p_add_token,
         )
 
-        optimizer = tf.keras.optimizers.AdamW(cos_decay_with_warmup(), beta_2=0.95)
+        optimizer = tf.keras.optimizers.AdamW(
+            cos_decay_with_warmup(p_lr, p_warmup_steps), beta_2=0.95
+        )
         token_shape = tf.TensorShape([None, None, 150])
         count_shape = tf.TensorShape([None, None, 1])
         model.build([token_shape, count_shape])
@@ -166,10 +168,14 @@ def fit_unifrac_regressor(
     model.summary()
 
     table = load_table(i_table)
-    ids = table.ids()
+    df = pd.read_csv(m_metadata_file, sep="\t", index_col=0, dtype={0: str})[
+        [m_metadata_column]
+    ]
+    ids, table, df = validate_metadata(table, df, p_missing_samples)
     indices = np.arange(len(ids), dtype=np.int32)
+
     np.random.shuffle(indices)
-    train_size = int(len(ids) * 0.9)
+    train_size = int(len(ids) * 0.8)
 
     train_indices = indices[:train_size]
     train_ids = ids[train_indices]
@@ -186,26 +192,28 @@ def fit_unifrac_regressor(
         "batch_size": p_batch_size,
         "is_16S": True,
         "is_categorical": p_is_categorical,
+        "max_bp": p_max_bp,
+        "epochs": p_epochs,
+        "tree_path": i_tree,
+        "metadata": df,
     }
     train_gen = UniFracGenerator(
         table=train_table,
-        metadata=df,
-        tree_path=i_tree,
         shuffle=True,
         shift=0.0,
         scale=1.0,
-        epochs=p_epochs,
-        gen_new_tables=True,
-        max_bp=p_max_bp,
+        gen_new_tables=p_gen_new_table,
         **common_kwargs,
     )
     train_data = train_gen.get_data()
 
     val_gen = UniFracGenerator(
         table=val_table,
-        tree_path=i_tree,
-        max_token_per_sample=p_asv_limit,
         shuffle=False,
+        shift=0.0,
+        scale=1.0,
+        gen_new_tables=False,
+        **common_kwargs,
     )
     val_data = val_gen.get_data()
 

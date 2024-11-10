@@ -110,10 +110,10 @@ class UniFracEncoder(tf.keras.Model):
     ) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
         nuc_tokens, counts = model_inputs
         embeddings, unifrac_embeddings, nuc_pred = outputs
-        tax_loss = self._compute_unifrac_loss(y_true, unifrac_embeddings)
-        nuc_loss = self._compute_nuc_loss(nuc_tokens, nuc_pred)
-        loss = tax_loss + nuc_loss
-        return [loss, tax_loss, nuc_loss]
+        unifrac_loss = self._compute_unifrac_loss(y_true, unifrac_embeddings)
+        nuc_loss = self._compute_nuc_loss(nuc_tokens, nuc_pred) * 0.0
+        loss = unifrac_loss + nuc_loss
+        return [loss, unifrac_loss, nuc_loss]
 
     def predict_step(
         self,
@@ -138,13 +138,13 @@ class UniFracEncoder(tf.keras.Model):
 
         with tf.GradientTape() as tape:
             outputs = self(inputs, training=True)
-            loss, tax_loss, nuc_loss = self._compute_loss(inputs, y, outputs)
+            loss, unifrac_loss, nuc_loss = self._compute_loss(inputs, y, outputs)
 
         gradients = tape.gradient(loss, self.trainable_variables)
         self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
 
         self.loss_tracker.update_state(loss)
-        self.unifrac_tracker.update_state(tax_loss)
+        self.unifrac_tracker.update_state(unifrac_loss)
         self.base_encoder.nuc_entropy.update_state(nuc_loss)
         return {
             "loss": self.loss_tracker.result(),
@@ -162,10 +162,10 @@ class UniFracEncoder(tf.keras.Model):
         inputs, y = data
 
         outputs = self(inputs, training=False)
-        loss, tax_loss, nuc_loss = self._compute_loss(inputs, y, outputs)
+        loss, unifrac_loss, nuc_loss = self._compute_loss(inputs, y, outputs)
 
         self.loss_tracker.update_state(loss)
-        self.unifrac_tracker.update_state(tax_loss)
+        self.unifrac_tracker.update_state(unifrac_loss)
         self.base_encoder.nuc_entropy.update_state(nuc_loss)
         return {
             "loss": self.loss_tracker.result(),

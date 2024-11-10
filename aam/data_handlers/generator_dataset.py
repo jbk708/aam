@@ -260,7 +260,7 @@ class GeneratorDataset:
 
         if s_max_token > self.max_token_per_sample:
             print(f"\tskipping group due to exceeding token limit {s_max_token}...")
-            return None, None, None, None
+            return None, None, None, None, None
 
         s_ids = [sample_ids[s] for s in samples]
 
