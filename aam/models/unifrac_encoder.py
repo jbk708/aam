@@ -135,10 +135,12 @@ class UniFracEncoder(tf.keras.Model):
         ],
     ):
         inputs, y = data
-
+        y_target, unifrac_target = y
         with tf.GradientTape() as tape:
             outputs = self(inputs, training=True)
-            loss, unifrac_loss, nuc_loss = self._compute_loss(inputs, y, outputs)
+            loss, unifrac_loss, nuc_loss = self._compute_loss(
+                inputs, unifrac_target, outputs
+            )
 
         gradients = tape.gradient(loss, self.trainable_variables)
         self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
