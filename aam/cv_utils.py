@@ -46,7 +46,7 @@ class CVModel:
         print(f"weight decay: {weight_decay}")
         optimizer = tf.keras.optimizers.AdamW(
             cos_decay_with_warmup(lr, warmup_steps),
-            beta_2=0.95,
+            beta_2=0.98,
             weight_decay=weight_decay,
         )
         model_saver = SaveModel(model_save_path, 10, f"val_{metric}")
