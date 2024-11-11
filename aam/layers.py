@@ -51,6 +51,13 @@ class ASVEncoder(tf.keras.layers.Layer):
         self.add_token = add_token
         self.base_tokens = 6
         self.num_tokens = self.base_tokens * self.max_bp + 2
+
+        self.asv_token = self.num_tokens - 1
+        self.nucleotide_position = tf.range(
+            0, self.base_tokens * self.max_bp, self.base_tokens, dtype=tf.int32
+        )
+
+    def build(self, input_shape):
         self.emb_layer = tf.keras.layers.Embedding(
             self.num_tokens,
             32,
@@ -63,13 +70,10 @@ class ASVEncoder(tf.keras.layers.Layer):
             num_heads=self.attention_heads,
             num_layers=self.attention_layers,
             dropout=self.dropout_rate,
-            intermediate_ff=intermediate_ff,
+            intermediate_ff=self.intermediate_ff,
             intermediate_activation=self.intermediate_activation,
         )
-        self.asv_token = self.num_tokens - 1
-        self.nucleotide_position = tf.range(
-            0, self.base_tokens * self.max_bp, self.base_tokens, dtype=tf.int32
-        )
+        super(ASVEncoder, self).build(input_shape)
 
     def call(self, inputs, training=False):
         seq = inputs
@@ -200,6 +204,8 @@ class NucleotideAttention(tf.keras.layers.Layer):
         self.epsilon = 1e-6
         self.intermediate_ff = intermediate_ff
         self.intermediate_activation = intermediate_activation
+
+    def build(self, input_shape):
         self.pos_emb = tfm.nlp.layers.PositionEmbedding(
             self.max_bp + 1, seq_axis=2, name="nuc_pos"
         )
@@ -210,7 +216,7 @@ class NucleotideAttention(tf.keras.layers.Layer):
                     num_heads=self.num_heads,
                     dropout=self.dropout,
                     epsilon=self.epsilon,
-                    intermediate_ff=intermediate_ff,
+                    intermediate_ff=self.intermediate_ff,
                     intermediate_activation=self.intermediate_activation,
                     name=("layer_%d" % i),
                 )
@@ -218,6 +224,7 @@ class NucleotideAttention(tf.keras.layers.Layer):
         self.output_normalization = tf.keras.layers.LayerNormalization(
             epsilon=self.epsilon, dtype=tf.float32
         )
+        super(NucleotideAttention, self).build(input_shape)
 
     def call(self, attention_input, attention_mask=None, training=False):
         attention_input = attention_input + self.pos_emb(attention_input)
@@ -259,6 +266,14 @@ class NucleotideAttentionBlock(tf.keras.layers.Layer):
         self.dropout = dropout
         self.epsilon = epsilon
         self.intermediate_ff = intermediate_ff
+        self.intermediate_activation = intermediate_activation
+
+    def build(self, input_shape):
+        self._shape = input_shape
+        self.nucleotides = input_shape[2]
+        self.hidden_dim = input_shape[3]
+        self.head_size = tf.cast(self.hidden_dim / self.num_heads, dtype=tf.int32)
+
         self.attention_norm = tf.keras.layers.LayerNormalization(
             epsilon=self.epsilon, dtype=tf.float32
         )
@@ -267,19 +282,12 @@ class NucleotideAttentionBlock(tf.keras.layers.Layer):
         self.ff_norm = tf.keras.layers.LayerNormalization(
             epsilon=self.epsilon, dtype=tf.float32
         )
-        self.intermediate_activation = intermediate_activation
-        self.alpha = self.add_weight(
-            name="alpha",
+        self.nuc_alpha = self.add_weight(
+            name="nuc_alpha",
             initializer=tf.keras.initializers.Zeros(),
             trainable=True,
             dtype=tf.float32,
         )
-
-    def build(self, input_shape):
-        self._shape = input_shape
-        self.nucleotides = input_shape[2]
-        self.hidden_dim = input_shape[3]
-        self.head_size = tf.cast(self.hidden_dim / self.num_heads, dtype=tf.int32)
 
         wi_shape = [1, 1, self.num_heads, self.hidden_dim, self.head_size]
         self.w_qi = self.add_weight("w_qi", wi_shape, trainable=True, dtype=tf.float32)
@@ -355,7 +363,7 @@ class NucleotideAttentionBlock(tf.keras.layers.Layer):
 
         # cast back to float32
         _attention_output = self.scaled_dot_attention(_attention_input)
-        attention_output = tf.cast(_attention_output, dtype=tf.float32) * self.alpha
+        attention_output = tf.cast(_attention_output, dtype=tf.float32) * self.nuc_alpha
 
         # residual connection
         attention_output = tf.add(attention_input, attention_output)
@@ -370,7 +378,7 @@ class NucleotideAttentionBlock(tf.keras.layers.Layer):
         _ff_output = self.outer_ff(_ff_output)
 
         # cast back to float32, residual connection
-        ff_output = tf.cast(_ff_output, dtype=tf.float32) * self.alpha
+        ff_output = tf.cast(_ff_output, dtype=tf.float32) * self.nuc_alpha
         ff_output = tf.add(ff_input, ff_output)
 
         ff_output = tf.ensure_shape(ff_output, self._shape)
