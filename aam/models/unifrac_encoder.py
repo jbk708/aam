@@ -80,8 +80,20 @@ class UniFracEncoder(tf.keras.Model):
             name="unifrac_encoder",
         )
         self.unifrac_norm = tf.keras.layers.LayerNormalization(epsilon=1e-12)
-        self.unifrac_ff = tf.keras.layers.Dense(
-            self.embedding_dim, use_bias=False, dtype=tf.float32, name="unifrac_ff"
+        self.unifrac_ff = tf.keras.Sequential(
+            [
+                tf.keras.layers.Dense(
+                    self.embedding_dim,
+                    use_bias=True,
+                    dtype=tf.float32,
+                    activation="gelu",
+                ),
+                tf.keras.layers.Dense(
+                    1,
+                    use_bias=True,
+                    dtype=tf.float32,
+                ),
+            ]
         )
 
         self.loss_metrics = sorted(["loss", "target_loss", "count_mse"])

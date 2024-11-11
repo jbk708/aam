@@ -155,8 +155,20 @@ class SequenceRegressor(tf.keras.Model):
         else:
             self.metric_tracker = tf.keras.metrics.SparseCategoricalAccuracy()
             self.metric_string = "accuracy"
-        self.target_ff = tf.keras.layers.Dense(
-            self.out_dim, use_bias=False, dtype=tf.float32
+        self.target_ff = tf.keras.Sequential(
+            [
+                tf.keras.layers.Dense(
+                    self.embedding_dim,
+                    use_bias=True,
+                    dtype=tf.float32,
+                    activation="gelu",
+                ),
+                tf.keras.layers.Dense(
+                    self.out_dim,
+                    use_bias=True,
+                    dtype=tf.float32,
+                ),
+            ]
         )
 
         self.target_activation = tf.keras.layers.Activation("linear", dtype=tf.float32)
