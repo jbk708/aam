@@ -48,6 +48,7 @@ class CVModel:
             cos_decay_with_warmup(lr, warmup_steps),
             beta_2=0.98,
             weight_decay=weight_decay,
+            clipvalue=1.0,
         )
         model_saver = SaveModel(model_save_path, 10, f"val_{metric}")
         core_callbacks = [
