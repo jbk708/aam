@@ -69,9 +69,6 @@ class UniFracEncoder(tf.keras.Model):
             name="base_encoder",
         )
 
-        if not self.add_token:
-            self.reduce_asvs = tf.keras.layers.Dense(1)
-
         self.unifrac_encoder = TransformerEncoder(
             num_layers=self.attention_layers,
             num_attention_heads=self.attention_heads,
