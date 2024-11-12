@@ -318,7 +318,6 @@ class SequenceRegressor(tf.keras.Model):
             unconnected_gradients=tf.UnconnectedGradients.ZERO,
         )
         self.gradient_accumulator.apply_gradients(gradients)
-
         self.loss_tracker.update_state(loss)
         self.target_tracker.update_state(target_loss)
         self.count_tracker.update_state(count_mse)

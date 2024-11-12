@@ -4,6 +4,7 @@ from typing import Union
 
 import tensorflow as tf
 
+from aam.losses import PairwiseLoss
 from aam.models.base_sequence_encoder import BaseSequenceEncoder
 from aam.models.transformers import TransformerEncoder
 from aam.optimizers.gradient_accumulator import GradientAccumulator
@@ -29,6 +30,7 @@ class UniFracEncoder(tf.keras.Model):
         add_token: bool = True,
         asv_dropout_rate: float = 0.0,
         accumulation_steps: int = 1,
+        unifrac_metric: str = "unifrac",
         **kwargs,
     ):
         super(UniFracEncoder, self).__init__(**kwargs)
@@ -47,10 +49,15 @@ class UniFracEncoder(tf.keras.Model):
         self.add_token = add_token
         self.asv_dropout_rate = asv_dropout_rate
         self.accumulation_steps = accumulation_steps
+        self.unifrac_metric = unifrac_metric
 
         self.loss_tracker = tf.keras.metrics.Mean()
-        # self.unifrac_loss = PairwiseLoss()
-        self.unifrac_loss = tf.keras.losses.MeanSquaredError(reduction="none")
+        if self.unifrac_metric == "unifrac":
+            self.unifrac_loss = PairwiseLoss()
+            self.unifrac_out_dim = self.embedding_dim
+        else:
+            self.unifrac_loss = tf.keras.losses.MeanSquaredError(reduction="none")
+            self.unifrac_out_dim = 1
         self.unifrac_tracker = tf.keras.metrics.Mean()
 
         # layers used in model
@@ -89,7 +96,7 @@ class UniFracEncoder(tf.keras.Model):
                     activation="gelu",
                 ),
                 tf.keras.layers.Dense(
-                    1,
+                    self.unifrac_out_dim,
                     use_bias=True,
                     dtype=tf.float32,
                 ),
@@ -113,7 +120,7 @@ class UniFracEncoder(tf.keras.Model):
         y_true: tf.Tensor,
         unifrac_embeddings: tf.Tensor,
     ) -> tf.Tensor:
-        loss = tf.square(y_true - unifrac_embeddings)
+        loss = self.unifrac_loss(y_true, unifrac_embeddings)
         return tf.reduce_mean(loss)
 
     def _compute_loss(
@@ -158,7 +165,8 @@ class UniFracEncoder(tf.keras.Model):
             loss, unifrac_loss, nuc_loss = self._compute_loss(
                 inputs, unifrac_target, outputs
             )
-            loss = self.loss_scaler([unifrac_loss])[0]
+            scaled_losses = self.loss_scaler([unifrac_loss])
+            loss = tf.reduce_sum(tf.stack(scaled_losses, axis=0))
 
         gradients = tape.gradient(
             loss,
@@ -318,6 +326,7 @@ class UniFracEncoder(tf.keras.Model):
                 "add_token": self.add_token,
                 "asv_dropout_rate": self.asv_dropout_rate,
                 "accumulation_steps": self.accumulation_steps,
+                "unifrac_metric": self.unifrac_metric,
             }
         )
         return config

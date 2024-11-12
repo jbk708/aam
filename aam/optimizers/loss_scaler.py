@@ -24,4 +24,7 @@ class LossScaler:
                 self.moving_avg[i] * self.decay + (1 - self.decay) * losses[i],
                 read_value=False,
             )
-        return [losses[i] / self.moving_avg[i] for i in range(len(self.moving_avg))]
+        return [
+            tf.math.divide_no_nan(losses[i], self.moving_avg[i])
+            for i in range(len(self.moving_avg))
+        ]

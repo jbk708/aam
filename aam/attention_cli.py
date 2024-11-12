@@ -100,6 +100,7 @@ def validate_metadata(table, metadata, missing_samples_flag):
 @click.option("--p-rarefy-depth", default=5000, required=False, type=int)
 @click.option("--p-weight-decay", default=0.004, show_default=True, type=float)
 @click.option("--p-accumulation-steps", default=1, required=False, type=int)
+@click.option("--p-unifrac-metric", default="unifrac", required=False, type=str)
 def fit_unifrac_regressor(
     i_table: str,
     i_tree: str,
@@ -130,6 +131,7 @@ def fit_unifrac_regressor(
     p_rarefy_depth: int,
     p_weight_decay: float,
     p_accumulation_steps,
+    p_unifrac_metric: str,
 ):
     from biom import load_table
 
@@ -161,6 +163,7 @@ def fit_unifrac_regressor(
             add_token=p_add_token,
             asv_dropout_rate=p_asv_dropout,
             accumulation_steps=p_accumulation_steps,
+            unifrac_metric=p_unifrac_metric,
         )
 
         optimizer = tf.keras.optimizers.AdamW(
@@ -209,6 +212,7 @@ def fit_unifrac_regressor(
         "epochs": p_epochs,
         "tree_path": i_tree,
         "metadata": df,
+        "unifrac_metric": p_unifrac_metric,
     }
     train_gen = UniFracGenerator(
         table=train_table,

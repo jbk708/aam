@@ -127,6 +127,10 @@ class SaveModel(tf.keras.callbacks.Callback):
         # Add the learning rate to the logs dictionary
         logs["learning_rate"] = learning_rate
 
+        iterations = float(tf.keras.backend.get_value(self.model.optimizer.iterations))
+        # Add the learning rate to the logs dictionary
+        logs["iteration"] = iterations
+
         metric = logs[self.monitor]
         if self.best_weights is None or self.best_metric > metric:
             self.best_metric = metric
