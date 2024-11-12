@@ -9,6 +9,7 @@ from aam.models.taxonomy_encoder import TaxonomyEncoder
 from aam.models.transformers import TransformerEncoder
 from aam.models.unifrac_encoder import UniFracEncoder
 from aam.optimizers.gradient_accumulator import GradientAccumulator
+from aam.optimizers.loss_scaler import LossScaler
 from aam.utils import float_mask
 
 
@@ -178,6 +179,7 @@ class SequenceRegressor(tf.keras.Model):
             ["loss", "target_loss", "count_mse", self.metric_string]
         )
         self.gradient_accumulator = GradientAccumulator(self.accumulation_steps)
+        self.loss_scaler = LossScaler()
 
     def evaluate_metric(self, dataset, metric, **kwargs):
         metric_index = self.loss_metrics.index(metric)
@@ -307,6 +309,11 @@ class SequenceRegressor(tf.keras.Model):
             loss, target_loss, count_mse, base_loss, nuc_loss = self._compute_loss(
                 inputs, y, outputs, train_step=True
             )
+            target_loss, count_mse, base_loss = self.loss_scaler(
+                [target_loss, count_mse, base_loss]
+            )
+
+            loss = target_loss + count_mse + base_loss
 
         gradients = tape.gradient(
             loss,

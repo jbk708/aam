@@ -7,6 +7,7 @@ import tensorflow as tf
 from aam.models.base_sequence_encoder import BaseSequenceEncoder
 from aam.models.transformers import TransformerEncoder
 from aam.optimizers.gradient_accumulator import GradientAccumulator
+from aam.optimizers.loss_scaler import LossScaler
 from aam.utils import apply_random_mask, float_mask
 
 
@@ -97,6 +98,7 @@ class UniFracEncoder(tf.keras.Model):
 
         self.loss_metrics = sorted(["loss", "target_loss", "count_mse"])
         self.gradient_accumulator = GradientAccumulator(self.accumulation_steps)
+        self.loss_scaler = LossScaler()
 
     def evaluate_metric(self, dataset, metric, **kwargs):
         metric_index = self.loss_metrics.index(metric)
@@ -156,6 +158,7 @@ class UniFracEncoder(tf.keras.Model):
             loss, unifrac_loss, nuc_loss = self._compute_loss(
                 inputs, unifrac_target, outputs
             )
+            loss = self.loss_scaler([unifrac_loss])[0]
 
         gradients = tape.gradient(
             loss,

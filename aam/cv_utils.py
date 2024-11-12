@@ -48,9 +48,9 @@ class CVModel:
             cos_decay_with_warmup(lr, warmup_steps),
             beta_2=0.98,
             weight_decay=weight_decay,
-            use_ema=True,
-            ema_momentum=0.999,
-            ema_overwrite_frequency=500,
+            # use_ema=True,
+            # ema_momentum=0.999,
+            # ema_overwrite_frequency=500,
         )
         model_saver = SaveModel(model_save_path, 10, f"val_{metric}")
         core_callbacks = [
