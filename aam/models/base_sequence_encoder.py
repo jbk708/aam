@@ -135,7 +135,7 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
             asv_embeddings = asv_embeddings[:, :, 0, :]
 
         nucleotides = self.nuc_logits(nuc_embeddings)
-        asv_embeddings = asv_embeddings + self.asv_pos(asv_embeddings)
+        # asv_embeddings = asv_embeddings + self.asv_pos(asv_embeddings)
         return asv_embeddings, nucleotides
 
     def call(

@@ -309,11 +309,8 @@ class SequenceRegressor(tf.keras.Model):
             loss, target_loss, count_mse, base_loss, nuc_loss = self._compute_loss(
                 inputs, y, outputs, train_step=True
             )
-            target_loss, count_mse, base_loss = self.loss_scaler(
-                [target_loss, count_mse, base_loss]
-            )
-
-            loss = target_loss + count_mse + base_loss
+            scaled_losses = self.loss_scaler([target_loss, count_mse, base_loss])
+            loss = tf.reduce_sum(tf.stack(scaled_losses, axis=0))
 
         gradients = tape.gradient(
             loss,
