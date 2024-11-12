@@ -121,6 +121,9 @@ class UniFracEncoder(tf.keras.Model):
         unifrac_embeddings: tf.Tensor,
     ) -> tf.Tensor:
         loss = self.unifrac_loss(y_true, unifrac_embeddings)
+        if self.unifrac_metric == "unifrac":
+            batch = tf.cast(tf.shape(y_true)[0], dtype=tf.float32)
+            loss = tf.reduce_sum(loss, axis=1, keepdims=True) / (batch - 1)
         return tf.reduce_mean(loss)
 
     def _compute_loss(
