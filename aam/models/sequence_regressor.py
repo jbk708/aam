@@ -39,6 +39,7 @@ class SequenceRegressor(tf.keras.Model):
         add_token: bool = True,
         class_weights: list = None,
         asv_dropout_rate: float = 0.0,
+        accumulation_steps: int = 1,
         **kwargs,
     ):
         super(SequenceRegressor, self).__init__(**kwargs)
@@ -64,6 +65,7 @@ class SequenceRegressor(tf.keras.Model):
         self.add_token = add_token
         self.class_weights = class_weights
         self.asv_dropout_rate = asv_dropout_rate
+        self.accumulation_steps = accumulation_steps
         self.loss_tracker = tf.keras.metrics.Mean()
 
         # layers used in model
@@ -175,7 +177,7 @@ class SequenceRegressor(tf.keras.Model):
         self.loss_metrics = sorted(
             ["loss", "target_loss", "count_mse", self.metric_string]
         )
-        self.gradient_accumulator = GradientAccumulator(128)
+        self.gradient_accumulator = GradientAccumulator(self.accumulation_steps)
 
     def evaluate_metric(self, dataset, metric, **kwargs):
         metric_index = self.loss_metrics.index(metric)
@@ -596,6 +598,7 @@ class SequenceRegressor(tf.keras.Model):
                 "add_token": self.add_token,
                 "class_weights": self.class_weights,
                 "asv_dropout_rate": self.asv_dropout_rate,
+                "accumulation_steps": self.accumulation_steps,
             }
         )
         return config

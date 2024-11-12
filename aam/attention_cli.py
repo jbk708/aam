@@ -99,6 +99,7 @@ def validate_metadata(table, metadata, missing_samples_flag):
 @click.option("--p-is-categorical", default=False, required=False, type=bool)
 @click.option("--p-rarefy-depth", default=5000, required=False, type=int)
 @click.option("--p-weight-decay", default=0.004, show_default=True, type=float)
+@click.option("--p-accumulation-steps", default=1, required=False, type=int)
 def fit_unifrac_regressor(
     i_table: str,
     i_tree: str,
@@ -128,6 +129,7 @@ def fit_unifrac_regressor(
     p_is_categorical: bool,
     p_rarefy_depth: int,
     p_weight_decay: float,
+    p_accumulation_steps,
 ):
     from biom import load_table
 
@@ -158,6 +160,7 @@ def fit_unifrac_regressor(
             is_16S=True,
             add_token=p_add_token,
             asv_dropout_rate=p_asv_dropout,
+            accumulation_steps=p_accumulation_steps,
         )
 
         optimizer = tf.keras.optimizers.AdamW(
@@ -365,7 +368,13 @@ def fit_taxonomy_regressor(
             include_alpha=False,
         )
 
-        optimizer = tf.keras.optimizers.AdamW(cos_decay_with_warmup(1e-4), beta_2=0.95)
+        optimizer = tf.keras.optimizers.AdamW(
+            cos_decay_with_warmup(1e-4),
+            beta_2=0.98,
+            use_ema=True,
+            ema_momentum=0.999,
+            ema_overwrite_frequency=100,
+        )
         token_shape = tf.TensorShape([None, None, 150])
         count_shape = tf.TensorShape([None, None, 1])
         model.build([token_shape, count_shape])
@@ -458,6 +467,7 @@ def fit_taxonomy_regressor(
 @click.option("--p-is-categorical", default=False, required=False, type=bool)
 @click.option("--p-rarefy-depth", default=5000, required=False, type=int)
 @click.option("--p-weight-decay", default=0.004, show_default=True, type=float)
+@click.option("--p-accumulation-steps", default=1, required=False, type=int)
 def fit_sample_regressor(
     i_table: str,
     i_base_model_path: str,
@@ -496,6 +506,7 @@ def fit_sample_regressor(
     p_is_categorical: bool,
     p_rarefy_depth: int,
     p_weight_decay: float,
+    p_accumulation_steps: int,
 ):
     from aam.callbacks import ConfusionMatrx, MeanAbsoluteError
     from aam.data_handlers import TaxonomyGenerator, UniFracGenerator
@@ -673,6 +684,7 @@ def fit_sample_regressor(
             out_dim=p_output_dim,
             add_token=p_add_token,
             class_weights=train_data["class_weights"],
+            accumulation_steps=p_accumulation_steps,
         )
         token_shape = tf.TensorShape([None, None, p_max_bp])
         count_shape = tf.TensorShape([None, None, 1])

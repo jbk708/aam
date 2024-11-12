@@ -27,6 +27,7 @@ class UniFracEncoder(tf.keras.Model):
         vocab_size: int = 6,
         add_token: bool = True,
         asv_dropout_rate: float = 0.0,
+        accumulation_steps: int = 1,
         **kwargs,
     ):
         super(UniFracEncoder, self).__init__(**kwargs)
@@ -44,6 +45,7 @@ class UniFracEncoder(tf.keras.Model):
         self.vocab_size = vocab_size
         self.add_token = add_token
         self.asv_dropout_rate = asv_dropout_rate
+        self.accumulation_steps = accumulation_steps
 
         self.loss_tracker = tf.keras.metrics.Mean()
         # self.unifrac_loss = PairwiseLoss()
@@ -94,7 +96,7 @@ class UniFracEncoder(tf.keras.Model):
         )
 
         self.loss_metrics = sorted(["loss", "target_loss", "count_mse"])
-        self.gradient_accumulator = GradientAccumulator(128)
+        self.gradient_accumulator = GradientAccumulator(self.accumulation_steps)
 
     def evaluate_metric(self, dataset, metric, **kwargs):
         metric_index = self.loss_metrics.index(metric)
@@ -312,6 +314,7 @@ class UniFracEncoder(tf.keras.Model):
                 "vocab_size": self.vocab_size,
                 "add_token": self.add_token,
                 "asv_dropout_rate": self.asv_dropout_rate,
+                "accumulation_steps": self.accumulation_steps,
             }
         )
         return config
