@@ -192,9 +192,11 @@ class UniFracEncoder(tf.keras.Model):
         ],
     ):
         inputs, y = data
-
+        y_target, unifrac_target = y
         outputs = self(inputs, training=False)
-        loss, unifrac_loss, nuc_loss = self._compute_loss(inputs, y, outputs)
+        loss, unifrac_loss, nuc_loss = self._compute_loss(
+            inputs, unifrac_target, outputs
+        )
 
         self.loss_tracker.update_state(loss)
         self.unifrac_tracker.update_state(unifrac_loss)
