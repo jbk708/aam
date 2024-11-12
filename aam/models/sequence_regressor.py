@@ -8,7 +8,8 @@ import tensorflow_models as tfm
 from aam.models.taxonomy_encoder import TaxonomyEncoder
 from aam.models.transformers import TransformerEncoder
 from aam.models.unifrac_encoder import UniFracEncoder
-from aam.utils import float_mask, masked_loss
+from aam.optimizers.gradient_accumulator import GradientAccumulator
+from aam.utils import float_mask
 
 
 @tf.keras.saving.register_keras_serializable(package="SequenceRegressor")
@@ -131,7 +132,6 @@ class SequenceRegressor(tf.keras.Model):
             dropout_rate=self.dropout_rate,
             activation=self.intermediate_activation,
         )
-        self.count_norm = tf.keras.layers.LayerNormalization(epsilon=1e-12)
         self.count_pos = tfm.nlp.layers.PositionEmbedding(
             self.token_limit + 5, dtype=tf.float32
         )
@@ -175,17 +175,17 @@ class SequenceRegressor(tf.keras.Model):
         self.loss_metrics = sorted(
             ["loss", "target_loss", "count_mse", self.metric_string]
         )
+        self.gradient_accumulator = GradientAccumulator(128)
 
     def evaluate_metric(self, dataset, metric, **kwargs):
         metric_index = self.loss_metrics.index(metric)
         evaluated_metrics = super(SequenceRegressor, self).evaluate(dataset, **kwargs)
         return evaluated_metrics[metric_index]
 
-    def _compute_target_loss(
-        self, y_true: tf.Tensor, y_pred: tf.Tensor, train_step
-    ) -> tf.Tensor:
+    def _compute_target_loss(self, y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
         if not self.classifier:
-            return tf.reduce_mean(self.loss(y_true, y_pred))
+            loss = tf.square(y_true - y_pred)
+            return tf.reduce_mean(loss)
 
         y_true = tf.cast(y_true, dtype=tf.int32)
         y_true = tf.reshape(y_true, shape=[-1])
@@ -196,13 +196,14 @@ class SequenceRegressor(tf.keras.Model):
         loss = self.loss(y_true, y_pred)  # * weights
         return tf.reduce_mean(loss)
 
-    @masked_loss(sparse_cat=False)
     def _compute_count_loss(
         self, counts: tf.Tensor, count_pred: tf.Tensor
     ) -> tf.Tensor:
         relative_counts = self._relative_abundance(counts)
         loss = tf.square(relative_counts - count_pred)
-        return tf.squeeze(loss, axis=-1)
+        mask = float_mask(counts)
+        loss = tf.reduce_sum(loss * mask, axis=1) / tf.reduce_sum(mask, axis=1)
+        return tf.reduce_mean(loss)
 
     def _compute_loss(
         self,
@@ -218,7 +219,7 @@ class SequenceRegressor(tf.keras.Model):
         y_target, base_target = y_true
 
         target_embeddings, count_pred, y_pred, base_pred, nuc_pred = outputs
-        target_loss = self._compute_target_loss(y_target, y_pred, train_step)
+        target_loss = self._compute_target_loss(y_target, y_pred)
         count_loss = self._compute_count_loss(counts, count_pred)
 
         loss = target_loss + count_loss
@@ -294,6 +295,9 @@ class SequenceRegressor(tf.keras.Model):
             tuple[tuple[tf.Tensor, tf.Tensor], tuple[tf.Tensor, tf.Tensor]],
         ],
     ):
+        if not self.gradient_accumulator.built:
+            self.gradient_accumulator.build(self.optimizer, self)
+
         inputs, y = data
 
         with tf.GradientTape() as tape:
@@ -302,8 +306,12 @@ class SequenceRegressor(tf.keras.Model):
                 inputs, y, outputs, train_step=True
             )
 
-        gradients = tape.gradient(loss, self.trainable_variables)
-        self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
+        gradients = tape.gradient(
+            loss,
+            self.trainable_variables,
+            unconnected_gradients=tf.UnconnectedGradients.ZERO,
+        )
+        self.gradient_accumulator.apply_gradients(gradients)
 
         self.loss_tracker.update_state(loss)
         self.target_tracker.update_state(target_loss)
@@ -429,7 +437,6 @@ class SequenceRegressor(tf.keras.Model):
         )
         count_embeddings = base_embeddings + count_gated_embeddings
         # count_embeddings = count_gated_embeddings
-        # count_embeddings = self.count_norm(count_embeddings)
 
         target_embeddings, target_out = self._compute_target_embeddings(
             count_embeddings, attention_mask=count_attention_mask, training=training
@@ -555,7 +562,6 @@ class SequenceRegressor(tf.keras.Model):
         )
         # count_embeddings = base_embeddings + count_gated_embeddings
         count_embeddings = count_gated_embeddings
-        # count_embeddings = self.count_norm(count_embeddings)
 
         target_embeddings, target_out = self._compute_target_embeddings(
             count_embeddings, attention_mask=count_attention_mask, training=False

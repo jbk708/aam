@@ -49,7 +49,8 @@ def masked_loss(sparse_cat: bool = False):
 
             total = tf.cast(tf.reduce_sum(mask), dtype=tf.float32)
             loss = tf.reduce_sum(loss * mask)
-            return tf.math.divide_no_nan(loss, total)
+            # return tf.math.divide_no_nan(loss, total)
+            return loss
 
         return wrapper
 

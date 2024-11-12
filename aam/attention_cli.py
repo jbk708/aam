@@ -164,7 +164,6 @@ def fit_unifrac_regressor(
             cos_decay_with_warmup(p_lr, p_warmup_steps),
             beta_2=0.98,
             weight_decay=p_weight_decay,
-            clipvalue=1.0,
         )
         token_shape = tf.TensorShape([None, None, 150])
         count_shape = tf.TensorShape([None, None, 1])
