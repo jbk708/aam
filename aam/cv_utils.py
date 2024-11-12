@@ -50,7 +50,7 @@ class CVModel:
             weight_decay=weight_decay,
             use_ema=True,
             ema_momentum=0.999,
-            ema_overwrite_frequency=100,
+            ema_overwrite_frequency=500,
         )
         model_saver = SaveModel(model_save_path, 10, f"val_{metric}")
         core_callbacks = [
