@@ -147,7 +147,7 @@ def fit_unifrac_regressor(
         os.makedirs(figure_path)
 
     if i_model is not None:
-        model = tf.keras.models.load_model(i_model, compile=False)
+        model = tf.keras.models.load_model(i_model)
     else:
         model: tf.keras.Model = UniFracEncoder(
             p_asv_limit,
@@ -166,22 +166,22 @@ def fit_unifrac_regressor(
             unifrac_metric=p_unifrac_metric,
         )
 
-    optimizer = tf.keras.optimizers.AdamW(
-        cos_decay_with_warmup(p_lr, p_warmup_steps),
-        beta_2=0.98,
-        weight_decay=p_weight_decay,
-        # use_ema=True,
-        # ema_momentum=0.999,
-        # ema_overwrite_frequency=500,
-        # global_clipnorm=1.0,
-    )
-    token_shape = tf.TensorShape([None, None, 150])
-    count_shape = tf.TensorShape([None, None, 1])
-    model.build([token_shape, count_shape])
-    model.compile(
-        optimizer=optimizer,
-        run_eagerly=False,
-    )
+        optimizer = tf.keras.optimizers.AdamW(
+            cos_decay_with_warmup(p_lr, p_warmup_steps),
+            beta_2=0.98,
+            weight_decay=p_weight_decay,
+            # use_ema=True,
+            # ema_momentum=0.999,
+            # ema_overwrite_frequency=500,
+            # global_clipnorm=1.0,
+        )
+        token_shape = tf.TensorShape([None, None, 150])
+        count_shape = tf.TensorShape([None, None, 1])
+        model.build([token_shape, count_shape])
+        model.compile(
+            optimizer=optimizer,
+            run_eagerly=False,
+        )
     model.summary()
 
     table = load_table(i_table)
