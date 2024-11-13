@@ -380,7 +380,7 @@ def fit_taxonomy_regressor(
         "is_categorical": p_is_categorical,
         "max_bp": p_max_bp,
         "epochs": p_epochs,
-        "taxonomy_path": i_taxonomy,
+        "taxonomy": i_taxonomy,
         "tax_level": i_tax_level,
         "metadata": df,
     }
