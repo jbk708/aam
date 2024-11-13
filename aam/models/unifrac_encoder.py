@@ -140,9 +140,9 @@ class UniFracEncoder(tf.keras.Model):
         nuc_tokens, counts = model_inputs
         embeddings, unifrac_embeddings, nuc_pred = outputs
         unifrac_loss = self._compute_unifrac_loss(y_true, unifrac_embeddings)
-        nuc_loss = self._compute_nuc_loss(nuc_tokens, nuc_pred) * 0.0
-        loss = unifrac_loss + nuc_loss
-        return [loss, unifrac_loss, nuc_loss]
+        # nuc_loss = self._compute_nuc_loss(nuc_tokens, nuc_pred) * 0.0
+        loss = unifrac_loss  # + nuc_loss
+        return [loss, unifrac_loss, 0]  # , nuc_loss]
 
     def predict_step(
         self,
@@ -190,6 +190,7 @@ class UniFracEncoder(tf.keras.Model):
             "loss": self.loss_tracker.result(),
             "unifrac_mse": self.unifrac_tracker.result(),
             "nuc_entropy": self.base_encoder.nuc_entropy.result(),
+            "learning_rate": self.optimizer.learning_rate,
         }
 
     def test_step(
