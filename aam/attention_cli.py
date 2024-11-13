@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime
 import os
-from typing import Optional, Union
+from typing import Union
 
 import click
 import numpy as np
@@ -264,10 +264,28 @@ def fit_unifrac_regressor(
 @click.option("--i-table", required=True, type=click.Path(exists=True), help=TABLE_DESC)
 @click.option("--i-taxonomy", required=True, type=click.Path(exists=True))
 @click.option("--p-tax-level", default=7, type=int)
+@click.option(
+    "--m-metadata-file",
+    required=True,
+    help="Metadata description",
+    type=click.Path(exists=True),
+)
+@click.option(
+    "--m-metadata-column",
+    required=True,
+    type=str,
+    help="Numeric metadata column to use as prediction target.",
+)
+@click.option(
+    "--p-missing-samples",
+    default="error",
+    type=click.Choice(["error", "ignore"], case_sensitive=False),
+    help=MISSING_SAMP_DESC,
+)
 @click.option("--p-batch-size", default=8, show_default=True, required=False, type=int)
-@click.option("--p-max-bp", required=True, type=int)
 @click.option("--p-epochs", default=1000, show_default=True, type=int)
 @click.option("--p-dropout", default=0.1, show_default=True, type=float)
+@click.option("--p-asv-dropout", default=0.0, show_default=True, type=float)
 @click.option("--p-patience", default=10, show_default=True, type=int)
 @click.option("--p-early-stop-warmup", default=50, show_default=True, type=int)
 @click.option("--i-model", default=None, required=False, type=str)
@@ -279,25 +297,48 @@ def fit_unifrac_regressor(
     "--p-intermediate-activation", default="relu", show_default=True, type=str
 )
 @click.option("--p-asv-limit", default=512, show_default=True, type=int)
+@click.option("--p-gen-new-table", default=True, show_default=True, type=bool)
+@click.option("--p-lr", default=1e-4, show_default=True, type=float)
+@click.option("--p-warmup-steps", default=10000, show_default=True, type=int)
+@click.option("--p-max-bp", required=True, type=int)
 @click.option("--output-dir", required=True)
+@click.option("--p-add-token", default=False, required=False, type=bool)
+@click.option("--p-gotu", default=False, required=False, type=bool)
+@click.option("--p-is-categorical", default=False, required=False, type=bool)
+@click.option("--p-rarefy-depth", default=5000, required=False, type=int)
+@click.option("--p-weight-decay", default=0.004, show_default=True, type=float)
+@click.option("--p-accumulation-steps", default=1, required=False, type=int)
 def fit_taxonomy_regressor(
     i_table: str,
     i_taxonomy: str,
-    p_tax_level: int,
+    i_tax_level: int,
+    m_metadata_file: str,
+    m_metadata_column: str,
+    p_missing_samples: bool,
     p_batch_size: int,
-    p_max_bp: int,
     p_epochs: int,
     p_dropout: float,
+    p_asv_dropout: float,
     p_patience: int,
     p_early_stop_warmup: int,
-    i_model: Optional[str],
+    i_model: Union[None, str],
     p_embedding_dim: int,
     p_attention_heads: int,
     p_attention_layers: int,
     p_intermediate_size: int,
     p_intermediate_activation: str,
     p_asv_limit: int,
+    p_gen_new_table: bool,
+    p_lr: float,
+    p_warmup_steps: int,
+    p_max_bp: int,
     output_dir: str,
+    p_add_token: bool,
+    p_gotu: bool,
+    p_is_categorical: bool,
+    p_rarefy_depth: int,
+    p_weight_decay: float,
+    p_accumulation_steps,
 ):
     from biom import load_table
 
@@ -313,10 +354,14 @@ def fit_taxonomy_regressor(
         os.makedirs(figure_path)
 
     table = load_table(i_table)
-    ids = table.ids()
+    df = pd.read_csv(m_metadata_file, sep="\t", index_col=0, dtype={0: str})[
+        [m_metadata_column]
+    ]
+    ids, table, df = validate_metadata(table, df, p_missing_samples)
     indices = np.arange(len(ids), dtype=np.int32)
+
     np.random.shuffle(indices)
-    train_size = int(len(ids) * 0.9)
+    train_size = int(len(ids) * 0.8)
 
     train_indices = indices[:train_size]
     train_ids = ids[train_indices]
@@ -326,24 +371,36 @@ def fit_taxonomy_regressor(
     val_ids = ids[val_indices]
     val_table = table.filter(val_ids, inplace=False)
 
+    common_kwargs = {
+        "metadata_column": m_metadata_column,
+        "max_token_per_sample": p_asv_limit,
+        "rarefy_depth": p_rarefy_depth,
+        "batch_size": p_batch_size,
+        "is_16S": True,
+        "is_categorical": p_is_categorical,
+        "max_bp": p_max_bp,
+        "epochs": p_epochs,
+        "taxonomy_path": i_taxonomy,
+        "tax_level": i_tax_level,
+        "metadata": df,
+    }
     train_gen = TaxonomyGenerator(
         table=train_table,
-        taxonomy=i_taxonomy,
-        tax_level=p_tax_level,
-        max_token_per_sample=p_asv_limit,
-        shuffle=True,
-        gen_new_tables=True,
-        batch_size=p_batch_size,
+        huffle=True,
+        shift=0.0,
+        scale=1.0,
+        gen_new_tables=p_gen_new_table,
+        **common_kwargs,
     )
     train_data = train_gen.get_data()
 
     val_gen = TaxonomyGenerator(
         table=val_table,
-        taxonomy=i_taxonomy,
-        tax_level=p_tax_level,
-        max_token_per_sample=p_asv_limit,
         shuffle=False,
-        batch_size=p_batch_size,
+        shift=0.0,
+        scale=1.0,
+        gen_new_tables=False,
+        **common_kwargs,
     )
     val_data = val_gen.get_data()
 
@@ -367,21 +424,28 @@ def fit_taxonomy_regressor(
         model: tf.keras.Model = TaxonomyEncoder(
             train_gen.num_tokens,
             p_asv_limit,
-            embedding_dim=p_embedding_dim,
             dropout_rate=p_dropout,
+            embedding_dim=p_embedding_dim,
             attention_heads=p_attention_heads,
             attention_layers=p_attention_layers,
             intermediate_size=p_intermediate_size,
             intermediate_activation=p_intermediate_activation,
+            max_bp=p_max_bp,
             include_alpha=False,
+            is_16S=True,
+            add_token=p_add_token,
+            asv_dropout_rate=p_asv_dropout,
+            accumulation_steps=p_accumulation_steps,
         )
 
         optimizer = tf.keras.optimizers.AdamW(
-            cos_decay_with_warmup(1e-4),
+            cos_decay_with_warmup(p_lr, p_warmup_steps),
             beta_2=0.98,
-            use_ema=True,
-            ema_momentum=0.999,
-            ema_overwrite_frequency=500,
+            weight_decay=p_weight_decay,
+            # use_ema=True,
+            # ema_momentum=0.999,
+            # ema_overwrite_frequency=500,
+            # global_clipnorm=1.0,
         )
         token_shape = tf.TensorShape([None, None, 150])
         count_shape = tf.TensorShape([None, None, 1])
