@@ -41,6 +41,7 @@ class SequenceRegressor(tf.keras.Model):
         class_weights: list = None,
         asv_dropout_rate: float = 0.0,
         accumulation_steps: int = 1,
+        unifrac_metric: str = None,
         **kwargs,
     ):
         super(SequenceRegressor, self).__init__(**kwargs)
@@ -67,6 +68,7 @@ class SequenceRegressor(tf.keras.Model):
         self.class_weights = class_weights
         self.asv_dropout_rate = asv_dropout_rate
         self.accumulation_steps = accumulation_steps
+        self.unifrac_metric = unifrac_metric
         self.loss_tracker = tf.keras.metrics.Mean()
 
         # layers used in model
@@ -100,6 +102,7 @@ class SequenceRegressor(tf.keras.Model):
                     vocab_size=self.vocab_size,
                     add_token=self.add_token,
                     asv_dropout_rate=self.asv_dropout_rate,
+                    unifrac_metric=self.unifrac_metric,
                 )
             else:
                 raise Exception("Invalid base model option.")
@@ -299,8 +302,8 @@ class SequenceRegressor(tf.keras.Model):
             tuple[tuple[tf.Tensor, tf.Tensor], tuple[tf.Tensor, tf.Tensor]],
         ],
     ):
-        if not self.gradient_accumulator.built:
-            self.gradient_accumulator.build(self.optimizer, self)
+        # if not self.gradient_accumulator.built:
+        #     self.gradient_accumulator.build(self.optimizer, self)
 
         inputs, y = data
 
@@ -310,14 +313,15 @@ class SequenceRegressor(tf.keras.Model):
                 inputs, y, outputs, train_step=True
             )
             scaled_losses = self.loss_scaler([target_loss, count_mse, base_loss])
-            loss = tf.reduce_sum(tf.stack(scaled_losses, axis=0))
+            loss = tf.reduce_mean(tf.stack(scaled_losses, axis=0))
 
         gradients = tape.gradient(
             loss,
             self.trainable_variables,
             unconnected_gradients=tf.UnconnectedGradients.ZERO,
         )
-        self.gradient_accumulator.apply_gradients(gradients)
+        self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
+        # self.gradient_accumulator.apply_gradients(gradients)
         self.loss_tracker.update_state(loss)
         self.target_tracker.update_state(target_loss)
         self.count_tracker.update_state(count_mse)
@@ -602,6 +606,7 @@ class SequenceRegressor(tf.keras.Model):
                 "class_weights": self.class_weights,
                 "asv_dropout_rate": self.asv_dropout_rate,
                 "accumulation_steps": self.accumulation_steps,
+                "unifrac_metric": self.unifrac_metric,
             }
         )
         return config

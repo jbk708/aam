@@ -173,6 +173,7 @@ def fit_unifrac_regressor(
             # use_ema=True,
             # ema_momentum=0.999,
             # ema_overwrite_frequency=500,
+            global_clipnorm=1.0,
         )
         token_shape = tf.TensorShape([None, None, 150])
         count_shape = tf.TensorShape([None, None, 1])
@@ -475,6 +476,7 @@ def fit_taxonomy_regressor(
 @click.option("--p-rarefy-depth", default=5000, required=False, type=int)
 @click.option("--p-weight-decay", default=0.004, show_default=True, type=float)
 @click.option("--p-accumulation-steps", default=1, required=False, type=int)
+@click.option("--p-unifrac-metric", default="unifrac", required=False, type=str)
 def fit_sample_regressor(
     i_table: str,
     i_base_model_path: str,
@@ -514,6 +516,7 @@ def fit_sample_regressor(
     p_rarefy_depth: int,
     p_weight_decay: float,
     p_accumulation_steps: int,
+    p_unifrac_metric: str,
 ):
     from aam.callbacks import ConfusionMatrx, MeanAbsoluteError
     from aam.data_handlers import TaxonomyGenerator, UniFracGenerator
@@ -585,6 +588,7 @@ def fit_sample_regressor(
             epochs=epochs,
             gen_new_tables=gen_new_tables,
             max_bp=p_max_bp,
+            unifrac_metric=p_unifrac_metric,
             **common_kwargs,
         )
 
@@ -692,6 +696,7 @@ def fit_sample_regressor(
             add_token=p_add_token,
             class_weights=train_data["class_weights"],
             accumulation_steps=p_accumulation_steps,
+            unifrac_metric=p_unifrac_metric,
         )
         token_shape = tf.TensorShape([None, None, p_max_bp])
         count_shape = tf.TensorShape([None, None, 1])

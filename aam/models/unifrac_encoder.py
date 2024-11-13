@@ -30,7 +30,7 @@ class UniFracEncoder(tf.keras.Model):
         add_token: bool = True,
         asv_dropout_rate: float = 0.0,
         accumulation_steps: int = 1,
-        unifrac_metric: str = "unifrac",
+        unifrac_metric: str = "faith_pd",
         **kwargs,
     ):
         super(UniFracEncoder, self).__init__(**kwargs)
@@ -158,8 +158,8 @@ class UniFracEncoder(tf.keras.Model):
             tuple[tuple[tf.Tensor, tf.Tensor], tuple[tf.Tensor, tf.Tensor]],
         ],
     ):
-        if not self.gradient_accumulator.built:
-            self.gradient_accumulator.build(self.optimizer, self)
+        # if not self.gradient_accumulator.built:
+        #     self.gradient_accumulator.build(self.optimizer, self)
 
         inputs, y = data
         y_target, unifrac_target = y
@@ -176,7 +176,8 @@ class UniFracEncoder(tf.keras.Model):
             self.trainable_variables,
             unconnected_gradients=tf.UnconnectedGradients.ZERO,
         )
-        self.gradient_accumulator.apply_gradients(gradients)
+        self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
+        # self.gradient_accumulator.apply_gradients(gradients)
 
         self.loss_tracker.update_state(loss)
         self.unifrac_tracker.update_state(unifrac_loss)
