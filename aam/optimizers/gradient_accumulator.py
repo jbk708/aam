@@ -57,8 +57,9 @@ class GradientAccumulator:
                 read_value=False,
             )
 
-        gradients, _ = tf.clip_by_global_norm(self.gradient_accumulation, clip_norm=1.0)
-        self.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
+        self.optimizer.apply_gradients(
+            zip(self.gradient_accumulation, self.model.trainable_variables)
+        )
 
         # reset
         self.accum_step_counter.assign(0)
