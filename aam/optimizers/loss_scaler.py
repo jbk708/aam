@@ -4,7 +4,7 @@ import tensorflow as tf
 class LossScaler:
     def __init__(self):
         self.moving_avg = None
-        self.decay = 0.99
+        self.decay = 0.999
 
     def __call__(self, losses):
         if self.moving_avg is None:
@@ -18,12 +18,11 @@ class LossScaler:
                 for i, loss in enumerate(losses)
             ]
 
-        # Accumulate batch gradients
-        for i in range(len(self.moving_avg)):
-            self.moving_avg[i].assign(
-                self.moving_avg[i] * self.decay + (1 - self.decay) * losses[i],
-                read_value=False,
-            )
+        # for i in range(len(self.moving_avg)):
+        #     self.moving_avg[i].assign(
+        #         self.moving_avg[i] * self.decay + (1 - self.decay) * losses[i],
+        #         read_value=False,
+        #     )
         return [
             tf.math.divide_no_nan(losses[i], self.moving_avg[i])
             for i in range(len(self.moving_avg))
