@@ -210,6 +210,7 @@ class UniFracEncoder(tf.keras.Model):
             "loss": self.loss_tracker.result(),
             "unifrac_mse": self.unifrac_tracker.result(),
             "nuc_entropy": self.base_encoder.nuc_entropy.result(),
+            "learning_rate": self.optimizer.learning_rate,
         }
 
     def call(

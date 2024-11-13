@@ -189,6 +189,7 @@ class TaxonomyEncoder(tf.keras.Model):
             "loss": self.loss_tracker.result(),
             "tax_entropy": self.tax_tracker.result(),
             "nuc_entropy": self.base_encoder.nuc_entropy.result(),
+            "learning_rate": self.optimizer.learning_rate,
         }
 
     def test_step(
@@ -210,6 +211,7 @@ class TaxonomyEncoder(tf.keras.Model):
             "loss": self.loss_tracker.result(),
             "tax_entropy": self.tax_tracker.result(),
             "nuc_entropy": self.base_encoder.nuc_entropy.result(),
+            "learning_rate": self.optimizer.learning_rate,
         }
 
     def call(

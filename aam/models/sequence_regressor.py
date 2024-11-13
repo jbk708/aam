@@ -377,6 +377,7 @@ class SequenceRegressor(tf.keras.Model):
             base_loss_key: base_loss_metric.result(),
             nuc_entropy_key: nuc_entropy_metric.result(),
             self.metric_string: self.metric_tracker.result(),
+            "learning_rate": self.optimizer.learning_rate,
         }
 
     def _relative_abundance(self, counts: tf.Tensor) -> tf.Tensor:
