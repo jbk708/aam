@@ -386,7 +386,7 @@ def fit_taxonomy_regressor(
     }
     train_gen = TaxonomyGenerator(
         table=train_table,
-        huffle=True,
+        shuffle=True,
         shift=0.0,
         scale=1.0,
         gen_new_tables=p_gen_new_table,
