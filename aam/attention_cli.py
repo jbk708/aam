@@ -173,7 +173,7 @@ def fit_unifrac_regressor(
         # use_ema=True,
         # ema_momentum=0.999,
         # ema_overwrite_frequency=500,
-        global_clipnorm=1.0,
+        # global_clipnorm=1.0,
     )
     token_shape = tf.TensorShape([None, None, 150])
     count_shape = tf.TensorShape([None, None, 1])
