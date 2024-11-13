@@ -82,21 +82,26 @@ class TaxonomyEncoder(tf.keras.Model):
             name="tax_encoder",
         )
 
-        self.tax_level_logits = tf.keras.Sequential(
-            [
-                tf.keras.layers.Dense(
-                    self.embedding_dim,
-                    use_bias=True,
-                    dtype=tf.float32,
-                    activation="gelu",
-                ),
-                tf.keras.layers.Dense(
-                    self.num_tax_levels,
-                    use_bias=True,
-                    dtype=tf.float32,
-                ),
-            ]
+        self.tax_level_logits = tf.keras.layers.Dense(
+            self.num_tax_levels,
+            use_bias=False,
+            dtype=tf.float32,
         )
+        # tf.keras.Sequential(
+        #     [
+        #         tf.keras.layers.Dense(
+        #             self.embedding_dim,
+        #             use_bias=True,
+        #             dtype=tf.float32,
+        #             activation="gelu",
+        #         ),
+        #         tf.keras.layers.Dense(
+        #             self.num_tax_levels,
+        #             use_bias=True,
+        #             dtype=tf.float32,
+        #         ),
+        #     ]
+        # )
 
         self.loss_metrics = sorted(["loss", "target_loss", "count_mse"])
         self.gradient_accumulator = GradientAccumulator(self.accumulation_steps)
@@ -240,7 +245,6 @@ class TaxonomyEncoder(tf.keras.Model):
         tax_pred = self.tax_level_logits(tax_pred)
 
         tax_embeddings = sample_embeddings + tax_gated_embeddings
-        # tax_embeddings = tax_gated_embeddings
         return [tax_embeddings, tax_pred, nuc_embeddings]
 
     def base_embeddings(

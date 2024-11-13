@@ -86,6 +86,7 @@ class SequenceRegressor(tf.keras.Model):
                     max_bp=self.max_bp,
                     is_16S=self.is_16S,
                     vocab_size=self.vocab_size,
+                    asv_dropout_rate=self.asv_dropout_rate,
                     add_token=self.add_token,
                 )
             elif base_model == "unifrac":
@@ -139,7 +140,11 @@ class SequenceRegressor(tf.keras.Model):
             activation=self.intermediate_activation,
         )
         self.count_pos = tfm.nlp.layers.PositionEmbedding(
-            self.token_limit + 5, dtype=tf.float32
+            self.token_limit + 5,
+            initializer=tf.keras.initializers.RandomNormal(
+                mean=0, stddev=self.embedding_dim**0.5
+            ),
+            dtype=tf.float32,
         )
         self.count_out = tf.keras.layers.Dense(1, use_bias=False, dtype=tf.float32)
         self.count_activation = tf.keras.layers.Activation("linear", dtype=tf.float32)
@@ -161,21 +166,26 @@ class SequenceRegressor(tf.keras.Model):
         else:
             self.metric_tracker = tf.keras.metrics.SparseCategoricalAccuracy()
             self.metric_string = "accuracy"
-        self.target_ff = tf.keras.Sequential(
-            [
-                tf.keras.layers.Dense(
-                    self.embedding_dim,
-                    use_bias=True,
-                    dtype=tf.float32,
-                    activation="gelu",
-                ),
-                tf.keras.layers.Dense(
-                    self.out_dim,
-                    use_bias=True,
-                    dtype=tf.float32,
-                ),
-            ]
+        self.target_ff = tf.keras.layers.Dense(
+            self.out_dim,
+            use_bias=False,
+            dtype=tf.float32,
         )
+        # tf.keras.Sequential(
+        #     [
+        #         tf.keras.layers.Dense(
+        #             self.embedding_dim,
+        #             use_bias=True,
+        #             dtype=tf.float32,
+        #             activation="gelu",
+        #         ),
+        #         tf.keras.layers.Dense(
+        #             self.out_dim,
+        #             use_bias=True,
+        #             dtype=tf.float32,
+        #         ),
+        #     ]
+        # )
 
         self.target_activation = tf.keras.layers.Activation("linear", dtype=tf.float32)
         self.loss_metrics = sorted(
@@ -235,14 +245,14 @@ class SequenceRegressor(tf.keras.Model):
                 self.base_losses["base_loss"](base_target, base_pred) * self.penalty
             )
             loss += base_loss
-            if self.is_16S:
-                nuc_loss = (
-                    self.base_losses["nuc_entropy"](nuc_tokens, nuc_pred)
-                    * self.nuc_penalty
-                )
-                loss += nuc_loss
-            else:
-                nuc_loss = 0
+            # if self.is_16S:
+            #     nuc_loss = (
+            #         self.base_losses["nuc_entropy"](nuc_tokens, nuc_pred)
+            #         * self.nuc_penalty
+            #     )
+            #     loss += nuc_loss
+            # else:
+            nuc_loss = 0
         else:
             base_loss = 0
             nuc_loss = 0
@@ -339,6 +349,7 @@ class SequenceRegressor(tf.keras.Model):
             base_loss_key: base_loss_metric.result(),
             nuc_entropy_key: nuc_entropy_metric.result(),
             self.metric_string: self.metric_tracker.result(),
+            "learning_rate": self.optimizer.learning_rate,
         }
 
     def test_step(
@@ -385,7 +396,7 @@ class SequenceRegressor(tf.keras.Model):
         attention_mask: Optional[tf.Tensor] = None,
         training: bool = False,
     ) -> tf.Tensor:
-        count_embeddings = tensor + self.count_pos(tensor) * relative_abundances
+        count_embeddings = (tensor + self.count_pos(tensor)) * relative_abundances
         count_embeddings = self.count_encoder(
             count_embeddings, mask=attention_mask, training=training
         )

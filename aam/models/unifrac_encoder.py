@@ -87,21 +87,26 @@ class UniFracEncoder(tf.keras.Model):
             activation=self.intermediate_activation,
             name="unifrac_encoder",
         )
-        self.unifrac_ff = tf.keras.Sequential(
-            [
-                tf.keras.layers.Dense(
-                    self.embedding_dim,
-                    use_bias=True,
-                    dtype=tf.float32,
-                    activation="gelu",
-                ),
-                tf.keras.layers.Dense(
-                    self.unifrac_out_dim,
-                    use_bias=True,
-                    dtype=tf.float32,
-                ),
-            ]
+        self.unifrac_ff = tf.keras.layers.Dense(
+            self.unifrac_out_dim,
+            use_bias=False,
+            dtype=tf.float32,
         )
+        # tf.keras.Sequential(
+        #     [
+        #         tf.keras.layers.Dense(
+        #             self.embedding_dim,
+        #             use_bias=True,
+        #             dtype=tf.float32,
+        #             activation="gelu",
+        #         ),
+        #         tf.keras.layers.Dense(
+        #             self.unifrac_out_dim,
+        #             use_bias=True,
+        #             dtype=tf.float32,
+        #         ),
+        #     ]
+        # )
 
         self.loss_metrics = sorted(["loss", "target_loss", "count_mse"])
         self.gradient_accumulator = GradientAccumulator(self.accumulation_steps)
@@ -244,8 +249,8 @@ class UniFracEncoder(tf.keras.Model):
             unifrac_pred /= tf.reduce_sum(mask, axis=1)
 
         unifrac_pred = self.unifrac_ff(unifrac_pred)
-        # unifrac_embeddings = sample_embeddings + unifrac_gated_embeddings
-        unifrac_embeddings = unifrac_gated_embeddings
+        unifrac_embeddings = sample_embeddings + unifrac_gated_embeddings
+        # unifrac_embeddings = unifrac_gated_embeddings
         return [unifrac_embeddings, unifrac_pred, nuc_embeddings]
 
     def base_embeddings(

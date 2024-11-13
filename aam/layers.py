@@ -60,9 +60,11 @@ class ASVEncoder(tf.keras.layers.Layer):
     def build(self, input_shape):
         self.emb_layer = tf.keras.layers.Embedding(
             self.num_tokens,
-            32,
+            128,
             input_length=self.max_bp,
-            embeddings_initializer=tf.keras.initializers.GlorotNormal(),
+            embeddings_initializer=tf.keras.initializers.RandomNormal(
+                mean=0, stddev=128**0.5
+            ),
         )
 
         self.avs_attention = NucleotideAttention(
@@ -207,7 +209,10 @@ class NucleotideAttention(tf.keras.layers.Layer):
 
     def build(self, input_shape):
         self.pos_emb = tfm.nlp.layers.PositionEmbedding(
-            self.max_bp + 1, seq_axis=2, name="nuc_pos"
+            self.max_bp + 1,
+            seq_axis=2,
+            initializer=tf.keras.initializers.RandomNormal(mean=0, stddev=128**0.5),
+            name="nuc_pos",
         )
         self.attention_layers = []
         for i in range(self.num_layers):
@@ -232,8 +237,8 @@ class NucleotideAttention(tf.keras.layers.Layer):
             attention_input = self.attention_layers[layer_idx](
                 attention_input, training=training
             )
-        output = self.output_normalization(attention_input)
-        return output
+        # output = self.output_normalization(attention_input)
+        return attention_input
 
     def get_config(self):
         config = super(NucleotideAttention, self).get_config()

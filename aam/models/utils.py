@@ -5,12 +5,9 @@ import tensorflow as tf
 class TransformerLearningRateSchedule(
     tf.keras.optimizers.schedules.LearningRateSchedule
 ):
-    def __init__(
-        self, d_model, warmup_steps=100, decay_method="cosine", initial_lr=3e-4
-    ):
+    def __init__(self, warmup_steps=100, decay_method="cosine", initial_lr=3e-4):
         super(TransformerLearningRateSchedule, self).__init__()
 
-        self.d_model = d_model
         self.warmup_steps = warmup_steps
         self.decay_method = decay_method
         self.initial_lr = initial_lr
@@ -51,7 +48,6 @@ class TransformerLearningRateSchedule(
         config = {}
         config.update(
             {
-                "d_model": self.d_model,
                 "warmup_steps": self.warmup_steps,
                 "decay_method": self.decay_method,
                 "initial_lr": self.initial_lr,
@@ -61,9 +57,12 @@ class TransformerLearningRateSchedule(
 
 
 def cos_decay_with_warmup(lr, warmup_steps=5000):
-    # Learning rate schedule: Warmup followed by cosine decay
-    lr_schedule = tf.keras.optimizers.schedules.CosineDecayRestarts(
-        initial_learning_rate=lr, first_decay_steps=warmup_steps
+    # # Learning rate schedule: Warmup followed by cosine decay
+    # lr_schedule = tf.keras.optimizers.schedules.CosineDecayRestarts(
+    #     initial_learning_rate=lr, first_decay_steps=warmup_steps
+    # )
+    lr_schedule = TransformerLearningRateSchedule(
+        initial_lr=lr, warmup_steps=warmup_steps, decay_method="inv_sqrt"
     )
     return lr_schedule
 
