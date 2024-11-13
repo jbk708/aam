@@ -83,9 +83,7 @@ class TaxonomyEncoder(tf.keras.Model):
         )
 
         self.tax_level_logits = tf.keras.layers.Dense(
-            self.num_tax_levels,
-            use_bias=False,
-            dtype=tf.float32,
+            self.num_tax_levels, dtype=tf.float32
         )
         # tf.keras.Sequential(
         #     [

@@ -87,11 +87,7 @@ class UniFracEncoder(tf.keras.Model):
             activation=self.intermediate_activation,
             name="unifrac_encoder",
         )
-        self.unifrac_ff = tf.keras.layers.Dense(
-            self.unifrac_out_dim,
-            use_bias=False,
-            dtype=tf.float32,
-        )
+        self.unifrac_ff = tf.keras.layers.Dense(self.unifrac_out_dim, dtype=tf.float32)
         # tf.keras.Sequential(
         #     [
         #         tf.keras.layers.Dense(

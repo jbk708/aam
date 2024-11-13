@@ -146,7 +146,7 @@ class SequenceRegressor(tf.keras.Model):
             ),
             dtype=tf.float32,
         )
-        self.count_out = tf.keras.layers.Dense(1, use_bias=False, dtype=tf.float32)
+        self.count_out = tf.keras.layers.Dense(1, dtype=tf.float32)
         self.count_activation = tf.keras.layers.Activation("linear", dtype=tf.float32)
         self.count_loss = tf.keras.losses.MeanSquaredError(reduction="none")
         self.count_tracker = tf.keras.metrics.Mean()
@@ -166,11 +166,7 @@ class SequenceRegressor(tf.keras.Model):
         else:
             self.metric_tracker = tf.keras.metrics.SparseCategoricalAccuracy()
             self.metric_string = "accuracy"
-        self.target_ff = tf.keras.layers.Dense(
-            self.out_dim,
-            use_bias=False,
-            dtype=tf.float32,
-        )
+        self.target_ff = tf.keras.layers.Dense(self.out_dim, dtype=tf.float32)
         # tf.keras.Sequential(
         #     [
         #         tf.keras.layers.Dense(
