@@ -233,6 +233,7 @@ class NucleotideAttention(tf.keras.layers.Layer):
 
     def call(self, attention_input, attention_mask=None, training=False):
         attention_input = attention_input + self.pos_emb(attention_input)
+        attention_input = attention_input * (9 * 3) ** (-0.25)
         for layer_idx in range(self.num_layers):
             attention_input = self.attention_layers[layer_idx](
                 attention_input, training=training
@@ -298,7 +299,12 @@ class NucleotideAttentionBlock(tf.keras.layers.Layer):
         self.w_qi = self.add_weight("w_qi", wi_shape, trainable=True, dtype=tf.float32)
         self.w_ki = self.add_weight("w_ki", wi_shape, trainable=True, dtype=tf.float32)
         self.w_vi = self.add_weight("w_kv", wi_shape, trainable=True, dtype=tf.float32)
-        self.o_dense = tf.keras.layers.Dense(self.hidden_dim, use_bias=False)
+
+        wo_shape = [1, 1, self.hidden_dim, self.hidden_dim]
+        self.o_dense = self.add_weight(
+            "w_o", wo_shape, trainable=True, dtype=tf.float32
+        )
+        # self.o_dense = tf.keras.layers.Dense(self.hidden_dim, use_bias=False)
 
         self.scale_dot_factor = tf.math.sqrt(
             tf.cast(self.head_size, dtype=self.compute_dtype)
@@ -326,7 +332,7 @@ class NucleotideAttentionBlock(tf.keras.layers.Layer):
     def scaled_dot_attention(self, attention_input):
         wq_tensor = self.compute_wi(attention_input, self.w_qi)
         wk_tensor = self.compute_wi(attention_input, self.w_ki)
-        wv_tensor = self.compute_wi(attention_input, self.w_vi)
+        wv_tensor = self.compute_wi(attention_input, self.w_vi * (0.67 * 3) ** -0.25)
 
         # (multihead) scaled dot product attention sublayer
         # [B, A, H, N, S] => [B, A, H, N, N]
@@ -355,7 +361,10 @@ class NucleotideAttentionBlock(tf.keras.layers.Layer):
             attention_output,
             shape=[batch_size, num_asv, self.nucleotides, self.hidden_dim],
         )
-        attention_output = self.o_dense(attention_output)
+        attention_output = tf.matmul(
+            attention_output, self.o_dense * (0.67 * 3) ** (-0.25)
+        )
+        # attention_output = self.o_dense(attention_output)
         attention_output = tf.ensure_shape(attention_output, self._shape)
         return attention_output
 

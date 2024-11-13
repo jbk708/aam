@@ -80,7 +80,7 @@ class TransformerEncoder(tf.keras.layers.Layer):
         attention_mask = mask
         if attention_mask is not None:
             attention_mask = tf.matmul(attention_mask, attention_mask, transpose_b=True)
-
+        encoder_inputs = encoder_inputs * (9 * self.num_layers) ** (-0.25)
         for layer_idx in range(self.num_layers):
             encoder_inputs = self.encoder_layers[layer_idx](
                 [encoder_inputs, attention_mask], training=training

@@ -6,13 +6,24 @@ class GradientAccumulator:
         self.accum_steps = tf.constant(
             accumulation_steps, dtype=tf.int32, name="accum_steps"
         )
+
         self.accum_step_counter = tf.Variable(
             0,
             dtype=tf.int32,
             trainable=False,
             name="accum_counter",
         )
+        # self.log_steps = tf.constant(100, dtype=tf.int32, name="accum_steps")
+        # self.log_step_counter = tf.Variable(
+        #     0,
+        #     dtype=tf.int32,
+        #     trainable=False,
+        #     name="accum_counter",
+        # )
         self.built = False
+        # self.file_writer = tf.summary.create_file_writer(
+        #     "/home/kalen/aam-research-exam/research-exam/healty-age-regression/results/logs/gradients"
+        # )
 
     def build(self, optimizer, model):
         self.built = True
@@ -54,6 +65,13 @@ class GradientAccumulator:
             zip(self.gradient_accumulation, self.model.trainable_variables)
         )
 
+        # self.log_step_counter.assign_add(1)
+        # tf.cond(
+        #     tf.equal(self.log_step_counter, self.log_steps),
+        #     true_fn=self.log_gradients,
+        #     false_fn=lambda: None,
+        # )
+
         # reset
         self.accum_step_counter.assign(0)
         for i in range(len(self.gradient_accumulation)):
@@ -61,3 +79,14 @@ class GradientAccumulator:
                 tf.zeros_like(self.model.trainable_variables[i], dtype=tf.float32),
                 read_value=False,
             )
+
+    # def log_gradients(self):
+    #     self.log_step_counter.assign(0)
+    #     with self.file_writer.as_default():
+    #         for grad, var in zip(
+    #             self.gradient_accumulation, self.model.trainable_variables
+    #         ):
+    #             if grad is not None:
+    #                 tf.summary.histogram(
+    #                     var.name + "/gradient", grad, step=self.optimizer.iterations
+    #                 )
