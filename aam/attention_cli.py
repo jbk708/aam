@@ -94,7 +94,7 @@ def validate_metadata(table, metadata, missing_samples_flag):
 @click.option("--p-warmup-steps", default=10000, show_default=True, type=int)
 @click.option("--p-max-bp", default=150, show_default=True, type=int)
 @click.option("--output-dir", required=True)
-@click.option("--p-add-token", default=True, required=False, type=bool)
+@click.option("--p-add-token", default=False, required=False, type=bool)
 @click.option("--p-gotu", default=False, required=False, type=bool)
 @click.option("--p-is-categorical", default=False, required=False, type=bool)
 @click.option("--p-rarefy-depth", default=5000, required=False, type=int)
@@ -147,7 +147,7 @@ def fit_unifrac_regressor(
         os.makedirs(figure_path)
 
     if i_model is not None:
-        model = tf.keras.models.load_model(i_model)
+        model = tf.keras.models.load_model(i_model, compile=False)
     else:
         model: tf.keras.Model = UniFracEncoder(
             p_asv_limit,
@@ -470,7 +470,7 @@ def fit_taxonomy_regressor(
 @click.option("--p-max-bp", default=150, show_default=True, type=int)
 @click.option("--output-dir", required=True, type=click.Path(exists=False))
 @click.option("--p-output-dim", default=1, required=False, type=int)
-@click.option("--p-add-token", default=True, required=False, type=bool)
+@click.option("--p-add-token", default=False, required=False, type=bool)
 @click.option("--p-gotu", default=False, required=False, type=bool)
 @click.option("--p-is-categorical", default=False, required=False, type=bool)
 @click.option("--p-rarefy-depth", default=5000, required=False, type=int)

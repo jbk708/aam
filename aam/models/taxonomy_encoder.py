@@ -6,7 +6,9 @@ import tensorflow as tf
 
 from aam.models.base_sequence_encoder import BaseSequenceEncoder
 from aam.models.transformers import TransformerEncoder
-from aam.utils import float_mask
+from aam.optimizers.gradient_accumulator import GradientAccumulator
+from aam.optimizers.loss_scaler import LossScaler
+from aam.utils import apply_random_mask, float_mask
 
 
 @tf.keras.saving.register_keras_serializable(package="TaxonomyEncoder")
@@ -26,6 +28,8 @@ class TaxonomyEncoder(tf.keras.Model):
         is_16S: bool = True,
         vocab_size: int = 6,
         add_token: bool = True,
+        asv_dropout_rate: float = 0.0,
+        accumulation_steps: int = 1,
         **kwargs,
     ):
         super(TaxonomyEncoder, self).__init__(**kwargs)
@@ -43,8 +47,11 @@ class TaxonomyEncoder(tf.keras.Model):
         self.is_16S = is_16S
         self.vocab_size = vocab_size
         self.add_token = add_token
+        self.asv_dropout_rate = asv_dropout_rate
+        self.accumulation_steps = accumulation_steps
         self.loss_tracker = tf.keras.metrics.Mean()
-        self.tax_loss = tf.keras.losses.CategoricalFocalCrossentropy(reduction="none")
+        # self.tax_loss = tf.keras.losses.CategoricalFocalCrossentropy(reduction="none")
+        self.tax_loss = tf.keras.losses.CategoricalCrossentropy(reduction="none")
         self.tax_tracker = tf.keras.metrics.Mean()
 
         # layers used in model
@@ -74,16 +81,26 @@ class TaxonomyEncoder(tf.keras.Model):
             activation=self.intermediate_activation,
             name="tax_encoder",
         )
-        self.tax_norm = tf.keras.layers.LayerNormalization(epsilon=1e-12)
 
-        self.tax_level_logits = tf.keras.layers.Dense(
-            self.num_tax_levels,
-            use_bias=False,
-            dtype=tf.float32,
-            name="tax_level_logits",
+        self.tax_level_logits = tf.keras.Sequential(
+            [
+                tf.keras.layers.Dense(
+                    self.embedding_dim,
+                    use_bias=True,
+                    dtype=tf.float32,
+                    activation="gelu",
+                ),
+                tf.keras.layers.Dense(
+                    self.num_tax_levels,
+                    use_bias=True,
+                    dtype=tf.float32,
+                ),
+            ]
         )
 
         self.loss_metrics = sorted(["loss", "target_loss", "count_mse"])
+        self.gradient_accumulator = GradientAccumulator(self.accumulation_steps)
+        self.loss_scaler = LossScaler()
 
     def evaluate_metric(self, dataset, metric, **kwargs):
         metric_index = self.loss_metrics.index(metric)
@@ -100,11 +117,13 @@ class TaxonomyEncoder(tf.keras.Model):
         sample_weights: Optional[tf.Tensor] = None,
     ) -> tf.Tensor:
         y_true = tf.reshape(tax_tokens, [-1])
+        y_pred = tf.reshape(tax_pred, [-1, self.num_tax_levels])
+        y_pred = tf.keras.activations.softmax(y_pred, axis=-1)
+
         mask = float_mask(y_true) > 0
         y_true = tf.one_hot(y_true, depth=self.num_tax_levels)
         y_true = y_true[mask]
-        y_pred = tf.reshape(tax_pred, [-1, self.num_tax_levels])
-        y_pred = tf.keras.activations.softmax(y_pred[mask], axis=-1)
+        y_pred = y_pred[mask]
 
         loss = tf.reduce_mean(self.tax_loss(y_true, y_pred))
         return loss
@@ -118,14 +137,9 @@ class TaxonomyEncoder(tf.keras.Model):
     ) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
         nuc_tokens, counts = model_inputs
         taxonomy_embeddings, tax_pred, nuc_pred = outputs
-        tax_loss = self._compute_tax_loss(
-            y_true, tax_pred, sample_weights=sample_weights
-        )
-
-        nuc_loss = self._compute_nuc_loss(nuc_tokens, nuc_pred)
-
+        tax_loss = self._compute_tax_loss(y_true, tax_pred)
+        nuc_loss = self._compute_nuc_loss(nuc_tokens, nuc_pred) * 0.0
         loss = tax_loss + nuc_loss
-
         return (loss, tax_loss, nuc_loss)
 
     def predict_step(
@@ -147,14 +161,23 @@ class TaxonomyEncoder(tf.keras.Model):
             tuple[tuple[tf.Tensor, tf.Tensor], tuple[tf.Tensor, tf.Tensor]],
         ],
     ):
-        inputs, y = data
+        if not self.gradient_accumulator.built:
+            self.gradient_accumulator.build(self.optimizer, self)
 
+        inputs, y = data
+        y_target, tax_target = y
         with tf.GradientTape() as tape:
             outputs = self(inputs, training=True)
-            loss, tax_loss, nuc_loss = self._compute_loss(inputs, y, outputs)
+            loss, tax_loss, nuc_loss = self._compute_loss(inputs, tax_target, outputs)
+            scaled_losses = self.loss_scaler([tax_loss])
+            loss = tf.reduce_sum(tf.stack(scaled_losses, axis=0))
 
-        gradients = tape.gradient(loss, self.trainable_variables)
-        self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
+        gradients = tape.gradient(
+            loss,
+            self.trainable_variables,
+            unconnected_gradients=tf.UnconnectedGradients.ZERO,
+        )
+        self.gradient_accumulator.apply_gradients(gradients)
 
         self.loss_tracker.update_state(loss)
         self.tax_tracker.update_state(tax_loss)
@@ -173,9 +196,9 @@ class TaxonomyEncoder(tf.keras.Model):
         ],
     ):
         inputs, y = data
-
+        y_target, tax_target = y
         outputs = self(inputs, training=False)
-        loss, tax_loss, nuc_loss = self._compute_loss(inputs, y, outputs)
+        loss, tax_loss, nuc_loss = self._compute_loss(inputs, tax_target, outputs)
 
         self.loss_tracker.update_state(loss)
         self.tax_tracker.update_state(tax_loss)
@@ -194,10 +217,16 @@ class TaxonomyEncoder(tf.keras.Model):
         tokens = tf.cast(tokens, dtype=tf.int32)
         counts = tf.cast(counts, dtype=tf.int32)
 
-        sample_embeddings, nuc_embeddings = self.base_encoder(tokens, training=training)
-
         # account for <SAMPLE> token
         count_mask = float_mask(counts, dtype=tf.int32)
+        random_mask = None
+        if training and self.asv_dropout_rate > 0:
+            random_mask = apply_random_mask(count_mask, self.asv_dropout_rate)
+
+        sample_embeddings, nuc_embeddings = self.base_encoder(
+            tokens, random_mask=random_mask, training=training
+        )
+
         if self.add_token:
             count_mask = tf.pad(count_mask, [[0, 0], [1, 0], [0, 0]], constant_values=1)
         count_attention_mask = count_mask
@@ -210,9 +239,8 @@ class TaxonomyEncoder(tf.keras.Model):
             tax_pred = tax_pred[:, 1:, :]
         tax_pred = self.tax_level_logits(tax_pred)
 
-        # tax_embeddings = sample_embeddings + tax_gated_embeddings
-        tax_embeddings = tax_gated_embeddings
-        # tax_embeddings = self.tax_norm(tax_embeddings)
+        tax_embeddings = sample_embeddings + tax_gated_embeddings
+        # tax_embeddings = tax_gated_embeddings
         return [tax_embeddings, tax_pred, nuc_embeddings]
 
     def base_embeddings(
@@ -282,7 +310,6 @@ class TaxonomyEncoder(tf.keras.Model):
 
         # tax_embeddings = sample_embeddings + tax_gated_embeddings
         tax_embeddings = tax_gated_embeddings
-        # tax_embeddings = self.tax_norm(tax_embeddings)
 
         return tax_embeddings
 
@@ -302,6 +329,8 @@ class TaxonomyEncoder(tf.keras.Model):
                 "is_16S": self.is_16S,
                 "vocab_size": self.vocab_size,
                 "add_token": self.add_token,
+                "asv_dropout_rate": self.asv_dropout_rate,
+                "accumulation_steps": self.accumulation_steps,
             }
         )
         return config

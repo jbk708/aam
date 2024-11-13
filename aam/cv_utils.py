@@ -44,10 +44,10 @@ class CVModel:
         if not os.path.exists(self.log_dir):
             os.makedirs(self.log_dir)
         print(f"weight decay: {weight_decay}")
-        optimizer = tf.keras.optimizers.AdamW(
+        optimizer = tf.keras.optimizers.Adam(
             cos_decay_with_warmup(lr, warmup_steps),
             beta_2=0.98,
-            weight_decay=weight_decay,
+            # weight_decay=weight_decay,
             global_clipnorm=1.0,
             # use_ema=True,
             # ema_momentum=0.999,

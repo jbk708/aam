@@ -146,10 +146,10 @@ class UniFracEncoder(tf.keras.Model):
             tuple[tuple[tf.Tensor, tf.Tensor], tuple[tf.Tensor, tf.Tensor]],
         ],
     ):
-        inputs, sample_ids = data
-        embeddings, _, _ = self(inputs, training=False)
+        inputs, y = data
+        embeddings, unifrac_embeddings, nuc_pred = self(inputs, training=False)
 
-        return embeddings, sample_ids
+        return unifrac_embeddings
 
     def train_step(
         self,
@@ -176,7 +176,6 @@ class UniFracEncoder(tf.keras.Model):
             self.trainable_variables,
             unconnected_gradients=tf.UnconnectedGradients.ZERO,
         )
-        # self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
         self.gradient_accumulator.apply_gradients(gradients)
 
         self.loss_tracker.update_state(loss)
@@ -245,7 +244,8 @@ class UniFracEncoder(tf.keras.Model):
             unifrac_pred /= tf.reduce_sum(mask, axis=1)
 
         unifrac_pred = self.unifrac_ff(unifrac_pred)
-        unifrac_embeddings = sample_embeddings + unifrac_gated_embeddings
+        # unifrac_embeddings = sample_embeddings + unifrac_gated_embeddings
+        unifrac_embeddings = unifrac_gated_embeddings
         return [unifrac_embeddings, unifrac_pred, nuc_embeddings]
 
     def base_embeddings(

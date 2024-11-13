@@ -25,6 +25,8 @@ class GradientAccumulator:
                 tf.zeros_like(v, dtype=tf.float32),
                 trainable=False,
                 name="accum_" + str(i),
+                synchronization=tf.VariableSynchronization.ON_READ,
+                aggregation=tf.VariableAggregation.ONLY_FIRST_REPLICA,
             )
             for i, v in enumerate(self.model.trainable_variables)
         ]
@@ -48,15 +50,6 @@ class GradientAccumulator:
 
     def apply_accu_gradients(self):
         """Performs gradient update and resets slots afterwards."""
-        # apply accumulated gradients
-        # Accumulate batch gradients
-        for i in range(len(self.gradient_accumulation)):
-            self.gradient_accumulation[i].assign(
-                self.gradient_accumulation[i]
-                / tf.cast(self.accum_steps, dtype=tf.float32),
-                read_value=False,
-            )
-
         self.optimizer.apply_gradients(
             zip(self.gradient_accumulation, self.model.trainable_variables)
         )

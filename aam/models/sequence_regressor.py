@@ -302,8 +302,8 @@ class SequenceRegressor(tf.keras.Model):
             tuple[tuple[tf.Tensor, tf.Tensor], tuple[tf.Tensor, tf.Tensor]],
         ],
     ):
-        # if not self.gradient_accumulator.built:
-        #     self.gradient_accumulator.build(self.optimizer, self)
+        if not self.gradient_accumulator.built:
+            self.gradient_accumulator.build(self.optimizer, self)
 
         inputs, y = data
 
@@ -314,14 +314,16 @@ class SequenceRegressor(tf.keras.Model):
             )
             scaled_losses = self.loss_scaler([target_loss, count_mse, base_loss])
             loss = tf.reduce_mean(tf.stack(scaled_losses, axis=0))
+            loss = loss / tf.cast(
+                self.gradient_accumulator.accum_steps, dtype=tf.float32
+            )
 
         gradients = tape.gradient(
             loss,
             self.trainable_variables,
             unconnected_gradients=tf.UnconnectedGradients.ZERO,
         )
-        self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
-        # self.gradient_accumulator.apply_gradients(gradients)
+        self.gradient_accumulator.apply_gradients(gradients)
         self.loss_tracker.update_state(loss)
         self.target_tracker.update_state(target_loss)
         self.count_tracker.update_state(count_mse)
