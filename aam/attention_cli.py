@@ -263,7 +263,7 @@ def fit_unifrac_regressor(
 @cli.command()
 @click.option("--i-table", required=True, type=click.Path(exists=True), help=TABLE_DESC)
 @click.option("--i-taxonomy", required=True, type=click.Path(exists=True))
-@click.option("--p-tax-level", default=7, type=int)
+@click.option("--i-tax-level", default=7, type=int)
 @click.option(
     "--m-metadata-file",
     required=True,
