@@ -55,7 +55,6 @@ class GeneratorDataset:
         table: Union[str, Table],
         metadata: Optional[Union[str, pd.DataFrame]] = None,
         metadata_column: Optional[str] = None,
-        is_categorical: Optional[bool] = None,
         shift: Optional[Union[str, float]] = None,
         scale: Union[str, float] = "minmax",
         max_token_per_sample: int = 1024,
@@ -65,12 +64,15 @@ class GeneratorDataset:
         gen_new_tables: bool = False,
         batch_size: int = 8,
         max_bp: int = 150,
+        is_16S: bool = True,
+        is_categorical: Optional[bool] = None,
     ):
         table, metadata
         self.table = table
 
         self.metadata_column = metadata_column
         self.is_categorical = is_categorical
+        self.include_sample_weight = is_categorical
         self.shift = shift
         self.scale = scale
         self.metadata = metadata
@@ -84,6 +86,7 @@ class GeneratorDataset:
 
         self.batch_size = batch_size
         self.max_bp = max_bp
+        self.is_16S = is_16S
 
         self.preprocessed_table = self.table
         self.obs_ids = self.preprocessed_table.ids(axis="observation")
@@ -142,7 +145,7 @@ class GeneratorDataset:
             return
         self._validate_dataframe(metadata)
         if isinstance(metadata, str):
-            metadata = pd.read_csv(metadata, sep="\t", index_col=0)
+            metadata = pd.read_csv(metadata, sep="\t", index_col=0, dtype={0: str})
 
         if self.metadata_column not in metadata.columns:
             raise Exception(f"Invalid metadata column {self.metadata_column}")
@@ -200,6 +203,9 @@ class GeneratorDataset:
         if not (y_data, pd.Series):
             raise Exception(f"Invalid y_data object: {type(y_data)}")
 
+        if not self.is_categorical:
+            return y_data.loc[sample_ids].to_numpy().reshape(-1, 1)
+
         return y_data.loc[sample_ids].to_numpy().reshape(-1, 1)
 
     def _create_table_data(
@@ -208,10 +214,12 @@ class GeneratorDataset:
         obs_ids = table.ids(axis="observation")
         sample_ids = table.ids()
 
-        obs_encodings = tf.cast(
-            tf.strings.unicode_decode(obs_ids, "UTF-8"), dtype=tf.int64
-        )
-        obs_encodings = self.lookup_table.lookup(obs_encodings).numpy()
+        obs_encodings = None
+        if self.is_16S:
+            obs_encodings = tf.cast(
+                tf.strings.unicode_decode(obs_ids, "UTF-8"), dtype=tf.int64
+            )
+            obs_encodings = self.lookup_table.lookup(obs_encodings).numpy()
 
         table_data, row, col, shape = self._table_data(table)
 
@@ -233,7 +241,11 @@ class GeneratorDataset:
             s_mask = row == s
             s_counts = counts[s_mask]
             s_obs_indices = col[s_mask]
-            s_tokens = obs_encodings[s_obs_indices]
+            if self.is_16S:
+                s_tokens = obs_encodings[s_obs_indices]
+            else:
+                s_tokens = np.reshape(s_obs_indices, newshape=(-1, 1)) + 1
+
             sorted_order = np.argsort(s_counts)
             sorted_order = sorted_order[::-1]
             s_counts = s_counts[sorted_order].reshape(-1, 1)
@@ -248,7 +260,7 @@ class GeneratorDataset:
 
         if s_max_token > self.max_token_per_sample:
             print(f"\tskipping group due to exceeding token limit {s_max_token}...")
-            return None, None, None, None
+            return None, None, None, None, None
 
         s_ids = [sample_ids[s] for s in samples]
 
@@ -260,7 +272,7 @@ class GeneratorDataset:
             encoder_target = self.encoder_target
         encoder_output = self._encoder_output(encoder_target, s_ids, s_obj_ids)
 
-        return s_counts, s_tokens, y_output, encoder_output
+        return s_counts, s_tokens, y_output, encoder_output, s_obj_ids
 
     def _epoch_complete(self, processed):
         if processed < self.steps_per_epoch:
@@ -298,7 +310,7 @@ class GeneratorDataset:
 
         return table_data, y_data, encoder_target, sample_indices
 
-    def _create_epoch_generator(self):
+    def _create_epoch_generator(self, include_seq_id):
         def generator():
             processed = 0
             table_data = self.table_data
@@ -322,7 +334,9 @@ class GeneratorDataset:
                     )
 
                 while not self._epoch_complete(processed):
-                    counts, tokens, y_output, encoder_out = sample_data(minibatch)
+                    counts, tokens, y_output, encoder_out, ob_ids = sample_data(
+                        minibatch
+                    )
 
                     if counts is not None:
                         max_len = max([len(c) for c in counts])
@@ -331,6 +345,12 @@ class GeneratorDataset:
                         )
                         padded_tokens = np.array(
                             [np.pad(t, [[0, max_len - len(t)], [0, 0]]) for t in tokens]
+                        )
+                        padded_ob_ids = np.array(
+                            [
+                                np.pad(o, [[0, max_len - len(o)]], constant_values="")
+                                for o in ob_ids
+                            ]
                         )
 
                         processed += 1
@@ -344,14 +364,29 @@ class GeneratorDataset:
                             output = y_output.astype(np.float32)
 
                         if encoder_out is not None:
-                            if output is None:
-                                output = encoder_out.astype(self.encoder_dtype)
+                            if isinstance(encoder_out, tuple):
+                                encoder_out = tuple(
+                                    [
+                                        o.astype(t)
+                                        for o, t in zip(encoder_out, self.encoder_dtype)
+                                    ]
+                                )
                             else:
+                                encoder_out = encoder_out.astype(self.encoder_dtype)
+
+                            if output is not None:
                                 output = (
                                     output,
-                                    encoder_out.astype(self.encoder_dtype),
+                                    encoder_out,
                                 )
+                            else:
+                                output = encoder_out
 
+                        if include_seq_id:
+                            output = (
+                                *output,
+                                padded_ob_ids,
+                            )
                         if output is not None:
                             yield (table_output, output)
                         else:
@@ -386,8 +421,8 @@ class GeneratorDataset:
 
         return generator
 
-    def get_data(self):
-        generator = self._create_epoch_generator()
+    def get_data(self, include_seq_id=False):
+        generator = self._create_epoch_generator(include_seq_id)
         output_sig = (
             tf.TensorSpec(shape=[self.batch_size, None, self.max_bp], dtype=tf.int32),
             tf.TensorSpec(shape=[self.batch_size, None, 1], dtype=tf.int32),
@@ -404,7 +439,23 @@ class GeneratorDataset:
                 y_output_sig = (y_output_sig, self.encoder_output_type)
 
         if y_output_sig is not None:
+            if include_seq_id:
+                y_output_sig = (
+                    *y_output_sig,
+                    tf.TensorSpec(
+                        shape=(self.batch_size, None), dtype=tf.string, name=None
+                    ),
+                )
             output_sig = (output_sig, y_output_sig)
+        class_weights = None
+        if self.is_categorical:
+            counts = self._metadata.value_counts().to_dict()
+            counts[0.0] = 0
+            class_weights = [0] * len(counts)
+            for k, v in counts.items():
+                class_weights[int(k)] = 1 / np.sqrt(v)
+            class_weights[0] = 0
+        print(class_weights)
         dataset: tf.data.Dataset = tf.data.Dataset.from_generator(
             generator,
             output_signature=output_sig,
@@ -417,6 +468,7 @@ class GeneratorDataset:
             "scale": self.scale,
             "size": self.size,
             "steps_pre_epoch": self.steps_per_epoch,
+            "class_weights": class_weights,
         }
         return data_obj
 

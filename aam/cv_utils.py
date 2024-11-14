@@ -30,33 +30,41 @@ class CVModel:
 
     def fit_fold(
         self,
-        loss,
-        epochs,
-        model_save_path,
-        metric="mae",
-        patience=10,
-        early_stop_warmup=50,
-        callbacks=[],
-        lr=1e-4,
-        warmup_steps=10000,
+        loss: tf.keras.losses.Loss,
+        epochs: int,
+        model_save_path: str,
+        metric: str = "loss",
+        patience: int = 10,
+        early_stop_warmup: int = 50,
+        callbacks: list[tf.keras.callbacks.Callback] = [],
+        lr: float = 1e-4,
+        warmup_steps: int = 10000,
+        weight_decay: float = 0.004,
     ):
         if not os.path.exists(self.log_dir):
             os.makedirs(self.log_dir)
-        optimizer = tf.keras.optimizers.AdamW(
-            cos_decay_with_warmup(lr, warmup_steps), beta_2=0.95
+        print(f"weight decay: {weight_decay}")
+        optimizer = tf.keras.optimizers.Adam(
+            cos_decay_with_warmup(lr, warmup_steps),
+            beta_2=0.98,
+            # weight_decay=weight_decay,
+            # global_clipnorm=1.0,
+            # use_ema=True,
+            # ema_momentum=0.999,
+            # ema_overwrite_frequency=500,
         )
         model_saver = SaveModel(model_save_path, 10, f"val_{metric}")
         core_callbacks = [
             tf.keras.callbacks.TensorBoard(
-                log_dir=self.log_dir,
-                histogram_freq=0,
+                log_dir=self.log_dir, histogram_freq=0, write_graph=False
             ),
             tf.keras.callbacks.EarlyStopping(
                 "val_loss", patience=patience, start_from_epoch=early_stop_warmup
             ),
             model_saver,
         ]
-        self.model.compile(optimizer=optimizer, loss=loss, run_eagerly=False)
+        self.model.compile(optimizer=optimizer, loss=loss)
+        # Set up the summary writer
         self.model.fit(
             self.train_data["dataset"],
             validation_data=self.val_data["dataset"],

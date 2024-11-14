@@ -10,6 +10,8 @@ First create a new conda environment with unifrac
 
 `conda activate aam`
 
+`conda install -c conda-forge gxx_linux-64 hdf5 mkl-include lz4 hdf5-static libcblas liblapacke make`
+
 ## GPU Support 
 
 Install CUDA 11.8

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime
 import os
-from typing import Optional
+from typing import Union
 
 import click
 import numpy as np
@@ -56,10 +56,28 @@ def validate_metadata(table, metadata, missing_samples_flag):
 @cli.command()
 @click.option("--i-table", required=True, type=click.Path(exists=True), help=TABLE_DESC)
 @click.option("--i-tree", required=True, type=click.Path(exists=True))
+@click.option(
+    "--m-metadata-file",
+    required=True,
+    help="Metadata description",
+    type=click.Path(exists=True),
+)
+@click.option(
+    "--m-metadata-column",
+    required=True,
+    type=str,
+    help="Numeric metadata column to use as prediction target.",
+)
+@click.option(
+    "--p-missing-samples",
+    default="error",
+    type=click.Choice(["error", "ignore"], case_sensitive=False),
+    help=MISSING_SAMP_DESC,
+)
 @click.option("--p-batch-size", default=8, show_default=True, required=False, type=int)
-@click.option("--p-max-bp", required=True, type=int)
 @click.option("--p-epochs", default=1000, show_default=True, type=int)
 @click.option("--p-dropout", default=0.0, show_default=True, type=float)
+@click.option("--p-asv-dropout", default=0.0, show_default=True, type=float)
 @click.option("--p-patience", default=10, show_default=True, type=int)
 @click.option("--p-early-stop-warmup", default=50, show_default=True, type=int)
 @click.option("--i-model", default=None, required=False, type=str)
@@ -70,30 +88,55 @@ def validate_metadata(table, metadata, missing_samples_flag):
 @click.option(
     "--p-intermediate-activation", default="relu", show_default=True, type=str
 )
-@click.option("--p-asv-limit", default=512, show_default=True, type=int)
+@click.option("--p-asv-limit", default=1024, show_default=True, type=int)
+@click.option("--p-gen-new-table", default=True, show_default=True, type=bool)
+@click.option("--p-lr", default=1e-4, show_default=True, type=float)
+@click.option("--p-warmup-steps", default=10000, show_default=True, type=int)
+@click.option("--p-max-bp", default=150, show_default=True, type=int)
 @click.option("--output-dir", required=True)
+@click.option("--p-add-token", default=False, required=False, type=bool)
+@click.option("--p-gotu", default=False, required=False, type=bool)
+@click.option("--p-is-categorical", default=False, required=False, type=bool)
+@click.option("--p-rarefy-depth", default=5000, required=False, type=int)
+@click.option("--p-weight-decay", default=0.004, show_default=True, type=float)
+@click.option("--p-accumulation-steps", default=1, required=False, type=int)
+@click.option("--p-unifrac-metric", default="unifrac", required=False, type=str)
 def fit_unifrac_regressor(
     i_table: str,
     i_tree: str,
+    m_metadata_file: str,
+    m_metadata_column: str,
+    p_missing_samples: bool,
     p_batch_size: int,
-    p_max_bp: int,
     p_epochs: int,
     p_dropout: float,
+    p_asv_dropout: float,
     p_patience: int,
     p_early_stop_warmup: int,
-    i_model: Optional[str],
+    i_model: Union[None, str],
     p_embedding_dim: int,
     p_attention_heads: int,
     p_attention_layers: int,
     p_intermediate_size: int,
     p_intermediate_activation: str,
     p_asv_limit: int,
+    p_gen_new_table: bool,
+    p_lr: float,
+    p_warmup_steps: int,
+    p_max_bp: int,
     output_dir: str,
+    p_add_token: bool,
+    p_gotu: bool,
+    p_is_categorical: bool,
+    p_rarefy_depth: int,
+    p_weight_decay: float,
+    p_accumulation_steps,
+    p_unifrac_metric: str,
 ):
     from biom import load_table
 
     from aam.data_handlers import UniFracGenerator
-    from aam.models import UniFracEncoder
+    from aam.models import SequenceEncoder
     from aam.models.utils import cos_decay_with_warmup
 
     if not os.path.exists(output_dir):
@@ -103,20 +146,39 @@ def fit_unifrac_regressor(
     if not os.path.exists(figure_path):
         os.makedirs(figure_path)
 
+    output_dim = p_embedding_dim
+    if p_unifrac_metric == "faith_pd":
+        output_dim = 1
+
     if i_model is not None:
-        model: tf.keras.Model = tf.keras.models.load_model(i_model)
+        model = tf.keras.models.load_model(i_model)
     else:
-        model: tf.keras.Model = UniFracEncoder(
+        model: tf.keras.Model = SequenceEncoder(
+            output_dim,
             p_asv_limit,
-            embedding_dim=p_embedding_dim,
+            p_unifrac_metric,
             dropout_rate=p_dropout,
+            embedding_dim=p_embedding_dim,
             attention_heads=p_attention_heads,
             attention_layers=p_attention_layers,
             intermediate_size=p_intermediate_size,
             intermediate_activation=p_intermediate_activation,
+            max_bp=p_max_bp,
+            is_16S=True,
+            add_token=p_add_token,
+            asv_dropout_rate=p_asv_dropout,
+            accumulation_steps=p_accumulation_steps,
         )
 
-        optimizer = tf.keras.optimizers.AdamW(cos_decay_with_warmup(), beta_2=0.95)
+        optimizer = tf.keras.optimizers.AdamW(
+            cos_decay_with_warmup(p_lr, p_warmup_steps),
+            beta_2=0.98,
+            weight_decay=p_weight_decay,
+            # use_ema=True,
+            # ema_momentum=0.999,
+            # ema_overwrite_frequency=500,
+            # global_clipnorm=1.0,
+        )
         token_shape = tf.TensorShape([None, None, 150])
         count_shape = tf.TensorShape([None, None, 1])
         model.build([token_shape, count_shape])
@@ -127,10 +189,14 @@ def fit_unifrac_regressor(
     model.summary()
 
     table = load_table(i_table)
-    ids = table.ids()
+    df = pd.read_csv(m_metadata_file, sep="\t", index_col=0, dtype={0: str})[
+        [m_metadata_column]
+    ]
+    ids, table, df = validate_metadata(table, df, p_missing_samples)
     indices = np.arange(len(ids), dtype=np.int32)
+
     np.random.shuffle(indices)
-    train_size = int(len(ids) * 0.9)
+    train_size = int(len(ids) * 0.8)
 
     train_indices = indices[:train_size]
     train_ids = ids[train_indices]
@@ -140,21 +206,36 @@ def fit_unifrac_regressor(
     val_ids = ids[val_indices]
     val_table = table.filter(val_ids, inplace=False)
 
+    common_kwargs = {
+        "metadata_column": m_metadata_column,
+        "max_token_per_sample": p_asv_limit,
+        "rarefy_depth": p_rarefy_depth,
+        "batch_size": p_batch_size,
+        "is_16S": True,
+        "is_categorical": p_is_categorical,
+        "max_bp": p_max_bp,
+        "epochs": p_epochs,
+        "tree_path": i_tree,
+        "metadata": df,
+        "unifrac_metric": p_unifrac_metric,
+    }
     train_gen = UniFracGenerator(
         table=train_table,
-        tree_path=i_tree,
-        max_token_per_sample=p_asv_limit,
         shuffle=True,
-        gen_new_tables=True,
-        batch_size=p_batch_size,
+        shift=0.0,
+        scale=1.0,
+        gen_new_tables=p_gen_new_table,
+        **common_kwargs,
     )
     train_data = train_gen.get_data()
 
     val_gen = UniFracGenerator(
         table=val_table,
-        tree_path=i_tree,
-        max_token_per_sample=p_asv_limit,
         shuffle=False,
+        shift=0.0,
+        scale=1.0,
+        gen_new_tables=False,
+        **common_kwargs,
     )
     val_data = val_gen.get_data()
 
@@ -186,10 +267,29 @@ def fit_unifrac_regressor(
 @cli.command()
 @click.option("--i-table", required=True, type=click.Path(exists=True), help=TABLE_DESC)
 @click.option("--i-taxonomy", required=True, type=click.Path(exists=True))
-@click.option("--p-tax-level", default=7, type=int)
-@click.option("--p-max-bp", required=True, type=int)
+@click.option("--i-tax-level", default=7, type=int)
+@click.option(
+    "--m-metadata-file",
+    required=True,
+    help="Metadata description",
+    type=click.Path(exists=True),
+)
+@click.option(
+    "--m-metadata-column",
+    required=True,
+    type=str,
+    help="Numeric metadata column to use as prediction target.",
+)
+@click.option(
+    "--p-missing-samples",
+    default="error",
+    type=click.Choice(["error", "ignore"], case_sensitive=False),
+    help=MISSING_SAMP_DESC,
+)
+@click.option("--p-batch-size", default=8, show_default=True, required=False, type=int)
 @click.option("--p-epochs", default=1000, show_default=True, type=int)
 @click.option("--p-dropout", default=0.1, show_default=True, type=float)
+@click.option("--p-asv-dropout", default=0.0, show_default=True, type=float)
 @click.option("--p-patience", default=10, show_default=True, type=int)
 @click.option("--p-early-stop-warmup", default=50, show_default=True, type=int)
 @click.option("--i-model", default=None, required=False, type=str)
@@ -201,29 +301,53 @@ def fit_unifrac_regressor(
     "--p-intermediate-activation", default="relu", show_default=True, type=str
 )
 @click.option("--p-asv-limit", default=512, show_default=True, type=int)
+@click.option("--p-gen-new-table", default=True, show_default=True, type=bool)
+@click.option("--p-lr", default=1e-4, show_default=True, type=float)
+@click.option("--p-warmup-steps", default=10000, show_default=True, type=int)
+@click.option("--p-max-bp", required=True, type=int)
 @click.option("--output-dir", required=True)
+@click.option("--p-add-token", default=False, required=False, type=bool)
+@click.option("--p-gotu", default=False, required=False, type=bool)
+@click.option("--p-is-categorical", default=False, required=False, type=bool)
+@click.option("--p-rarefy-depth", default=5000, required=False, type=int)
+@click.option("--p-weight-decay", default=0.004, show_default=True, type=float)
+@click.option("--p-accumulation-steps", default=1, required=False, type=int)
 def fit_taxonomy_regressor(
     i_table: str,
     i_taxonomy: str,
-    p_tax_level: int,
-    p_max_bp: int,
+    i_tax_level: int,
+    m_metadata_file: str,
+    m_metadata_column: str,
+    p_missing_samples: bool,
+    p_batch_size: int,
     p_epochs: int,
     p_dropout: float,
+    p_asv_dropout: float,
     p_patience: int,
     p_early_stop_warmup: int,
-    i_model: Optional[str],
+    i_model: Union[None, str],
     p_embedding_dim: int,
     p_attention_heads: int,
     p_attention_layers: int,
     p_intermediate_size: int,
     p_intermediate_activation: str,
     p_asv_limit: int,
+    p_gen_new_table: bool,
+    p_lr: float,
+    p_warmup_steps: int,
+    p_max_bp: int,
     output_dir: str,
+    p_add_token: bool,
+    p_gotu: bool,
+    p_is_categorical: bool,
+    p_rarefy_depth: int,
+    p_weight_decay: float,
+    p_accumulation_steps,
 ):
     from biom import load_table
 
     from aam.data_handlers import TaxonomyGenerator
-    from aam.models import TaxonomyEncoder
+    from aam.models import SequenceEncoder
     from aam.models.utils import cos_decay_with_warmup
 
     if not os.path.exists(output_dir):
@@ -234,10 +358,14 @@ def fit_taxonomy_regressor(
         os.makedirs(figure_path)
 
     table = load_table(i_table)
-    ids = table.ids()
+    df = pd.read_csv(m_metadata_file, sep="\t", index_col=0, dtype={0: str})[
+        [m_metadata_column]
+    ]
+    ids, table, df = validate_metadata(table, df, p_missing_samples)
     indices = np.arange(len(ids), dtype=np.int32)
+
     np.random.shuffle(indices)
-    train_size = int(len(ids) * 0.9)
+    train_size = int(len(ids) * 0.8)
 
     train_indices = indices[:train_size]
     train_ids = ids[train_indices]
@@ -247,22 +375,36 @@ def fit_taxonomy_regressor(
     val_ids = ids[val_indices]
     val_table = table.filter(val_ids, inplace=False)
 
+    common_kwargs = {
+        "metadata_column": m_metadata_column,
+        "max_token_per_sample": p_asv_limit,
+        "rarefy_depth": p_rarefy_depth,
+        "batch_size": p_batch_size,
+        "is_16S": True,
+        "is_categorical": p_is_categorical,
+        "max_bp": p_max_bp,
+        "epochs": p_epochs,
+        "taxonomy": i_taxonomy,
+        "tax_level": i_tax_level,
+        "metadata": df,
+    }
     train_gen = TaxonomyGenerator(
         table=train_table,
-        taxonomy=i_taxonomy,
-        tax_level=p_tax_level,
-        max_token_per_sample=p_asv_limit,
         shuffle=True,
-        gen_new_tables=True,
+        shift=0.0,
+        scale=1.0,
+        gen_new_tables=p_gen_new_table,
+        **common_kwargs,
     )
     train_data = train_gen.get_data()
 
     val_gen = TaxonomyGenerator(
         table=val_table,
-        taxonomy=i_taxonomy,
-        tax_level=p_tax_level,
-        max_token_per_sample=p_asv_limit,
         shuffle=False,
+        shift=0.0,
+        scale=1.0,
+        gen_new_tables=False,
+        **common_kwargs,
     )
     val_data = val_gen.get_data()
 
@@ -283,18 +425,28 @@ def fit_taxonomy_regressor(
     if i_model is not None:
         model: tf.keras.Model = tf.keras.models.load_model(i_model)
     else:
-        model: tf.keras.Model = TaxonomyEncoder(
+        model: tf.keras.Model = SequenceEncoder(
             train_gen.num_tokens,
             p_asv_limit,
-            embedding_dim=p_embedding_dim,
+            "taxonomy",
             dropout_rate=p_dropout,
+            embedding_dim=p_embedding_dim,
             attention_heads=p_attention_heads,
             attention_layers=p_attention_layers,
             intermediate_size=p_intermediate_size,
             intermediate_activation=p_intermediate_activation,
+            max_bp=p_max_bp,
+            is_16S=True,
+            add_token=p_add_token,
+            asv_dropout_rate=p_asv_dropout,
+            accumulation_steps=p_accumulation_steps,
         )
-
-        optimizer = tf.keras.optimizers.AdamW(cos_decay_with_warmup(), beta_2=0.95)
+        optimizer = tf.keras.optimizers.AdamW(
+            cos_decay_with_warmup(p_lr, p_warmup_steps),
+            beta_2=0.98,
+            weight_decay=p_weight_decay,
+            # global_clipnorm=1.0,
+        )
         token_shape = tf.TensorShape([None, None, 150])
         count_shape = tf.TensorShape([None, None, 1])
         model.build([token_shape, count_shape])
@@ -361,6 +513,7 @@ def fit_taxonomy_regressor(
 @click.option("--p-early-stop-warmup", default=50, show_default=True, type=int)
 @click.option("--p-batch-size", default=8, show_default=True, required=False, type=int)
 @click.option("--p-dropout", default=0.1, show_default=True, type=float)
+@click.option("--p-asv-dropout", default=0.0, show_default=True, type=float)
 @click.option("--p-report-back", default=5, show_default=True, type=int)
 @click.option("--p-asv-limit", default=1024, show_default=True, type=int)
 @click.option("--p-penalty", default=1.0, show_default=True, type=float)
@@ -380,6 +533,14 @@ def fit_taxonomy_regressor(
 @click.option("--p-warmup-steps", default=10000, show_default=True, type=int)
 @click.option("--p-max-bp", default=150, show_default=True, type=int)
 @click.option("--output-dir", required=True, type=click.Path(exists=False))
+@click.option("--p-output-dim", default=1, required=False, type=int)
+@click.option("--p-add-token", default=False, required=False, type=bool)
+@click.option("--p-gotu", default=False, required=False, type=bool)
+@click.option("--p-is-categorical", default=False, required=False, type=bool)
+@click.option("--p-rarefy-depth", default=5000, required=False, type=int)
+@click.option("--p-weight-decay", default=0.004, show_default=True, type=float)
+@click.option("--p-accumulation-steps", default=1, required=False, type=int)
+@click.option("--p-unifrac-metric", default="unifrac", required=False, type=str)
 def fit_sample_regressor(
     i_table: str,
     i_base_model_path: str,
@@ -394,6 +555,7 @@ def fit_sample_regressor(
     p_early_stop_warmup: int,
     p_batch_size: int,
     p_dropout: float,
+    p_asv_dropout: float,
     p_report_back: int,
     p_asv_limit: int,
     p_penalty: float,
@@ -411,11 +573,22 @@ def fit_sample_regressor(
     p_warmup_steps,
     p_max_bp: int,
     output_dir: str,
+    p_output_dim: int,
+    p_add_token: bool,
+    p_gotu: bool,
+    p_is_categorical: bool,
+    p_rarefy_depth: int,
+    p_weight_decay: float,
+    p_accumulation_steps: int,
+    p_unifrac_metric: str,
 ):
-    from aam.callbacks import MeanAbsoluteError
-    from aam.data_handlers import TaxonomyGenerator, UniFracGenerator
-    from aam.models import SequenceRegressor, TaxonomyEncoder, UniFracEncoder
+    from aam.callbacks import ConfusionMatrx, MeanAbsoluteError
+    from aam.data_handlers import CombinedGenerator, TaxonomyGenerator, UniFracGenerator
+    from aam.models import SequenceRegressor
 
+    # p_is_16S = False
+    is_16S = not p_gotu
+    # p_is_categorical = True
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
 
@@ -428,11 +601,14 @@ def fit_sample_regressor(
         os.makedirs(model_path)
 
     table = load_table(i_table)
-    df = pd.read_csv(m_metadata_file, sep="\t", index_col=0)[[m_metadata_column]]
+    df = pd.read_csv(m_metadata_file, sep="\t", index_col=0, dtype={0: str})[
+        [m_metadata_column]
+    ]
     ids, table, df = validate_metadata(table, df, p_missing_samples)
     num_ids = len(ids)
 
     fold_indices = np.arange(num_ids)
+    np.random.shuffle(fold_indices)
     if p_test_size > 0:
         test_size = int(num_ids * p_test_size)
         train_size = num_ids - test_size
@@ -443,10 +619,11 @@ def fit_sample_regressor(
 
     common_kwargs = {
         "metadata_column": m_metadata_column,
-        "is_categorical": False,
         "max_token_per_sample": p_asv_limit,
-        "rarefy_depth": 5000,
+        "rarefy_depth": p_rarefy_depth,
         "batch_size": p_batch_size,
+        "is_16S": is_16S,
+        "is_categorical": p_is_categorical,
     }
 
     def tax_gen(table, df, shuffle, shift, scale, epochs, gen_new_tables):
@@ -475,28 +652,48 @@ def fit_sample_regressor(
             epochs=epochs,
             gen_new_tables=gen_new_tables,
             max_bp=p_max_bp,
+            unifrac_metric=p_unifrac_metric,
             **common_kwargs,
         )
 
-    if p_taxonomy is not None and p_tree is None:
+    def combine_gen(table, df, shuffle, shift, scale, epochs, gen_new_tables):
+        return CombinedGenerator(
+            table=table,
+            metadata=df,
+            tree_path=p_tree,
+            taxonomy=p_taxonomy,
+            tax_level=p_taxonomy_level,
+            shuffle=shuffle,
+            shift=shift,
+            scale=scale,
+            epochs=epochs,
+            gen_new_tables=gen_new_tables,
+            max_bp=p_max_bp,
+            **common_kwargs,
+        )
+
+    if p_unifrac_metric == "combined":
+        base_model = "combined"
+        generator = combine_gen
+    elif p_taxonomy is not None and p_tree is None:
         base_model = "taxonomy"
         generator = tax_gen
     elif p_taxonomy is None and p_tree is not None:
-        base_model = "unifrac"
+        base_model = p_unifrac_metric
         generator = unifrac_gen
     else:
         raise Exception("Only taxonomy or UniFrac is supported.")
 
     if i_base_model_path is not None:
         base_model = tf.keras.models.load_model(i_base_model_path, compile=False)
-        if isinstance(base_model, TaxonomyEncoder):
+        base_type = base_model.encoder_type
+        if base_type == "taxonomy":
             generator = tax_gen
-        elif isinstance(base_model, UniFracEncoder):
-            generator = unifrac_gen
         else:
-            raise Exception(f"Unsupported base model {type(base_model)}")
+            generator = unifrac_gen
+
         if not p_no_freeze_base_weights:
-            raise Warning("base_model's weights are set to trainable.")
+            print("base_model's weights are set to trainable.")
 
     def _get_fold(
         indices,
@@ -521,15 +718,24 @@ def fit_sample_regressor(
             data["num_tokens"] = None
         return data
 
-    kfolds = KFold(p_cv)
+    if not p_is_categorical:
+        print("non-stratified folds")
+        kfolds = KFold(p_cv)
+        splits = kfolds.split(fold_indices)
+    else:
+        print("stratified folds...")
+        kfolds = StratifiedKFold(p_cv)
+        train_ids = ids[fold_indices]
+        train_classes = df.loc[df.index.isin(train_ids), m_metadata_column].values
+        splits = kfolds.split(fold_indices, train_classes)
 
     models = []
-    for i, (train_ind, val_ind) in enumerate(kfolds.split(fold_indices)):
+    for i, (train_ind, val_ind) in enumerate(splits):
         train_data = _get_fold(
             train_ind,
             shuffle=True,
             shift=0.0,
-            scale=100.0,
+            scale=1.0,
             gen_new_tables=p_gen_new_table,
         )
         val_data = _get_fold(
@@ -542,45 +748,50 @@ def fit_sample_regressor(
         with open(os.path.join(model_path, f"f{i}_val_ids.txt"), "w") as f:
             for id in ids[val_ind]:
                 f.write(id + "\n")
+        vocab_size = 6 if not p_is_categorical else 2000
+
+        if base_model == "combined":
+            base_output_dim = [p_embedding_dim, 1, train_data["num_tokens"]]
+        elif base_model == "unifrac":
+            base_output_dim = p_embedding_dim
+        elif base_model == "faith_pd":
+            base_output_dim = 1
+        else:
+            base_output_dim = train_data["num_tokens"]
 
         model = SequenceRegressor(
             token_limit=p_asv_limit,
+            base_output_dim=base_output_dim,
+            shift=train_data["shift"],
+            scale=train_data["scale"],
+            dropout_rate=p_dropout,
             embedding_dim=p_embedding_dim,
             attention_heads=p_attention_heads,
             attention_layers=p_attention_layers,
             intermediate_size=p_intermediate_size,
             intermediate_activation=p_intermediate_activation,
-            shift=train_data["shift"],
-            scale=train_data["scale"],
-            dropout_rate=p_dropout,
             base_model=base_model,
             freeze_base=p_no_freeze_base_weights,
-            num_tax_levels=train_data["num_tokens"],
             penalty=p_penalty,
             nuc_penalty=p_nuc_penalty,
             max_bp=p_max_bp,
+            is_16S=is_16S,
+            vocab_size=vocab_size,
+            out_dim=p_output_dim,
+            classifier=p_is_categorical,
+            add_token=p_add_token,
+            class_weights=train_data["class_weights"],
+            accumulation_steps=p_accumulation_steps,
         )
         token_shape = tf.TensorShape([None, None, p_max_bp])
         count_shape = tf.TensorShape([None, None, 1])
         model.build([token_shape, count_shape])
         model.summary()
-        loss = tf.keras.losses.MeanSquaredError(reduction="none")
+
         fold_label = i + 1
-        model_cv = CVModel(
-            model,
-            train_data,
-            val_data,
-            output_dir,
-            fold_label,
-        )
-        model_cv.fit_fold(
-            loss,
-            p_epochs,
-            os.path.join(model_path, f"model_f{fold_label}.keras"),
-            metric="mae",
-            patience=p_patience,
-            early_stop_warmup=p_early_stop_warmup,
-            callbacks=[
+        if not p_is_categorical:
+            loss = tf.keras.losses.MeanSquaredError(reduction="none")
+            callbacks = [
                 MeanAbsoluteError(
                     monitor="val_mae",
                     dataset=val_data["dataset"],
@@ -589,9 +800,41 @@ def fit_sample_regressor(
                     ),
                     report_back=p_report_back,
                 )
-            ],
+            ]
+        else:
+            loss = tf.keras.losses.CategoricalFocalCrossentropy(
+                from_logits=False, reduction="none"
+            )
+            # loss = tf.keras.losses.CategoricalHinge(reduction="none")
+            callbacks = [
+                ConfusionMatrx(
+                    monitor="val_target_loss",
+                    dataset=val_data["dataset"],
+                    output_dir=os.path.join(
+                        figure_path, f"model_f{fold_label}-val.png"
+                    ),
+                    report_back=p_report_back,
+                )
+            ]
+        model_cv = CVModel(
+            model,
+            train_data,
+            val_data,
+            output_dir,
+            fold_label,
+        )
+        metric = "mae" if not p_is_categorical else "target_loss"
+        model_cv.fit_fold(
+            loss,
+            p_epochs,
+            os.path.join(model_path, f"model_f{fold_label}.keras"),
+            metric=metric,
+            patience=p_patience,
+            early_stop_warmup=p_early_stop_warmup,
+            callbacks=[*callbacks],
             lr=p_lr,
             warmup_steps=p_warmup_steps,
+            weight_decay=p_weight_decay,
         )
         models.append(model_cv)
         print(f"Fold {i+1} mae: {model_cv.metric_value}")

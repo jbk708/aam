@@ -61,7 +61,7 @@ def _pairwise_distances(embeddings, squared=False):
         # (ex: on the diagonal)
         # we need to add a small epsilon where distances == 0.0
         mask = tf.cast(tf.equal(distances, 0.0), tf.float32)
-        distances = distances + mask * 1e-07
+        distances = distances + mask * 1e-12
 
         distances = tf.sqrt(distances)
 
@@ -79,7 +79,6 @@ class PairwiseLoss(tf.keras.losses.Loss):
     def call(self, y_true, y_pred):
         y_pred_dist = _pairwise_distances(y_pred, squared=False)
         differences = tf.math.square(y_pred_dist - y_true)
-        differences = tf.linalg.band_part(differences, 0, -1)
         return differences
 
 

@@ -7,7 +7,7 @@ from aam.layers import (
     ASVEncoder,
 )
 from aam.models.transformers import TransformerEncoder
-from aam.utils import float_mask, masked_loss
+from aam.utils import float_mask
 
 
 @tf.keras.saving.register_keras_serializable(package="BaseSequenceEncoder")
@@ -25,6 +25,9 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
         nuc_attention_layers: int = 4,
         nuc_intermediate_size: int = 1024,
         intermediate_activation: str = "gelu",
+        is_16S: bool = True,
+        vocab_size: int = 6,
+        add_token: bool = True,
         **kwargs,
     ):
         super(BaseSequenceEncoder, self).__init__(**kwargs)
@@ -39,28 +42,44 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
         self.nuc_attention_layers = nuc_attention_layers
         self.nuc_intermediate_size = nuc_intermediate_size
         self.intermediate_activation = intermediate_activation
-        self.nuc_loss = tf.keras.losses.SparseCategoricalCrossentropy(
-            ignore_class=0, from_logits=False, reduction="none"
-        )
-        self.nuc_entropy = tf.keras.metrics.Mean()
+        self.is_16S = is_16S
+        self.vocab_size = vocab_size
+        self.add_token = add_token
 
         # layers used in model
-        self.asv_encoder = ASVEncoder(
-            max_bp,
-            nuc_attention_heads,
-            nuc_attention_layers,
-            0.0,
-            nuc_intermediate_size,
-            intermediate_activation=self.intermediate_activation,
-            name="asv_encoder",
-        )
-        self.nuc_logits = tf.keras.layers.Dense(
-            6, use_bias=False, name="nuc_logits", dtype=tf.float32, activation="softmax"
-        )
+        if self.is_16S:
+            self.asv_encoder = ASVEncoder(
+                max_bp,
+                nuc_attention_heads,
+                nuc_attention_layers,
+                0.0,
+                nuc_intermediate_size,
+                intermediate_activation=self.intermediate_activation,
+                add_token=self.add_token,
+                name="asv_encoder",
+            )
+        else:
+            self.asv_embeddings = tf.keras.layers.Embedding(
+                self.vocab_size,
+                output_dim=self.embedding_dim,
+                embeddings_initializer=tf.keras.initializers.RandomNormal(
+                    mean=0, stddev=self.embedding_dim**0.5
+                ),
+            )
+            self.asv_encoder = TransformerEncoder(
+                num_layers=self.sample_attention_layers,
+                num_attention_heads=self.sample_attention_heads,
+                intermediate_size=self.sample_intermediate_size,
+                activation=self.intermediate_activation,
+                dropout_rate=self.dropout_rate,
+            )
 
-        self.asv_scale = tf.keras.layers.Dense(self.embedding_dim, use_bias=False)
-        self.asv_norm = tf.keras.layers.LayerNormalization(epsilon=1e-6)
-        self.asv_pos = tfm.nlp.layers.PositionEmbedding(self.token_limit + 5)
+        self.asv_pos = tfm.nlp.layers.PositionEmbedding(
+            self.token_limit + 5,
+            initializer=tf.keras.initializers.RandomNormal(
+                mean=0, stddev=self.embedding_dim**0.5
+            ),
+        )
 
         self.sample_encoder = TransformerEncoder(
             num_layers=self.sample_attention_layers,
@@ -69,25 +88,14 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
             activation=self.intermediate_activation,
             dropout_rate=self.dropout_rate,
         )
-        self.sample_token = self.add_weight(
-            "sample_token",
-            [1, 1, self.embedding_dim],
-            dtype=tf.float32,
-            initializer=tf.keras.initializers.Zeros(),
-            trainable=True,
-        )
-        self._base_alpha = self.add_weight(
-            name="base_alpha",
-            initializer=tf.keras.initializers.Zeros(),
-            trainable=True,
-            dtype=tf.float32,
-        )
-
-        self.linear_activation = tf.keras.layers.Activation("linear", dtype=tf.float32)
-
-    @masked_loss(sparse_cat=True)
-    def _compute_nuc_loss(self, tokens: tf.Tensor, pred_tokens: tf.Tensor) -> tf.Tensor:
-        return self.nuc_loss(tokens, pred_tokens)
+        if self.add_token:
+            self.sample_token = self.add_weight(
+                "sample_token",
+                [1, 1, self.embedding_dim],
+                dtype=tf.float32,
+                initializer="glorot_uniform",
+                trainable=True,
+            )
 
     def _add_sample_token(self, tensor: tf.Tensor) -> tf.Tensor:
         # add <SAMPLE> token empbedding
@@ -102,45 +110,108 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
         return embeddings
 
     def _split_asvs(self, embeddings):
-        nuc_embeddings = embeddings[:, :, :-1, :]
-        nucleotides = self.nuc_logits(nuc_embeddings)
+        asv_embeddings = embeddings
+        if self.is_16S:
+            if self.add_token:
+                asv_embeddings = asv_embeddings[:, :, 0, :]
+            else:
+                asv_embeddings = tf.reduce_mean(asv_embeddings, axis=2)
+        else:
+            asv_embeddings = asv_embeddings[:, :, 0, :]
 
-        asv_embeddings = embeddings[:, :, 0, :]
-        asv_embeddings = self.asv_norm(asv_embeddings)
         asv_embeddings = asv_embeddings + self.asv_pos(asv_embeddings)
-
-        return asv_embeddings, nucleotides
+        return asv_embeddings
 
     def call(
-        self, inputs: tf.Tensor, training: bool = False
+        self, inputs: tf.Tensor, random_mask: bool = None, training: bool = False
     ) -> tuple[tf.Tensor, tf.Tensor]:
         # need to cast inputs to int32 to avoid error
         # because keras converts all inputs
         # to float when calling build()
         asv_input = tf.cast(inputs, dtype=tf.int32)
-
-        embeddings = self.asv_encoder(asv_input, training=training)
-        embeddings = self.asv_scale(embeddings)
-        asv_embeddings, nucleotides = self._split_asvs(embeddings)
-
         asv_mask = float_mask(tf.reduce_sum(inputs, axis=-1, keepdims=True))
-        padded_asv_mask = tf.pad(asv_mask, [[0, 0], [1, 0], [0, 0]], constant_values=1)
 
-        # padded embeddings are the skip connection
-        # normal asv embeddings continue through next block
-        padded_asv_embeddings = tf.pad(
-            asv_embeddings, [[0, 0], [1, 0], [0, 0]], constant_values=0
-        )
+        if training and random_mask is not None:
+            asv_input = asv_input * tf.cast(random_mask, dtype=tf.int32)
 
-        sample_gated_embeddings = self._add_sample_token(asv_embeddings)
+        if self.is_16S:
+            embeddings = self.asv_encoder(asv_input, training=training)
+        else:
+            embeddings = self.asv_embeddings(asv_input)
+        asv_embeddings = self._split_asvs(embeddings)
+
+        if self.add_token:
+            asv_mask = tf.pad(asv_mask, [[0, 0], [1, 0], [0, 0]], constant_values=1)
+            sample_embeddings = self._add_sample_token(asv_embeddings)
+        else:
+            sample_embeddings = asv_embeddings
+        return sample_embeddings
+
+    # def base_embeddings(
+    #     self, inputs: tf.Tensor, training: bool = False
+    # ) -> tuple[tf.Tensor, tf.Tensor]:
+    #     # need to cast inputs to int32 to avoid error
+    #     # because keras converts all inputs
+    #     # to float when calling build()
+    #     asv_input = tf.cast(inputs, dtype=tf.int32)
+
+    #     embeddings = self.asv_encoder(asv_input, training=training)
+    #     embeddings = self.asv_scale(embeddings)
+    #     asv_embeddings, nucleotides = self._split_asvs(embeddings)
+
+    #     asv_mask = float_mask(tf.reduce_sum(inputs, axis=-1, keepdims=True))
+    #     padded_asv_mask = tf.pad(asv_mask, [[0, 0], [1, 0], [0, 0]], constant_values=1)
+
+    #     # padded embeddings are the skip connection
+    #     # normal asv embeddings continue through next block
+    #     padded_asv_embeddings = tf.pad(
+    #         asv_embeddings, [[0, 0], [1, 0], [0, 0]], constant_values=0
+    #     )
+
+    #     sample_gated_embeddings = self._add_sample_token(asv_embeddings)
+    #     sample_gated_embeddings = self.sample_encoder(
+    #         sample_gated_embeddings, mask=padded_asv_mask, training=training
+    #     )
+
+    #     sample_embeddings = (
+    #         padded_asv_embeddings + sample_gated_embeddings * self._base_alpha
+    #     )
+    #     return sample_embeddings
+
+    def get_asv_embeddings(
+        self, inputs: tf.Tensor, training: bool = False
+    ) -> tuple[tf.Tensor, tf.Tensor]:
+        print("holyfucking shit")
+        # need to cast inputs to int32 to avoid error
+        # because keras converts all inputs
+        # to float when calling build()
+        asv_input = tf.cast(inputs, dtype=tf.int32)
+        asv_mask = float_mask(tf.reduce_sum(inputs, axis=-1, keepdims=True))
+
+        if self.is_16S:
+            embeddings = self.asv_encoder(asv_input, training=training)
+            embeddings = self.asv_scale(embeddings)
+        else:
+            embeddings = self.asv_embeddings(asv_input)
+        asv_embeddings, nucleotides = self._split_asvs(embeddings)
+        return asv_embeddings
+
+    def asv_gradient(
+        self, inputs: tf.Tensor, asv_embeddings
+    ) -> tuple[tf.Tensor, tf.Tensor]:
+        asv_mask = float_mask(tf.reduce_sum(inputs, axis=-1, keepdims=True))
+
+        if self.add_token:
+            asv_mask = tf.pad(asv_mask, [[0, 0], [1, 0], [0, 0]], constant_values=1)
+            sample_embeddings = self._add_sample_token(asv_embeddings)
+        else:
+            sample_embeddings = asv_embeddings
+
         sample_gated_embeddings = self.sample_encoder(
-            sample_gated_embeddings, mask=padded_asv_mask, training=training
+            sample_embeddings, mask=asv_mask, training=False
         )
-
-        sample_embeddings = (
-            padded_asv_embeddings + sample_gated_embeddings * self._base_alpha
-        )
-        return sample_embeddings, nucleotides
+        sample_embeddings = sample_embeddings + sample_gated_embeddings
+        return sample_embeddings
 
     def get_config(self):
         config = super(BaseSequenceEncoder, self).get_config()
@@ -156,6 +227,9 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
                 "nuc_attention_heads": self.nuc_attention_heads,
                 "nuc_attention_layers": self.nuc_attention_layers,
                 "nuc_intermediate_size": self.nuc_intermediate_size,
+                "is_16S": self.is_16S,
+                "vocab_size": self.vocab_size,
+                "add_token": self.add_token,
             }
         )
         return config
