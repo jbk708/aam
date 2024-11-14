@@ -91,7 +91,7 @@ class SequenceEncoder(tf.keras.Model):
         )
 
         self.gradient_accumulator = GradientAccumulator(self.accumulation_steps)
-        self.loss_scaler = LossScaler()
+        self.loss_scaler = LossScaler(self.gradient_accumulator.accum_steps)
 
     def _get_encoder_loss(self):
         if self.encoder_type == "combined":
@@ -171,9 +171,7 @@ class SequenceEncoder(tf.keras.Model):
         nuc_tokens, counts = model_inputs
         embeddings, encoder_embeddings = outputs
         encoder_loss = self._compute_encoder_loss(y_true, encoder_embeddings)
-        return encoder_loss / tf.cast(
-            self.gradient_accumulator.accum_steps, dtype=tf.float32
-        )
+        return encoder_loss
 
     def predict_step(
         self,
@@ -231,7 +229,7 @@ class SequenceEncoder(tf.keras.Model):
         y_target, encoder_target = y
         outputs = self(inputs, training=False)
         encoder_loss = self._compute_loss(inputs, encoder_target, outputs)
-        scaled_losses = self.loss_scaler(encoder_loss)
+        scaled_losses = self.loss_scaler([encoder_loss])
         loss = tf.reduce_mean(tf.stack(scaled_losses, axis=0))
 
         self.loss_tracker.update_state(loss)

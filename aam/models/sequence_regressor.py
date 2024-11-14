@@ -147,7 +147,7 @@ class SequenceRegressor(tf.keras.Model):
             ["loss", "target_loss", "count_mse", self.metric_string]
         )
         self.gradient_accumulator = GradientAccumulator(self.accumulation_steps)
-        self.loss_scaler = LossScaler()
+        self.loss_scaler = LossScaler(self.gradient_accumulator.accum_steps)
 
     def evaluate_metric(self, dataset, metric, **kwargs):
         metric_index = self.loss_metrics.index(metric)
@@ -200,14 +200,7 @@ class SequenceRegressor(tf.keras.Model):
                 self.base_losses["base_loss"](base_target, base_pred) * self.penalty
             )
 
-        return (
-            target_loss
-            / tf.cast(self.gradient_accumulator.accum_steps, dtype=tf.float32),
-            count_loss
-            / tf.cast(self.gradient_accumulator.accum_steps, dtype=tf.float32),
-            base_loss
-            / tf.cast(self.gradient_accumulator.accum_steps, dtype=tf.float32),
-        )
+        return (target_loss, count_loss, base_loss)
 
     def _compute_metric(
         self,

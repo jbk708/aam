@@ -2,7 +2,8 @@ import tensorflow as tf
 
 
 class LossScaler:
-    def __init__(self):
+    def __init__(self, gradient_accum_steps):
+        self.gradient_accum_steps = tf.cast(gradient_accum_steps, dtype=tf.float32)
         self.moving_avg = None
         self.decay = 0.99
         self.accum_loss = tf.Variable(
@@ -13,6 +14,7 @@ class LossScaler:
         )
 
     def __call__(self, losses):
+        losses = [losses[i] / self.gradient_accum_steps for i in range(len(losses))]
         if self.moving_avg is None:
             self.scaled_loss = [
                 tf.Variable(
