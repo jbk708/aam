@@ -584,7 +584,7 @@ def fit_sample_regressor(
 ):
     from aam.callbacks import ConfusionMatrx, MeanAbsoluteError
     from aam.data_handlers import TaxonomyGenerator, UniFracGenerator
-    from aam.models import SequenceRegressor, TaxonomyEncoder, UniFracEncoder
+    from aam.models import SequenceRegressor
 
     # p_is_16S = False
     is_16S = not p_gotu
@@ -660,19 +660,19 @@ def fit_sample_regressor(
         base_model = "taxonomy"
         generator = tax_gen
     elif p_taxonomy is None and p_tree is not None:
-        base_model = "unifrac"
+        base_model = p_unifrac_metric
         generator = unifrac_gen
     else:
         raise Exception("Only taxonomy or UniFrac is supported.")
 
     if i_base_model_path is not None:
         base_model = tf.keras.models.load_model(i_base_model_path, compile=False)
-        if isinstance(base_model, TaxonomyEncoder):
-            generator = tax_gen
-        elif isinstance(base_model, UniFracEncoder):
-            generator = unifrac_gen
-        else:
-            raise Exception(f"Unsupported base model {type(base_model)}")
+        # base_type = base_model.encoder_type
+        # if base_type == "taxonomy":
+        generator = tax_gen
+        # else:
+        #     generator = unifrac_gen
+
         if not p_no_freeze_base_weights:
             print("base_model's weights are set to trainable.")
 
@@ -688,13 +688,6 @@ def fit_sample_regressor(
         table_fold = table.filter(fold_ids, axis="sample", inplace=False)
         df_fold = df.loc[fold_ids]
 
-        # if shuffle:
-        #     keep = []
-        #     for i in range(1, 5):
-        #         cat_ids = list(df_fold.loc[df_fold[m_metadata_column] == i].index)
-        #         np.random.shuffle(cat_ids)
-        #         keep += cat_ids[:100]
-        #     df_fold = df.loc[df.index.isin(keep)]
         gen = generator(
             table_fold, df_fold, shuffle, shift, scale, epochs, gen_new_tables
         )
@@ -737,30 +730,37 @@ def fit_sample_regressor(
             for id in ids[val_ind]:
                 f.write(id + "\n")
         vocab_size = 6 if not p_is_categorical else 2000
+
+        if base_model == "unifrac":
+            base_output_dim = p_embedding_dim
+        elif base_model == "faith_pd":
+            base_output_dim = 1
+        else:
+            base_output_dim = train_data["num_tokens"]
+
         model = SequenceRegressor(
             token_limit=p_asv_limit,
+            base_output_dim=base_output_dim,
+            shift=train_data["shift"],
+            scale=train_data["scale"],
+            dropout_rate=p_dropout,
             embedding_dim=p_embedding_dim,
             attention_heads=p_attention_heads,
             attention_layers=p_attention_layers,
             intermediate_size=p_intermediate_size,
             intermediate_activation=p_intermediate_activation,
-            shift=train_data["shift"],
-            scale=train_data["scale"],
-            dropout_rate=p_dropout,
             base_model=base_model,
             freeze_base=p_no_freeze_base_weights,
-            num_tax_levels=train_data["num_tokens"],
             penalty=p_penalty,
             nuc_penalty=p_nuc_penalty,
             max_bp=p_max_bp,
             is_16S=is_16S,
             vocab_size=vocab_size,
-            classifier=p_is_categorical,
             out_dim=p_output_dim,
+            classifier=p_is_categorical,
             add_token=p_add_token,
             class_weights=train_data["class_weights"],
             accumulation_steps=p_accumulation_steps,
-            unifrac_metric=p_unifrac_metric,
         )
         token_shape = tf.TensorShape([None, None, p_max_bp])
         count_shape = tf.TensorShape([None, None, 1])

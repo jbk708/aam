@@ -52,7 +52,7 @@ class TaxonomyEncoder(tf.keras.Model):
         self.loss_tracker = tf.keras.metrics.Mean()
         # self.tax_loss = tf.keras.losses.CategoricalFocalCrossentropy(reduction="none")
         self.tax_loss = tf.keras.losses.CategoricalCrossentropy(reduction="none")
-        self.tax_tracker = tf.keras.metrics.Mean()
+        self.encoder_tracker = tf.keras.metrics.Mean()
 
         # layers used in model
         self.base_encoder = BaseSequenceEncoder(
@@ -85,21 +85,6 @@ class TaxonomyEncoder(tf.keras.Model):
         self.tax_level_logits = tf.keras.layers.Dense(
             self.num_tax_levels, dtype=tf.float32
         )
-        # tf.keras.Sequential(
-        #     [
-        #         tf.keras.layers.Dense(
-        #             self.embedding_dim,
-        #             use_bias=True,
-        #             dtype=tf.float32,
-        #             activation="gelu",
-        #         ),
-        #         tf.keras.layers.Dense(
-        #             self.num_tax_levels,
-        #             use_bias=True,
-        #             dtype=tf.float32,
-        #         ),
-        #     ]
-        # )
 
         self.loss_metrics = sorted(["loss", "target_loss", "count_mse"])
         self.gradient_accumulator = GradientAccumulator(self.accumulation_steps)
@@ -113,7 +98,7 @@ class TaxonomyEncoder(tf.keras.Model):
     def _compute_nuc_loss(self, nuc_tokens, nuc_pred):
         return self.base_encoder._compute_nuc_loss(nuc_tokens, nuc_pred)
 
-    def _compute_tax_loss(
+    def _compute_encoder_loss(
         self,
         tax_tokens: tf.Tensor,
         tax_pred: tf.Tensor,
@@ -140,7 +125,7 @@ class TaxonomyEncoder(tf.keras.Model):
     ) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
         nuc_tokens, counts = model_inputs
         taxonomy_embeddings, tax_pred, nuc_pred = outputs
-        tax_loss = self._compute_tax_loss(y_true, tax_pred)
+        tax_loss = self._compute_encoder_loss(y_true, tax_pred)
         nuc_loss = self._compute_nuc_loss(nuc_tokens, nuc_pred) * 0.0
         loss = tax_loss + nuc_loss
         return (loss, tax_loss, nuc_loss)
@@ -183,11 +168,11 @@ class TaxonomyEncoder(tf.keras.Model):
         self.gradient_accumulator.apply_gradients(gradients)
 
         self.loss_tracker.update_state(loss)
-        self.tax_tracker.update_state(tax_loss)
+        self.encoder_tracker.update_state(tax_loss)
         self.base_encoder.nuc_entropy.update_state(nuc_loss)
         return {
             "loss": self.loss_tracker.result(),
-            "tax_entropy": self.tax_tracker.result(),
+            "tax_entropy": self.encoder_tracker.result(),
             "nuc_entropy": self.base_encoder.nuc_entropy.result(),
             "learning_rate": self.optimizer.learning_rate,
         }
@@ -205,11 +190,11 @@ class TaxonomyEncoder(tf.keras.Model):
         loss, tax_loss, nuc_loss = self._compute_loss(inputs, tax_target, outputs)
 
         self.loss_tracker.update_state(loss)
-        self.tax_tracker.update_state(tax_loss)
+        self.encoder_tracker.update_state(tax_loss)
         self.base_encoder.nuc_entropy.update_state(nuc_loss)
         return {
             "loss": self.loss_tracker.result(),
-            "tax_entropy": self.tax_tracker.result(),
+            "tax_entropy": self.encoder_tracker.result(),
             "nuc_entropy": self.base_encoder.nuc_entropy.result(),
             "learning_rate": self.optimizer.learning_rate,
         }

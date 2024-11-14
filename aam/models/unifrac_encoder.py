@@ -58,7 +58,7 @@ class UniFracEncoder(tf.keras.Model):
         else:
             self.unifrac_loss = tf.keras.losses.MeanSquaredError(reduction="none")
             self.unifrac_out_dim = 1
-        self.unifrac_tracker = tf.keras.metrics.Mean()
+        self.encoder_tracker = tf.keras.metrics.Mean()
 
         # layers used in model
         self.base_encoder = BaseSequenceEncoder(
@@ -88,21 +88,6 @@ class UniFracEncoder(tf.keras.Model):
             name="unifrac_encoder",
         )
         self.unifrac_ff = tf.keras.layers.Dense(self.unifrac_out_dim, dtype=tf.float32)
-        # tf.keras.Sequential(
-        #     [
-        #         tf.keras.layers.Dense(
-        #             self.embedding_dim,
-        #             use_bias=True,
-        #             dtype=tf.float32,
-        #             activation="gelu",
-        #         ),
-        #         tf.keras.layers.Dense(
-        #             self.unifrac_out_dim,
-        #             use_bias=True,
-        #             dtype=tf.float32,
-        #         ),
-        #     ]
-        # )
 
         self.loss_metrics = sorted(["loss", "target_loss", "count_mse"])
         self.gradient_accumulator = GradientAccumulator(self.accumulation_steps)
@@ -116,7 +101,7 @@ class UniFracEncoder(tf.keras.Model):
     def _compute_nuc_loss(self, nuc_tokens, nuc_pred):
         return self.base_encoder._compute_nuc_loss(nuc_tokens, nuc_pred)
 
-    def _compute_unifrac_loss(
+    def _compute_encoder_loss(
         self,
         y_true: tf.Tensor,
         unifrac_embeddings: tf.Tensor,
@@ -135,7 +120,7 @@ class UniFracEncoder(tf.keras.Model):
     ) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
         nuc_tokens, counts = model_inputs
         embeddings, unifrac_embeddings, nuc_pred = outputs
-        unifrac_loss = self._compute_unifrac_loss(y_true, unifrac_embeddings)
+        unifrac_loss = self._compute_encoder_loss(y_true, unifrac_embeddings)
         # nuc_loss = self._compute_nuc_loss(nuc_tokens, nuc_pred) * 0.0
         loss = unifrac_loss  # + nuc_loss
         return [loss, unifrac_loss, 0]  # , nuc_loss]
@@ -180,11 +165,11 @@ class UniFracEncoder(tf.keras.Model):
         self.gradient_accumulator.apply_gradients(gradients)
 
         self.loss_tracker.update_state(loss)
-        self.unifrac_tracker.update_state(unifrac_loss)
+        self.encoder_tracker.update_state(unifrac_loss)
         self.base_encoder.nuc_entropy.update_state(nuc_loss)
         return {
             "loss": self.loss_tracker.result(),
-            "unifrac_mse": self.unifrac_tracker.result(),
+            "unifrac_mse": self.encoder_tracker.result(),
             "nuc_entropy": self.base_encoder.nuc_entropy.result(),
             "learning_rate": self.optimizer.learning_rate,
         }
@@ -204,11 +189,11 @@ class UniFracEncoder(tf.keras.Model):
         )
 
         self.loss_tracker.update_state(loss)
-        self.unifrac_tracker.update_state(unifrac_loss)
+        self.encoder_tracker.update_state(unifrac_loss)
         self.base_encoder.nuc_entropy.update_state(nuc_loss)
         return {
             "loss": self.loss_tracker.result(),
-            "unifrac_mse": self.unifrac_tracker.result(),
+            "unifrac_mse": self.encoder_tracker.result(),
             "nuc_entropy": self.base_encoder.nuc_entropy.result(),
             "learning_rate": self.optimizer.learning_rate,
         }

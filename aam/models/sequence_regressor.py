@@ -5,9 +5,9 @@ from typing import Optional, Union
 import tensorflow as tf
 import tensorflow_models as tfm
 
-from aam.models.taxonomy_encoder import TaxonomyEncoder
+# from aam.models.unifrac_encoder import UniFracEncoder
+from aam.models.sequence_encoder import SequenceEncoder
 from aam.models.transformers import TransformerEncoder
-from aam.models.unifrac_encoder import UniFracEncoder
 from aam.optimizers.gradient_accumulator import GradientAccumulator
 from aam.optimizers.loss_scaler import LossScaler
 from aam.utils import float_mask
@@ -18,17 +18,16 @@ class SequenceRegressor(tf.keras.Model):
     def __init__(
         self,
         token_limit: int,
-        num_classes: Optional[int] = None,
+        base_output_dim: Optional[int] = None,
         shift: float = 0.0,
         scale: float = 1.0,
         dropout_rate: float = 0.0,
-        num_tax_levels: Optional[int] = None,
         embedding_dim: int = 128,
         attention_heads: int = 4,
         attention_layers: int = 4,
         intermediate_size: int = 1024,
         intermediate_activation: str = "relu",
-        base_model: Union[str, TaxonomyEncoder, UniFracEncoder] = "taxonomy",
+        base_model: str = "unifrac",
         freeze_base: bool = False,
         penalty: float = 1.0,
         nuc_penalty: float = 1.0,
@@ -41,16 +40,14 @@ class SequenceRegressor(tf.keras.Model):
         class_weights: list = None,
         asv_dropout_rate: float = 0.0,
         accumulation_steps: int = 1,
-        unifrac_metric: str = None,
         **kwargs,
     ):
         super(SequenceRegressor, self).__init__(**kwargs)
         self.token_limit = token_limit
-        self.num_classes = num_classes
+        self.base_output_dim = base_output_dim
         self.shift = shift
         self.scale = scale
         self.dropout_rate = dropout_rate
-        self.num_tax_levels = num_tax_levels
         self.embedding_dim = embedding_dim
         self.attention_heads = attention_heads
         self.attention_layers = attention_layers
@@ -68,60 +65,34 @@ class SequenceRegressor(tf.keras.Model):
         self.class_weights = class_weights
         self.asv_dropout_rate = asv_dropout_rate
         self.accumulation_steps = accumulation_steps
-        self.unifrac_metric = unifrac_metric
         self.loss_tracker = tf.keras.metrics.Mean()
 
         # layers used in model
         if isinstance(base_model, str):
-            if base_model == "taxonomy":
-                self.base_model = TaxonomyEncoder(
-                    num_tax_levels=self.num_tax_levels,
-                    token_limit=self.token_limit,
-                    dropout_rate=self.dropout_rate,
-                    embedding_dim=self.embedding_dim,
-                    attention_heads=self.attention_heads,
-                    attention_layers=self.attention_layers,
-                    intermediate_size=self.intermediate_size,
-                    intermediate_activation=self.intermediate_activation,
-                    max_bp=self.max_bp,
-                    is_16S=self.is_16S,
-                    vocab_size=self.vocab_size,
-                    asv_dropout_rate=self.asv_dropout_rate,
-                    add_token=self.add_token,
-                )
-            elif base_model == "unifrac":
-                self.base_model = UniFracEncoder(
-                    self.token_limit,
-                    dropout_rate=self.dropout_rate,
-                    embedding_dim=self.embedding_dim,
-                    attention_heads=self.attention_heads,
-                    attention_layers=self.attention_layers,
-                    intermediate_size=self.intermediate_size,
-                    intermediate_activation=self.intermediate_activation,
-                    max_bp=self.max_bp,
-                    is_16S=self.is_16S,
-                    vocab_size=self.vocab_size,
-                    add_token=self.add_token,
-                    asv_dropout_rate=self.asv_dropout_rate,
-                    unifrac_metric=self.unifrac_metric,
-                )
-            else:
-                raise Exception("Invalid base model option.")
+            self.base_model = SequenceEncoder(
+                output_dim=self.base_output_dim,
+                token_limit=self.token_limit,
+                encoder_type=base_model,
+                dropout_rate=self.dropout_rate,
+                embedding_dim=self.embedding_dim,
+                attention_heads=self.attention_heads,
+                attention_layers=self.attention_layers,
+                intermediate_size=self.intermediate_size,
+                intermediate_activation=self.intermediate_activation,
+                max_bp=self.max_bp,
+                is_16S=self.is_16S,
+                vocab_size=self.vocab_size,
+                add_token=self.add_token,
+                asv_dropout_rate=self.asv_dropout_rate,
+                accumulation_steps=self.accumulation_steps,
+            )
         else:
-            if not isinstance(base_model, (TaxonomyEncoder, UniFracEncoder)):
-                raise Exception(f"Unsupported base model of type {type(base_model)}")
             self.base_model = base_model
 
-        if isinstance(self.base_model, TaxonomyEncoder):
-            self.base_losses = {"base_loss": self.base_model._compute_tax_loss}
-            self.base_metrics = {
-                "base_loss": ("tax_entropy", self.base_model.tax_tracker)
-            }
-        else:
-            self.base_losses = {"base_loss": self.base_model._compute_unifrac_loss}
-            self.base_metrics = {
-                "base_loss": ["unifrac_mse", self.base_model.unifrac_tracker]
-            }
+        self.base_losses = {"base_loss": self.base_model._compute_encoder_loss}
+        self.base_metrics = {
+            "base_loss": ["encoder_loss", self.base_model.encoder_tracker]
+        }
 
         self.base_losses.update({"nuc_entropy": self.base_model._compute_nuc_loss})
         self.base_metrics.update(
@@ -140,14 +111,16 @@ class SequenceRegressor(tf.keras.Model):
             activation=self.intermediate_activation,
         )
         self.count_pos = tfm.nlp.layers.PositionEmbedding(
-            self.token_limit + 5,
-            initializer=tf.keras.initializers.RandomNormal(
-                mean=0, stddev=self.embedding_dim**0.5
-            ),
-            dtype=tf.float32,
+            self.token_limit + 5, dtype=tf.float32
         )
-        self.count_out = tf.keras.layers.Dense(1, dtype=tf.float32)
-        self.count_activation = tf.keras.layers.Activation("linear", dtype=tf.float32)
+        self.count_out = tf.keras.Sequential(
+            [
+                tf.keras.layers.Dense(
+                    self.embedding_dim, activation="gelu", dtype=tf.float32
+                ),
+                tf.keras.layers.Dense(1, dtype=tf.float32),
+            ]
+        )
         self.count_loss = tf.keras.losses.MeanSquaredError(reduction="none")
         self.count_tracker = tf.keras.metrics.Mean()
 
@@ -166,24 +139,15 @@ class SequenceRegressor(tf.keras.Model):
         else:
             self.metric_tracker = tf.keras.metrics.SparseCategoricalAccuracy()
             self.metric_string = "accuracy"
-        self.target_ff = tf.keras.layers.Dense(self.out_dim, dtype=tf.float32)
-        # tf.keras.Sequential(
-        #     [
-        #         tf.keras.layers.Dense(
-        #             self.embedding_dim,
-        #             use_bias=True,
-        #             dtype=tf.float32,
-        #             activation="gelu",
-        #         ),
-        #         tf.keras.layers.Dense(
-        #             self.out_dim,
-        #             use_bias=True,
-        #             dtype=tf.float32,
-        #         ),
-        #     ]
-        # )
+        self.target_ff = tf.keras.Sequential(
+            [
+                tf.keras.layers.Dense(
+                    self.embedding_dim, activation="gelu", dtype=tf.float32
+                ),
+                tf.keras.layers.Dense(self.out_dim, dtype=tf.float32),
+            ]
+        )
 
-        self.target_activation = tf.keras.layers.Activation("linear", dtype=tf.float32)
         self.loss_metrics = sorted(
             ["loss", "target_loss", "count_mse", self.metric_string]
         )
@@ -463,8 +427,8 @@ class SequenceRegressor(tf.keras.Model):
 
         return (
             target_embeddings,
-            self.count_activation(count_pred),
-            self.target_activation(target_out),
+            count_pred,
+            target_out,
             base_pred,
             nuc_embeddings,
         )
@@ -593,11 +557,10 @@ class SequenceRegressor(tf.keras.Model):
         config.update(
             {
                 "token_limit": self.token_limit,
-                "num_classes": self.num_classes,
+                "base_output_dim": self.base_output_dim,
                 "shift": self.shift,
                 "scale": self.scale,
                 "dropout_rate": self.dropout_rate,
-                "num_tax_levels": self.num_tax_levels,
                 "embedding_dim": self.embedding_dim,
                 "attention_heads": self.attention_heads,
                 "attention_layers": self.attention_layers,
@@ -616,7 +579,6 @@ class SequenceRegressor(tf.keras.Model):
                 "class_weights": self.class_weights,
                 "asv_dropout_rate": self.asv_dropout_rate,
                 "accumulation_steps": self.accumulation_steps,
-                "unifrac_metric": self.unifrac_metric,
             }
         )
         return config
