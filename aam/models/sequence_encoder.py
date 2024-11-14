@@ -126,9 +126,6 @@ class SequenceEncoder(tf.keras.Model):
             tax_pred = tax_pred[:, 1:, :]
         return tax_pred
 
-    def _compute_nuc_loss(self, nuc_tokens, nuc_pred):
-        return self.base_encoder._compute_nuc_loss(nuc_tokens, nuc_pred)
-
     def _compute_tax_loss(
         self,
         tax_tokens: tf.Tensor,
@@ -172,10 +169,11 @@ class SequenceEncoder(tf.keras.Model):
         outputs: tuple[tf.Tensor, tf.Tensor, tf.Tensor],
     ) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
         nuc_tokens, counts = model_inputs
-        embeddings, encoder_embeddings, nuc_pred = outputs
+        embeddings, encoder_embeddings = outputs
         encoder_loss = self._compute_encoder_loss(y_true, encoder_embeddings)
-        loss = encoder_loss
-        return [loss, encoder_loss, 0]
+        return encoder_loss / tf.cast(
+            self.gradient_accumulator.accum_steps, dtype=tf.float32
+        )
 
     def predict_step(
         self,
@@ -185,7 +183,7 @@ class SequenceEncoder(tf.keras.Model):
         ],
     ):
         inputs, y = data
-        embeddings, encoder_embeddings, nuc_pred = self(inputs, training=False)
+        embeddings, encoder_embeddings = self(inputs, training=False)
 
         return encoder_embeddings
 
@@ -203,14 +201,9 @@ class SequenceEncoder(tf.keras.Model):
         y_target, encoder_target = y
         with tf.GradientTape() as tape:
             outputs = self(inputs, training=True)
-            loss, encoder_loss, nuc_loss = self._compute_loss(
-                inputs, encoder_target, outputs
-            )
+            encoder_loss = self._compute_loss(inputs, encoder_target, outputs)
             scaled_losses = self.loss_scaler([encoder_loss])
-            loss = tf.reduce_sum(tf.stack(scaled_losses, axis=0))
-            loss = loss / tf.cast(
-                self.gradient_accumulator.accum_steps, dtype=tf.float32
-            )
+            loss = tf.reduce_mean(tf.stack(scaled_losses, axis=0))
 
         gradients = tape.gradient(
             loss,
@@ -237,13 +230,12 @@ class SequenceEncoder(tf.keras.Model):
         inputs, y = data
         y_target, encoder_target = y
         outputs = self(inputs, training=False)
-        loss, encoder_loss, nuc_loss = self._compute_loss(
-            inputs, encoder_target, outputs
-        )
+        encoder_loss = self._compute_loss(inputs, encoder_target, outputs)
+        scaled_losses = self.loss_scaler(encoder_loss)
+        loss = tf.reduce_mean(tf.stack(scaled_losses, axis=0))
 
         self.loss_tracker.update_state(loss)
         self.encoder_tracker.update_state(encoder_loss)
-        self.base_encoder.nuc_entropy.update_state(nuc_loss)
         return {
             "loss": self.loss_tracker.result(),
             "encoder_loss": self.encoder_tracker.result(),
@@ -264,7 +256,7 @@ class SequenceEncoder(tf.keras.Model):
         if training and self.asv_dropout_rate > 0:
             random_mask = apply_random_mask(count_mask, self.asv_dropout_rate)
 
-        sample_embeddings, nuc_embeddings = self.base_encoder(
+        sample_embeddings = self.base_encoder(
             tokens, random_mask=random_mask, training=training
         )
 
@@ -277,16 +269,9 @@ class SequenceEncoder(tf.keras.Model):
         )
 
         encoder_pred = self.extract_encoder_pred(encoder_gated_embeddings, count_mask)
-        # if self.add_token:
-        #     encoder_pred = encoder_gated_embeddings[:, 0, :]
-        # else:
-        #     mask = tf.cast(count_mask, dtype=tf.float32)
-        #     encoder_pred = tf.reduce_sum(encoder_gated_embeddings * mask, axis=1)
-        #     encoder_pred /= tf.reduce_sum(mask, axis=1)
-
         encoder_pred = self.encoder_ff(encoder_pred)
         encoder_embeddings = sample_embeddings + encoder_gated_embeddings
-        return [encoder_embeddings, encoder_pred, nuc_embeddings]
+        return [encoder_embeddings, encoder_pred]
 
     def base_embeddings(
         self, inputs: tuple[tf.Tensor, tf.Tensor]

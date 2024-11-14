@@ -7,7 +7,7 @@ from aam.layers import (
     ASVEncoder,
 )
 from aam.models.transformers import TransformerEncoder
-from aam.utils import float_mask, masked_loss
+from aam.utils import float_mask
 
 
 @tf.keras.saving.register_keras_serializable(package="BaseSequenceEncoder")
@@ -46,11 +46,6 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
         self.vocab_size = vocab_size
         self.add_token = add_token
 
-        self.nuc_loss = tf.keras.losses.SparseCategoricalCrossentropy(
-            ignore_class=0, from_logits=False, reduction="none"
-        )
-        self.nuc_entropy = tf.keras.metrics.Mean()
-
         # layers used in model
         if self.is_16S:
             self.asv_encoder = ASVEncoder(
@@ -78,18 +73,7 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
                 activation=self.intermediate_activation,
                 dropout_rate=self.dropout_rate,
             )
-        self.asv_norm = tf.keras.layers.LayerNormalization(epsilon=1e-12)
-        self.sample_norm = tf.keras.layers.LayerNormalization(epsilon=1e-12)
 
-        self.nuc_logits = tf.keras.layers.Dense(
-            self.vocab_size,
-            use_bias=False,
-            name="nuc_logits",
-            dtype=tf.float32,
-            activation="softmax",
-        )
-
-        self.asv_scale = tf.keras.layers.Dense(self.embedding_dim, use_bias=False)
         self.asv_pos = tfm.nlp.layers.PositionEmbedding(
             self.token_limit + 5,
             initializer=tf.keras.initializers.RandomNormal(
@@ -113,12 +97,6 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
                 trainable=True,
             )
 
-        self.linear_activation = tf.keras.layers.Activation("linear", dtype=tf.float32)
-
-    @masked_loss(sparse_cat=True)
-    def _compute_nuc_loss(self, tokens: tf.Tensor, pred_tokens: tf.Tensor) -> tf.Tensor:
-        return self.nuc_loss(tokens, pred_tokens)
-
     def _add_sample_token(self, tensor: tf.Tensor) -> tf.Tensor:
         # add <SAMPLE> token empbedding
         asv_shape = tf.shape(tensor)
@@ -132,20 +110,17 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
         return embeddings
 
     def _split_asvs(self, embeddings):
-        nuc_embeddings = embeddings
         asv_embeddings = embeddings
         if self.is_16S:
             if self.add_token:
-                nuc_embeddings = embeddings[:, :, :-1, :]
                 asv_embeddings = asv_embeddings[:, :, 0, :]
             else:
                 asv_embeddings = tf.reduce_mean(asv_embeddings, axis=2)
         else:
             asv_embeddings = asv_embeddings[:, :, 0, :]
 
-        nucleotides = nuc_embeddings  # self.nuc_logits(nuc_embeddings)
         asv_embeddings = asv_embeddings + self.asv_pos(asv_embeddings)
-        return asv_embeddings, nucleotides
+        return asv_embeddings
 
     def call(
         self, inputs: tf.Tensor, random_mask: bool = None, training: bool = False
@@ -163,14 +138,14 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
             embeddings = self.asv_encoder(asv_input, training=training)
         else:
             embeddings = self.asv_embeddings(asv_input)
-        asv_embeddings, nucleotides = self._split_asvs(embeddings)
+        asv_embeddings = self._split_asvs(embeddings)
 
         if self.add_token:
             asv_mask = tf.pad(asv_mask, [[0, 0], [1, 0], [0, 0]], constant_values=1)
             sample_embeddings = self._add_sample_token(asv_embeddings)
         else:
             sample_embeddings = asv_embeddings
-        return sample_embeddings, nucleotides
+        return sample_embeddings
 
     # def base_embeddings(
     #     self, inputs: tf.Tensor, training: bool = False
@@ -231,13 +206,11 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
             sample_embeddings = self._add_sample_token(asv_embeddings)
         else:
             sample_embeddings = asv_embeddings
-        sample_embeddings = self.asv_norm(sample_embeddings)
 
         sample_gated_embeddings = self.sample_encoder(
             sample_embeddings, mask=asv_mask, training=False
         )
         sample_embeddings = sample_embeddings + sample_gated_embeddings
-        sample_embeddings = self.sample_norm(sample_embeddings)
         return sample_embeddings
 
     def get_config(self):
