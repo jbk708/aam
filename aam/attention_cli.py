@@ -250,14 +250,6 @@ def fit_unifrac_regressor(
         tf.keras.callbacks.EarlyStopping(
             "val_loss", patience=p_patience, start_from_epoch=p_early_stop_warmup
         ),
-        tf.keras.callbacks.ReduceLROnPlateau(
-            monitor="val_loss",
-            factor=0.1,  # Reduce LR by 90%
-            patience=5,  # Wait for 5 epochs without improvement
-            min_lr=1e-6,  # Don't go below this learning rate
-            mode="min",  # Look for decreasing val_loss
-            verbose=1,  # Print updates
-        ),
         model_saver,
     ]
     model.fit(
@@ -426,14 +418,6 @@ def fit_taxonomy_regressor(
         tf.keras.callbacks.TensorBoard(log_dir=log_dir),
         tf.keras.callbacks.EarlyStopping(
             "val_loss", patience=p_patience, start_from_epoch=p_early_stop_warmup
-        ),
-        tf.keras.callbacks.ReduceLROnPlateau(
-            monitor="val_loss",
-            factor=0.1,  # Reduce LR by 90%
-            patience=5,  # Wait for 5 epochs without improvement
-            min_lr=1e-6,  # Don't go below this learning rate
-            mode="min",  # Look for decreasing val_loss
-            verbose=1,  # Print updates
         ),
         model_saver,
     ]

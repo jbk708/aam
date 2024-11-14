@@ -209,6 +209,10 @@ class SequenceEncoder(tf.keras.Model):
 
         mask = float_mask(y_true) > 0
         y_true = tf.one_hot(y_true, depth=out_dim)
+
+        # smooth labels
+        y_true = y_true * 0.9 + 0.1
+
         y_true = y_true[mask]
         y_pred = y_pred[mask]
 

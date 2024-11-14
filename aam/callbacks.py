@@ -121,7 +121,6 @@ class SaveModel(tf.keras.callbacks.Callback):
         self.monitor = monitor
 
     def on_epoch_end(self, epoch, logs=None):
-        self.model.loss_scaler.accumulate_loss()
         iterations = float(tf.keras.backend.get_value(self.model.optimizer.iterations))
         logs["iteration"] = iterations
 
