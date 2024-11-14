@@ -208,6 +208,9 @@ class SequenceEncoder(tf.keras.Model):
             )
             scaled_losses = self.loss_scaler([encoder_loss])
             loss = tf.reduce_sum(tf.stack(scaled_losses, axis=0))
+            loss = loss / tf.cast(
+                self.gradient_accumulator.accum_steps, dtype=tf.float32
+            )
 
         gradients = tape.gradient(
             loss,

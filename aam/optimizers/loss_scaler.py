@@ -45,11 +45,14 @@ class LossScaler:
         ]
 
     def accumulate_loss(self):
-        def _accumlate_loss():
-            for i in range(len(self.scaled_loss)):
-                self.scaled_loss[i].assign(self.moving_avg[i], read_value=False)
-
         tf.cond(
-            tf.equal(self.accum_loss, 1), true_fn=_accumlate_loss, false_fn=lambda: None
+            tf.equal(self.accum_loss, 1),
+            true_fn=self._accumlate_loss,
+            false_fn=lambda: None,
         )
         self.accum_loss.assign(0)
+
+    def _accumlate_loss(self):
+        tf.print("???")
+        for i in range(len(self.scaled_loss)):
+            self.scaled_loss[i].assign(self.moving_avg[i], read_value=False)
