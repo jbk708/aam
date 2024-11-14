@@ -170,14 +170,8 @@ def fit_unifrac_regressor(
             accumulation_steps=p_accumulation_steps,
         )
 
-        optimizer = tf.keras.optimizers.AdamW(
-            cos_decay_with_warmup(p_lr, p_warmup_steps),
-            beta_2=0.98,
-            weight_decay=p_weight_decay,
-            # use_ema=True,
-            # ema_momentum=0.999,
-            # ema_overwrite_frequency=500,
-            # global_clipnorm=1.0,
+        optimizer = tf.keras.optimizers.Adam(
+            cos_decay_with_warmup(p_lr, p_warmup_steps), beta_2=0.98
         )
         token_shape = tf.TensorShape([None, None, 150])
         count_shape = tf.TensorShape([None, None, 1])
@@ -244,11 +238,13 @@ def fit_unifrac_regressor(
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
     model_save_path = os.path.join(output_dir, "model.keras")
-    model_saver = SaveModel(model_save_path, 1)
+    model_saver = SaveModel(model_save_path, 1, monitor="val_encoder_loss")
     core_callbacks = [
         tf.keras.callbacks.TensorBoard(log_dir=log_dir),
         tf.keras.callbacks.EarlyStopping(
-            "val_loss", patience=p_patience, start_from_epoch=p_early_stop_warmup
+            "val_encoder_loss",
+            patience=p_patience,
+            start_from_epoch=p_early_stop_warmup,
         ),
         model_saver,
     ]
@@ -413,7 +409,7 @@ def fit_taxonomy_regressor(
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
     model_save_path = os.path.join(output_dir, "model.keras")
-    model_saver = SaveModel(model_save_path, 1)
+    model_saver = SaveModel(model_save_path, 1, monitor="val_encoder_loss")
     core_callbacks = [
         tf.keras.callbacks.TensorBoard(log_dir=log_dir),
         tf.keras.callbacks.EarlyStopping(
