@@ -5,7 +5,7 @@ class LossScaler:
     def __init__(self, gradient_accum_steps):
         self.gradient_accum_steps = tf.cast(gradient_accum_steps, dtype=tf.float32)
         self.moving_avg = None
-        self.decay = 0.99
+        self.decay = 0.999
         self.accum_loss = tf.Variable(
             initial_value=1,
             trainable=False,
@@ -14,7 +14,6 @@ class LossScaler:
         )
 
     def __call__(self, losses):
-        losses = [losses[i] / self.gradient_accum_steps for i in range(len(losses))]
         if self.moving_avg is None:
             self.scaled_loss = [
                 tf.Variable(
@@ -42,16 +41,18 @@ class LossScaler:
             )
 
         return [
-            tf.math.divide_no_nan(losses[i], self.scaled_loss[i])
-            for i in range(len(self.scaled_loss))
+            tf.math.divide_no_nan(
+                losses[i], self.moving_avg[i] * self.gradient_accum_steps
+            )
+            for i in range(len(self.moving_avg))
         ]
 
     def accumulate_loss(self):
-        tf.cond(
-            tf.equal(self.accum_loss, 1),
-            true_fn=self._accumlate_loss,
-            false_fn=lambda: None,
-        )
+        # tf.cond(
+        #     tf.equal(self.accum_loss, 1),
+        #     true_fn=self._accumlate_loss,
+        #     false_fn=lambda: None,
+        # )
         self.accum_loss.assign(0)
 
     def _accumlate_loss(self):

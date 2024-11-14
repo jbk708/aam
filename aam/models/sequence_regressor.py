@@ -405,18 +405,18 @@ class SequenceRegressor(tf.keras.Model):
         attention_mask: Optional[tf.Tensor] = None,
         training: bool = False,
     ) -> tf.Tensor:
-        # target_embeddings = self.target_encoder(
-        #     tensor, mask=attention_mask, training=training
-        # )
+        target_embeddings = self.target_encoder(
+            tensor, mask=attention_mask, training=training
+        )
         if self.add_token:
-            target_out = tensor[:, 0, :]
+            target_out = target_embeddings[:, 0, :]
         else:
             mask = tf.cast(attention_mask, dtype=tf.float32)
-            target_out = tf.reduce_sum(tensor * mask, axis=1)
+            target_out = tf.reduce_sum(target_embeddings * mask, axis=1)
             target_out /= tf.reduce_sum(mask, axis=1)
 
         target_out = self.target_ff(target_out)
-        return tensor, target_out
+        return target_embeddings, target_out
 
     def call(
         self, inputs: tuple[tf.Tensor, tf.Tensor], training: bool = False
