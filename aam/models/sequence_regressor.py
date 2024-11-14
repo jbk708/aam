@@ -68,7 +68,11 @@ class SequenceRegressor(tf.keras.Model):
         self.loss_tracker = tf.keras.metrics.Mean()
 
         # layers used in model
+        self.combined_base = False
         if isinstance(base_model, str):
+            if base_model == "combined":
+                self.combined_base = True
+
             self.base_model = SequenceEncoder(
                 output_dim=self.base_output_dim,
                 token_limit=self.token_limit,
@@ -90,9 +94,14 @@ class SequenceRegressor(tf.keras.Model):
             self.base_model = base_model
 
         self.base_losses = {"base_loss": self.base_model._compute_encoder_loss}
-        self.base_metrics = {
-            "base_loss": ["encoder_loss", self.base_model.encoder_tracker]
-        }
+        if not self.combined_base:
+            self.base_metrics = {
+                "base_loss": ["encoder_loss", self.base_model.encoder_tracker]
+            }
+        else:
+            self.uni_tracker = tf.keras.metrics.Mean()
+            # self.faith_tracker = tf.keras.metrics.Mean()
+            self.tax_tracker = tf.keras.metrics.Mean()
 
         if self.freeze_base:
             print("Freezing base model...")
@@ -196,9 +205,13 @@ class SequenceRegressor(tf.keras.Model):
 
         base_loss = 0
         if not self.freeze_base:
-            base_loss = (
-                self.base_losses["base_loss"](base_target, base_pred) * self.penalty
-            )
+            if self.combined_base:
+                uni_loss, faith_loss, tax_loss = self.base_losses["base_loss"](
+                    base_target, base_pred
+                )
+                return (target_loss, count_loss, uni_loss, faith_loss, tax_loss)
+            else:
+                base_loss = self.base_losses["base_loss"](base_target, base_pred)
 
         return (target_loss, count_loss, base_loss)
 
@@ -254,10 +267,18 @@ class SequenceRegressor(tf.keras.Model):
 
         with tf.GradientTape() as tape:
             outputs = self(inputs, training=True)
-            target_loss, count_mse, base_loss = self._compute_loss(
-                inputs, y, outputs, train_step=True
-            )
-            scaled_losses = self.loss_scaler([target_loss, count_mse, base_loss])
+            if self.combined_base:
+                target_loss, count_mse, uni_loss, faith_loss, tax_loss = (
+                    self._compute_loss(inputs, y, outputs, train_step=True)
+                )
+                scaled_losses = self.loss_scaler(
+                    [target_loss, count_mse, uni_loss, tax_loss]
+                )
+            else:
+                target_loss, count_mse, base_loss = self._compute_loss(
+                    inputs, y, outputs, train_step=True
+                )
+                scaled_losses = self.loss_scaler([target_loss, count_mse, base_loss])
             loss = tf.reduce_mean(tf.stack(scaled_losses, axis=0))
 
         gradients = tape.gradient(
@@ -269,17 +290,34 @@ class SequenceRegressor(tf.keras.Model):
         self.loss_tracker.update_state(loss)
         self.target_tracker.update_state(target_loss)
         self.count_tracker.update_state(count_mse)
-        base_loss_key, base_loss_metric = self.base_metrics["base_loss"]
-        base_loss_metric.update_state(base_loss)
+
         self._compute_metric(y, outputs)
-        return {
-            "loss": self.loss_tracker.result(),
-            "target_loss": self.target_tracker.result(),
-            "count_mse": self.count_tracker.result(),
-            base_loss_key: base_loss_metric.result(),
-            self.metric_string: self.metric_tracker.result(),
-            "learning_rate": self.optimizer.learning_rate,
-        }
+        if self.combined_base:
+            self.uni_tracker.update_state(uni_loss)
+            # self.faith_tracker.update_state(faith_loss)
+            self.tax_tracker.update_state(tax_loss)
+            return {
+                "loss": self.loss_tracker.result(),
+                "target_loss": self.target_tracker.result(),
+                "count_mse": self.count_tracker.result(),
+                # base_loss_key: base_loss_metric.result(),
+                "uni_loss": self.uni_tracker.result(),
+                # "faith_loss": self.faith_tracker.result(),
+                "tax_loss": self.tax_tracker.result(),
+                self.metric_string: self.metric_tracker.result(),
+                "learning_rate": self.optimizer.learning_rate,
+            }
+        else:
+            base_loss_key, base_loss_metric = self.base_metrics["base_loss"]
+            base_loss_metric.update_state(base_loss)
+            return {
+                "loss": self.loss_tracker.result(),
+                "target_loss": self.target_tracker.result(),
+                "count_mse": self.count_tracker.result(),
+                base_loss_key: base_loss_metric.result(),
+                self.metric_string: self.metric_tracker.result(),
+                "learning_rate": self.optimizer.learning_rate,
+            }
 
     def test_step(
         self,
@@ -290,27 +328,52 @@ class SequenceRegressor(tf.keras.Model):
     ):
         inputs, y = data
 
-        outputs = self(inputs, training=False)
-        target_loss, count_mse, base_loss = self._compute_loss(
-            inputs, y, outputs, train_step=False
-        )
-        scaled_losses = self.loss_scaler([target_loss, count_mse, base_loss])
+        outputs = self(inputs, training=True)
+        if self.combined_base:
+            target_loss, count_mse, uni_loss, faith_loss, tax_loss = self._compute_loss(
+                inputs, y, outputs, train_step=True
+            )
+            scaled_losses = self.loss_scaler(
+                [target_loss, count_mse, uni_loss, tax_loss]
+            )
+        else:
+            target_loss, count_mse, base_loss = self._compute_loss(
+                inputs, y, outputs, train_step=True
+            )
+            scaled_losses = self.loss_scaler([target_loss, count_mse, base_loss])
         loss = tf.reduce_mean(tf.stack(scaled_losses, axis=0))
 
         self.loss_tracker.update_state(loss)
         self.target_tracker.update_state(target_loss)
         self.count_tracker.update_state(count_mse)
-        base_loss_key, base_loss_metric = self.base_metrics["base_loss"]
-        base_loss_metric.update_state(base_loss)
+
         self._compute_metric(y, outputs)
-        return {
-            "loss": self.loss_tracker.result(),
-            "target_loss": self.target_tracker.result(),
-            "count_mse": self.count_tracker.result(),
-            base_loss_key: base_loss_metric.result(),
-            self.metric_string: self.metric_tracker.result(),
-            "learning_rate": self.optimizer.learning_rate,
-        }
+        if self.combined_base:
+            self.uni_tracker.update_state(uni_loss)
+            # self.faith_tracker.update_state(faith_loss)
+            self.tax_tracker.update_state(tax_loss)
+            return {
+                "loss": self.loss_tracker.result(),
+                "target_loss": self.target_tracker.result(),
+                "count_mse": self.count_tracker.result(),
+                # base_loss_key: base_loss_metric.result(),
+                "uni_loss": self.uni_tracker.result(),
+                # "faith_loss": self.faith_tracker.result(),
+                "tax_loss": self.tax_tracker.result(),
+                self.metric_string: self.metric_tracker.result(),
+                "learning_rate": self.optimizer.learning_rate,
+            }
+        else:
+            base_loss_key, base_loss_metric = self.base_metrics["base_loss"]
+            base_loss_metric.update_state(base_loss)
+            return {
+                "loss": self.loss_tracker.result(),
+                "target_loss": self.target_tracker.result(),
+                "count_mse": self.count_tracker.result(),
+                base_loss_key: base_loss_metric.result(),
+                self.metric_string: self.metric_tracker.result(),
+                "learning_rate": self.optimizer.learning_rate,
+            }
 
     def _relative_abundance(self, counts: tf.Tensor) -> tf.Tensor:
         counts = tf.cast(counts, dtype=tf.float32)
@@ -342,18 +405,18 @@ class SequenceRegressor(tf.keras.Model):
         attention_mask: Optional[tf.Tensor] = None,
         training: bool = False,
     ) -> tf.Tensor:
-        target_embeddings = self.target_encoder(
-            tensor, mask=attention_mask, training=training
-        )
+        # target_embeddings = self.target_encoder(
+        #     tensor, mask=attention_mask, training=training
+        # )
         if self.add_token:
-            target_out = target_embeddings[:, 0, :]
+            target_out = tensor[:, 0, :]
         else:
             mask = tf.cast(attention_mask, dtype=tf.float32)
-            target_out = tf.reduce_sum(target_embeddings * mask, axis=1)
+            target_out = tf.reduce_sum(tensor * mask, axis=1)
             target_out /= tf.reduce_sum(mask, axis=1)
 
         target_out = self.target_ff(target_out)
-        return target_embeddings, target_out
+        return tensor, target_out
 
     def call(
         self, inputs: tuple[tf.Tensor, tf.Tensor], training: bool = False

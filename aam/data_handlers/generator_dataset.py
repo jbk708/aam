@@ -364,13 +364,24 @@ class GeneratorDataset:
                             output = y_output.astype(np.float32)
 
                         if encoder_out is not None:
-                            if output is None:
-                                output = encoder_out.astype(self.encoder_dtype)
+                            if isinstance(encoder_out, tuple):
+                                encoder_out = tuple(
+                                    [
+                                        o.astype(t)
+                                        for o, t in zip(encoder_out, self.encoder_dtype)
+                                    ]
+                                )
                             else:
+                                encoder_out = encoder_out.astype(self.encoder_dtype)
+
+                            if output is not None:
                                 output = (
                                     output,
-                                    encoder_out.astype(self.encoder_dtype),
+                                    encoder_out,
                                 )
+                            else:
+                                output = encoder_out
+
                         if include_seq_id:
                             output = (
                                 *output,

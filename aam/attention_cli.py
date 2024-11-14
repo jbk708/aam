@@ -250,6 +250,14 @@ def fit_unifrac_regressor(
         tf.keras.callbacks.EarlyStopping(
             "val_loss", patience=p_patience, start_from_epoch=p_early_stop_warmup
         ),
+        tf.keras.callbacks.ReduceLROnPlateau(
+            monitor="val_loss",
+            factor=0.1,  # Reduce LR by 90%
+            patience=5,  # Wait for 5 epochs without improvement
+            min_lr=1e-6,  # Don't go below this learning rate
+            mode="min",  # Look for decreasing val_loss
+            verbose=1,  # Print updates
+        ),
         model_saver,
     ]
     model.fit(
@@ -419,6 +427,14 @@ def fit_taxonomy_regressor(
         tf.keras.callbacks.EarlyStopping(
             "val_loss", patience=p_patience, start_from_epoch=p_early_stop_warmup
         ),
+        tf.keras.callbacks.ReduceLROnPlateau(
+            monitor="val_loss",
+            factor=0.1,  # Reduce LR by 90%
+            patience=5,  # Wait for 5 epochs without improvement
+            min_lr=1e-6,  # Don't go below this learning rate
+            mode="min",  # Look for decreasing val_loss
+            verbose=1,  # Print updates
+        ),
         model_saver,
     ]
 
@@ -583,7 +599,7 @@ def fit_sample_regressor(
     p_unifrac_metric: str,
 ):
     from aam.callbacks import ConfusionMatrx, MeanAbsoluteError
-    from aam.data_handlers import TaxonomyGenerator, UniFracGenerator
+    from aam.data_handlers import CombinedGenerator, TaxonomyGenerator, UniFracGenerator
     from aam.models import SequenceRegressor
 
     # p_is_16S = False
@@ -656,7 +672,26 @@ def fit_sample_regressor(
             **common_kwargs,
         )
 
-    if p_taxonomy is not None and p_tree is None:
+    def combine_gen(table, df, shuffle, shift, scale, epochs, gen_new_tables):
+        return CombinedGenerator(
+            table=table,
+            metadata=df,
+            tree_path=p_tree,
+            taxonomy=p_taxonomy,
+            tax_level=p_taxonomy_level,
+            shuffle=shuffle,
+            shift=shift,
+            scale=scale,
+            epochs=epochs,
+            gen_new_tables=gen_new_tables,
+            max_bp=p_max_bp,
+            **common_kwargs,
+        )
+
+    if p_unifrac_metric == "combined":
+        base_model = "combined"
+        generator = combine_gen
+    elif p_taxonomy is not None and p_tree is None:
         base_model = "taxonomy"
         generator = tax_gen
     elif p_taxonomy is None and p_tree is not None:
@@ -731,7 +766,9 @@ def fit_sample_regressor(
                 f.write(id + "\n")
         vocab_size = 6 if not p_is_categorical else 2000
 
-        if base_model == "unifrac":
+        if base_model == "combined":
+            base_output_dim = [p_embedding_dim, 1, train_data["num_tokens"]]
+        elif base_model == "unifrac":
             base_output_dim = p_embedding_dim
         elif base_model == "faith_pd":
             base_output_dim = 1
