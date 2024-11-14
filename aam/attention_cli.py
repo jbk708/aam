@@ -667,11 +667,11 @@ def fit_sample_regressor(
 
     if i_base_model_path is not None:
         base_model = tf.keras.models.load_model(i_base_model_path, compile=False)
-        # base_type = base_model.encoder_type
-        # if base_type == "taxonomy":
-        generator = tax_gen
-        # else:
-        #     generator = unifrac_gen
+        base_type = base_model.encoder_type
+        if base_type == "taxonomy":
+            generator = tax_gen
+        else:
+            generator = unifrac_gen
 
         if not p_no_freeze_base_weights:
             print("base_model's weights are set to trainable.")

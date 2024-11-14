@@ -21,7 +21,7 @@ class TransformerLearningRateSchedule(
 
         if self.decay_method == "cosine":
             # Cosine decay after warmup
-            cosine_decay = tf.keras.optimizers.schedules.CosineDecayRestarts(
+            cosine_decay = tf.keras.optimizers.schedules.CosineDecay(
                 initial_learning_rate=self.initial_lr,
                 first_decay_steps=self.warmup_steps,
             )
@@ -58,8 +58,11 @@ def cos_decay_with_warmup(lr, warmup_steps=5000):
     # lr_schedule = tf.keras.optimizers.schedules.CosineDecayRestarts(
     #     initial_learning_rate=lr, first_decay_steps=warmup_steps
     # )
-    lr_schedule = TransformerLearningRateSchedule(
-        initial_lr=lr, warmup_steps=warmup_steps, decay_method="cosine"
+    lr_schedule = tf.keras.optimizers.schedules.CosineDecay(
+        initial_learning_rate=0.0,
+        decay_steps=4000,
+        warmup_target=lr,
+        warmup_steps=warmup_steps,
     )
     return lr_schedule
 
@@ -69,19 +72,23 @@ if __name__ == "__main__":
     import numpy as np
     import tensorflow as tf
 
-    # Learning rate schedule: Warmup followed by cosine decay
-    lr_schedule = cos_decay_with_warmup()
+    cosine_decay = tf.keras.optimizers.schedules.CosineDecay(
+        initial_learning_rate=0.0,
+        decay_steps=4000,
+        warmup_target=0.0003,
+        warmup_steps=100,
+    )
 
-    # Compute learning rates for each step
-    steps = np.arange(10000)
-    learning_rates = [lr_schedule(step).numpy() for step in steps]
+    # Generate learning rates for a range of steps
+    steps = np.arange(4000, dtype=np.float32)
+    learning_rates = [cosine_decay(step).numpy() for step in steps]
 
     # Plot the learning rate schedule
     plt.figure(figsize=(10, 6))
     plt.plot(steps, learning_rates)
-    plt.title("Learning Rate Schedule: Warmup + Cosine Decay")
-    plt.xlabel("Training Steps")
+    plt.xlabel("Training Step")
     plt.ylabel("Learning Rate")
+    plt.title("Transformer Learning Rate Schedule")
+    plt.legend()
     plt.grid(True)
-    plt.savefig("test.png")
-    plt.close()
+    plt.show()
