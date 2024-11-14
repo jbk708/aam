@@ -5,7 +5,7 @@ class LossScaler:
     def __init__(self, gradient_accum_steps):
         self.gradient_accum_steps = tf.cast(gradient_accum_steps, dtype=tf.float32)
         self.moving_avg = None
-        self.decay = 0.99
+        self.decay = 0.999
         self.accum_loss = tf.Variable(
             initial_value=1,
             trainable=False,
