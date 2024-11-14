@@ -136,7 +136,7 @@ def fit_unifrac_regressor(
     from biom import load_table
 
     from aam.data_handlers import UniFracGenerator
-    from aam.models import UniFracEncoder
+    from aam.models import SequenceEncoder
     from aam.models.utils import cos_decay_with_warmup
 
     if not os.path.exists(output_dir):
@@ -146,11 +146,17 @@ def fit_unifrac_regressor(
     if not os.path.exists(figure_path):
         os.makedirs(figure_path)
 
+    output_dim = p_embedding_dim
+    if p_unifrac_metric == "faith_pd":
+        output_dim = 1
+
     if i_model is not None:
         model = tf.keras.models.load_model(i_model)
     else:
-        model: tf.keras.Model = UniFracEncoder(
+        model: tf.keras.Model = SequenceEncoder(
+            output_dim,
             p_asv_limit,
+            p_unifrac_metric,
             dropout_rate=p_dropout,
             embedding_dim=p_embedding_dim,
             attention_heads=p_attention_heads,
@@ -158,12 +164,10 @@ def fit_unifrac_regressor(
             intermediate_size=p_intermediate_size,
             intermediate_activation=p_intermediate_activation,
             max_bp=p_max_bp,
-            include_alpha=False,
             is_16S=True,
             add_token=p_add_token,
             asv_dropout_rate=p_asv_dropout,
             accumulation_steps=p_accumulation_steps,
-            unifrac_metric=p_unifrac_metric,
         )
 
         optimizer = tf.keras.optimizers.AdamW(
@@ -343,7 +347,7 @@ def fit_taxonomy_regressor(
     from biom import load_table
 
     from aam.data_handlers import TaxonomyGenerator
-    from aam.models import TaxonomyEncoder
+    from aam.models import SequenceEncoder
     from aam.models.utils import cos_decay_with_warmup
 
     if not os.path.exists(output_dir):
@@ -421,9 +425,10 @@ def fit_taxonomy_regressor(
     if i_model is not None:
         model: tf.keras.Model = tf.keras.models.load_model(i_model)
     else:
-        model: tf.keras.Model = TaxonomyEncoder(
+        model: tf.keras.Model = SequenceEncoder(
             train_gen.num_tokens,
             p_asv_limit,
+            "taxonomy",
             dropout_rate=p_dropout,
             embedding_dim=p_embedding_dim,
             attention_heads=p_attention_heads,
@@ -431,13 +436,11 @@ def fit_taxonomy_regressor(
             intermediate_size=p_intermediate_size,
             intermediate_activation=p_intermediate_activation,
             max_bp=p_max_bp,
-            include_alpha=False,
             is_16S=True,
             add_token=p_add_token,
             asv_dropout_rate=p_asv_dropout,
             accumulation_steps=p_accumulation_steps,
         )
-
         optimizer = tf.keras.optimizers.AdamW(
             cos_decay_with_warmup(p_lr, p_warmup_steps),
             beta_2=0.98,
