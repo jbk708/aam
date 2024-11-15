@@ -278,6 +278,7 @@ class SequenceEncoder(tf.keras.Model):
         with tf.GradientTape() as tape:
             outputs = self(inputs, training=True)
             loss = self._compute_loss(inputs, encoder_target, outputs)
+            loss = tf.math.divide_no_nan(loss, self.accumulation_steps)
 
         gradients = tape.gradient(
             loss,
