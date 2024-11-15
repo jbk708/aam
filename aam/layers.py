@@ -39,9 +39,11 @@ class ASVEncoder(tf.keras.layers.Layer):
         intermediate_ff,
         intermediate_activation="gelu",
         add_token=True,
+        embedding_dim=128,
         **kwargs,
     ):
         super(ASVEncoder, self).__init__(**kwargs)
+        self.embedding_dim = embedding_dim
         self.max_bp = max_bp
         self.attention_heads = attention_heads
         self.attention_layers = attention_layers
@@ -60,7 +62,7 @@ class ASVEncoder(tf.keras.layers.Layer):
     def build(self, input_shape):
         self.emb_layer = tf.keras.layers.Embedding(
             self.num_tokens,
-            128,
+            self.embedding_dim,
             input_length=self.max_bp,
             embeddings_initializer=tf.keras.initializers.RandomNormal(
                 mean=0, stddev=128**0.5
@@ -107,6 +109,7 @@ class ASVEncoder(tf.keras.layers.Layer):
                 "intermediate_ff": self.intermediate_ff,
                 "intermediate_activation": self.intermediate_activation,
                 "add_token": self.add_token,
+                "embedding_dim": self.embedding_dim,
             }
         )
         return config

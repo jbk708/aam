@@ -56,6 +56,7 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
                 nuc_intermediate_size,
                 intermediate_activation=self.intermediate_activation,
                 add_token=self.add_token,
+                embedding_dim=self.embedding_dim,
                 name="asv_encoder",
             )
         else:
