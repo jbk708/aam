@@ -278,10 +278,9 @@ class SequenceEncoder(tf.keras.Model):
         with tf.GradientTape() as tape:
             outputs = self(inputs, training=True)
             encoder_loss = self._compute_loss(inputs, encoder_target, outputs)
-            if self.encoder_type == "combined":
-                scaled_losses = self.loss_scaler(encoder_loss)
-            else:
-                scaled_losses = self.loss_scaler([encoder_loss])
+            if self.encoder_type != "combined":
+                encoder_loss = [encoder_loss]
+            scaled_losses = self.loss_scaler(encoder_loss)
             loss = tf.reduce_mean(tf.stack(scaled_losses, axis=0))
 
         gradients = tape.gradient(
@@ -291,7 +290,7 @@ class SequenceEncoder(tf.keras.Model):
         )
         self.gradient_accumulator.apply_gradients(gradients)
 
-        self.loss_tracker.update_state(loss)
+        self.loss_tracker.update_state(tf.reduce_sum(tf.stack(encoder_loss)))
         self.encoder_tracker.update_state(encoder_loss)
         return {
             "loss": self.loss_tracker.result(),
@@ -310,10 +309,10 @@ class SequenceEncoder(tf.keras.Model):
         y_target, encoder_target = y
         outputs = self(inputs, training=False)
         encoder_loss = self._compute_loss(inputs, encoder_target, outputs)
-        scaled_losses = self.loss_scaler([encoder_loss])
-        loss = tf.reduce_mean(tf.stack(scaled_losses, axis=0))
+        if self.encoder_type != "combined":
+            encoder_loss = [encoder_loss]
 
-        self.loss_tracker.update_state(loss)
+        self.loss_tracker.update_state(encoder_loss)
         self.encoder_tracker.update_state(encoder_loss)
         return {
             "loss": self.loss_tracker.result(),

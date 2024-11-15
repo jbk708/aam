@@ -526,7 +526,8 @@ def fit_taxonomy_regressor(
 @click.option("--p-tree", default=None, type=click.Path(exists=True))
 @click.option("--p-gen-new-table", default=True, show_default=True, type=bool)
 @click.option("--p-lr", default=1e-4, show_default=True, type=float)
-@click.option("--p-warmup-steps", default=10000, show_default=True, type=int)
+@click.option("--p-warmup-steps", default=4000, show_default=True, type=int)
+@click.option("--p-decay-steps", default=1000, show_default=True, type=int)
 @click.option("--p-max-bp", default=150, show_default=True, type=int)
 @click.option("--output-dir", required=True, type=click.Path(exists=False))
 @click.option("--p-output-dim", default=1, required=False, type=int)
@@ -565,8 +566,9 @@ def fit_sample_regressor(
     p_taxonomy_level: int,
     p_tree: str,
     p_gen_new_table: bool,
-    p_lr,
-    p_warmup_steps,
+    p_lr: int,
+    p_warmup_steps: int,
+    p_decay_steps: int,
     p_max_bp: int,
     output_dir: str,
     p_output_dim: int,
@@ -830,6 +832,7 @@ def fit_sample_regressor(
             callbacks=[*callbacks],
             lr=p_lr,
             warmup_steps=p_warmup_steps,
+            decay_steps=p_decay_steps,
             weight_decay=p_weight_decay,
         )
         models.append(model_cv)

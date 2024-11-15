@@ -39,13 +39,14 @@ class CVModel:
         callbacks: list[tf.keras.callbacks.Callback] = [],
         lr: float = 1e-4,
         warmup_steps: int = 10000,
+        decay_steps: int = 1000,
         weight_decay: float = 0.004,
     ):
         if not os.path.exists(self.log_dir):
             os.makedirs(self.log_dir)
         print(f"weight decay: {weight_decay}")
         optimizer = tf.keras.optimizers.Adam(
-            cos_decay_with_warmup(lr, warmup_steps),
+            cos_decay_with_warmup(lr, warmup_steps, decay_steps),
             beta_2=0.98,
             # weight_decay=weight_decay,
             # global_clipnorm=1.0,
