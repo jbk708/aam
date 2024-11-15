@@ -271,21 +271,22 @@ class SequenceRegressor(tf.keras.Model):
                 target_loss, count_mse, uni_loss, faith_loss, tax_loss = (
                     self._compute_loss(inputs, y, outputs, train_step=True)
                 )
-                unscaled_loss = tf.reduce_sum(
-                    tf.stack([target_loss, count_mse, uni_loss, tax_loss], axis=0)
-                )
-                scaled_losses = self.loss_scaler(
-                    [target_loss, count_mse, uni_loss, tax_loss]
+                loss = tf.math.divide_no_nan(
+                    tf.reduce_mean(
+                        tf.stack([target_loss, count_mse, uni_loss, tax_loss], axis=0)
+                    ),
+                    self.accumulation_steps,
                 )
             else:
                 target_loss, count_mse, base_loss = self._compute_loss(
                     inputs, y, outputs, train_step=True
                 )
-                unscaled_loss = tf.reduce_sum(
-                    tf.stack([target_loss, count_mse, base_loss], axis=0)
+                loss = tf.math.divide_no_nan(
+                    tf.reduce_mean(
+                        tf.stack([target_loss, count_mse, base_loss], axis=0)
+                    ),
+                    self.accumulation_steps,
                 )
-                scaled_losses = self.loss_scaler([target_loss, count_mse, base_loss])
-            loss = tf.reduce_mean(tf.stack(scaled_losses, axis=0))
 
         gradients = tape.gradient(
             loss,
@@ -293,7 +294,7 @@ class SequenceRegressor(tf.keras.Model):
             unconnected_gradients=tf.UnconnectedGradients.ZERO,
         )
         self.gradient_accumulator.apply_gradients(gradients)
-        self.loss_tracker.update_state(unscaled_loss)
+        self.loss_tracker.update_state(loss)
         self.target_tracker.update_state(target_loss)
         self.count_tracker.update_state(count_mse)
 
@@ -342,9 +343,9 @@ class SequenceRegressor(tf.keras.Model):
             unscaled_loss = tf.reduce_sum(
                 tf.stack([target_loss, count_mse, uni_loss, tax_loss], axis=0)
             )
-            scaled_losses = self.loss_scaler(
-                [target_loss, count_mse, uni_loss, tax_loss]
-            )
+            # scaled_losses = self.loss_scaler(
+            #     [target_loss, count_mse, uni_loss, tax_loss]
+            # )
         else:
             target_loss, count_mse, base_loss = self._compute_loss(
                 inputs, y, outputs, train_step=True
@@ -352,10 +353,10 @@ class SequenceRegressor(tf.keras.Model):
             unscaled_loss = tf.reduce_sum(
                 tf.stack([target_loss, count_mse, base_loss], axis=0)
             )
-            scaled_losses = self.loss_scaler([target_loss, count_mse, base_loss])
-        loss = tf.reduce_mean(tf.stack(scaled_losses, axis=0))
+            # scaled_losses = self.loss_scaler([target_loss, count_mse, base_loss])
+        loss = tf.reduce_mean(tf.stack(unscaled_loss, axis=0))
 
-        self.loss_tracker.update_state(unscaled_loss)
+        self.loss_tracker.update_state(loss)
         self.target_tracker.update_state(target_loss)
         self.count_tracker.update_state(count_mse)
 

@@ -92,6 +92,7 @@ def validate_metadata(table, metadata, missing_samples_flag):
 @click.option("--p-gen-new-table", default=True, show_default=True, type=bool)
 @click.option("--p-lr", default=1e-4, show_default=True, type=float)
 @click.option("--p-warmup-steps", default=10000, show_default=True, type=int)
+@click.option("--p-decay-steps", default=1000, show_default=True, type=int)
 @click.option("--p-max-bp", default=150, show_default=True, type=int)
 @click.option("--output-dir", required=True)
 @click.option("--p-add-token", default=False, required=False, type=bool)
@@ -123,6 +124,7 @@ def fit_unifrac_regressor(
     p_gen_new_table: bool,
     p_lr: float,
     p_warmup_steps: int,
+    p_decay_steps: int,
     p_max_bp: int,
     output_dir: str,
     p_add_token: bool,
@@ -171,7 +173,7 @@ def fit_unifrac_regressor(
         )
 
         optimizer = tf.keras.optimizers.Adam(
-            cos_decay_with_warmup(p_lr, p_warmup_steps), beta_2=0.98
+            cos_decay_with_warmup(p_lr, p_warmup_steps, p_decay_steps), beta_2=0.98
         )
         token_shape = tf.TensorShape([None, None, 150])
         count_shape = tf.TensorShape([None, None, 1])
@@ -300,6 +302,7 @@ def fit_unifrac_regressor(
 @click.option("--p-gen-new-table", default=True, show_default=True, type=bool)
 @click.option("--p-lr", default=1e-4, show_default=True, type=float)
 @click.option("--p-warmup-steps", default=10000, show_default=True, type=int)
+@click.option("--p-decay-steps", default=1000, show_default=True, type=int)
 @click.option("--p-max-bp", required=True, type=int)
 @click.option("--output-dir", required=True)
 @click.option("--p-add-token", default=False, required=False, type=bool)
@@ -331,6 +334,7 @@ def fit_taxonomy_regressor(
     p_gen_new_table: bool,
     p_lr: float,
     p_warmup_steps: int,
+    p_decay_steps: int,
     p_max_bp: int,
     output_dir: str,
     p_add_token: bool,
@@ -438,7 +442,7 @@ def fit_taxonomy_regressor(
             accumulation_steps=p_accumulation_steps,
         )
         optimizer = tf.keras.optimizers.AdamW(
-            cos_decay_with_warmup(p_lr, p_warmup_steps),
+            cos_decay_with_warmup(p_lr, p_warmup_steps, decay_steps=p_decay_steps),
             beta_2=0.98,
             weight_decay=p_weight_decay,
             # global_clipnorm=1.0,
