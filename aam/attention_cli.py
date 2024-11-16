@@ -227,7 +227,7 @@ def fit_unifrac_regressor(
 
     val_gen = UniFracGenerator(
         table=val_table,
-        shuffle=False,
+        shuffle=True,
         shift=0.0,
         scale=1.0,
         gen_new_tables=False,
@@ -742,7 +742,7 @@ def fit_sample_regressor(
         )
         val_data = _get_fold(
             val_ind,
-            shuffle=False,
+            shuffle=True,
             shift=train_data["shift"],
             scale=train_data["scale"],
             epochs=1,
