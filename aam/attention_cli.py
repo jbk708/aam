@@ -584,7 +584,7 @@ def fit_sample_regressor(
     p_accumulation_steps: int,
     p_unifrac_metric: str,
 ):
-    from aam.callbacks import ConfusionMatrx, MeanAbsoluteError
+    from aam.callbacks import ConfusionMatrx
     from aam.data_handlers import CombinedGenerator, TaxonomyGenerator, UniFracGenerator
     from aam.models import SequenceRegressor
 
@@ -794,14 +794,14 @@ def fit_sample_regressor(
         if not p_is_categorical:
             loss = tf.keras.losses.MeanSquaredError(reduction="none")
             callbacks = [
-                MeanAbsoluteError(
-                    monitor="val_mae",
-                    dataset=val_data["dataset"],
-                    output_dir=os.path.join(
-                        figure_path, f"model_f{fold_label}-val.png"
-                    ),
-                    report_back=p_report_back,
-                )
+                # MeanAbsoluteError(
+                #     monitor="val_mae",
+                #     dataset=val_data["dataset"],
+                #     output_dir=os.path.join(
+                #         figure_path, f"model_f{fold_label}-val.png"
+                #     ),
+                #     report_back=p_report_back,
+                # )
             ]
         else:
             loss = tf.keras.losses.CategoricalFocalCrossentropy(
