@@ -116,9 +116,9 @@ class SequenceRegressor(tf.keras.Model):
         )
         self.count_pos = tfm.nlp.layers.PositionEmbedding(
             self.token_limit + 5,
-            initializer=tf.keras.initializers.RandomNormal(
-                mean=0, stddev=self.embedding_dim**0.5
-            ),
+            # initializer=tf.keras.initializers.RandomNormal(
+            #     mean=0, stddev=self.embedding_dim**0.5
+            # ),
             dtype=tf.float32,
         )
         self.count_out = tf.keras.Sequential(

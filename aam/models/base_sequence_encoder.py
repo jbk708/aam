@@ -77,9 +77,9 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
 
         self.asv_pos = tfm.nlp.layers.PositionEmbedding(
             self.token_limit + 5,
-            initializer=tf.keras.initializers.RandomNormal(
-                mean=0, stddev=self.embedding_dim**0.5
-            ),
+            # initializer=tf.keras.initializers.RandomNormal(
+            #     mean=0, stddev=self.embedding_dim**0.5
+            # ),
         )
 
         self.sample_encoder = TransformerEncoder(

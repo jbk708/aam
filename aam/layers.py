@@ -217,9 +217,9 @@ class NucleotideAttention(tf.keras.layers.Layer):
         self.pos_emb = tfm.nlp.layers.PositionEmbedding(
             self.max_bp + 1,
             seq_axis=2,
-            initializer=tf.keras.initializers.RandomNormal(
-                mean=0, stddev=self.embedding_dim**0.5
-            ),
+            # initializer=tf.keras.initializers.RandomNormal(
+            #     mean=0, stddev=self.embedding_dim**0.5
+            # ),
             name="nuc_pos",
         )
         self.attention_layers = []
@@ -241,7 +241,7 @@ class NucleotideAttention(tf.keras.layers.Layer):
 
     def call(self, attention_input, attention_mask=None, training=False):
         attention_input = attention_input + self.pos_emb(attention_input)
-        attention_input = attention_input * (9 * 3) ** (-0.25)
+        attention_input = attention_input  # * (9 * 3) ** (-0.25)
         for layer_idx in range(self.num_layers):
             attention_input = self.attention_layers[layer_idx](
                 attention_input, training=training
@@ -341,7 +341,9 @@ class NucleotideAttentionBlock(tf.keras.layers.Layer):
     def scaled_dot_attention(self, attention_input):
         wq_tensor = self.compute_wi(attention_input, self.w_qi)
         wk_tensor = self.compute_wi(attention_input, self.w_ki)
-        wv_tensor = self.compute_wi(attention_input, self.w_vi * (0.67 * 3) ** -0.25)
+        wv_tensor = self.compute_wi(
+            attention_input, self.w_vi
+        )  # * (0.67 * 3) ** -0.25)
 
         # (multihead) scaled dot product attention sublayer
         # [B, A, H, N, S] => [B, A, H, N, N]
@@ -371,7 +373,8 @@ class NucleotideAttentionBlock(tf.keras.layers.Layer):
             shape=[batch_size, num_asv, self.nucleotides, self.hidden_dim],
         )
         attention_output = tf.matmul(
-            attention_output, self.o_dense * (0.67 * 3) ** (-0.25)
+            attention_output,
+            self.o_dense,  # * (0.67 * 3) ** (-0.25)
         )
         # attention_output = self.o_dense(attention_output)
         attention_output = tf.ensure_shape(attention_output, self._shape)
