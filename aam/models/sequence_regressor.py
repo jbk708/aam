@@ -275,21 +275,29 @@ class SequenceRegressor(tf.keras.Model):
                 target_loss, count_mse, uni_loss, faith_loss, tax_loss = (
                     self._compute_loss(inputs, y, outputs, train_step=True)
                 )
-                loss = tf.math.divide_no_nan(
-                    tf.reduce_mean(
-                        tf.stack([target_loss, count_mse, uni_loss, tax_loss], axis=0)
-                    ),
-                    self.accumulation_steps,
+                # loss = tf.math.divide_no_nan(
+                #     tf.reduce_mean(
+                #         tf.stack([target_loss, count_mse, uni_loss, tax_loss], axis=0)
+                #     ),
+                #     self.accumulation_steps,
+                # )
+                loss = tf.reduce_mean(
+                    tf.stack(
+                        self.loss_scaler([target_loss, count_mse, uni_loss, tax_loss])
+                    )
                 )
             else:
                 target_loss, count_mse, base_loss = self._compute_loss(
                     inputs, y, outputs, train_step=True
                 )
-                loss = tf.math.divide_no_nan(
-                    tf.reduce_mean(
-                        tf.stack([target_loss, count_mse, base_loss], axis=0)
-                    ),
-                    self.accumulation_steps,
+                # loss = tf.math.divide_no_nan(
+                #     tf.reduce_mean(
+                #         tf.stack([target_loss, count_mse, base_loss], axis=0)
+                #     ),
+                #     self.accumulation_steps,
+                # )
+                loss = tf.reduce_mean(
+                    tf.stack(self.loss_scaler([target_loss, count_mse, base_loss]))
                 )
 
         gradients = tape.gradient(
