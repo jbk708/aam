@@ -64,6 +64,7 @@ class ASVEncoder(tf.keras.layers.Layer):
             self.num_tokens,
             self.embedding_dim,
             input_length=self.max_bp,
+            # embeddings_initializer="glorot_uniform",
             embeddings_initializer=tf.keras.initializers.RandomNormal(
                 mean=0, stddev=self.embedding_dim**0.5
             ),
