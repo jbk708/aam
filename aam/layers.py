@@ -65,7 +65,7 @@ class ASVEncoder(tf.keras.layers.Layer):
             self.embedding_dim,
             input_length=self.max_bp,
             embeddings_initializer=tf.keras.initializers.RandomNormal(
-                mean=0, stddev=128**0.5
+                mean=0, stddev=self.embedding_dim**0.5
             ),
         )
 
@@ -76,6 +76,7 @@ class ASVEncoder(tf.keras.layers.Layer):
             dropout=self.dropout_rate,
             intermediate_ff=self.intermediate_ff,
             intermediate_activation=self.intermediate_activation,
+            embedding_dim=self.embedding_dim,
         )
         super(ASVEncoder, self).build(input_shape)
 
@@ -199,6 +200,7 @@ class NucleotideAttention(tf.keras.layers.Layer):
         dropout,
         intermediate_ff=1024,
         intermediate_activation="gelu",
+        embedding_dim=128,
         **kwargs,
     ):
         super(NucleotideAttention, self).__init__(**kwargs)
@@ -209,12 +211,15 @@ class NucleotideAttention(tf.keras.layers.Layer):
         self.epsilon = 1e-6
         self.intermediate_ff = intermediate_ff
         self.intermediate_activation = intermediate_activation
+        self.embedding_dim = embedding_dim
 
     def build(self, input_shape):
         self.pos_emb = tfm.nlp.layers.PositionEmbedding(
             self.max_bp + 1,
             seq_axis=2,
-            initializer=tf.keras.initializers.RandomNormal(mean=0, stddev=128**0.5),
+            initializer=tf.keras.initializers.RandomNormal(
+                mean=0, stddev=self.embedding_dim**0.5
+            ),
             name="nuc_pos",
         )
         self.attention_layers = []
@@ -254,6 +259,7 @@ class NucleotideAttention(tf.keras.layers.Layer):
                 "dropout": self.dropout,
                 "intermediate_ff": self.intermediate_ff,
                 "intermediate_activation": self.intermediate_activation,
+                "embedding_dim": self.embedding_dim,
             }
         )
         return config
