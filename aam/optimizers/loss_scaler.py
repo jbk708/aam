@@ -34,11 +34,11 @@ class LossScaler:
                 for i, loss in enumerate(losses)
             ]
 
-        for i in range(len(self.moving_avg)):
-            self.moving_avg[i].assign(
-                self.moving_avg[i] * self.decay + (1 - self.decay) * losses[i],
-                read_value=False,
-            )
+        # for i in range(len(self.moving_avg)):
+        #     self.moving_avg[i].assign(
+        #         self.moving_avg[i] * self.decay + (1 - self.decay) * losses[i],
+        #         read_value=False,
+        #     )
 
         return [
             tf.math.divide_no_nan(

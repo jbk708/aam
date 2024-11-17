@@ -75,7 +75,7 @@ if __name__ == "__main__":
     )
     data = ug.get_data()
     for i, (x, y) in enumerate(data["dataset"]):
-        print(np.mean(y[1]))
+        print(y[1], np.log1p(y[1]), np.sqrt(y[1]))
         break
 
     # data = ug.get_data_by_id(ug.rarefy_tables.ids()[:16])

@@ -39,9 +39,11 @@ class ASVEncoder(tf.keras.layers.Layer):
         intermediate_ff,
         intermediate_activation="gelu",
         add_token=True,
+        embedding_dim=128,
         **kwargs,
     ):
         super(ASVEncoder, self).__init__(**kwargs)
+        self.embedding_dim = embedding_dim
         self.max_bp = max_bp
         self.attention_heads = attention_heads
         self.attention_layers = attention_layers
@@ -60,10 +62,11 @@ class ASVEncoder(tf.keras.layers.Layer):
     def build(self, input_shape):
         self.emb_layer = tf.keras.layers.Embedding(
             self.num_tokens,
-            128,
+            self.embedding_dim,
             input_length=self.max_bp,
+            # embeddings_initializer="glorot_uniform",
             embeddings_initializer=tf.keras.initializers.RandomNormal(
-                mean=0, stddev=128**0.5
+                mean=0, stddev=self.embedding_dim**0.5
             ),
         )
 
@@ -74,6 +77,7 @@ class ASVEncoder(tf.keras.layers.Layer):
             dropout=self.dropout_rate,
             intermediate_ff=self.intermediate_ff,
             intermediate_activation=self.intermediate_activation,
+            embedding_dim=self.embedding_dim,
         )
         super(ASVEncoder, self).build(input_shape)
 
@@ -107,6 +111,7 @@ class ASVEncoder(tf.keras.layers.Layer):
                 "intermediate_ff": self.intermediate_ff,
                 "intermediate_activation": self.intermediate_activation,
                 "add_token": self.add_token,
+                "embedding_dim": self.embedding_dim,
             }
         )
         return config
@@ -196,6 +201,7 @@ class NucleotideAttention(tf.keras.layers.Layer):
         dropout,
         intermediate_ff=1024,
         intermediate_activation="gelu",
+        embedding_dim=128,
         **kwargs,
     ):
         super(NucleotideAttention, self).__init__(**kwargs)
@@ -206,12 +212,15 @@ class NucleotideAttention(tf.keras.layers.Layer):
         self.epsilon = 1e-6
         self.intermediate_ff = intermediate_ff
         self.intermediate_activation = intermediate_activation
+        self.embedding_dim = embedding_dim
 
     def build(self, input_shape):
         self.pos_emb = tfm.nlp.layers.PositionEmbedding(
             self.max_bp + 1,
             seq_axis=2,
-            initializer=tf.keras.initializers.RandomNormal(mean=0, stddev=128**0.5),
+            # initializer=tf.keras.initializers.RandomNormal(
+            #     mean=0, stddev=self.embedding_dim**0.5
+            # ),
             name="nuc_pos",
         )
         self.attention_layers = []
@@ -233,7 +242,7 @@ class NucleotideAttention(tf.keras.layers.Layer):
 
     def call(self, attention_input, attention_mask=None, training=False):
         attention_input = attention_input + self.pos_emb(attention_input)
-        attention_input = attention_input * (9 * 3) ** (-0.25)
+        attention_input = attention_input  # * (9 * 3) ** (-0.25)
         for layer_idx in range(self.num_layers):
             attention_input = self.attention_layers[layer_idx](
                 attention_input, training=training
@@ -251,6 +260,7 @@ class NucleotideAttention(tf.keras.layers.Layer):
                 "dropout": self.dropout,
                 "intermediate_ff": self.intermediate_ff,
                 "intermediate_activation": self.intermediate_activation,
+                "embedding_dim": self.embedding_dim,
             }
         )
         return config
@@ -332,7 +342,9 @@ class NucleotideAttentionBlock(tf.keras.layers.Layer):
     def scaled_dot_attention(self, attention_input):
         wq_tensor = self.compute_wi(attention_input, self.w_qi)
         wk_tensor = self.compute_wi(attention_input, self.w_ki)
-        wv_tensor = self.compute_wi(attention_input, self.w_vi * (0.67 * 3) ** -0.25)
+        wv_tensor = self.compute_wi(
+            attention_input, self.w_vi
+        )  # * (0.67 * 3) ** -0.25)
 
         # (multihead) scaled dot product attention sublayer
         # [B, A, H, N, S] => [B, A, H, N, N]
@@ -362,7 +374,8 @@ class NucleotideAttentionBlock(tf.keras.layers.Layer):
             shape=[batch_size, num_asv, self.nucleotides, self.hidden_dim],
         )
         attention_output = tf.matmul(
-            attention_output, self.o_dense * (0.67 * 3) ** (-0.25)
+            attention_output,
+            self.o_dense,  # * (0.67 * 3) ** (-0.25)
         )
         # attention_output = self.o_dense(attention_output)
         attention_output = tf.ensure_shape(attention_output, self._shape)

@@ -92,6 +92,7 @@ def validate_metadata(table, metadata, missing_samples_flag):
 @click.option("--p-gen-new-table", default=True, show_default=True, type=bool)
 @click.option("--p-lr", default=1e-4, show_default=True, type=float)
 @click.option("--p-warmup-steps", default=10000, show_default=True, type=int)
+@click.option("--p-decay-steps", default=1000, show_default=True, type=int)
 @click.option("--p-max-bp", default=150, show_default=True, type=int)
 @click.option("--output-dir", required=True)
 @click.option("--p-add-token", default=False, required=False, type=bool)
@@ -123,6 +124,7 @@ def fit_unifrac_regressor(
     p_gen_new_table: bool,
     p_lr: float,
     p_warmup_steps: int,
+    p_decay_steps: int,
     p_max_bp: int,
     output_dir: str,
     p_add_token: bool,
@@ -171,7 +173,7 @@ def fit_unifrac_regressor(
         )
 
         optimizer = tf.keras.optimizers.Adam(
-            cos_decay_with_warmup(p_lr, p_warmup_steps), beta_2=0.98
+            cos_decay_with_warmup(p_lr, p_warmup_steps, p_decay_steps), beta_2=0.98
         )
         token_shape = tf.TensorShape([None, None, 150])
         count_shape = tf.TensorShape([None, None, 1])
@@ -225,7 +227,7 @@ def fit_unifrac_regressor(
 
     val_gen = UniFracGenerator(
         table=val_table,
-        shuffle=False,
+        shuffle=True,
         shift=0.0,
         scale=1.0,
         gen_new_tables=False,
@@ -241,11 +243,11 @@ def fit_unifrac_regressor(
     model_saver = SaveModel(model_save_path, 1, monitor="val_encoder_loss")
     core_callbacks = [
         tf.keras.callbacks.TensorBoard(log_dir=log_dir),
-        tf.keras.callbacks.EarlyStopping(
-            "val_encoder_loss",
-            patience=p_patience,
-            start_from_epoch=p_early_stop_warmup,
-        ),
+        # tf.keras.callbacks.EarlyStopping(
+        #     "val_encoder_loss",
+        #     patience=p_patience,
+        #     start_from_epoch=p_early_stop_warmup,
+        # ),
         model_saver,
     ]
     model.fit(
@@ -300,6 +302,7 @@ def fit_unifrac_regressor(
 @click.option("--p-gen-new-table", default=True, show_default=True, type=bool)
 @click.option("--p-lr", default=1e-4, show_default=True, type=float)
 @click.option("--p-warmup-steps", default=10000, show_default=True, type=int)
+@click.option("--p-decay-steps", default=1000, show_default=True, type=int)
 @click.option("--p-max-bp", required=True, type=int)
 @click.option("--output-dir", required=True)
 @click.option("--p-add-token", default=False, required=False, type=bool)
@@ -331,6 +334,7 @@ def fit_taxonomy_regressor(
     p_gen_new_table: bool,
     p_lr: float,
     p_warmup_steps: int,
+    p_decay_steps: int,
     p_max_bp: int,
     output_dir: str,
     p_add_token: bool,
@@ -438,7 +442,7 @@ def fit_taxonomy_regressor(
             accumulation_steps=p_accumulation_steps,
         )
         optimizer = tf.keras.optimizers.AdamW(
-            cos_decay_with_warmup(p_lr, p_warmup_steps),
+            cos_decay_with_warmup(p_lr, p_warmup_steps, decay_steps=p_decay_steps),
             beta_2=0.98,
             weight_decay=p_weight_decay,
             # global_clipnorm=1.0,
@@ -526,7 +530,8 @@ def fit_taxonomy_regressor(
 @click.option("--p-tree", default=None, type=click.Path(exists=True))
 @click.option("--p-gen-new-table", default=True, show_default=True, type=bool)
 @click.option("--p-lr", default=1e-4, show_default=True, type=float)
-@click.option("--p-warmup-steps", default=10000, show_default=True, type=int)
+@click.option("--p-warmup-steps", default=4000, show_default=True, type=int)
+@click.option("--p-decay-steps", default=1000, show_default=True, type=int)
 @click.option("--p-max-bp", default=150, show_default=True, type=int)
 @click.option("--output-dir", required=True, type=click.Path(exists=False))
 @click.option("--p-output-dim", default=1, required=False, type=int)
@@ -565,8 +570,9 @@ def fit_sample_regressor(
     p_taxonomy_level: int,
     p_tree: str,
     p_gen_new_table: bool,
-    p_lr,
-    p_warmup_steps,
+    p_lr: int,
+    p_warmup_steps: int,
+    p_decay_steps: int,
     p_max_bp: int,
     output_dir: str,
     p_output_dim: int,
@@ -578,7 +584,7 @@ def fit_sample_regressor(
     p_accumulation_steps: int,
     p_unifrac_metric: str,
 ):
-    from aam.callbacks import ConfusionMatrx, MeanAbsoluteError
+    from aam.callbacks import ConfusionMatrx
     from aam.data_handlers import CombinedGenerator, TaxonomyGenerator, UniFracGenerator
     from aam.models import SequenceRegressor
 
@@ -736,7 +742,7 @@ def fit_sample_regressor(
         )
         val_data = _get_fold(
             val_ind,
-            shuffle=False,
+            shuffle=True,
             shift=train_data["shift"],
             scale=train_data["scale"],
             epochs=1,
@@ -788,14 +794,14 @@ def fit_sample_regressor(
         if not p_is_categorical:
             loss = tf.keras.losses.MeanSquaredError(reduction="none")
             callbacks = [
-                MeanAbsoluteError(
-                    monitor="val_mae",
-                    dataset=val_data["dataset"],
-                    output_dir=os.path.join(
-                        figure_path, f"model_f{fold_label}-val.png"
-                    ),
-                    report_back=p_report_back,
-                )
+                # MeanAbsoluteError(
+                #     monitor="val_mae",
+                #     dataset=val_data["dataset"],
+                #     output_dir=os.path.join(
+                #         figure_path, f"model_f{fold_label}-val.png"
+                #     ),
+                #     report_back=p_report_back,
+                # )
             ]
         else:
             loss = tf.keras.losses.CategoricalFocalCrossentropy(
@@ -830,6 +836,7 @@ def fit_sample_regressor(
             callbacks=[*callbacks],
             lr=p_lr,
             warmup_steps=p_warmup_steps,
+            decay_steps=p_decay_steps,
             weight_decay=p_weight_decay,
         )
         models.append(model_cv)

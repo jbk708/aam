@@ -115,7 +115,11 @@ class SequenceRegressor(tf.keras.Model):
             activation=self.intermediate_activation,
         )
         self.count_pos = tfm.nlp.layers.PositionEmbedding(
-            self.token_limit + 5, dtype=tf.float32
+            self.token_limit + 5,
+            # initializer=tf.keras.initializers.RandomNormal(
+            #     mean=0, stddev=self.embedding_dim**0.5
+            # ),
+            dtype=tf.float32,
         )
         self.count_out = tf.keras.Sequential(
             [
@@ -271,15 +275,30 @@ class SequenceRegressor(tf.keras.Model):
                 target_loss, count_mse, uni_loss, faith_loss, tax_loss = (
                     self._compute_loss(inputs, y, outputs, train_step=True)
                 )
-                scaled_losses = self.loss_scaler(
-                    [target_loss, count_mse, uni_loss, tax_loss]
+                loss = tf.math.divide_no_nan(
+                    tf.reduce_mean(
+                        tf.stack([target_loss, count_mse, uni_loss, tax_loss], axis=0)
+                    ),
+                    self.accumulation_steps,
                 )
+                # loss = tf.reduce_mean(
+                #     tf.stack(
+                #         self.loss_scaler([target_loss, count_mse, uni_loss, tax_loss])
+                #     )
+                # )
             else:
                 target_loss, count_mse, base_loss = self._compute_loss(
                     inputs, y, outputs, train_step=True
                 )
-                scaled_losses = self.loss_scaler([target_loss, count_mse, base_loss])
-            loss = tf.reduce_mean(tf.stack(scaled_losses, axis=0))
+                loss = tf.math.divide_no_nan(
+                    tf.reduce_mean(
+                        tf.stack([target_loss, count_mse, base_loss], axis=0)
+                    ),
+                    self.accumulation_steps,
+                )
+                # loss = tf.reduce_mean(
+                #     tf.stack(self.loss_scaler([target_loss, count_mse, base_loss]))
+                # )
 
         gradients = tape.gradient(
             loss,
@@ -333,15 +352,21 @@ class SequenceRegressor(tf.keras.Model):
             target_loss, count_mse, uni_loss, faith_loss, tax_loss = self._compute_loss(
                 inputs, y, outputs, train_step=True
             )
-            scaled_losses = self.loss_scaler(
-                [target_loss, count_mse, uni_loss, tax_loss]
+            unscaled_loss = tf.reduce_sum(
+                tf.stack([target_loss, count_mse, uni_loss, tax_loss], axis=0)
             )
+            # scaled_losses = self.loss_scaler(
+            #     [target_loss, count_mse, uni_loss, tax_loss]
+            # )
         else:
             target_loss, count_mse, base_loss = self._compute_loss(
                 inputs, y, outputs, train_step=True
             )
-            scaled_losses = self.loss_scaler([target_loss, count_mse, base_loss])
-        loss = tf.reduce_mean(tf.stack(scaled_losses, axis=0))
+            unscaled_loss = tf.reduce_sum(
+                tf.stack([target_loss, count_mse, base_loss], axis=0)
+            )
+            # scaled_losses = self.loss_scaler([target_loss, count_mse, base_loss])
+        loss = tf.reduce_mean(tf.stack(unscaled_loss, axis=0))
 
         self.loss_tracker.update_state(loss)
         self.target_tracker.update_state(target_loss)
@@ -388,7 +413,7 @@ class SequenceRegressor(tf.keras.Model):
         attention_mask: Optional[tf.Tensor] = None,
         training: bool = False,
     ) -> tf.Tensor:
-        count_embeddings = (tensor + self.count_pos(tensor)) * relative_abundances
+        count_embeddings = tensor + self.count_pos(tensor) * relative_abundances
         count_embeddings = self.count_encoder(
             count_embeddings, mask=attention_mask, training=training
         )
