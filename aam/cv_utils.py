@@ -59,9 +59,9 @@ class CVModel:
             tf.keras.callbacks.TensorBoard(
                 log_dir=self.log_dir, histogram_freq=0, write_graph=False
             ),
-            tf.keras.callbacks.EarlyStopping(
-                "val_loss", patience=patience, start_from_epoch=early_stop_warmup
-            ),
+            # tf.keras.callbacks.EarlyStopping(
+            #     "val_loss", patience=patience, start_from_epoch=early_stop_warmup
+            # ),
             model_saver,
         ]
         self.model.compile(optimizer=optimizer, loss=loss)
