@@ -153,7 +153,7 @@ def fit_unifrac_regressor(
         output_dim = 1
 
     if i_model is not None:
-        model = tf.keras.models.load_model(i_model)
+        model = tf.keras.models.load_model(i_model, compile=False)
     else:
         model: tf.keras.Model = SequenceEncoder(
             output_dim,
@@ -172,17 +172,17 @@ def fit_unifrac_regressor(
             accumulation_steps=p_accumulation_steps,
         )
 
-        optimizer = tf.keras.optimizers.AdamW(
-            cos_decay_with_warmup(p_lr, p_warmup_steps, p_decay_steps),
-            beta_2=0.98,
-        )
-        token_shape = tf.TensorShape([None, None, 150])
-        count_shape = tf.TensorShape([None, None, 1])
-        model.build([token_shape, count_shape])
-        model.compile(
-            optimizer=optimizer,
-            run_eagerly=False,
-        )
+    optimizer = tf.keras.optimizers.AdamW(
+        cos_decay_with_warmup(p_lr, p_warmup_steps, p_decay_steps),
+        beta_2=0.98,
+    )
+    token_shape = tf.TensorShape([None, None, 150])
+    count_shape = tf.TensorShape([None, None, 1])
+    model.build([token_shape, count_shape])
+    model.compile(
+        optimizer=optimizer,
+        run_eagerly=False,
+    )
     model.summary()
 
     table = load_table(i_table)

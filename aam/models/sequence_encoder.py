@@ -261,7 +261,7 @@ class SequenceEncoder(tf.keras.Model):
         inputs, y = data
         embeddings, encoder_embeddings = self(inputs, training=False)
 
-        return encoder_embeddings
+        return encoder_embeddings, y
 
     def train_step(
         self,
