@@ -92,36 +92,12 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
         self.asv_compress = self.add_weight(
             "asv_compress", [1, 1, self.max_bp, 1], trainable=True, dtype=tf.float32
         )
-        # if self.add_token:
-        #     self.sample_token = self.add_weight(
-        #         "sample_token",
-        #         [1, 1, self.embedding_dim],
-        #         dtype=tf.float32,
-        #         initializer="glorot_uniform",
-        #         trainable=True,
-        #     )
-
-    # def _add_sample_token(self, tensor: tf.Tensor) -> tf.Tensor:
-    #     # add <SAMPLE> token empbedding
-    #     asv_shape = tf.shape(tensor)
-    #     batch_len = asv_shape[0]
-    #     emb_len = asv_shape[-1]
-    #     sample_emb_shape = [1 for _ in tensor.get_shape().as_list()]
-    #     sample_emb_shape[0] = batch_len
-    #     sample_emb_shape[-1] = emb_len
-    #     sample_token = tf.broadcast_to(self.sample_token, sample_emb_shape)
-    #     embeddings = tf.concat([sample_token, tensor], axis=1)
-    #     return embeddings
 
     def _split_asvs(self, embeddings):
         asv_embeddings = embeddings
         if self.is_16S:
             asv_embeddings = tf.matmul(embeddings, self.asv_compress, transpose_a=True)
             asv_embeddings = tf.squeeze(asv_embeddings, axis=-1)
-            # if self.add_token:
-            #     asv_embeddings = asv_embeddings[:, :, 0, :]
-            # else:
-            #     asv_embeddings = tf.reduce_mean(asv_embeddings, axis=2)
         else:
             asv_embeddings = asv_embeddings[:, :, 0, :]
 

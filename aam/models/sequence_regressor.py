@@ -147,6 +147,13 @@ class SequenceRegressor(tf.keras.Model):
         else:
             self.metric_tracker = tf.keras.metrics.SparseCategoricalAccuracy()
             self.metric_string = "accuracy"
+
+        self.target_compress = self.add_weight(
+            "target_compress",
+            [1, self.token_limit, 1],
+            trainable=True,
+            dtype=tf.float32,
+        )
         self.target_ff = tf.keras.Sequential(
             [
                 tf.keras.layers.Dense(
@@ -433,13 +440,14 @@ class SequenceRegressor(tf.keras.Model):
         target_embeddings = self.target_encoder(
             tensor, mask=attention_mask, training=training
         )
-        if self.add_token:
-            target_out = target_embeddings[:, 0, :]
-        else:
-            mask = tf.cast(attention_mask, dtype=tf.float32)
-            target_out = tf.reduce_sum(target_embeddings * mask, axis=1)
-            target_out /= tf.reduce_sum(mask, axis=1)
+        input_shape = tf.shape(target_embeddings)
+        actual_seq_len = input_shape[1]
+        compress = self.target_compress[:, :actual_seq_len, :]
 
+        mask = tf.cast(attention_mask, dtype=tf.float32)
+        target_embeddings = target_embeddings * mask
+        target_out = tf.matmul(target_embeddings, compress, transpose_a=True)
+        target_out = tf.squeeze(target_out, axis=-1)
         target_out = self.target_ff(target_out)
         return target_embeddings, target_out
 

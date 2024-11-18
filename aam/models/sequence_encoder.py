@@ -73,6 +73,13 @@ class SequenceEncoder(tf.keras.Model):
             name="base_encoder",
         )
 
+        self.encoder_compress = self.add_weight(
+            "encoder_compress",
+            [1, self.token_limit, 1],
+            trainable=True,
+            dtype=tf.float32,
+        )
+
         self.encoder = TransformerEncoder(
             num_layers=self.attention_layers,
             num_attention_heads=self.attention_heads,
@@ -168,12 +175,14 @@ class SequenceEncoder(tf.keras.Model):
         ]
 
     def _unifrac_embeddings(self, tensor, mask):
-        if self.add_token:
-            encoder_pred = tensor[:, 0, :]
-        else:
-            mask = tf.cast(mask, dtype=tf.float32)
-            encoder_pred = tf.reduce_sum(tensor * mask, axis=1)
-            encoder_pred /= tf.reduce_sum(mask, axis=1)
+        input_shape = tf.shape(tensor)
+        actual_seq_len = input_shape[1]
+        compress = self.encoder_compress[:, :actual_seq_len, :]
+
+        mask = tf.cast(mask, dtype=tf.float32)
+        tensor = tensor * mask
+        encoder_pred = tf.matmul(tensor, compress, transpose_a=True)
+        encoder_pred = tf.squeeze(encoder_pred, axis=-1)
         encoder_pred = self.encoder_ff(encoder_pred)
         return encoder_pred
 
