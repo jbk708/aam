@@ -260,7 +260,7 @@ class GeneratorDataset:
 
         if s_max_token > self.max_token_per_sample:
             print(f"\tskipping group due to exceeding token limit {s_max_token}...")
-            return None, None, None, None, None
+            return None, None, None, None, None, None
 
         s_ids = [sample_ids[s] for s in samples]
 
@@ -272,7 +272,7 @@ class GeneratorDataset:
             encoder_target = self.encoder_target
         encoder_output = self._encoder_output(encoder_target, s_ids, s_obj_ids)
 
-        return s_counts, s_tokens, y_output, encoder_output, s_obj_ids
+        return s_counts, s_tokens, y_output, encoder_output, s_obj_ids, s_ids
 
     def _epoch_complete(self, processed):
         if processed < self.steps_per_epoch:
@@ -310,7 +310,7 @@ class GeneratorDataset:
 
         return table_data, y_data, encoder_target, sample_indices
 
-    def _create_epoch_generator(self, include_seq_id):
+    def _create_epoch_generator(self, include_seq_id, include_sample_ids):
         def generator():
             processed = 0
             table_data = self.table_data
@@ -334,7 +334,7 @@ class GeneratorDataset:
                     )
 
                 while not self._epoch_complete(processed):
-                    counts, tokens, y_output, encoder_out, ob_ids = sample_data(
+                    counts, tokens, y_output, encoder_out, ob_ids, s_ids = sample_data(
                         minibatch
                     )
 
@@ -387,6 +387,9 @@ class GeneratorDataset:
                                 *output,
                                 padded_ob_ids,
                             )
+                        if include_sample_ids:
+                            output = (*output, s_ids)
+
                         if output is not None:
                             yield (table_output, output)
                         else:
@@ -421,8 +424,8 @@ class GeneratorDataset:
 
         return generator
 
-    def get_data(self, include_seq_id=False):
-        generator = self._create_epoch_generator(include_seq_id)
+    def get_data(self, include_seq_id=False, include_sample_ids=False):
+        generator = self._create_epoch_generator(include_seq_id, include_sample_ids)
         output_sig = (
             tf.TensorSpec(shape=[self.batch_size, None, self.max_bp], dtype=tf.int32),
             tf.TensorSpec(shape=[self.batch_size, None, 1], dtype=tf.int32),
@@ -446,6 +449,11 @@ class GeneratorDataset:
                         shape=(self.batch_size, None), dtype=tf.string, name=None
                     ),
                 )
+            if include_sample_ids:
+                y_output_sig = (
+                    *y_output_sig,
+                    tf.TensorSpec(shape=(self.batch_size,), dtype=tf.string, name=None),
+                )
             output_sig = (output_sig, y_output_sig)
         class_weights = None
         if self.is_categorical:
@@ -467,7 +475,7 @@ class GeneratorDataset:
             "shift": self.shift,
             "scale": self.scale,
             "size": self.size,
-            "steps_pre_epoch": min(100, self.steps_per_epoch),
+            "steps_pre_epoch": min(200, self.steps_per_epoch),
             "class_weights": class_weights,
         }
         return data_obj

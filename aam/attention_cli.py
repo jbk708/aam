@@ -153,7 +153,7 @@ def fit_unifrac_regressor(
         output_dim = 1
 
     if i_model is not None:
-        model = tf.keras.models.load_model(i_model)
+        model = tf.keras.models.load_model(i_model, compile=False)
     else:
         model: tf.keras.Model = SequenceEncoder(
             output_dim,
@@ -172,16 +172,17 @@ def fit_unifrac_regressor(
             accumulation_steps=p_accumulation_steps,
         )
 
-        optimizer = tf.keras.optimizers.Adam(
-            cos_decay_with_warmup(p_lr, p_warmup_steps, p_decay_steps), beta_2=0.98
-        )
-        token_shape = tf.TensorShape([None, None, 150])
-        count_shape = tf.TensorShape([None, None, 1])
-        model.build([token_shape, count_shape])
-        model.compile(
-            optimizer=optimizer,
-            run_eagerly=False,
-        )
+    optimizer = tf.keras.optimizers.AdamW(
+        cos_decay_with_warmup(p_lr, p_warmup_steps, p_decay_steps),
+        beta_2=0.98,
+    )
+    token_shape = tf.TensorShape([None, None, 150])
+    count_shape = tf.TensorShape([None, None, 1])
+    model.build([token_shape, count_shape])
+    model.compile(
+        optimizer=optimizer,
+        run_eagerly=False,
+    )
     model.summary()
 
     table = load_table(i_table)
@@ -542,6 +543,7 @@ def fit_taxonomy_regressor(
 @click.option("--p-weight-decay", default=0.004, show_default=True, type=float)
 @click.option("--p-accumulation-steps", default=1, required=False, type=int)
 @click.option("--p-unifrac-metric", default="unifrac", required=False, type=str)
+@click.option("--p-scale-loss", default=False, type=bool)
 def fit_sample_regressor(
     i_table: str,
     i_base_model_path: str,
@@ -583,6 +585,7 @@ def fit_sample_regressor(
     p_weight_decay: float,
     p_accumulation_steps: int,
     p_unifrac_metric: str,
+    p_scale_loss: bool,
 ):
     from aam.callbacks import ConfusionMatrx
     from aam.data_handlers import CombinedGenerator, TaxonomyGenerator, UniFracGenerator
@@ -784,6 +787,7 @@ def fit_sample_regressor(
             add_token=p_add_token,
             class_weights=train_data["class_weights"],
             accumulation_steps=p_accumulation_steps,
+            scale_losses=p_scale_loss,
         )
         token_shape = tf.TensorShape([None, None, p_max_bp])
         count_shape = tf.TensorShape([None, None, 1])
