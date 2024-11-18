@@ -48,6 +48,7 @@ class CVModel:
         optimizer = tf.keras.optimizers.Adam(
             cos_decay_with_warmup(lr, warmup_steps, decay_steps),
             beta_2=0.98,
+            global_clipnorm=1,
             # weight_decay=weight_decay,
             # global_clipnorm=1.0,
             # use_ema=True,
