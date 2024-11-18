@@ -40,6 +40,7 @@ class SequenceRegressor(tf.keras.Model):
         class_weights: list = None,
         asv_dropout_rate: float = 0.0,
         accumulation_steps: int = 1,
+        scale_losses=False,
         **kwargs,
     ):
         super(SequenceRegressor, self).__init__(**kwargs)
@@ -65,6 +66,7 @@ class SequenceRegressor(tf.keras.Model):
         self.class_weights = class_weights
         self.asv_dropout_rate = asv_dropout_rate
         self.accumulation_steps = accumulation_steps
+        self.scale_losses = scale_losses
         self.loss_tracker = tf.keras.metrics.Mean()
 
         # layers used in model
@@ -282,30 +284,31 @@ class SequenceRegressor(tf.keras.Model):
                 target_loss, count_mse, uni_loss, faith_loss, tax_loss = (
                     self._compute_loss(inputs, y, outputs, train_step=True)
                 )
-                loss = tf.math.divide_no_nan(
-                    tf.reduce_mean(
+                if not self.scale_losses:
+                    loss = tf.reduce_mean(
                         tf.stack([target_loss, count_mse, uni_loss, tax_loss], axis=0)
-                    ),
-                    self.accumulation_steps,
-                )
-                # loss = tf.reduce_mean(
-                #     tf.stack(
-                #         self.loss_scaler([target_loss, count_mse, uni_loss, tax_loss])
-                #     )
-                # )
+                    )
+                else:
+                    loss = tf.reduce_mean(
+                        tf.stack(
+                            self.loss_scaler(
+                                [target_loss, count_mse, uni_loss, tax_loss]
+                            )
+                        )
+                    )
             else:
                 target_loss, count_mse, base_loss = self._compute_loss(
                     inputs, y, outputs, train_step=True
                 )
-                loss = tf.math.divide_no_nan(
-                    tf.reduce_mean(
+                if not self.scale_losses:
+                    loss = tf.reduce_mean(
                         tf.stack([target_loss, count_mse, base_loss], axis=0)
-                    ),
-                    self.accumulation_steps,
-                )
-                # loss = tf.reduce_mean(
-                #     tf.stack(self.loss_scaler([target_loss, count_mse, base_loss]))
-                # )
+                    )
+                else:
+                    loss = tf.reduce_mean(
+                        tf.stack(self.loss_scaler([target_loss, count_mse, base_loss]))
+                    )
+            loss = tf.math.divide_no_nan(loss, self.accumulation_steps)
 
         gradients = tape.gradient(
             loss,
@@ -637,6 +640,7 @@ class SequenceRegressor(tf.keras.Model):
                 "class_weights": self.class_weights,
                 "asv_dropout_rate": self.asv_dropout_rate,
                 "accumulation_steps": self.accumulation_steps,
+                "scale_losses": self.scale_losses,
             }
         )
         return config

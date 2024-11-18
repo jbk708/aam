@@ -15,15 +15,6 @@ class LossScaler:
 
     def __call__(self, losses):
         if self.moving_avg is None:
-            self.scaled_loss = [
-                tf.Variable(
-                    initial_value=loss,
-                    trainable=False,
-                    dtype=tf.float32,
-                    name=f"scaled_loss_{i}",
-                )
-                for i, loss in enumerate(losses)
-            ]
             self.moving_avg = [
                 tf.Variable(
                     initial_value=loss,
@@ -41,8 +32,6 @@ class LossScaler:
         #     )
 
         return [
-            tf.math.divide_no_nan(
-                losses[i], self.moving_avg[i] * self.gradient_accum_steps
-            )
+            tf.math.divide_no_nan(losses[i], self.moving_avg[i])
             for i in range(len(self.moving_avg))
         ]

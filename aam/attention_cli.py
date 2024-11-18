@@ -543,6 +543,7 @@ def fit_taxonomy_regressor(
 @click.option("--p-weight-decay", default=0.004, show_default=True, type=float)
 @click.option("--p-accumulation-steps", default=1, required=False, type=int)
 @click.option("--p-unifrac-metric", default="unifrac", required=False, type=str)
+@click.option("--p-scale-loss", default=False, type=bool)
 def fit_sample_regressor(
     i_table: str,
     i_base_model_path: str,
@@ -584,6 +585,7 @@ def fit_sample_regressor(
     p_weight_decay: float,
     p_accumulation_steps: int,
     p_unifrac_metric: str,
+    p_scale_loss: bool,
 ):
     from aam.callbacks import ConfusionMatrx
     from aam.data_handlers import CombinedGenerator, TaxonomyGenerator, UniFracGenerator
@@ -785,6 +787,7 @@ def fit_sample_regressor(
             add_token=p_add_token,
             class_weights=train_data["class_weights"],
             accumulation_steps=p_accumulation_steps,
+            scale_losses=p_scale_loss,
         )
         token_shape = tf.TensorShape([None, None, p_max_bp])
         count_shape = tf.TensorShape([None, None, 1])
