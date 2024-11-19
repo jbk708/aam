@@ -128,6 +128,15 @@ class SequenceEncoder(tf.keras.Model):
         self.gradient_accumulator = GradientAccumulator(self.accumulation_steps)
         self.loss_scaler = LossScaler(self.gradient_accumulator.accum_steps)
 
+    @property
+    def accumulation_steps(self):
+        return self._accumulation_steps
+
+    @accumulation_steps.setter
+    def accumulation_steps(self, steps):
+        self._accumulation_steps = steps
+        self.gradient_accumulator = GradientAccumulator(self.accumulation_steps)
+
     def _get_encoder_loss(self):
         if self.encoder_type == "combined":
             self._unifrac_loss = PairwiseLoss()
