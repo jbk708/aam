@@ -249,8 +249,8 @@ class SequenceEncoder(tf.keras.Model):
                 tf.ones((batch_size, batch_size), dtype=tf.float32), -1, -1
             )
             pairs = tf.reduce_sum(pairs)
-            loss = tf.reduce_sum(loss, axis=1, keepdims=True) / pairs
-        return tf.reduce_mean(loss)
+            loss = tf.reduce_sum(loss / pairs)
+        return loss
 
     def _compute_encoder_loss(
         self,
