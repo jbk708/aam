@@ -244,8 +244,12 @@ class SequenceEncoder(tf.keras.Model):
     ) -> tf.Tensor:
         loss = self._unifrac_loss(y_true, unifrac_embeddings)
         if self.encoder_type == "unifrac":
-            batch = tf.cast(tf.shape(y_true)[0], dtype=tf.float32)
-            loss = tf.reduce_sum(loss, axis=1, keepdims=True) / (batch - 1)
+            batch_size = tf.shape(y_true)[0]
+            pairs = tf.linalg.band_part(
+                tf.ones((batch_size, batch_size), dtype=tf.float32), -1, -1
+            )
+            pairs = tf.reduce_sum(pairs)
+            loss = tf.reduce_sum(loss, axis=1, keepdims=True) / pairs
         return tf.reduce_mean(loss)
 
     def _compute_encoder_loss(
