@@ -196,7 +196,7 @@ class SequenceRegressor(tf.keras.Model):
         relative_counts = self._relative_abundance(counts)
         loss = tf.square(relative_counts - count_pred)
         mask = float_mask(counts)
-        loss = tf.reduce_sum(loss * mask) / tf.reduce_sum(mask, axis=1)
+        loss = tf.reduce_sum(loss * mask) / tf.reduce_sum(mask)
         return loss
 
     def _compute_loss(
