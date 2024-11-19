@@ -154,6 +154,7 @@ def fit_unifrac_regressor(
 
     if i_model is not None:
         model = tf.keras.models.load_model(i_model, compile=False)
+        model.accumulation_steps = p_accumulation_steps
     else:
         model: tf.keras.Model = SequenceEncoder(
             output_dim,

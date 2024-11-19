@@ -128,6 +128,15 @@ class SequenceEncoder(tf.keras.Model):
         self.gradient_accumulator = GradientAccumulator(self.accumulation_steps)
         self.loss_scaler = LossScaler(self.gradient_accumulator.accum_steps)
 
+    @property
+    def accumulation_steps(self):
+        return self._accumulation_steps
+
+    @accumulation_steps.setter
+    def accumulation_steps(self, steps):
+        self._accumulation_steps = steps
+        self.gradient_accumulator = GradientAccumulator(self.accumulation_steps)
+
     def _get_encoder_loss(self):
         if self.encoder_type == "combined":
             self._unifrac_loss = PairwiseLoss()
@@ -233,11 +242,15 @@ class SequenceEncoder(tf.keras.Model):
         y_true: tf.Tensor,
         unifrac_embeddings: tf.Tensor,
     ) -> tf.Tensor:
+        batch_size = tf.shape(y_true)[0]
+        pairs = tf.linalg.band_part(
+            tf.ones((batch_size, batch_size), dtype=tf.float32), 0, -1
+        )
+        pairs = tf.reduce_sum(pairs)
+
         loss = self._unifrac_loss(y_true, unifrac_embeddings)
-        if self.encoder_type == "unifrac":
-            batch = tf.cast(tf.shape(y_true)[0], dtype=tf.float32)
-            loss = tf.reduce_sum(loss, axis=1, keepdims=True) / (batch - 1)
-        return tf.reduce_mean(loss)
+        loss = tf.reduce_sum(loss / pairs)
+        return loss / 2
 
     def _compute_encoder_loss(
         self,
