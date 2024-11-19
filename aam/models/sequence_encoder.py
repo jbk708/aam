@@ -299,9 +299,7 @@ class SequenceEncoder(tf.keras.Model):
         y_target, encoder_target = y
         with tf.GradientTape() as tape:
             outputs = self(inputs, training=True)
-            unifrac_loss = self._compute_loss(inputs, encoder_target, outputs)
-            loss = self.loss_scaler([unifrac_loss])
-            loss = tf.math.divide_no_nan(loss, self.accumulation_steps)
+            loss = self._compute_loss(inputs, encoder_target, outputs)
 
         gradients = tape.gradient(
             loss,
@@ -311,7 +309,7 @@ class SequenceEncoder(tf.keras.Model):
         self.gradient_accumulator.apply_gradients(gradients)
 
         self.loss_tracker.update_state(loss)
-        self.encoder_tracker.update_state(unifrac_loss)
+        self.encoder_tracker.update_state(loss)
         return {
             "loss": self.loss_tracker.result(),
             "encoder_loss": self.encoder_tracker.result(),
