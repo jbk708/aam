@@ -5,6 +5,8 @@ from typing import Optional, Union
 import tensorflow as tf
 import tensorflow_models as tfm
 
+from aam.models.attention_pooling import AttentionPooling
+
 # from aam.models.unifrac_encoder import UniFracEncoder
 from aam.models.sequence_encoder import SequenceEncoder
 from aam.models.transformers import TransformerEncoder
@@ -118,19 +120,9 @@ class SequenceRegressor(tf.keras.Model):
         )
         self.count_pos = tfm.nlp.layers.PositionEmbedding(
             self.token_limit + 5,
-            # initializer=tf.keras.initializers.RandomNormal(
-            #     mean=0, stddev=self.embedding_dim**0.5
-            # ),
             dtype=tf.float32,
         )
-        self.count_out = tf.keras.Sequential(
-            [
-                tf.keras.layers.Dense(
-                    self.embedding_dim, activation="gelu", dtype=tf.float32
-                ),
-                tf.keras.layers.Dense(1, dtype=tf.float32),
-            ]
-        )
+        self.count_out = tf.keras.layers.Dense(1, dtype=tf.float32)
         self.count_loss = tf.keras.losses.MeanSquaredError(reduction="none")
         self.count_tracker = tf.keras.metrics.Mean()
 
@@ -150,20 +142,8 @@ class SequenceRegressor(tf.keras.Model):
             self.metric_tracker = tf.keras.metrics.SparseCategoricalAccuracy()
             self.metric_string = "accuracy"
 
-        self.target_compress = self.add_weight(
-            "target_compress",
-            [1, self.token_limit, 1],
-            trainable=True,
-            dtype=tf.float32,
-        )
-        self.target_ff = tf.keras.Sequential(
-            [
-                tf.keras.layers.Dense(
-                    self.embedding_dim, activation="gelu", dtype=tf.float32
-                ),
-                tf.keras.layers.Dense(self.out_dim, dtype=tf.float32),
-            ]
-        )
+        self.attention_pooling = AttentionPooling()
+        self.target_ff = tf.keras.layers.Dense(self.out_dim, dtype=tf.float32)
 
         self.loss_metrics = sorted(
             ["loss", "target_loss", "count_mse", self.metric_string]
@@ -426,11 +406,7 @@ class SequenceRegressor(tf.keras.Model):
         count_embeddings = self.count_encoder(
             count_embeddings, mask=attention_mask, training=training
         )
-        count_pred = count_embeddings
-        if self.add_token:
-            count_pred = count_pred[:, 1:, :]
-
-        count_pred = self.count_out(count_pred)
+        count_pred = self.count_out(count_embeddings)
         return count_embeddings, count_pred
 
     def _compute_target_embeddings(
@@ -442,14 +418,7 @@ class SequenceRegressor(tf.keras.Model):
         target_embeddings = self.target_encoder(
             tensor, mask=attention_mask, training=training
         )
-        input_shape = tf.shape(target_embeddings)
-        actual_seq_len = input_shape[1]
-        compress = self.target_compress[:, :actual_seq_len, :]
-
-        mask = tf.cast(attention_mask, dtype=tf.float32)
-        target_embeddings = target_embeddings * mask
-        target_out = tf.matmul(target_embeddings, compress, transpose_a=True)
-        target_out = tf.squeeze(target_out, axis=-1)
+        target_out = self.attention_pooling(tensor, mask=attention_mask)
         target_out = self.target_ff(target_out)
         return target_embeddings, target_out
 
@@ -484,8 +453,8 @@ class SequenceRegressor(tf.keras.Model):
             attention_mask=count_attention_mask,
             training=training,
         )
-        count_embeddings = base_embeddings + count_gated_embeddings
-        # count_embeddings = count_gated_embeddings
+        # count_embeddings = base_embeddings + count_gated_embeddings
+        count_embeddings = count_gated_embeddings
 
         target_embeddings, target_out = self._compute_target_embeddings(
             count_embeddings, attention_mask=count_attention_mask, training=training

@@ -5,6 +5,7 @@ from typing import Union
 import tensorflow as tf
 
 from aam.losses import PairwiseLoss
+from aam.models.attention_pooling import AttentionPooling
 from aam.models.base_sequence_encoder import BaseSequenceEncoder
 from aam.models.transformers import TransformerEncoder
 from aam.optimizers.gradient_accumulator import GradientAccumulator
@@ -73,12 +74,7 @@ class SequenceEncoder(tf.keras.Model):
             name="base_encoder",
         )
 
-        self.encoder_compress = self.add_weight(
-            "encoder_compress",
-            [1, self.token_limit, 1],
-            trainable=True,
-            dtype=tf.float32,
-        )
+        self.attention_pooling = AttentionPooling()
 
         self.encoder = TransformerEncoder(
             num_layers=self.attention_layers,
@@ -116,14 +112,7 @@ class SequenceEncoder(tf.keras.Model):
                 ]
             )
         else:
-            self.encoder_ff = tf.keras.Sequential(
-                [
-                    tf.keras.layers.Dense(
-                        self.embedding_dim, activation="gelu", dtype=tf.float32
-                    ),
-                    tf.keras.layers.Dense(self.output_dim, dtype=tf.float32),
-                ]
-            )
+            self.encoder_ff = tf.keras.layers.Dense(self.output_dim, dtype=tf.float32)
 
         self.gradient_accumulator = GradientAccumulator(self.accumulation_steps)
         self.loss_scaler = LossScaler(self.gradient_accumulator.accum_steps)
@@ -183,15 +172,8 @@ class SequenceEncoder(tf.keras.Model):
             self.tax_ff(tax_pred),
         ]
 
-    def _unifrac_embeddings(self, tensor, mask):
-        input_shape = tf.shape(tensor)
-        actual_seq_len = input_shape[1]
-        compress = self.encoder_compress[:, :actual_seq_len, :]
-
-        mask = tf.cast(mask, dtype=tf.float32)
-        tensor = tensor * mask
-        encoder_pred = tf.matmul(tensor, compress, transpose_a=True)
-        encoder_pred = tf.squeeze(encoder_pred, axis=-1)
+    def _unifrac_embeddings(self, tensor, mask=None):
+        encoder_pred = self.attention_pooling(tensor, mask=mask)
         encoder_pred = self.encoder_ff(encoder_pred)
         return encoder_pred
 
@@ -353,16 +335,13 @@ class SequenceEncoder(tf.keras.Model):
             tokens, random_mask=random_mask, training=training
         )
 
-        if self.add_token:
-            count_mask = tf.pad(count_mask, [[0, 0], [1, 0], [0, 0]], constant_values=1)
-        count_attention_mask = count_mask
-
         encoder_gated_embeddings = self.encoder(
-            sample_embeddings, mask=count_attention_mask, training=training
+            sample_embeddings, mask=count_mask, training=training
         )
 
         encoder_pred = self.extract_encoder_pred(encoder_gated_embeddings, count_mask)
-        encoder_embeddings = sample_embeddings + encoder_gated_embeddings
+        # encoder_embeddings = sample_embeddings + encoder_gated_embeddings
+        encoder_embeddings = encoder_gated_embeddings
         return [encoder_embeddings, encoder_pred]
 
     def base_embeddings(

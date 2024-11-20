@@ -6,6 +6,7 @@ import tensorflow_models as tfm
 from aam.layers import (
     ASVEncoder,
 )
+from aam.models.attention_pooling import AttentionPooling
 from aam.models.transformers import TransformerEncoder
 from aam.utils import float_mask
 
@@ -89,15 +90,22 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
             activation=self.intermediate_activation,
             dropout_rate=self.dropout_rate,
         )
-        self.asv_compress = self.add_weight(
-            "asv_compress", [1, 1, self.max_bp, 1], trainable=True, dtype=tf.float32
-        )
+
+        self.attention_pool = AttentionPooling()
 
     def _split_asvs(self, embeddings):
         asv_embeddings = embeddings
         if self.is_16S:
-            asv_embeddings = tf.matmul(embeddings, self.asv_compress, transpose_a=True)
-            asv_embeddings = tf.squeeze(asv_embeddings, axis=-1)
+            shape = tf.shape(embeddings)
+            batch_dim = shape[0]
+            seq_dim = shape[1]
+            embeddings = tf.reshape(
+                embeddings, (batch_dim * seq_dim, self.max_bp, self.embedding_dim)
+            )
+            asv_embeddings = self.attention_pool(embeddings)
+            asv_embeddings = tf.reshape(
+                asv_embeddings, shape=(batch_dim, seq_dim, self.embedding_dim)
+            )
         else:
             asv_embeddings = asv_embeddings[:, :, 0, :]
 
@@ -121,13 +129,7 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
         else:
             embeddings = self.asv_embeddings(asv_input)
         asv_embeddings = self._split_asvs(embeddings)
-
-        if self.add_token:
-            asv_mask = tf.pad(asv_mask, [[0, 0], [1, 0], [0, 0]], constant_values=1)
-            sample_embeddings = self._add_sample_token(asv_embeddings)
-        else:
-            sample_embeddings = asv_embeddings
-        return sample_embeddings
+        return asv_embeddings
 
     # def base_embeddings(
     #     self, inputs: tf.Tensor, training: bool = False

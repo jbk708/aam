@@ -1,6 +1,8 @@
 import tensorflow as tf
 import tensorflow_models as tfm
 
+from aam.models.attention_pooling import AttentionPooling
+from aam.models.transformers import TransformerEncoder
 from aam.utils import float_mask
 
 
@@ -61,44 +63,44 @@ class ASVEncoder(tf.keras.layers.Layer):
 
     def build(self, input_shape):
         self.emb_layer = tf.keras.layers.Embedding(
-            self.num_tokens,
-            self.embedding_dim,
-            input_length=self.max_bp,
-            # embeddings_initializer="glorot_uniform",
-            # embeddings_initializer=tf.keras.initializers.RandomNormal(
-            #     mean=0, stddev=self.embedding_dim**0.5
-            # ),
+            self.num_tokens, self.embedding_dim, input_length=self.max_bp
         )
 
-        self.avs_attention = NucleotideAttention(
-            max_bp=self.max_bp,
-            num_heads=self.attention_heads,
+        self.pos_emb = tfm.nlp.layers.PositionEmbedding(self.max_bp + 1, seq_axis=2)
+
+        self.asv_attention = TransformerEncoder(
             num_layers=self.attention_layers,
-            dropout=self.dropout_rate,
-            intermediate_ff=self.intermediate_ff,
-            intermediate_activation=self.intermediate_activation,
-            embedding_dim=self.embedding_dim,
+            num_attention_heads=self.attention_heads,
+            dropout_rate=self.dropout_rate,
+            intermediate_size=self.intermediate_ff,
+            activation=self.intermediate_activation,
         )
+        self.attention_pool = AttentionPooling()
         super(ASVEncoder, self).build(input_shape)
 
     def call(self, inputs, training=False):
-        seq = inputs
-        seq = seq + self.nucleotide_position
+        shape = tf.shape(inputs)
+        batch_size = shape[0]
+        seq_size = shape[1]
 
-        # add <ASV> token
-        if self.add_token:
-            seq = tf.pad(seq, [[0, 0], [0, 0], [0, 1]], constant_values=self.asv_token)
+        mask = tf.reduce_sum(inputs, axis=-1) > 0
+        mask = tf.reshape(mask, shape=[-1])
+        indices = tf.where(mask)
 
-        output = self.emb_layer(seq)
-        output = self.avs_attention(output, training=training)
+        asv_input = inputs + self.nucleotide_position
+        asv_input = self.emb_layer(asv_input)
+        asv_input = asv_input + self.pos_emb(asv_input)
 
+        reshape = [batch_size * seq_size, self.max_bp, self.embedding_dim]
+        reshaped_asv_input = tf.reshape(asv_input, shape=reshape)[mask]
+
+        output = self.asv_attention(reshaped_asv_input, training=training)
+        output = reshaped_asv_input + output
+        output = tf.scatter_nd(indices=indices, updates=output, shape=reshape)
+        output = tf.reshape(
+            output, shape=[batch_size, seq_size, self.max_bp, self.embedding_dim]
+        )
         return output
-
-    def sequence_embedding(self, seq):
-        seq = tf.pad(seq, [[0, 0], [0, 0], [0, 1]], constant_values=self.asv_token)
-        output = self.emb_layer(seq)
-        output = self.avs_attention(output)
-        return output[:, :, -1, :]
 
     def get_config(self):
         config = super(ASVEncoder, self).get_config()
