@@ -53,7 +53,7 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
                 max_bp,
                 nuc_attention_heads,
                 nuc_attention_layers,
-                0.0,
+                dropout_rate,
                 nuc_intermediate_size,
                 intermediate_activation=self.intermediate_activation,
                 add_token=self.add_token,

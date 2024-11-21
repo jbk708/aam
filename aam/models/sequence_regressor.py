@@ -436,12 +436,6 @@ class SequenceRegressor(tf.keras.Model):
         count_mask = float_mask(counts, dtype=tf.int32)
         rel_abundance = self._relative_abundance(counts)
 
-        # account for <SAMPLE> token
-        if self.add_token:
-            count_mask = tf.pad(count_mask, [[0, 0], [1, 0], [0, 0]], constant_values=1)
-            rel_abundance = tf.pad(
-                rel_abundance, [[0, 0], [1, 0], [0, 0]], constant_values=1
-            )
         count_attention_mask = count_mask
         base_embeddings, base_pred = self.base_model(
             (tokens, counts), training=training

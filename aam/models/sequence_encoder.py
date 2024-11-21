@@ -66,7 +66,7 @@ class SequenceEncoder(tf.keras.Model):
             dropout_rate=self.dropout_rate,
             nuc_attention_heads=4,
             nuc_attention_layers=4,
-            nuc_intermediate_size=128,
+            nuc_intermediate_size=256,
             intermediate_activation=self.intermediate_activation,
             is_16S=self.is_16S,
             vocab_size=self.vocab_size,
@@ -286,9 +286,10 @@ class SequenceEncoder(tf.keras.Model):
         gradients = tape.gradient(
             loss,
             self.trainable_variables,
-            unconnected_gradients=tf.UnconnectedGradients.ZERO,
+            # unconnected_gradients=tf.UnconnectedGradients.ZERO,
         )
-        self.gradient_accumulator.apply_gradients(gradients)
+        # self.gradient_accumulator.apply_gradients(gradients)
+        self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
 
         self.loss_tracker.update_state(loss)
         self.encoder_tracker.update_state(loss)

@@ -128,10 +128,10 @@ class SaveModel(tf.keras.callbacks.Callback):
         if self.best_weights is None or self.best_metric > metric:
             self.best_metric = metric
             self.best_weights = self.model.get_weights()
-            self.model.save(
-                self.output_dir,
-                save_format="keras",
-            )
+        self.model.save(
+            self.output_dir,
+            save_format="keras",
+        )
 
         logs["best_metric"] = self.best_metric
 
