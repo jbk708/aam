@@ -85,5 +85,5 @@ class TransformerEncoder(tf.keras.layers.Layer):
             encoder_inputs = self.encoder_layers[layer_idx](
                 [encoder_inputs, attention_mask], training=training
             )
-        # output_tensor = self.output_normalization(encoder_inputs)
-        return encoder_inputs
+        output_tensor = self.output_normalization(encoder_inputs)
+        return output_tensor

@@ -66,7 +66,9 @@ class ASVEncoder(tf.keras.layers.Layer):
             self.num_tokens, self.embedding_dim, input_length=self.max_bp
         )
 
-        self.pos_emb = tfm.nlp.layers.PositionEmbedding(self.max_bp + 1, seq_axis=2)
+        self.pos_emb = tfm.nlp.layers.PositionEmbedding(
+            self.max_bp + 1, seq_axis=2, initializer="zeros"
+        )
 
         self.asv_attention = TransformerEncoder(
             num_layers=self.attention_layers,
