@@ -475,7 +475,7 @@ class GeneratorDataset:
             "shift": self.shift,
             "scale": self.scale,
             "size": self.size,
-            "steps_pre_epoch": min(200, self.steps_per_epoch),
+            "steps_pre_epoch": min(1000, self.steps_per_epoch),
             "class_weights": class_weights,
         }
         return data_obj
