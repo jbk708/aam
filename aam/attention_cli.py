@@ -175,7 +175,7 @@ def fit_unifrac_regressor(
 
     optimizer = tf.keras.optimizers.AdamW(
         cos_decay_with_warmup(p_lr, p_warmup_steps, p_decay_steps),
-        weight_decay=5e-2,
+        weight_decay=1e-2,
     )
     token_shape = tf.TensorShape([None, None, 150])
     count_shape = tf.TensorShape([None, None, 1])

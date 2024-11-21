@@ -119,8 +119,7 @@ class SequenceRegressor(tf.keras.Model):
             activation=self.intermediate_activation,
         )
         self.count_pos = tfm.nlp.layers.PositionEmbedding(
-            self.token_limit + 5,
-            dtype=tf.float32,
+            self.token_limit + 5, dtype=tf.float32, initializer="zeros"
         )
         self.count_out = tf.keras.layers.Dense(1, dtype=tf.float32)
         self.count_loss = tf.keras.losses.MeanSquaredError(reduction="none")
@@ -289,12 +288,8 @@ class SequenceRegressor(tf.keras.Model):
                         tf.stack(self.loss_scaler([target_loss, count_mse, base_loss]))
                     )
 
-        gradients = tape.gradient(
-            loss,
-            self.trainable_variables,
-            unconnected_gradients=tf.UnconnectedGradients.ZERO,
-        )
-        self.gradient_accumulator.apply_gradients(gradients)
+        gradients = tape.gradient(loss, self.trainable_variables)
+        self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
         self.loss_tracker.update_state(loss)
         self.target_tracker.update_state(target_loss)
         self.count_tracker.update_state(count_mse)

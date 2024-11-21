@@ -97,7 +97,7 @@ class ASVEncoder(tf.keras.layers.Layer):
         reshaped_asv_input = tf.reshape(asv_input, shape=reshape)[mask]
 
         output = self.asv_attention(reshaped_asv_input, training=training)
-        output = reshaped_asv_input + output
+        # output = reshaped_asv_input + output
         output = tf.scatter_nd(indices=indices, updates=output, shape=reshape)
         output = tf.reshape(
             output, shape=[batch_size, seq_size, self.max_bp, self.embedding_dim]
