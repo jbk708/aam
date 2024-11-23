@@ -262,6 +262,7 @@ class SequenceEncoder(tf.keras.Model):
         nuc_tokens = nuc_tokens[nuc_mask]
         nuc_tokens = tf.one_hot(nuc_tokens, tf.shape(nuc_pred)[-1])
         nuc_loss = self.nuc_loss(nuc_tokens, nuc_pred)
+        nuc_loss = tf.reduce_mean(nuc_loss)
         encoder_loss = self._compute_encoder_loss(y_true, encoder_embeddings)
         loss = nuc_loss + encoder_loss
         return loss, nuc_loss, encoder_loss
