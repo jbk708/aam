@@ -172,8 +172,8 @@ class SequenceEncoder(tf.keras.Model):
             self.tax_ff(tax_pred),
         ]
 
-    def _unifrac_embeddings(self, tensor, mask=None):
-        encoder_pred = self.attention_pooling(tensor, mask=mask)
+    def _unifrac_embeddings(self, tensor, mask=None, training=False):
+        encoder_pred = self.attention_pooling(tensor, mask=mask, training=training)
         encoder_pred = self.encoder_ff(encoder_pred)
         return encoder_pred
 
@@ -340,8 +340,9 @@ class SequenceEncoder(tf.keras.Model):
             sample_embeddings, mask=count_mask, training=training
         )
 
-        encoder_pred = self.extract_encoder_pred(encoder_gated_embeddings, count_mask)
-        # encoder_embeddings = sample_embeddings + encoder_gated_embeddings
+        encoder_pred = self.extract_encoder_pred(
+            encoder_gated_embeddings, count_mask, training=training
+        )
         encoder_embeddings = encoder_gated_embeddings
         return [encoder_embeddings, encoder_pred]
 

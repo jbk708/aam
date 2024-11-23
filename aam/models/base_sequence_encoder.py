@@ -90,7 +90,7 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
 
         self.attention_pool = AttentionPooling()
 
-    def _split_asvs(self, embeddings):
+    def _split_asvs(self, embeddings, training):
         asv_embeddings = embeddings
         if self.is_16S:
             shape = tf.shape(embeddings)
@@ -99,7 +99,7 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
             embeddings = tf.reshape(
                 embeddings, (batch_dim * seq_dim, self.max_bp, self.embedding_dim)
             )
-            asv_embeddings = self.attention_pool(embeddings)
+            asv_embeddings = self.attention_pool(embeddings, training=training)
             asv_embeddings = tf.reshape(
                 asv_embeddings, shape=(batch_dim, seq_dim, self.embedding_dim)
             )
@@ -124,8 +124,8 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
         if self.is_16S:
             embeddings = self.asv_encoder(asv_input, training=training)
         else:
-            embeddings = self.asv_embeddings(asv_input)
-        asv_embeddings = self._split_asvs(embeddings)
+            embeddings = self.asv_embeddings(asv_input, training=training)
+        asv_embeddings = self._split_asvs(embeddings, training=training)
         return asv_embeddings
 
     # def base_embeddings(
