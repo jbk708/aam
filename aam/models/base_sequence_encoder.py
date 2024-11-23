@@ -121,12 +121,11 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
         if training and random_mask is not None:
             asv_input = asv_input * tf.cast(random_mask, dtype=tf.int32)
 
-        if self.is_16S:
-            embeddings = self.asv_encoder(asv_input, training=training)
-        else:
-            embeddings = self.asv_embeddings(asv_input, training=training)
+        embeddings, random_mask, nuc_pred = self.asv_encoder(
+            asv_input, training=training
+        )
         asv_embeddings = self._split_asvs(embeddings, training=training)
-        return asv_embeddings
+        return asv_embeddings, random_mask, nuc_pred
 
     # def base_embeddings(
     #     self, inputs: tf.Tensor, training: bool = False

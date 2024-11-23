@@ -10,7 +10,7 @@ from aam.models.base_sequence_encoder import BaseSequenceEncoder
 from aam.models.transformers import TransformerEncoder
 from aam.optimizers.gradient_accumulator import GradientAccumulator
 from aam.optimizers.loss_scaler import LossScaler
-from aam.utils import apply_random_mask, float_mask
+from aam.utils import float_mask
 
 
 @tf.keras.saving.register_keras_serializable(package="SequenceEncoder")
@@ -54,6 +54,9 @@ class SequenceEncoder(tf.keras.Model):
         self._get_encoder_loss()
         self.loss_tracker = tf.keras.metrics.Mean()
         self.encoder_tracker = tf.keras.metrics.Mean()
+
+        self.nuc_loss = tf.keras.losses.CategoricalCrossentropy(reduction="none")
+        self.nuc_tracker = tf.keras.metrics.Mean()
 
         # layers used in model
         self.base_encoder = BaseSequenceEncoder(
@@ -252,8 +255,16 @@ class SequenceEncoder(tf.keras.Model):
         outputs: tuple[tf.Tensor, tf.Tensor, tf.Tensor],
     ) -> tuple[tf.Tensor, tf.Tensor, tf.Tensor]:
         nuc_tokens, counts = model_inputs
-        embeddings, encoder_embeddings = outputs
-        return self._compute_encoder_loss(y_true, encoder_embeddings)
+        embeddings, encoder_embeddings, nuc_mask, nuc_pred = outputs
+
+        nuc_tokens = tf.reshape(nuc_tokens, shape=[-1])
+        nuc_mask = tf.reshape(nuc_mask, shape=[-1])
+        nuc_tokens = nuc_tokens[nuc_mask]
+        nuc_tokens = tf.one_hot(nuc_tokens, tf.shape(nuc_pred)[-1])
+        nuc_loss = self.nuc_loss(nuc_tokens, nuc_pred)
+        encoder_loss = self._compute_encoder_loss(y_true, encoder_embeddings)
+        loss = nuc_loss + encoder_loss
+        return loss, nuc_loss, encoder_loss
 
     def predict_step(
         self,
@@ -263,7 +274,9 @@ class SequenceEncoder(tf.keras.Model):
         ],
     ):
         inputs, y = data
-        embeddings, encoder_embeddings = self(inputs, training=False)
+        embeddings, encoder_embeddings, nuc_mask, nuc_pred = self(
+            inputs, training=False
+        )
 
         return encoder_embeddings, y
 
@@ -281,7 +294,9 @@ class SequenceEncoder(tf.keras.Model):
         y_target, encoder_target = y
         with tf.GradientTape() as tape:
             outputs = self(inputs, training=True)
-            loss = self._compute_loss(inputs, encoder_target, outputs)
+            loss, nuc_loss, encoder_loss = self._compute_loss(
+                inputs, encoder_target, outputs
+            )
 
         gradients = tape.gradient(
             loss,
@@ -292,10 +307,12 @@ class SequenceEncoder(tf.keras.Model):
         self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
 
         self.loss_tracker.update_state(loss)
-        self.encoder_tracker.update_state(loss)
+        self.encoder_tracker.update_state(encoder_loss)
+        self.nuc_tracker.update_state(nuc_loss)
         return {
             "loss": self.loss_tracker.result(),
             "encoder_loss": self.encoder_tracker.result(),
+            "nuc_loss": self.nuc_tracker.result(),
             "learning_rate": self.optimizer.learning_rate,
         }
 
@@ -309,12 +326,16 @@ class SequenceEncoder(tf.keras.Model):
         inputs, y = data
         y_target, encoder_target = y
         outputs = self(inputs, training=False)
-        encoder_loss = self._compute_loss(inputs, encoder_target, outputs)
-        self.loss_tracker.update_state(encoder_loss)
+        loss, nuc_loss, encoder_loss = self._compute_loss(
+            inputs, encoder_target, outputs
+        )
+        self.loss_tracker.update_state(loss)
         self.encoder_tracker.update_state(encoder_loss)
+        self.nuc_tracker.update_state(nuc_loss)
         return {
             "loss": self.loss_tracker.result(),
             "encoder_loss": self.encoder_tracker.result(),
+            "nuc_loss": self.nuc_tracker.result(),
             "learning_rate": self.optimizer.learning_rate,
         }
 
@@ -329,10 +350,8 @@ class SequenceEncoder(tf.keras.Model):
         # account for <SAMPLE> token
         count_mask = float_mask(counts, dtype=tf.int32)
         random_mask = None
-        if training and self.asv_dropout_rate > 0:
-            random_mask = apply_random_mask(count_mask, self.asv_dropout_rate)
 
-        sample_embeddings = self.base_encoder(
+        sample_embeddings, nuc_mask, nuc_pred = self.base_encoder(
             tokens, random_mask=random_mask, training=training
         )
 
@@ -344,7 +363,7 @@ class SequenceEncoder(tf.keras.Model):
             encoder_gated_embeddings, count_mask, training=training
         )
         encoder_embeddings = encoder_gated_embeddings
-        return [encoder_embeddings, encoder_pred]
+        return encoder_embeddings, encoder_pred, nuc_mask, nuc_pred
 
     def base_embeddings(
         self, inputs: tuple[tf.Tensor, tf.Tensor]

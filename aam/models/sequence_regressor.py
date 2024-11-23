@@ -432,7 +432,7 @@ class SequenceRegressor(tf.keras.Model):
         rel_abundance = self._relative_abundance(counts)
 
         count_attention_mask = count_mask
-        base_embeddings, base_pred = self.base_model(
+        base_embeddings, base_pred, nuc_mask = self.base_model(
             (tokens, counts), training=training
         )
 
