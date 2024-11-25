@@ -173,9 +173,9 @@ def fit_unifrac_regressor(
             accumulation_steps=p_accumulation_steps,
         )
 
-    optimizer = tf.keras.optimizers.Adam(
+    optimizer = tf.keras.optimizers.AdamW(
         cos_decay_with_warmup(p_lr, p_warmup_steps, p_decay_steps),
-        beta_2=0.98,
+        weight_decay=p_weight_decay,
     )
     token_shape = tf.TensorShape([None, None, 150])
     count_shape = tf.TensorShape([None, None, 1])
@@ -229,7 +229,7 @@ def fit_unifrac_regressor(
 
     val_gen = UniFracGenerator(
         table=val_table,
-        shuffle=True,
+        shuffle=False,
         shift=0.0,
         scale=1.0,
         gen_new_tables=False,
@@ -740,8 +740,8 @@ def fit_sample_regressor(
         train_data = _get_fold(
             train_ind,
             shuffle=True,
-            shift=0.0,
-            scale=1.0,
+            # shift=0.0,
+            scale="standscale",
             gen_new_tables=p_gen_new_table,
         )
         val_data = _get_fold(

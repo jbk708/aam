@@ -157,10 +157,10 @@ class GeneratorDataset:
         print(f"metadata shape: {metadata.shape}")
         if not self.is_categorical:
             metadata = metadata.astype(np.float32)
-            if not isinstance(self.scale, (str, float)):
-                raise Exception("Invalid scale argument.")
-            if self.shift is None and isinstance(self.scale, float):
-                raise Exception("Invalid shift argument")
+            # if not isinstance(self.scale, (str, float)):
+            #     raise Exception("Invalid scale argument.")
+            # if self.shift is None and isinstance(self.scale, float):
+            #     raise Exception("Invalid shift argument")
 
             if self.scale == "minmax":
                 self.shift = np.min(metadata)
@@ -475,7 +475,7 @@ class GeneratorDataset:
             "shift": self.shift,
             "scale": self.scale,
             "size": self.size,
-            "steps_pre_epoch": min(200, self.steps_per_epoch),
+            "steps_pre_epoch": self.steps_per_epoch,
             "class_weights": class_weights,
         }
         return data_obj
