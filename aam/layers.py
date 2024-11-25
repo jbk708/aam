@@ -166,7 +166,8 @@ class ASVEncoder(tf.keras.layers.Layer):
             #     tf.reduce_sum(tf.cast(inputs > 0, dtype=tf.int32), axis=-1),
             # )
         random_mask = random_mask > 0
-        asv_input = inputs + self.nucleotide_position
+        # asv_input = inputs + self.nucleotide_position
+        asv_input = inputs
 
         asv_input = self.emb_layer(asv_input)
         asv_input = asv_input + self.pos_emb(asv_input)
@@ -175,7 +176,6 @@ class ASVEncoder(tf.keras.layers.Layer):
         reshaped_asv_input = tf.reshape(asv_input, shape=reshape)[mask]
 
         output = self.asv_attention(reshaped_asv_input, training=training)
-        # output = reshaped_asv_input + output
         output = tf.scatter_nd(indices=indices, updates=output, shape=reshape)
 
         masked_nuc = tf.reshape(random_mask, shape=[-1])
