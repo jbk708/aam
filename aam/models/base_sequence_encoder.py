@@ -93,17 +93,17 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
     def _split_asvs(self, embeddings, training):
         asv_embeddings = embeddings
         if self.is_16S:
-            # shape = tf.shape(embeddings)
-            # batch_dim = shape[0]
-            # seq_dim = shape[1]
-            # embeddings = tf.reshape(
-            #     embeddings, (batch_dim * seq_dim, self.max_bp, self.embedding_dim)
-            # )
-            # asv_embeddings = self.attention_pool(embeddings, training=training)
-            # asv_embeddings = tf.reshape(
-            #     asv_embeddings, shape=(batch_dim, seq_dim, self.embedding_dim)
-            # )
-            asv_embeddings = asv_embeddings[:, :, 0, :]
+            shape = tf.shape(embeddings)
+            batch_dim = shape[0]
+            seq_dim = shape[1]
+            embeddings = tf.reshape(
+                embeddings, (batch_dim * seq_dim, self.max_bp, self.embedding_dim)
+            )
+            asv_embeddings = self.attention_pool(embeddings, training=training)
+            asv_embeddings = tf.reshape(
+                asv_embeddings, shape=(batch_dim, seq_dim, self.embedding_dim)
+            )
+            # asv_embeddings = asv_embeddings[:, :, 0, :]
         else:
             asv_embeddings = asv_embeddings[:, :, 0, :]
 
@@ -117,7 +117,6 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
         # because keras converts all inputs
         # to float when calling build()
         asv_input = tf.cast(inputs, dtype=tf.int32)
-        asv_mask = float_mask(tf.reduce_sum(inputs, axis=-1, keepdims=True))
 
         if training and random_mask is not None:
             asv_input = asv_input * tf.cast(random_mask, dtype=tf.int32)
@@ -126,6 +125,7 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
             asv_input, training=training
         )
         asv_embeddings = self._split_asvs(embeddings, training=training)
+
         return asv_embeddings, random_mask, nuc_pred
 
     # def base_embeddings(

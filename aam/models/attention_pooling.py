@@ -4,7 +4,7 @@ import tensorflow as tf
 class AttentionPooling(tf.keras.layers.Layer):
     def __init__(self):
         super(AttentionPooling, self).__init__()
-        self.query = tf.keras.layers.Dense(8, use_bias=False)
+        self.query = tf.keras.layers.Dense(1, use_bias=False)
         self.dropout = tf.keras.layers.Dropout(0.1)
         self.norm = tf.keras.layers.LayerNormalization(epsilon=1e-12, dtype=tf.float32)
 
@@ -20,7 +20,7 @@ class AttentionPooling(tf.keras.layers.Layer):
             mask = tf.expand_dims(mask, axis=1)
             mask = tf.cast(mask, dtype=tf.float32)
             attention_scores = attention_scores + (1.0 - mask * -1e9)
-        attention_weights = self.dropout(attention_scores, training=training)
+        # attention_weights = self.dropout(attention_scores, training=training)
         attention_weights = tf.nn.softmax(attention_scores, axis=2)
 
         inputs = tf.expand_dims(inputs, axis=1)
