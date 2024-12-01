@@ -166,26 +166,28 @@ class ASVEncoder(tf.keras.layers.Layer):
             #     tf.reduce_sum(tf.cast(inputs > 0, dtype=tf.int32), axis=-1),
             # )
         random_mask = random_mask > 0
-        # asv_input = inputs + self.nucleotide_position
-        asv_input = inputs
+        asv_input = inputs + self.nucleotide_position
+        # asv_input = inputs
+        asv_input = tf.pad(asv_input, [[0, 0], [0, 0], [1, 0]], constant_values=5)
+        self.num_tokens
 
         asv_input = self.emb_layer(asv_input)
         asv_input = asv_input + self.pos_emb(asv_input)
 
-        reshape = [batch_size * seq_size, self.max_bp, self.embedding_dim]
+        reshape = [batch_size * seq_size, self.max_bp + 1, self.embedding_dim]
         reshaped_asv_input = tf.reshape(asv_input, shape=reshape)[mask]
 
         output = self.asv_attention(reshaped_asv_input, training=training)
         output = tf.scatter_nd(indices=indices, updates=output, shape=reshape)
 
+        output = tf.reshape(
+            output, shape=[batch_size, seq_size, self.max_bp + 1, self.embedding_dim]
+        )
+
         masked_nuc = tf.reshape(random_mask, shape=[-1])
-        nuc_embeddings = tf.reshape(output, shape=[-1, self.embedding_dim])
+        nuc_embeddings = tf.reshape(output[:, :, 1:, :], shape=[-1, self.embedding_dim])
         masked_nuc = nuc_embeddings[masked_nuc]
         nuc_pred = self.nuc_pred(masked_nuc)
-
-        output = tf.reshape(
-            output, shape=[batch_size, seq_size, self.max_bp, self.embedding_dim]
-        )
         return output, random_mask, nuc_pred
 
     def get_config(self):

@@ -6,6 +6,7 @@ class AttentionPooling(tf.keras.layers.Layer):
         super(AttentionPooling, self).__init__()
         self.query = tf.keras.layers.Dense(8, use_bias=False)
         self.dropout = tf.keras.layers.Dropout(0.1)
+        self.norm = tf.keras.layers.LayerNormalization(epsilon=1e-12, dtype=tf.float32)
 
     def call(self, inputs, mask=None, training=False):
         attention_scores = self.query(inputs)
@@ -25,4 +26,4 @@ class AttentionPooling(tf.keras.layers.Layer):
         inputs = tf.expand_dims(inputs, axis=1)
         pooled_output = tf.reduce_sum(inputs * attention_weights, axis=2)
         pooled_output = tf.reduce_mean(pooled_output, axis=1)
-        return pooled_output
+        return self.norm(pooled_output)

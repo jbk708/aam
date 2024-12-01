@@ -93,16 +93,17 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
     def _split_asvs(self, embeddings, training):
         asv_embeddings = embeddings
         if self.is_16S:
-            shape = tf.shape(embeddings)
-            batch_dim = shape[0]
-            seq_dim = shape[1]
-            embeddings = tf.reshape(
-                embeddings, (batch_dim * seq_dim, self.max_bp, self.embedding_dim)
-            )
-            asv_embeddings = self.attention_pool(embeddings, training=training)
-            asv_embeddings = tf.reshape(
-                asv_embeddings, shape=(batch_dim, seq_dim, self.embedding_dim)
-            )
+            # shape = tf.shape(embeddings)
+            # batch_dim = shape[0]
+            # seq_dim = shape[1]
+            # embeddings = tf.reshape(
+            #     embeddings, (batch_dim * seq_dim, self.max_bp, self.embedding_dim)
+            # )
+            # asv_embeddings = self.attention_pool(embeddings, training=training)
+            # asv_embeddings = tf.reshape(
+            #     asv_embeddings, shape=(batch_dim, seq_dim, self.embedding_dim)
+            # )
+            asv_embeddings = asv_embeddings[:, :, 0, :]
         else:
             asv_embeddings = asv_embeddings[:, :, 0, :]
 
