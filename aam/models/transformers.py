@@ -46,7 +46,7 @@ class TransformerEncoder(tf.keras.layers.Layer):
                     name=("layer_%d" % i),
                 )
             )
-        self.output_normalization = tf.keras.layers.LayerNormalization()
+        self.output_normalization = tf.keras.layers.LayerNormalization(epsilon=1e-6)
         super(TransformerEncoder, self).build(input_shape)
 
     def get_config(self):

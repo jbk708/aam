@@ -208,6 +208,7 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
                 "nuc_attention_heads": self.nuc_attention_heads,
                 "nuc_attention_layers": self.nuc_attention_layers,
                 "nuc_intermediate_size": self.nuc_intermediate_size,
+                "intermediate_activation": self.intermediate_activation,
                 "is_16S": self.is_16S,
                 "vocab_size": self.vocab_size,
                 "add_token": self.add_token,

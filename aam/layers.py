@@ -96,84 +96,79 @@ class ASVEncoder(tf.keras.layers.Layer):
         # select 15% of tokens to mask
         random_mask = tf.random.uniform(tf.shape(inputs), maxval=1, dtype=tf.float32)
         random_mask = tf.cast(random_mask <= 0.15, dtype=tf.int32) * valid_mask
-        # if training:
-        #     # of the masked tokens, select 20% to either keep or change to
-        #     # random token
-        #     random_non_mask = tf.random.uniform(
-        #         tf.shape(inputs), maxval=1, dtype=tf.float32
-        #     )
-        #     random_non_mask = (
-        #         tf.cast(random_non_mask <= 0.20, dtype=tf.int32) * random_mask
-        #     )
+        if False:
+            # of the masked tokens, select 20% to either keep or change to
+            # random token
+            random_non_mask = tf.random.uniform(
+                tf.shape(inputs), maxval=1, dtype=tf.float32
+            )
+            random_non_mask = (
+                tf.cast(random_non_mask <= 0.20, dtype=tf.int32) * random_mask
+            )
 
-        #     # of the 20% of masked tokens to either keep or change, select 50%  to keep
-        #     # and 50% to change
-        #     random_change = tf.random.uniform(
-        #         tf.shape(inputs), maxval=1, dtype=tf.float32
-        #     )
-        #     random_change = tf.cast(random_change <= 0.50, dtype=tf.int32)
+            # of the 20% of masked tokens to either keep or change, select 50%  to keep
+            # and 50% to change
+            random_change = tf.random.uniform(
+                tf.shape(inputs), maxval=1, dtype=tf.float32
+            )
+            random_change = tf.cast(random_change <= 0.50, dtype=tf.int32)
 
-        #     random_keep = random_non_mask * random_change
-        #     random_change = (1 - random_keep) * valid_mask * random_non_mask
+            random_keep = random_non_mask * random_change
+            random_change = (1 - random_keep) * valid_mask * random_non_mask
 
-        #     # step 1: change all random_mask positions to <MASK> token
-        #     masked_input = inputs * (1 - random_mask)
+            # step 1: change all random_mask positions to <MASK> token
+            masked_input = inputs * (1 - random_mask)
 
-        #     # step 2: change 10% of <MASK> tokens back to original token
-        #     masked_input = (
-        #         masked_input + inputs * random_keep * random_mask * valid_mask
-        #     )
+            # step 2: change 10% of <MASK> tokens back to original token
+            masked_input = (
+                masked_input + inputs * random_keep * random_mask * valid_mask
+            )
 
-        #     # step 3: change 10% of <MASK> tokens to random token
-        #     random_tokens = tf.random.uniform(
-        #         tf.shape(inputs), minval=1, maxval=4, dtype=tf.int32
-        #     )
-        #     masked_input = (
-        #         masked_input + random_tokens * random_change * random_mask * valid_mask
-        #     )
+            # step 3: change 10% of <MASK> tokens to random token
+            random_tokens = tf.random.uniform(
+                tf.shape(inputs), minval=1, maxval=4, dtype=tf.int32
+            )
+            masked_input = (
+                masked_input + random_tokens * random_change * random_mask * valid_mask
+            )
 
-        #     # # random_replace_mask = random_mask * (1 - random_non_mask)
-
-        #     # tf.print(
-        #     #     "random mask",
-        #     #     tf.reduce_sum(random_mask, axis=-1),
-        #     # )
-        #     # tf.print(
-        #     #     "keep positions",
-        #     #     tf.reduce_sum(
-        #     #         random_keep * random_mask,
-        #     #         axis=-1,
-        #     #     ),
-        #     # )
-        #     # tf.print(
-        #     #     "keep positions",
-        #     #     tf.reduce_sum(
-        #     #         random_change * random_mask,
-        #     #         axis=-1,
-        #     #     ),
-        #     # )
-        #     # tf.print(
-        #     #     "keep positions",
-        #     #     tf.reduce_sum(
-        #     #         random_non_mask * random_mask,
-        #     #         axis=-1,
-        #     #     ),
-        #     # )
-        #     # inputs = inputs * (1 - random_replace_mask)
-        #     inputs = masked_input
-        #     # tf.print(
-        #     #     "masked input",
-        #     #     tf.reduce_sum(tf.cast(inputs > 0, dtype=tf.int32), axis=-1),
-        #     # )
+            # tf.print(
+            #     "random mask",
+            #     tf.reduce_sum(random_mask, axis=-1),
+            # )
+            # tf.print(
+            #     "keep positions",
+            #     tf.reduce_sum(
+            #         random_keep * random_mask,
+            #         axis=-1,
+            #     ),
+            # )
+            # tf.print(
+            #     "keep positions",
+            #     tf.reduce_sum(
+            #         random_change * random_mask,
+            #         axis=-1,
+            #     ),
+            # )
+            # tf.print(
+            #     "keep positions",
+            #     tf.reduce_sum(
+            #         random_non_mask * random_mask,
+            #         axis=-1,
+            #     ),
+            # )
+            # inputs = inputs * (1 - random_replace_mask)
+            inputs = masked_input
+            # tf.print(
+            #     "masked input",
+            #     tf.reduce_sum(tf.cast(inputs > 0, dtype=tf.int32), axis=-1),
+            # )
         random_mask = random_mask > 0
         asv_input = inputs + self.nucleotide_position
-        # asv_input = inputs
-        # asv_input = tf.pad(asv_input, [[0, 0], [0, 0], [1, 0]], constant_values=5)
 
         asv_input = self.emb_layer(asv_input)
         asv_input = asv_input + self.pos_emb(asv_input)
 
-        # reshape = [batch_size * seq_size, self.max_bp + 1, self.embedding_dim]
         reshape = [batch_size * seq_size, self.max_bp, self.embedding_dim]
         reshaped_asv_input = tf.reshape(asv_input, shape=reshape)[mask]
 
@@ -181,13 +176,11 @@ class ASVEncoder(tf.keras.layers.Layer):
         output = tf.scatter_nd(indices=indices, updates=output, shape=reshape)
 
         output = tf.reshape(
-            # output, shape=[batch_size, seq_size, self.max_bp + 1, self.embedding_dim]
             output,
             shape=[batch_size, seq_size, self.max_bp, self.embedding_dim],
         )
 
         masked_nuc = tf.reshape(random_mask, shape=[-1])
-        # nuc_embeddings = tf.reshape(output[:, :, 1:, :], shape=[-1, self.embedding_dim])
         nuc_embeddings = tf.reshape(output, shape=[-1, self.embedding_dim])
         masked_nuc = nuc_embeddings[masked_nuc]
         nuc_pred = self.nuc_pred(masked_nuc)
