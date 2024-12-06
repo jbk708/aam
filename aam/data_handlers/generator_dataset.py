@@ -222,6 +222,11 @@ class GeneratorDataset:
             obs_encodings = self.lookup_table.lookup(obs_encodings).numpy()
 
         table_data, row, col, shape = self._table_data(table)
+        # only keep observations with count > 0
+        table_mask = table_data > 0
+        table_data = table_data[table_mask]
+        row = row[table_mask]
+        col = col[table_mask]
 
         return row, col, table_data, obs_encodings, sample_ids, obs_ids
 

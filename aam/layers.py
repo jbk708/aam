@@ -3,7 +3,7 @@ import tensorflow_models as tfm
 
 from aam.models.attention_pooling import AttentionPooling
 from aam.models.transformers import TransformerEncoder
-from aam.utils import float_mask
+from aam.utils import float_mask, create_random_mask
 
 
 @tf.keras.saving.register_keras_serializable(package="activity_regularization")
@@ -84,36 +84,43 @@ class ASVEncoder(tf.keras.layers.Layer):
         super(ASVEncoder, self).build(input_shape)
 
     def call(self, inputs, training=False):
-        shape = tf.shape(inputs)
-        batch_size = shape[0]
-        seq_size = shape[1]
+        inputs_shape = tf.shape(inputs)
+        batch_size = inputs_shape[0]
+        seq_size = inputs_shape[1]
 
-        mask = tf.reduce_sum(inputs, axis=-1) > 0
-        mask = tf.reshape(mask, shape=[-1])
+        # boolean mask used to select non-pad tokens
+        mask = tf.reduce_sum(inputs, axis=-1) > 0  # shape [B, A]
+        mask = tf.reshape(mask, shape=[-1])  # shape [B * A]
+
+        # create indices for non-pad locations
         indices = tf.where(mask)
 
+        # mask for non-pad tokens (used during the creation of random_mask)
         valid_mask = tf.cast(inputs > 0, dtype=tf.int32)
-        # select 15% of tokens to mask
-        random_mask = tf.random.uniform(tf.shape(inputs), maxval=1, dtype=tf.float32)
-        random_mask = tf.cast(random_mask <= 0.15, dtype=tf.int32) * valid_mask
-        if False:
+
+        # select 15% of tokens to "mask" i.e. tokens to use to compute nuc_loss
+        random_mask = (
+            create_random_mask(inputs_shape, percent=0.15, dtype=tf.int32) * valid_mask
+        )
+
+        if training:
             # of the masked tokens, select 20% to either keep or change to
             # random token
-            random_non_mask = tf.random.uniform(
-                tf.shape(inputs), maxval=1, dtype=tf.float32
-            )
             random_non_mask = (
-                tf.cast(random_non_mask <= 0.20, dtype=tf.int32) * random_mask
+                create_random_mask(inputs_shape, percent=0.2, dtype=tf.int32)
+                * random_mask
             )
 
             # of the 20% of masked tokens to either keep or change, select 50%  to keep
             # and 50% to change
-            random_change = tf.random.uniform(
-                tf.shape(inputs), maxval=1, dtype=tf.float32
+            random_change = create_random_mask(
+                inputs_shape, percent=0.5, dtype=tf.int32
             )
-            random_change = tf.cast(random_change <= 0.50, dtype=tf.int32)
 
+            # tokens to keep the same
             random_keep = random_non_mask * random_change
+
+            # tokens to randomly change
             random_change = (1 - random_keep) * valid_mask * random_non_mask
 
             # step 1: change all random_mask positions to <MASK> token
@@ -128,62 +135,42 @@ class ASVEncoder(tf.keras.layers.Layer):
             random_tokens = tf.random.uniform(
                 tf.shape(inputs), minval=1, maxval=4, dtype=tf.int32
             )
+
+            # step 4: create masked input
             masked_input = (
                 masked_input + random_tokens * random_change * random_mask * valid_mask
             )
-
-            # tf.print(
-            #     "random mask",
-            #     tf.reduce_sum(random_mask, axis=-1),
-            # )
-            # tf.print(
-            #     "keep positions",
-            #     tf.reduce_sum(
-            #         random_keep * random_mask,
-            #         axis=-1,
-            #     ),
-            # )
-            # tf.print(
-            #     "keep positions",
-            #     tf.reduce_sum(
-            #         random_change * random_mask,
-            #         axis=-1,
-            #     ),
-            # )
-            # tf.print(
-            #     "keep positions",
-            #     tf.reduce_sum(
-            #         random_non_mask * random_mask,
-            #         axis=-1,
-            #     ),
-            # )
-            # inputs = inputs * (1 - random_replace_mask)
             inputs = masked_input
-            # tf.print(
-            #     "masked input",
-            #     tf.reduce_sum(tf.cast(inputs > 0, dtype=tf.int32), axis=-1),
-            # )
-        random_mask = random_mask > 0
-        asv_input = inputs + self.nucleotide_position
 
+        # convert random_mask to boolean mask
+        random_mask = random_mask > 0
+
+        # get nucleotides embeddigns
+        asv_input = inputs + self.nucleotide_position
         asv_input = self.emb_layer(asv_input)
         asv_input = asv_input + self.pos_emb(asv_input)
 
+        # flatten tensor of shape [B, A, N, E] to [B * A, N, E]
         reshape = [batch_size * seq_size, self.max_bp, self.embedding_dim]
+
+        # select non-pad tokens
         reshaped_asv_input = tf.reshape(asv_input, shape=reshape)[mask]
 
         output = self.asv_attention(reshaped_asv_input, training=training)
-        output = tf.scatter_nd(indices=indices, updates=output, shape=reshape)
 
+        # place nucleotide embedding back in their original shape
+        output = tf.scatter_nd(indices=indices, updates=output, shape=reshape)
         output = tf.reshape(
             output,
             shape=[batch_size, seq_size, self.max_bp, self.embedding_dim],
         )
 
+        # extract the masked nucleotides
         masked_nuc = tf.reshape(random_mask, shape=[-1])
         nuc_embeddings = tf.reshape(output, shape=[-1, self.embedding_dim])
         masked_nuc = nuc_embeddings[masked_nuc]
         nuc_pred = self.nuc_pred(masked_nuc)
+
         return output, random_mask, nuc_pred
 
     def get_config(self):
