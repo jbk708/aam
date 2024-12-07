@@ -448,7 +448,7 @@ class SequenceRegressor(tf.keras.Model):
         attention_mask: Optional[tf.Tensor] = None,
         training: bool = False,
     ) -> tf.Tensor:
-        count_embeddings = tensor + self.count_pos(tensor) * relative_abundances
+        count_embeddings = tensor + self.count_pos(tensor) * (1 + relative_abundances)
         count_embeddings = self.count_encoder(
             count_embeddings, mask=attention_mask, training=training
         )

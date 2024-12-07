@@ -17,6 +17,14 @@ def float_mask(tensor: tf.Tensor, dtype=tf.float32) -> tf.Tensor:
     return mask
 
 
+def create_random_mask(
+    shape: tf.Tensor, percent: tf.float32, dtype: tf.DType = tf.float32
+) -> tf.Tensor:
+    random_mask = tf.random.uniform(shape, maxval=1, dtype=tf.float32)
+    random_mask = tf.cast(random_mask <= percent, dtype=dtype)
+    return random_mask
+
+
 def apply_random_mask(tensor: tf.Tensor, mask_percent: float) -> tf.Tensor:
     if not isinstance(mask_percent, float):
         raise Exception("Invalid mask percent")

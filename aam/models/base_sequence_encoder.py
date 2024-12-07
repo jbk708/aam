@@ -103,6 +103,7 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
             asv_embeddings = tf.reshape(
                 asv_embeddings, shape=(batch_dim, seq_dim, self.embedding_dim)
             )
+            # asv_embeddings = asv_embeddings[:, :, 0, :]
         else:
             asv_embeddings = asv_embeddings[:, :, 0, :]
 
@@ -116,7 +117,6 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
         # because keras converts all inputs
         # to float when calling build()
         asv_input = tf.cast(inputs, dtype=tf.int32)
-        asv_mask = float_mask(tf.reduce_sum(inputs, axis=-1, keepdims=True))
 
         if training and random_mask is not None:
             asv_input = asv_input * tf.cast(random_mask, dtype=tf.int32)
@@ -125,6 +125,7 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
             asv_input, training=training
         )
         asv_embeddings = self._split_asvs(embeddings, training=training)
+
         return asv_embeddings, random_mask, nuc_pred
 
     # def base_embeddings(
@@ -207,6 +208,7 @@ class BaseSequenceEncoder(tf.keras.layers.Layer):
                 "nuc_attention_heads": self.nuc_attention_heads,
                 "nuc_attention_layers": self.nuc_attention_layers,
                 "nuc_intermediate_size": self.nuc_intermediate_size,
+                "intermediate_activation": self.intermediate_activation,
                 "is_16S": self.is_16S,
                 "vocab_size": self.vocab_size,
                 "add_token": self.add_token,
