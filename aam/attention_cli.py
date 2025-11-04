@@ -18,6 +18,12 @@ from aam.callbacks import (
     _mean_absolute_error,
 )
 from aam.cv_utils import CVModel, EnsembleModel
+from aam.exceptions import (
+    DataLoadError,
+    ModelConfigurationError,
+    ModelLoadError,
+    TrainingError,
+)
 from aam.losses import ImbalancedCategoricalCrossEntropy
 
 
@@ -36,15 +42,43 @@ MISSING_SAMP_DESC = 'How to handle missing samples in metadata. "error" will fai
 
 
 def validate_metadata(table, metadata, missing_samples_flag):
+    """Validate that table and metadata have matching sample IDs.
+    
+    Args:
+        table: BIOM table object
+        metadata: DataFrame with metadata
+        missing_samples_flag: How to handle missing samples ("error" or "ignore")
+        
+    Returns:
+        Tuple of (ids, filtered_table, filtered_metadata)
+        
+    Raises:
+        DataLoadError: If validation fails
+    """
     # check for mismatch samples
     ids = table.ids(axis="sample")
     shared_ids = np.intersect1d(ids, metadata.index)
     min_ids = min(len(shared_ids), len(ids), len(metadata.index))
     max_ids = max(len(shared_ids), len(ids), len(metadata.index))
     if len(shared_ids) == 0:
-        raise Exception("Table and Metadata have no matching sample ids")
+        raise DataLoadError(
+            "Table and Metadata have no matching sample ids",
+            context={
+                "table_samples": len(ids),
+                "metadata_samples": len(metadata.index),
+                "shared_samples": 0,
+            },
+        )
     if min_ids != max_ids and missing_samples_flag == "error":
-        raise Exception("Table and Metadata do not share all same sample ids.")
+        raise DataLoadError(
+            "Table and Metadata do not share all same sample ids",
+            context={
+                "table_samples": len(ids),
+                "metadata_samples": len(metadata.index),
+                "shared_samples": len(shared_ids),
+                "missing_samples_flag": missing_samples_flag,
+            },
+        )
     elif min_ids != max_ids and missing_samples_flag == "ignore":
         print("Warning: Table and Metadata do not share all same sample ids.")
         print("Table and metadata will be filtered")
@@ -606,11 +640,48 @@ def fit_sample_regressor(
     if not os.path.exists(model_path):
         os.makedirs(model_path)
 
-    table = load_table(i_table)
-    df = pd.read_csv(m_metadata_file, sep="\t", index_col=0, dtype={0: str})[
-        [m_metadata_column]
-    ]
-    ids, table, df = validate_metadata(table, df, p_missing_samples)
+    # Load BIOM table with error handling
+    try:
+        table = load_table(i_table)
+    except Exception as e:
+        raise DataLoadError(
+            f"Failed to load BIOM table from '{i_table}'",
+            context={"file_path": i_table, "error": str(e), "error_type": type(e).__name__},
+        ) from e
+
+    # Load metadata file with error handling
+    try:
+        df = pd.read_csv(m_metadata_file, sep="\t", index_col=0, dtype={0: str})[
+            [m_metadata_column]
+        ]
+    except KeyError as e:
+        raise DataLoadError(
+            f"Metadata column '{m_metadata_column}' not found in '{m_metadata_file}'",
+            context={
+                "metadata_file": m_metadata_file,
+                "column": m_metadata_column,
+                "error": str(e),
+            },
+        ) from e
+    except Exception as e:
+        raise DataLoadError(
+            f"Failed to load metadata file '{m_metadata_file}'",
+            context={"file_path": m_metadata_file, "error": str(e), "error_type": type(e).__name__},
+        ) from e
+
+    # Validate metadata with error handling
+    try:
+        ids, table, df = validate_metadata(table, df, p_missing_samples)
+    except Exception as e:
+        raise DataLoadError(
+            f"Metadata validation failed",
+            context={
+                "table_file": i_table,
+                "metadata_file": m_metadata_file,
+                "missing_samples_flag": p_missing_samples,
+                "error": str(e),
+            },
+        ) from e
     num_ids = len(ids)
 
     fold_indices = np.arange(num_ids)
@@ -678,6 +749,7 @@ def fit_sample_regressor(
             **common_kwargs,
         )
 
+    # Determine generator type and base model configuration
     if p_unifrac_metric == "combined":
         base_model = "combined"
         generator = combine_gen
@@ -688,11 +760,42 @@ def fit_sample_regressor(
         base_model = p_unifrac_metric
         generator = unifrac_gen
     else:
-        raise Exception("Only taxonomy or UniFrac is supported.")
+        raise ModelConfigurationError(
+            "Only taxonomy or UniFrac is supported. Provide either taxonomy (with p_taxonomy) "
+            "or UniFrac (with p_tree), but not both or neither.",
+            context={
+                "taxonomy_provided": p_taxonomy is not None,
+                "tree_provided": p_tree is not None,
+                "unifrac_metric": p_unifrac_metric,
+            },
+        )
 
+    # Load base model if provided
     if i_base_model_path is not None:
-        base_model = tf.keras.models.load_model(i_base_model_path, compile=False)
-        base_type = base_model.encoder_type
+        try:
+            base_model = tf.keras.models.load_model(i_base_model_path, compile=False)
+        except Exception as e:
+            raise ModelLoadError(
+                f"Failed to load base model from '{i_base_model_path}'",
+                context={
+                    "model_path": i_base_model_path,
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                },
+            ) from e
+
+        try:
+            base_type = base_model.encoder_type
+        except AttributeError as e:
+            raise ModelLoadError(
+                f"Loaded model does not have 'encoder_type' attribute. "
+                f"Model may not be compatible with this pipeline.",
+                context={
+                    "model_path": i_base_model_path,
+                    "error": str(e),
+                },
+            ) from e
+
         if base_type == "taxonomy":
             generator = tax_gen
         else:
@@ -713,11 +816,35 @@ def fit_sample_regressor(
         table_fold = table.filter(fold_ids, axis="sample", inplace=False)
         df_fold = df.loc[fold_ids]
 
-        gen = generator(
-            table_fold, df_fold, shuffle, shift, scale, epochs, gen_new_tables
-        )
+        # Create generator with error handling
+        try:
+            gen = generator(
+                table_fold, df_fold, shuffle, shift, scale, epochs, gen_new_tables
+            )
+        except Exception as e:
+            raise DataLoadError(
+                f"Failed to create data generator for fold",
+                context={
+                    "num_samples": len(fold_ids),
+                    "generator_type": base_model,
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                },
+            ) from e
 
-        data = gen.get_data()
+        # Get data from generator with error handling
+        try:
+            data = gen.get_data()
+        except Exception as e:
+            raise DataLoadError(
+                f"Failed to get data from generator",
+                context={
+                    "generator_type": base_model,
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                },
+            ) from e
+
         if hasattr(gen, "num_tokens"):
             data["num_tokens"] = gen.num_tokens
         else:
@@ -737,123 +864,193 @@ def fit_sample_regressor(
 
     models = []
     for i, (train_ind, val_ind) in enumerate(splits):
-        train_data = _get_fold(
-            train_ind,
-            shuffle=True,
-            # shift=0.0,
-            scale="standscale",
-            gen_new_tables=p_gen_new_table,
-        )
-        val_data = _get_fold(
-            val_ind,
-            shuffle=True,
-            shift=train_data["shift"],
-            scale=train_data["scale"],
-            epochs=1,
-        )
-        with open(os.path.join(model_path, f"f{i}_val_ids.txt"), "w") as f:
-            for id in ids[val_ind]:
-                f.write(id + "\n")
-        vocab_size = 6 if not p_is_categorical else 2000
-
-        if base_model == "combined":
-            base_output_dim = [p_embedding_dim, 1, train_data["num_tokens"]]
-        elif base_model == "unifrac":
-            base_output_dim = p_embedding_dim
-        elif base_model == "faith_pd":
-            base_output_dim = 1
-        else:
-            base_output_dim = train_data["num_tokens"]
-
-        model = SequenceRegressor(
-            token_limit=p_asv_limit,
-            base_output_dim=base_output_dim,
-            shift=train_data["shift"],
-            scale=train_data["scale"],
-            dropout_rate=p_dropout,
-            embedding_dim=p_embedding_dim,
-            attention_heads=p_attention_heads,
-            attention_layers=p_attention_layers,
-            intermediate_size=p_intermediate_size,
-            intermediate_activation=p_intermediate_activation,
-            base_model=base_model,
-            freeze_base=p_no_freeze_base_weights,
-            penalty=p_penalty,
-            nuc_penalty=p_nuc_penalty,
-            max_bp=p_max_bp,
-            is_16S=is_16S,
-            vocab_size=vocab_size,
-            out_dim=p_output_dim,
-            classifier=p_is_categorical,
-            add_token=p_add_token,
-            class_weights=train_data["class_weights"],
-            accumulation_steps=p_accumulation_steps,
-            scale_losses=p_scale_loss,
-        )
-        token_shape = tf.TensorShape([None, None, p_max_bp])
-        count_shape = tf.TensorShape([None, None, 1])
-        model.build([token_shape, count_shape])
-        model.summary()
-
-        fold_label = i + 1
-        if not p_is_categorical:
-            loss = tf.keras.losses.MeanSquaredError(reduction="none")
-            callbacks = [
-                # MeanAbsoluteError(
-                #     monitor="val_mae",
-                #     dataset=val_data["dataset"],
-                #     output_dir=os.path.join(
-                #         figure_path, f"model_f{fold_label}-val.png"
-                #     ),
-                #     report_back=p_report_back,
-                # )
-            ]
-        else:
-            loss = tf.keras.losses.CategoricalFocalCrossentropy(
-                from_logits=False, reduction="none"
+        try:
+            train_data = _get_fold(
+                train_ind,
+                shuffle=True,
+                # shift=0.0,
+                scale="standscale",
+                gen_new_tables=p_gen_new_table,
             )
-            # loss = tf.keras.losses.CategoricalHinge(reduction="none")
-            callbacks = [
-                ConfusionMatrx(
-                    monitor="val_target_loss",
-                    dataset=val_data["dataset"],
-                    output_dir=os.path.join(
-                        figure_path, f"model_f{fold_label}-val.png"
-                    ),
-                    report_back=p_report_back,
-                )
-            ]
-        model_cv = CVModel(
-            model,
-            train_data,
-            val_data,
-            output_dir,
-            fold_label,
-        )
-        metric = "mae" if not p_is_categorical else "target_loss"
-        model_cv.fit_fold(
-            loss,
-            p_epochs,
-            os.path.join(model_path, f"model_f{fold_label}.keras"),
-            metric=metric,
-            patience=p_patience,
-            early_stop_warmup=p_early_stop_warmup,
-            callbacks=[*callbacks],
-            lr=p_lr,
-            warmup_steps=p_warmup_steps,
-            decay_steps=p_decay_steps,
-            weight_decay=p_weight_decay,
-        )
-        models.append(model_cv)
-        print(f"Fold {i+1} mae: {model_cv.metric_value}")
+            val_data = _get_fold(
+                val_ind,
+                shuffle=True,
+                shift=train_data["shift"],
+                scale=train_data["scale"],
+                epochs=1,
+            )
+            
+            # Write validation IDs to file
+            try:
+                with open(os.path.join(model_path, f"f{i}_val_ids.txt"), "w") as f:
+                    for id in ids[val_ind]:
+                        f.write(id + "\n")
+            except Exception as e:
+                raise TrainingError(
+                    f"Failed to write validation IDs for fold {i+1}",
+                    context={
+                        "fold": i + 1,
+                        "output_dir": model_path,
+                        "error": str(e),
+                    },
+                ) from e
 
-    best_model_path = os.path.join(output_dir, "best-model.keras")
-    model_ensemble = EnsembleModel(models)
-    model_ensemble.save_best_model(best_model_path)
-    best_mae, ensemble_mae = model_ensemble.val_maes()
-    print(
-        f"Best validation mae: {best_mae}", f"Ensemble validation mae: {ensemble_mae}"
-    )
+            vocab_size = 6 if not p_is_categorical else 2000
+
+            if base_model == "combined":
+                base_output_dim = [p_embedding_dim, 1, train_data["num_tokens"]]
+            elif base_model == "unifrac":
+                base_output_dim = p_embedding_dim
+            elif base_model == "faith_pd":
+                base_output_dim = 1
+            else:
+                base_output_dim = train_data["num_tokens"]
+
+            # Create model with error handling
+            try:
+                model = SequenceRegressor(
+                    token_limit=p_asv_limit,
+                    base_output_dim=base_output_dim,
+                    shift=train_data["shift"],
+                    scale=train_data["scale"],
+                    dropout_rate=p_dropout,
+                    embedding_dim=p_embedding_dim,
+                    attention_heads=p_attention_heads,
+                    attention_layers=p_attention_layers,
+                    intermediate_size=p_intermediate_size,
+                    intermediate_activation=p_intermediate_activation,
+                    base_model=base_model,
+                    freeze_base=p_no_freeze_base_weights,
+                    penalty=p_penalty,
+                    nuc_penalty=p_nuc_penalty,
+                    max_bp=p_max_bp,
+                    is_16S=is_16S,
+                    vocab_size=vocab_size,
+                    out_dim=p_output_dim,
+                    classifier=p_is_categorical,
+                    add_token=p_add_token,
+                    class_weights=train_data["class_weights"],
+                    accumulation_steps=p_accumulation_steps,
+                    scale_losses=p_scale_loss,
+                )
+                token_shape = tf.TensorShape([None, None, p_max_bp])
+                count_shape = tf.TensorShape([None, None, 1])
+                model.build([token_shape, count_shape])
+                model.summary()
+            except Exception as e:
+                raise TrainingError(
+                    f"Failed to create or build model for fold {i+1}",
+                    context={
+                        "fold": i + 1,
+                        "base_model": base_model,
+                        "base_output_dim": base_output_dim,
+                        "error": str(e),
+                        "error_type": type(e).__name__,
+                    },
+                ) from e
+
+            fold_label = i + 1
+            if not p_is_categorical:
+                loss = tf.keras.losses.MeanSquaredError(reduction="none")
+                callbacks = [
+                    # MeanAbsoluteError(
+                    #     monitor="val_mae",
+                    #     dataset=val_data["dataset"],
+                    #     output_dir=os.path.join(
+                    #         figure_path, f"model_f{fold_label}-val.png"
+                    #     ),
+                    #     report_back=p_report_back,
+                    # )
+                ]
+            else:
+                loss = tf.keras.losses.CategoricalFocalCrossentropy(
+                    from_logits=False, reduction="none"
+                )
+                # loss = tf.keras.losses.CategoricalHinge(reduction="none")
+                callbacks = [
+                    ConfusionMatrx(
+                        monitor="val_target_loss",
+                        dataset=val_data["dataset"],
+                        output_dir=os.path.join(
+                            figure_path, f"model_f{fold_label}-val.png"
+                        ),
+                        report_back=p_report_back,
+                    )
+                ]
+            
+            # Create CV model and train with error handling
+            try:
+                model_cv = CVModel(
+                    model,
+                    train_data,
+                    val_data,
+                    output_dir,
+                    fold_label,
+                )
+                metric = "mae" if not p_is_categorical else "target_loss"
+                model_cv.fit_fold(
+                    loss,
+                    p_epochs,
+                    os.path.join(model_path, f"model_f{fold_label}.keras"),
+                    metric=metric,
+                    patience=p_patience,
+                    early_stop_warmup=p_early_stop_warmup,
+                    callbacks=[*callbacks],
+                    lr=p_lr,
+                    warmup_steps=p_warmup_steps,
+                    decay_steps=p_decay_steps,
+                    weight_decay=p_weight_decay,
+                )
+            except Exception as e:
+                raise TrainingError(
+                    f"Training failed for fold {i+1}",
+                    context={
+                        "fold": i + 1,
+                        "epochs": p_epochs,
+                        "patience": p_patience,
+                        "metric": metric,
+                        "error": str(e),
+                        "error_type": type(e).__name__,
+                    },
+                ) from e
+
+            models.append(model_cv)
+            print(f"Fold {i+1} mae: {model_cv.metric_value}")
+            
+        except (DataLoadError, TrainingError) as e:
+            # Re-raise data and training errors with fold context
+            raise
+        except Exception as e:
+            # Catch any other unexpected errors during fold processing
+            raise TrainingError(
+                f"Unexpected error during fold {i+1} processing",
+                context={
+                    "fold": i + 1,
+                    "total_folds": p_cv,
+                    "error": str(e),
+                    "error_type": type(e).__name__,
+                },
+            ) from e
+
+    # Create ensemble and save best model with error handling
+    try:
+        best_model_path = os.path.join(output_dir, "best-model.keras")
+        model_ensemble = EnsembleModel(models)
+        model_ensemble.save_best_model(best_model_path)
+        best_mae, ensemble_mae = model_ensemble.val_maes()
+        print(
+            f"Best validation mae: {best_mae}", f"Ensemble validation mae: {ensemble_mae}"
+        )
+    except Exception as e:
+        raise TrainingError(
+            f"Failed to create ensemble or save best model",
+            context={
+                "num_models": len(models),
+                "output_dir": output_dir,
+                "error": str(e),
+                "error_type": type(e).__name__,
+            },
+        ) from e
 
     # test_data = _get_fold(
     #     test_indices,
