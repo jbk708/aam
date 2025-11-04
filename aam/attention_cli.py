@@ -27,6 +27,268 @@ from aam.exceptions import (
 from aam.losses import ImbalancedCategoricalCrossEntropy
 
 
+def _validate_fit_sample_regressor_params(
+    i_table: str,
+    i_base_model_path: str | None,
+    m_metadata_file: str,
+    m_metadata_column: str,
+    p_epochs: int,
+    p_cv: int,
+    p_test_size: float,
+    p_patience: int,
+    p_early_stop_warmup: int,
+    p_batch_size: int,
+    p_dropout: float,
+    p_asv_dropout: float,
+    p_taxonomy: str | None,
+    p_tree: str | None,
+    p_unifrac_metric: str,
+    output_dir: str,
+    **kwargs,
+) -> None:
+    """Validate all parameters for fit_sample_regressor before processing.
+    
+    This function performs early validation to catch errors before expensive
+    operations begin. It validates file paths, parameter ranges, and parameter
+    combinations.
+    
+    Args:
+        i_table: Path to BIOM table file
+        i_base_model_path: Path to base model file (optional)
+        m_metadata_file: Path to metadata file
+        m_metadata_column: Column name in metadata file
+        p_epochs: Number of training epochs
+        p_cv: Number of cross-validation folds
+        p_test_size: Fraction of data for testing (0-1)
+        p_patience: Early stopping patience
+        p_early_stop_warmup: Early stopping warmup epochs
+        p_batch_size: Batch size for training
+        p_dropout: Dropout rate (0-1)
+        p_asv_dropout: ASV dropout rate (0-1)
+        p_taxonomy: Path to taxonomy file (optional)
+        p_tree: Path to phylogenetic tree file (optional)
+        p_unifrac_metric: UniFrac metric type
+        output_dir: Output directory path
+        **kwargs: Additional parameters (unused but kept for compatibility)
+        
+    Raises:
+        DataLoadError: If file paths are invalid or inaccessible
+        ModelConfigurationError: If parameter values or combinations are invalid
+    """
+    # Validate file paths exist
+    if not os.path.exists(i_table):
+        raise DataLoadError(
+            f"BIOM table file not found: '{i_table}'",
+            context={"file_path": i_table, "parameter": "i_table"},
+        )
+    
+    if not os.path.isfile(i_table):
+        raise DataLoadError(
+            f"BIOM table path is not a file: '{i_table}'",
+            context={"file_path": i_table, "parameter": "i_table"},
+        )
+    
+    if not os.path.exists(m_metadata_file):
+        raise DataLoadError(
+            f"Metadata file not found: '{m_metadata_file}'",
+            context={"file_path": m_metadata_file, "parameter": "m_metadata_file"},
+        )
+    
+    if not os.path.isfile(m_metadata_file):
+        raise DataLoadError(
+            f"Metadata path is not a file: '{m_metadata_file}'",
+            context={"file_path": m_metadata_file, "parameter": "m_metadata_file"},
+        )
+    
+    # Validate optional file paths if provided
+    if p_taxonomy is not None and not os.path.exists(p_taxonomy):
+        raise DataLoadError(
+            f"Taxonomy file not found: '{p_taxonomy}'",
+            context={"file_path": p_taxonomy, "parameter": "p_taxonomy"},
+        )
+    
+    if p_tree is not None and not os.path.exists(p_tree):
+        raise DataLoadError(
+            f"Phylogenetic tree file not found: '{p_tree}'",
+            context={"file_path": p_tree, "parameter": "p_tree"},
+        )
+    
+    if i_base_model_path is not None and not os.path.exists(i_base_model_path):
+        raise DataLoadError(
+            f"Base model file not found: '{i_base_model_path}'",
+            context={"file_path": i_base_model_path, "parameter": "i_base_model_path"},
+        )
+    
+    # Validate metadata column exists (peek at file)
+    try:
+        df_preview = pd.read_csv(m_metadata_file, sep="\t", index_col=0, nrows=0)
+        if m_metadata_column not in df_preview.columns:
+            raise DataLoadError(
+                f"Metadata column '{m_metadata_column}' not found in '{m_metadata_file}'. "
+                f"Available columns: {list(df_preview.columns)}",
+                context={
+                    "metadata_file": m_metadata_file,
+                    "column": m_metadata_column,
+                    "available_columns": list(df_preview.columns),
+                },
+            )
+    except Exception as e:
+        if isinstance(e, DataLoadError):
+            raise
+        raise DataLoadError(
+            f"Failed to read metadata file to validate column: '{m_metadata_file}'",
+            context={"file_path": m_metadata_file, "error": str(e)},
+        ) from e
+    
+    # Validate output directory is writable (or can be created)
+    if os.path.exists(output_dir):
+        if not os.path.isdir(output_dir):
+            raise DataLoadError(
+                f"Output path exists but is not a directory: '{output_dir}'",
+                context={"output_dir": output_dir, "parameter": "output_dir"},
+            )
+        # Check if directory is writable
+        if not os.access(output_dir, os.W_OK):
+            raise DataLoadError(
+                f"Output directory is not writable: '{output_dir}'",
+                context={"output_dir": output_dir, "parameter": "output_dir"},
+            )
+    else:
+        # Try to create parent directory to validate we can create it
+        parent_dir = os.path.dirname(os.path.abspath(output_dir))
+        if parent_dir and not os.path.exists(parent_dir):
+            raise DataLoadError(
+                f"Parent directory does not exist and cannot create output directory: '{output_dir}'",
+                context={"output_dir": output_dir, "parent_dir": parent_dir},
+            )
+    
+    # Validate parameter ranges
+    if p_cv <= 0:
+        raise ModelConfigurationError(
+            f"p_cv must be greater than 0, got {p_cv}",
+            context={"parameter": "p_cv", "value": p_cv, "expected": "> 0"},
+        )
+    
+    if p_test_size < 0 or p_test_size > 1:
+        raise ModelConfigurationError(
+            f"p_test_size must be between 0 and 1, got {p_test_size}",
+            context={
+                "parameter": "p_test_size",
+                "value": p_test_size,
+                "expected": "0 <= p_test_size <= 1",
+            },
+        )
+    
+    if p_epochs <= 0:
+        raise ModelConfigurationError(
+            f"p_epochs must be greater than 0, got {p_epochs}",
+            context={"parameter": "p_epochs", "value": p_epochs, "expected": "> 0"},
+        )
+    
+    if p_patience <= 0:
+        raise ModelConfigurationError(
+            f"p_patience must be greater than 0, got {p_patience}",
+            context={"parameter": "p_patience", "value": p_patience, "expected": "> 0"},
+        )
+    
+    if p_early_stop_warmup < 0:
+        raise ModelConfigurationError(
+            f"p_early_stop_warmup must be >= 0, got {p_early_stop_warmup}",
+            context={
+                "parameter": "p_early_stop_warmup",
+                "value": p_early_stop_warmup,
+                "expected": ">= 0",
+            },
+        )
+    
+    if p_batch_size <= 0:
+        raise ModelConfigurationError(
+            f"p_batch_size must be greater than 0, got {p_batch_size}",
+            context={
+                "parameter": "p_batch_size",
+                "value": p_batch_size,
+                "expected": "> 0",
+            },
+        )
+    
+    # Validate batch_size is even for UniFrac/Combined generators
+    if (p_tree is not None or p_unifrac_metric == "combined") and p_batch_size % 2 != 0:
+        raise ModelConfigurationError(
+            f"p_batch_size must be even (multiple of 2) for UniFrac or Combined generators, "
+            f"got {p_batch_size}",
+            context={
+                "parameter": "p_batch_size",
+                "value": p_batch_size,
+                "expected": "even number (multiple of 2)",
+                "reason": "UniFrac and Combined generators require even batch sizes",
+            },
+        )
+    
+    if p_dropout < 0 or p_dropout >= 1:
+        raise ModelConfigurationError(
+            f"p_dropout must be >= 0 and < 1, got {p_dropout}",
+            context={
+                "parameter": "p_dropout",
+                "value": p_dropout,
+                "expected": "0 <= p_dropout < 1",
+            },
+        )
+    
+    if p_asv_dropout < 0 or p_asv_dropout >= 1:
+        raise ModelConfigurationError(
+            f"p_asv_dropout must be >= 0 and < 1, got {p_asv_dropout}",
+            context={
+                "parameter": "p_asv_dropout",
+                "value": p_asv_dropout,
+                "expected": "0 <= p_asv_dropout < 1",
+            },
+        )
+    
+    # Validate parameter combinations (taxonomy XOR tree, but combined uses both)
+    if p_unifrac_metric == "combined":
+        # Combined requires both taxonomy and tree
+        if p_taxonomy is None:
+            raise ModelConfigurationError(
+                "p_taxonomy is required when p_unifrac_metric is 'combined'",
+                context={
+                    "p_unifrac_metric": p_unifrac_metric,
+                    "p_taxonomy": p_taxonomy,
+                    "p_tree": p_tree,
+                },
+            )
+        if p_tree is None:
+            raise ModelConfigurationError(
+                "p_tree is required when p_unifrac_metric is 'combined'",
+                context={
+                    "p_unifrac_metric": p_unifrac_metric,
+                    "p_taxonomy": p_taxonomy,
+                    "p_tree": p_tree,
+                },
+            )
+    else:
+        # For non-combined: taxonomy XOR tree (not both, not neither)
+        if p_taxonomy is not None and p_tree is not None:
+            raise ModelConfigurationError(
+                "Cannot specify both p_taxonomy and p_tree when p_unifrac_metric is not 'combined'. "
+                "Use p_unifrac_metric='combined' to use both, or provide only one.",
+                context={
+                    "p_taxonomy": p_taxonomy,
+                    "p_tree": p_tree,
+                    "p_unifrac_metric": p_unifrac_metric,
+                },
+            )
+        if p_taxonomy is None and p_tree is None:
+            raise ModelConfigurationError(
+                "Must provide either p_taxonomy or p_tree (or use p_unifrac_metric='combined' "
+                "with both). Cannot proceed without a data encoder type.",
+                context={
+                    "p_taxonomy": p_taxonomy,
+                    "p_tree": p_tree,
+                    "p_unifrac_metric": p_unifrac_metric,
+                },
+            )
+
+
 @click.group()
 class cli:
     pass
@@ -625,6 +887,26 @@ def fit_sample_regressor(
     from aam.callbacks import ConfusionMatrx
     from aam.data_handlers import CombinedGenerator, TaxonomyGenerator, UniFracGenerator
     from aam.models import SequenceRegressor
+
+    # Validate all parameters before any expensive operations
+    _validate_fit_sample_regressor_params(
+        i_table=i_table,
+        i_base_model_path=i_base_model_path,
+        m_metadata_file=m_metadata_file,
+        m_metadata_column=m_metadata_column,
+        p_epochs=p_epochs,
+        p_cv=p_cv,
+        p_test_size=p_test_size,
+        p_patience=p_patience,
+        p_early_stop_warmup=p_early_stop_warmup,
+        p_batch_size=p_batch_size,
+        p_dropout=p_dropout,
+        p_asv_dropout=p_asv_dropout,
+        p_taxonomy=p_taxonomy,
+        p_tree=p_tree,
+        p_unifrac_metric=p_unifrac_metric,
+        output_dir=output_dir,
+    )
 
     # p_is_16S = False
     is_16S = not p_gotu
