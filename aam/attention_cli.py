@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import logging
 import os
 from typing import Union
 
@@ -24,6 +25,7 @@ from aam.exceptions import (
     ModelLoadError,
     TrainingError,
 )
+from aam.logging_config import sanitize_path, setup_logger
 from aam.losses import ImbalancedCategoricalCrossEntropy
 
 
@@ -923,20 +925,26 @@ def fit_sample_regressor(
         os.makedirs(model_path)
 
     # Load BIOM table with error handling
+    logger.info("Loading BIOM table...")
     try:
         table = load_table(i_table)
+        logger.info(f"Successfully loaded BIOM table: {table.shape[0]} features, {table.shape[1]} samples")
     except Exception as e:
+        logger.error(f"Failed to load BIOM table: {e}")
         raise DataLoadError(
             f"Failed to load BIOM table from '{i_table}'",
             context={"file_path": i_table, "error": str(e), "error_type": type(e).__name__},
         ) from e
 
     # Load metadata file with error handling
+    logger.info("Loading metadata file...")
     try:
         df = pd.read_csv(m_metadata_file, sep="\t", index_col=0, dtype={0: str})[
             [m_metadata_column]
         ]
+        logger.info(f"Successfully loaded metadata: {len(df)} samples")
     except KeyError as e:
+        logger.error(f"Metadata column not found: {e}")
         raise DataLoadError(
             f"Metadata column '{m_metadata_column}' not found in '{m_metadata_file}'",
             context={
@@ -946,15 +954,20 @@ def fit_sample_regressor(
             },
         ) from e
     except Exception as e:
+        logger.error(f"Failed to load metadata file: {e}")
         raise DataLoadError(
             f"Failed to load metadata file '{m_metadata_file}'",
             context={"file_path": m_metadata_file, "error": str(e), "error_type": type(e).__name__},
         ) from e
 
     # Validate metadata with error handling
+    logger.info("Validating metadata...")
     try:
         ids, table, df = validate_metadata(table, df, p_missing_samples)
+        num_ids = len(ids)
+        logger.info(f"Metadata validation complete: {num_ids} samples after filtering")
     except Exception as e:
+        logger.error(f"Metadata validation failed: {e}")
         raise DataLoadError(
             f"Metadata validation failed",
             context={
@@ -964,7 +977,6 @@ def fit_sample_regressor(
                 "error": str(e),
             },
         ) from e
-    num_ids = len(ids)
 
     fold_indices = np.arange(num_ids)
     np.random.shuffle(fold_indices)
@@ -1054,9 +1066,12 @@ def fit_sample_regressor(
 
     # Load base model if provided
     if i_base_model_path is not None:
+        logger.info(f"Loading base model from: {sanitize_path(i_base_model_path)}")
         try:
             base_model = tf.keras.models.load_model(i_base_model_path, compile=False)
+            logger.info("Base model loaded successfully")
         except Exception as e:
+            logger.error(f"Failed to load base model: {e}")
             raise ModelLoadError(
                 f"Failed to load base model from '{i_base_model_path}'",
                 context={
@@ -1068,7 +1083,9 @@ def fit_sample_regressor(
 
         try:
             base_type = base_model.encoder_type
+            logger.info(f"Base model encoder type: {base_type}")
         except AttributeError as e:
+            logger.error(f"Base model missing encoder_type attribute: {e}")
             raise ModelLoadError(
                 f"Loaded model does not have 'encoder_type' attribute. "
                 f"Model may not be compatible with this pipeline.",
@@ -1104,6 +1121,7 @@ def fit_sample_regressor(
                 table_fold, df_fold, shuffle, shift, scale, epochs, gen_new_tables
             )
         except Exception as e:
+            logger.error(f"Failed to create data generator: {e}")
             raise DataLoadError(
                 f"Failed to create data generator for fold",
                 context={
@@ -1118,6 +1136,7 @@ def fit_sample_regressor(
         try:
             data = gen.get_data()
         except Exception as e:
+            logger.error(f"Failed to get data from generator: {e}")
             raise DataLoadError(
                 f"Failed to get data from generator",
                 context={
@@ -1133,19 +1152,27 @@ def fit_sample_regressor(
             data["num_tokens"] = None
         return data
 
+    # Create cross-validation splits
+    logger.info(f"Creating {p_cv}-fold cross-validation splits...")
     if not p_is_categorical:
-        print("non-stratified folds")
+        logger.info("Using non-stratified KFold")
         kfolds = KFold(p_cv)
         splits = kfolds.split(fold_indices)
     else:
-        print("stratified folds...")
+        logger.info("Using stratified KFold")
         kfolds = StratifiedKFold(p_cv)
         train_ids = ids[fold_indices]
         train_classes = df.loc[df.index.isin(train_ids), m_metadata_column].values
         splits = kfolds.split(fold_indices, train_classes)
+    logger.info(f"CV splits created: {p_cv} folds")
 
     models = []
+    logger.info("-" * 80)
+    logger.info("Starting cross-validation training loop")
+    logger.info("-" * 80)
     for i, (train_ind, val_ind) in enumerate(splits):
+        logger.info(f"Processing fold {i+1}/{p_cv}")
+        logger.info(f"  Train samples: {len(train_ind)}, Validation samples: {len(val_ind)}")
         try:
             train_data = _get_fold(
                 train_ind,
@@ -1164,10 +1191,13 @@ def fit_sample_regressor(
             
             # Write validation IDs to file
             try:
-                with open(os.path.join(model_path, f"f{i}_val_ids.txt"), "w") as f:
+                val_ids_file = os.path.join(model_path, f"f{i}_val_ids.txt")
+                with open(val_ids_file, "w") as f:
                     for id in ids[val_ind]:
                         f.write(id + "\n")
+                logger.debug(f"  Validation IDs written to: {val_ids_file}")
             except Exception as e:
+                logger.error(f"  Failed to write validation IDs for fold {i+1}: {e}")
                 raise TrainingError(
                     f"Failed to write validation IDs for fold {i+1}",
                     context={
@@ -1189,6 +1219,8 @@ def fit_sample_regressor(
                 base_output_dim = train_data["num_tokens"]
 
             # Create model with error handling
+            logger.info(f"  Creating model for fold {i+1}...")
+            logger.debug(f"    Base model: {base_model}, Base output dim: {base_output_dim}")
             try:
                 model = SequenceRegressor(
                     token_limit=p_asv_limit,
@@ -1219,7 +1251,9 @@ def fit_sample_regressor(
                 count_shape = tf.TensorShape([None, None, 1])
                 model.build([token_shape, count_shape])
                 model.summary()
+                logger.info(f"  Model created and built successfully for fold {i+1}")
             except Exception as e:
+                logger.error(f"  Failed to create model for fold {i+1}: {e}")
                 raise TrainingError(
                     f"Failed to create or build model for fold {i+1}",
                     context={
@@ -1261,6 +1295,7 @@ def fit_sample_regressor(
                 ]
             
             # Create CV model and train with error handling
+            logger.info(f"  Starting training for fold {i+1} (epochs: {p_epochs}, patience: {p_patience})...")
             try:
                 model_cv = CVModel(
                     model,
@@ -1270,6 +1305,7 @@ def fit_sample_regressor(
                     fold_label,
                 )
                 metric = "mae" if not p_is_categorical else "target_loss"
+                logger.debug(f"    Using metric: {metric}")
                 model_cv.fit_fold(
                     loss,
                     p_epochs,
@@ -1283,7 +1319,9 @@ def fit_sample_regressor(
                     decay_steps=p_decay_steps,
                     weight_decay=p_weight_decay,
                 )
+                logger.info(f"  Training completed for fold {i+1}")
             except Exception as e:
+                logger.error(f"  Training failed for fold {i+1}: {e}")
                 raise TrainingError(
                     f"Training failed for fold {i+1}",
                     context={
@@ -1297,13 +1335,16 @@ def fit_sample_regressor(
                 ) from e
 
             models.append(model_cv)
+            logger.info(f"  Fold {i+1} final {metric}: {model_cv.metric_value}")
             print(f"Fold {i+1} mae: {model_cv.metric_value}")
             
         except (DataLoadError, TrainingError) as e:
             # Re-raise data and training errors with fold context
+            logger.error(f"Fold {i+1} failed: {e}")
             raise
         except Exception as e:
             # Catch any other unexpected errors during fold processing
+            logger.error(f"Unexpected error during fold {i+1} processing: {e}")
             raise TrainingError(
                 f"Unexpected error during fold {i+1} processing",
                 context={
@@ -1315,15 +1356,25 @@ def fit_sample_regressor(
             ) from e
 
     # Create ensemble and save best model with error handling
+    logger.info("-" * 80)
+    logger.info("Creating ensemble model...")
     try:
         best_model_path = os.path.join(output_dir, "best-model.keras")
         model_ensemble = EnsembleModel(models)
+        logger.info(f"Ensemble created from {len(models)} models")
         model_ensemble.save_best_model(best_model_path)
+        logger.info(f"Best model saved to: {best_model_path}")
         best_mae, ensemble_mae = model_ensemble.val_maes()
+        logger.info("=" * 80)
+        logger.info("FINAL RESULTS:")
+        logger.info(f"  Best validation MAE: {best_mae}")
+        logger.info(f"  Ensemble validation MAE: {ensemble_mae}")
+        logger.info("=" * 80)
         print(
             f"Best validation mae: {best_mae}", f"Ensemble validation mae: {ensemble_mae}"
         )
     except Exception as e:
+        logger.error(f"Failed to create ensemble: {e}")
         raise TrainingError(
             f"Failed to create ensemble or save best model",
             context={
@@ -1333,6 +1384,8 @@ def fit_sample_regressor(
                 "error_type": type(e).__name__,
             },
         ) from e
+    
+    logger.info("fit_sample_regressor completed successfully")
 
     # test_data = _get_fold(
     #     test_indices,
