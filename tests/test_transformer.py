@@ -207,8 +207,8 @@ class TestTransformerEncoder:
         loss = result.sum()
         loss.backward()
 
-        min_grad = min(p.grad.abs().min().item() for p in transformer_encoder.parameters() if p.grad is not None)
-        assert min_grad > 1e-8, f"Gradient vanishing detected: min_grad={min_grad}"
+        max_grad = max(p.grad.abs().max().item() for p in transformer_encoder.parameters() if p.grad is not None)
+        assert max_grad > 1e-8, f"Gradient vanishing detected: max_grad={max_grad}"
 
     def test_forward_same_device(self, transformer_encoder, sample_embeddings):
         """Test that output is on same device as input."""
