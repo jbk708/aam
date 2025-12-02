@@ -687,6 +687,7 @@ class TestCLIIntegration:
         mock_path_class.return_value = mock_path_instance
 
         import numpy as np
+
         mock_tensor1 = MagicMock()
         mock_numpy1 = np.array([1.0])
         mock_tensor1.cpu.return_value.numpy.return_value = mock_numpy1
@@ -766,6 +767,7 @@ class TestCLIIntegration:
         mock_dataset_class.return_value = mock_dataset_instance
 
         import numpy as np
+
         mock_model_instance = MagicMock()
         mock_tensor = MagicMock()
         mock_numpy = np.array([[0.1, 0.2, 0.7], [0.3, 0.4, 0.3]])
