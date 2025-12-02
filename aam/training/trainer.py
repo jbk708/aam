@@ -37,13 +37,13 @@ class WarmupCosineScheduler:
     def step(self):
         """Update learning rate."""
         self._step_count += 1
-        
+
         if self._step_count <= self.num_warmup_steps:
             lr_scale = self._step_count / self.num_warmup_steps
         else:
             progress = (self._step_count - self.num_warmup_steps) / (self.num_training_steps - self.num_warmup_steps)
             lr_scale = 0.5 * (1 + math.cos(math.pi * progress))
-        
+
         for param_group, base_lr in zip(self.optimizer.param_groups, self.base_lrs):
             param_group["lr"] = base_lr * lr_scale
 
@@ -78,12 +78,12 @@ class Trainer:
         self.loss_fn = loss_fn
         self.device = torch.device(device) if isinstance(device, str) else device
         self.freeze_base = freeze_base
-        
+
         if optimizer is None:
             self.optimizer = create_optimizer(model, freeze_base=freeze_base)
         else:
             self.optimizer = optimizer
-        
+
         self.scheduler = scheduler
 
     def _prepare_batch(self, batch: Union[Dict, Tuple]) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
@@ -98,7 +98,7 @@ class Trainer:
         if isinstance(batch, dict):
             tokens = batch["tokens"].to(self.device)
             targets = {}
-            
+
             if "counts" in batch:
                 targets["counts"] = batch["counts"].to(self.device)
             if "y_target" in batch:
@@ -107,12 +107,12 @@ class Trainer:
                 targets["base_target"] = batch["unifrac_target"].to(self.device)
             if "tokens" in batch:
                 targets["tokens"] = tokens
-            
+
             return tokens, targets
         else:
             tokens = batch[0].to(self.device)
             targets = {"tokens": tokens}
-            
+
             if len(batch) > 1:
                 if len(batch) == 2:
                     targets["base_target"] = batch[1].to(self.device)
@@ -121,7 +121,7 @@ class Trainer:
                     targets["target"] = batch[2].to(self.device)
                     if len(batch) >= 4:
                         targets["base_target"] = batch[3].to(self.device)
-            
+
             return tokens, targets
 
     def _get_encoder_type(self) -> str:
@@ -156,27 +156,27 @@ class Trainer:
 
         for batch in tqdm(dataloader, desc="Training", leave=False):
             tokens, targets = self._prepare_batch(batch)
-            
+
             self.optimizer.zero_grad()
-            
+
             return_nucleotides = "nucleotides" in targets or self.loss_fn.nuc_penalty > 0
             outputs = self.model(tokens, return_nucleotides=return_nucleotides)
-            
+
             encoder_type = self._get_encoder_type()
             is_classifier = self._get_is_classifier()
             losses = self.loss_fn(outputs, targets, is_classifier=is_classifier, encoder_type=encoder_type)
-            
+
             losses["total_loss"].backward()
             self.optimizer.step()
-            
+
             if self.scheduler is not None:
                 self.scheduler.step()
-            
+
             for key, value in losses.items():
                 if key not in total_losses:
                     total_losses[key] = 0.0
                 total_losses[key] += value.item()
-            
+
             num_batches += 1
 
         avg_losses = {key: value / num_batches for key, value in total_losses.items()}
@@ -205,19 +205,19 @@ class Trainer:
         with torch.no_grad():
             for batch in tqdm(dataloader, desc="Validation", leave=False):
                 tokens, targets = self._prepare_batch(batch)
-                
+
                 return_nucleotides = "nucleotides" in targets or self.loss_fn.nuc_penalty > 0
                 outputs = self.model(tokens, return_nucleotides=return_nucleotides)
-                
+
                 encoder_type = self._get_encoder_type()
                 is_classifier = self._get_is_classifier()
                 losses = self.loss_fn(outputs, targets, is_classifier=is_classifier, encoder_type=encoder_type)
-                
+
                 for key, value in losses.items():
                     if key not in total_losses:
                         total_losses[key] = 0.0
                     total_losses[key] += value.item()
-                
+
                 if compute_metrics:
                     if "target_prediction" in outputs and "target" in targets:
                         if "target_prediction" not in all_predictions:
@@ -225,7 +225,7 @@ class Trainer:
                             all_targets["target"] = []
                         all_predictions["target_prediction"].append(outputs["target_prediction"])
                         all_targets["target"].append(targets["target"])
-                    
+
                     if "count_prediction" in outputs and "counts" in targets:
                         if "count_prediction" not in all_predictions:
                             all_predictions["count_prediction"] = []
@@ -235,23 +235,23 @@ class Trainer:
                         all_targets["counts"].append(targets["counts"])
                         mask = targets.get("mask", (tokens.sum(dim=-1) > 0).long())
                         all_targets["mask"].append(mask)
-                
+
                 num_batches += 1
 
         avg_losses = {key: value / num_batches for key, value in total_losses.items()}
-        
+
         if compute_metrics and all_predictions:
             if "target_prediction" in all_predictions:
                 target_pred = torch.cat(all_predictions["target_prediction"], dim=0)
                 target_true = torch.cat(all_targets["target"], dim=0)
-                
+
                 is_classifier = self._get_is_classifier()
                 if is_classifier:
                     metrics = compute_classification_metrics(target_pred, target_true)
                 else:
                     metrics = compute_regression_metrics(target_pred, target_true)
                 avg_losses.update(metrics)
-            
+
             if "count_prediction" in all_predictions:
                 count_pred = torch.cat(all_predictions["count_prediction"], dim=0)
                 count_true = torch.cat(all_targets["counts"], dim=0)
@@ -287,7 +287,7 @@ class Trainer:
             "train_loss": [],
             "val_loss": [],
         }
-        
+
         best_val_loss = float("inf")
         patience_counter = 0
         start_epoch = 0
@@ -312,7 +312,7 @@ class Trainer:
                 if val_loss < best_val_loss:
                     best_val_loss = val_loss
                     patience_counter = 0
-                    
+
                     if checkpoint_dir is not None:
                         checkpoint_path = Path(checkpoint_dir) / f"best_model_epoch_{epoch}.pt"
                         self.save_checkpoint(
@@ -353,13 +353,13 @@ class Trainer:
             "best_val_loss": best_val_loss,
             "metrics": metrics or {},
         }
-        
+
         if self.scheduler is not None:
             if isinstance(self.scheduler, WarmupCosineScheduler):
                 checkpoint["scheduler_step"] = self.scheduler._step_count
             else:
                 checkpoint["scheduler_state_dict"] = self.scheduler.state_dict()
-        
+
         torch.save(checkpoint, filepath)
 
     def load_checkpoint(
@@ -379,18 +379,18 @@ class Trainer:
             Dictionary with checkpoint info (epoch, best_val_loss, metrics)
         """
         checkpoint = torch.load(filepath, map_location=self.device)
-        
+
         self.model.load_state_dict(checkpoint["model_state_dict"])
-        
+
         if load_optimizer and "optimizer_state_dict" in checkpoint:
             self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-        
+
         if load_scheduler and self.scheduler is not None:
             if isinstance(self.scheduler, WarmupCosineScheduler) and "scheduler_step" in checkpoint:
                 self.scheduler._step_count = checkpoint["scheduler_step"]
             elif "scheduler_state_dict" in checkpoint:
                 self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
-        
+
         return {
             "epoch": checkpoint["epoch"],
             "best_val_loss": checkpoint["best_val_loss"],
@@ -424,7 +424,7 @@ def create_optimizer(
             trainable_params = [p for p in model.parameters() if p.requires_grad]
     else:
         trainable_params = [p for p in model.parameters() if p.requires_grad]
-    
+
     return torch.optim.AdamW(trainable_params, lr=lr, weight_decay=weight_decay)
 
 
@@ -459,12 +459,12 @@ def load_pretrained_encoder(
         strict: Whether to strictly match state dict keys
     """
     checkpoint = torch.load(checkpoint_path, map_location="cpu")
-    
+
     if "model_state_dict" in checkpoint:
         state_dict = checkpoint["model_state_dict"]
     else:
         state_dict = checkpoint
-    
+
     if hasattr(model, "base_model"):
         model.base_model.load_state_dict(state_dict, strict=strict)
     else:

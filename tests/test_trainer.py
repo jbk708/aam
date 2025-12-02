@@ -84,11 +84,11 @@ def simple_dataloader(device):
     batch_size = 4
     num_asvs = 10
     seq_len = 50
-    
+
     tokens = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len)).to(device)
     counts = torch.rand(batch_size * 2, num_asvs, 1).to(device)
     targets = torch.randn(batch_size * 2, 1).to(device)
-    
+
     dataset = TensorDataset(tokens, counts, targets)
     return DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
@@ -99,10 +99,10 @@ def simple_dataloader_encoder(device):
     batch_size = 4
     num_asvs = 10
     seq_len = 50
-    
+
     tokens = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len)).to(device)
     base_targets = torch.randn(batch_size * 2, 16).to(device)
-    
+
     dataset = TensorDataset(tokens, base_targets)
     return DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
@@ -113,7 +113,7 @@ class TestCreateOptimizer:
     def test_create_optimizer_default(self, small_model):
         """Test creating optimizer with default parameters."""
         optimizer = create_optimizer(small_model, lr=1e-4, weight_decay=0.01)
-        
+
         assert isinstance(optimizer, torch.optim.AdamW)
         assert optimizer.param_groups[0]["lr"] == 1e-4
         assert optimizer.param_groups[0]["weight_decay"] == 0.01
@@ -123,12 +123,12 @@ class TestCreateOptimizer:
         small_predictor.freeze_base = True
         for param in small_predictor.base_model.parameters():
             param.requires_grad = False
-        
+
         optimizer = create_optimizer(small_predictor, freeze_base=True)
-        
+
         param_ids = {id(p) for group in optimizer.param_groups for p in group["params"]}
         base_param_ids = {id(p) for p in small_predictor.base_model.parameters()}
-        
+
         assert len(param_ids & base_param_ids) == 0
 
 
@@ -139,7 +139,7 @@ class TestCreateScheduler:
         """Test creating scheduler with warmup and cosine decay."""
         optimizer = create_optimizer(small_model)
         scheduler = create_scheduler(optimizer, num_warmup_steps=100, num_training_steps=1000)
-        
+
         assert scheduler is not None
         assert hasattr(scheduler, "step")
 
@@ -154,7 +154,7 @@ class TestTrainerInit:
             loss_fn=loss_fn,
             device=device,
         )
-        
+
         assert trainer.model == small_model
         assert trainer.loss_fn == loss_fn
         assert trainer.device == device
@@ -168,7 +168,7 @@ class TestTrainerInit:
             optimizer=optimizer,
             device=device,
         )
-        
+
         assert trainer.optimizer == optimizer
 
     def test_trainer_init_with_scheduler(self, small_model, loss_fn, device):
@@ -182,7 +182,7 @@ class TestTrainerInit:
             scheduler=scheduler,
             device=device,
         )
-        
+
         assert trainer.scheduler == scheduler
 
 
@@ -197,9 +197,9 @@ class TestTrainEpoch:
             loss_fn=loss_fn,
             device=device,
         )
-        
+
         losses = trainer.train_epoch(simple_dataloader_encoder)
-        
+
         assert "total_loss" in losses
         assert losses["total_loss"] >= 0
         assert isinstance(losses["total_loss"], float)
@@ -212,9 +212,9 @@ class TestTrainEpoch:
             loss_fn=loss_fn,
             device=device,
         )
-        
+
         losses = trainer.train_epoch(simple_dataloader)
-        
+
         assert "total_loss" in losses
         assert losses["total_loss"] >= 0
 
@@ -226,13 +226,13 @@ class TestTrainEpoch:
             loss_fn=loss_fn,
             device=device,
         )
-        
+
         initial_params = [p.clone() for p in small_model.parameters() if p.requires_grad]
-        
+
         trainer.train_epoch(simple_dataloader_encoder)
-        
+
         updated_params = [p for p in small_model.parameters() if p.requires_grad]
-        
+
         for init_param, updated_param in zip(initial_params, updated_params):
             assert not torch.equal(init_param, updated_param)
 
@@ -248,9 +248,9 @@ class TestValidateEpoch:
             loss_fn=loss_fn,
             device=device,
         )
-        
+
         results = trainer.validate_epoch(simple_dataloader_encoder, compute_metrics=False)
-        
+
         assert "total_loss" in results
         assert results["total_loss"] >= 0
 
@@ -262,9 +262,9 @@ class TestValidateEpoch:
             loss_fn=loss_fn,
             device=device,
         )
-        
+
         results = trainer.validate_epoch(simple_dataloader, compute_metrics=True)
-        
+
         assert "total_loss" in results
         assert results["total_loss"] >= 0
 
@@ -276,13 +276,13 @@ class TestValidateEpoch:
             loss_fn=loss_fn,
             device=device,
         )
-        
+
         initial_params = [p.clone() for p in small_model.parameters()]
-        
+
         trainer.validate_epoch(simple_dataloader_encoder)
-        
+
         updated_params = [p for p in small_model.parameters()]
-        
+
         for init_param, updated_param in zip(initial_params, updated_params):
             assert torch.equal(init_param, updated_param)
 
@@ -298,7 +298,7 @@ class TestCheckpointing:
             loss_fn=loss_fn,
             device=device,
         )
-        
+
         checkpoint_path = tmp_path / "checkpoint.pt"
         trainer.save_checkpoint(
             str(checkpoint_path),
@@ -306,7 +306,7 @@ class TestCheckpointing:
             best_val_loss=0.5,
             metrics={"mae": 0.3, "mse": 0.4},
         )
-        
+
         assert checkpoint_path.exists()
 
     def test_load_checkpoint(self, small_model, loss_fn, device, tmp_path):
@@ -317,7 +317,7 @@ class TestCheckpointing:
             loss_fn=loss_fn,
             device=device,
         )
-        
+
         checkpoint_path = tmp_path / "checkpoint.pt"
         trainer.save_checkpoint(
             str(checkpoint_path),
@@ -325,9 +325,9 @@ class TestCheckpointing:
             best_val_loss=0.5,
             metrics={"mae": 0.3},
         )
-        
+
         checkpoint_info = trainer.load_checkpoint(str(checkpoint_path))
-        
+
         assert checkpoint_info["epoch"] == 5
         assert checkpoint_info["best_val_loss"] == 0.5
         assert checkpoint_info["metrics"]["mae"] == 0.3
@@ -340,16 +340,16 @@ class TestCheckpointing:
             loss_fn=loss_fn,
             device=device,
         )
-        
+
         checkpoint_path = tmp_path / "checkpoint.pt"
         trainer.save_checkpoint(
             str(checkpoint_path),
             epoch=3,
             best_val_loss=0.6,
         )
-        
+
         checkpoint_info = trainer.load_checkpoint(str(checkpoint_path), load_optimizer=False)
-        
+
         assert checkpoint_info["epoch"] == 3
 
 
@@ -364,12 +364,12 @@ class TestTrainingLoop:
             loss_fn=loss_fn,
             device=device,
         )
-        
+
         history = trainer.train(
             train_loader=simple_dataloader_encoder,
             num_epochs=2,
         )
-        
+
         assert "train_loss" in history
         assert len(history["train_loss"]) == 2
 
@@ -381,13 +381,13 @@ class TestTrainingLoop:
             loss_fn=loss_fn,
             device=device,
         )
-        
+
         history = trainer.train(
             train_loader=simple_dataloader_encoder,
             val_loader=simple_dataloader_encoder,
             num_epochs=2,
         )
-        
+
         assert "train_loss" in history
         assert "val_loss" in history
         assert len(history["train_loss"]) == 2
@@ -401,14 +401,14 @@ class TestTrainingLoop:
             loss_fn=loss_fn,
             device=device,
         )
-        
+
         history = trainer.train(
             train_loader=simple_dataloader_encoder,
             val_loader=simple_dataloader_encoder,
             num_epochs=10,
             early_stopping_patience=2,
         )
-        
+
         assert "train_loss" in history
         assert len(history["train_loss"]) <= 10
 
@@ -420,17 +420,17 @@ class TestTrainingLoop:
             loss_fn=loss_fn,
             device=device,
         )
-        
+
         checkpoint_dir = tmp_path / "checkpoints"
         checkpoint_dir.mkdir()
-        
+
         history = trainer.train(
             train_loader=simple_dataloader_encoder,
             val_loader=simple_dataloader_encoder,
             num_epochs=2,
             checkpoint_dir=str(checkpoint_dir),
         )
-        
+
         checkpoint_files = list(checkpoint_dir.glob("*.pt"))
         assert len(checkpoint_files) > 0
 
@@ -455,16 +455,16 @@ class TestLoadPretrainedEncoder:
             encoder_type="unifrac",
             predict_nucleotides=False,
         ).to(device)
-        
+
         checkpoint_path = tmp_path / "encoder.pt"
         torch.save(encoder.state_dict(), checkpoint_path)
-        
+
         small_predictor = small_predictor.to(device)
         load_pretrained_encoder(str(checkpoint_path), small_predictor, strict=False)
-        
+
         encoder_params = dict(encoder.named_parameters())
         predictor_base_params = dict(small_predictor.base_model.named_parameters())
-        
+
         for name, param in encoder_params.items():
             if name in predictor_base_params:
                 assert torch.allclose(param, predictor_base_params[name])
@@ -479,19 +479,19 @@ class TestFreezeBase:
         small_predictor.freeze_base = True
         for param in small_predictor.base_model.parameters():
             param.requires_grad = False
-        
+
         trainer = Trainer(
             model=small_predictor,
             loss_fn=loss_fn,
             device=device,
             freeze_base=True,
         )
-        
+
         initial_base_params = [p.clone() for p in small_predictor.base_model.parameters()]
-        
+
         trainer.train_epoch(simple_dataloader)
-        
+
         updated_base_params = [p for p in small_predictor.base_model.parameters()]
-        
+
         for init_param, updated_param in zip(initial_base_params, updated_base_params):
             assert torch.equal(init_param, updated_param)
