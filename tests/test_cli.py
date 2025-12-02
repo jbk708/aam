@@ -430,21 +430,28 @@ class TestCLIIntegration:
         mock_setup_device.return_value = torch.device("cpu")
         mock_checkpoint = {
             "model_state_dict": {},
-            "config": {"max_bp": 150, "token_limit": 1024, "embedding_dim": 128, "encoder_type": "unifrac", "out_dim": 1, "is_classifier": False},
+            "config": {
+                "max_bp": 150,
+                "token_limit": 1024,
+                "embedding_dim": 128,
+                "encoder_type": "unifrac",
+                "out_dim": 1,
+                "is_classifier": False,
+            },
         }
         mock_load.return_value = mock_checkpoint
-        
+
         mock_biom_loader_instance = MagicMock()
         mock_biom_loader.return_value = mock_biom_loader_instance
         mock_table = MagicMock()
         mock_biom_loader_instance.load_table.return_value = mock_table
-        
+
         mock_dataset_instance = MagicMock()
         mock_dataset.return_value = mock_dataset_instance
-        
+
         mock_model_instance = MagicMock()
         mock_model_class.return_value = mock_model_instance
-        
+
         mock_dataloader_instance = MagicMock()
         mock_dataloader.return_value = mock_dataloader_instance
         mock_dataloader_instance.__iter__ = MagicMock(return_value=iter([]))
@@ -452,7 +459,7 @@ class TestCLIIntegration:
         output_file = temp_dir / "predictions.tsv"
         model_file = temp_dir / "model.pt"
         model_file.touch()
-        
+
         result = runner.invoke(
             cli,
             [

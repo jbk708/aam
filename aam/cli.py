@@ -21,16 +21,16 @@ from aam.training.trainer import Trainer, create_optimizer, create_scheduler
 
 def setup_logging(output_dir: Path, log_level: str = "INFO"):
     """Setup logging to console and file.
-    
+
     Args:
         output_dir: Directory to write log file
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR)
     """
     output_dir.mkdir(parents=True, exist_ok=True)
     log_file = output_dir / "training.log"
-    
+
     numeric_level = getattr(logging, log_level.upper(), logging.INFO)
-    
+
     logging.basicConfig(
         level=numeric_level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -43,13 +43,13 @@ def setup_logging(output_dir: Path, log_level: str = "INFO"):
 
 def setup_device(device: str) -> torch.device:
     """Setup device (CPU or CUDA).
-    
+
     Args:
         device: Device string ('cpu' or 'cuda')
-        
+
     Returns:
         torch.device object
-        
+
     Raises:
         ValueError: If device is invalid or CUDA not available
     """
@@ -65,7 +65,7 @@ def setup_device(device: str) -> torch.device:
 
 def setup_random_seed(seed: Optional[int]):
     """Setup random seed for reproducibility.
-    
+
     Args:
         seed: Random seed (None for no seed)
     """
@@ -80,11 +80,11 @@ def setup_random_seed(seed: Optional[int]):
 
 def validate_file_path(path: str, file_type: str = "file"):
     """Validate that a file path exists.
-    
+
     Args:
         path: File path to validate
         file_type: Type of file for error message
-        
+
     Raises:
         FileNotFoundError: If file doesn't exist
     """
@@ -95,10 +95,10 @@ def validate_file_path(path: str, file_type: str = "file"):
 
 def validate_arguments(**kwargs):
     """Validate CLI arguments.
-    
+
     Args:
         **kwargs: Arguments to validate
-        
+
     Raises:
         ValueError: If validation fails
     """
@@ -108,21 +108,21 @@ def validate_arguments(**kwargs):
             raise ValueError(f"batch_size must be positive, got {batch_size}")
         if batch_size % 2 != 0:
             raise ValueError(f"batch_size must be even (for UniFrac), got {batch_size}")
-    
+
     classifier = kwargs.get("classifier", False)
     out_dim = kwargs.get("out_dim", 1)
     if classifier and out_dim <= 1:
         raise ValueError(f"classifier requires out_dim > 1, got {out_dim}")
-    
+
     lr = kwargs.get("lr")
     if lr is not None and lr <= 0:
         raise ValueError(f"lr must be positive, got {lr}")
-    
+
     test_size = kwargs.get("test_size")
     if test_size is not None:
         if test_size < 0 or test_size > 1:
             raise ValueError(f"test_size must be between 0 and 1, got {test_size}")
-    
+
     epochs = kwargs.get("epochs")
     if epochs is not None and epochs <= 0:
         raise ValueError(f"epochs must be positive, got {epochs}")
@@ -199,16 +199,16 @@ def train(
     try:
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
-        
+
         setup_logging(output_path)
         logger = logging.getLogger(__name__)
         logger.info("Starting AAM training")
         logger.info(f"Arguments: table={table}, tree={tree}, metadata={metadata}")
-        
+
         validate_file_path(table, "BIOM table")
         validate_file_path(tree, "Phylogenetic tree")
         validate_file_path(metadata, "Metadata file")
-        
+
         validate_arguments(
             batch_size=batch_size,
             classifier=classifier,
@@ -217,21 +217,21 @@ def train(
             test_size=test_size,
             epochs=epochs,
         )
-        
+
         device_obj = setup_device(device)
         setup_random_seed(seed)
-        
+
         logger.info("Loading data...")
         biom_loader = BIOMLoader()
         table_obj = biom_loader.load_table(table)
         table_obj = biom_loader.rarefy(table_obj, depth=rarefy_depth, random_seed=seed)
-        
+
         metadata_df = pd.read_csv(metadata, sep="\t")
         if "sample_id" not in metadata_df.columns:
             raise ValueError("Metadata file must have 'sample_id' column")
         if metadata_column not in metadata_df.columns:
             raise ValueError(f"Metadata column '{metadata_column}' not found in metadata file")
-        
+
         logger.info("Computing UniFrac distances...")
         unifrac_computer = UniFracComputer()
         if unifrac_metric == "unifrac":
@@ -242,20 +242,20 @@ def train(
             unifrac_distances = unifrac_computer.compute_faith_pd(table_obj, tree)
             unifrac_metric_name = "faith_pd"
             encoder_type = "faith_pd"
-        
+
         logger.info("Splitting data...")
         sample_ids = list(table_obj.ids(axis="sample"))
         train_ids, val_ids = train_test_split(sample_ids, test_size=test_size, random_state=seed)
-        
+
         train_table = table_obj.filter(train_ids, axis="sample", inplace=False)
         val_table = table_obj.filter(val_ids, axis="sample", inplace=False)
-        
+
         train_metadata = metadata_df[metadata_df["sample_id"].isin(train_ids)]
         val_metadata = metadata_df[metadata_df["sample_id"].isin(val_ids)]
-        
+
         train_unifrac = unifrac_computer.extract_batch_distances(unifrac_distances, train_ids, unifrac_metric_name)
         val_unifrac = unifrac_computer.extract_batch_distances(unifrac_distances, val_ids, unifrac_metric_name)
-        
+
         logger.info("Creating datasets...")
         train_dataset = ASVDataset(
             table=train_table,
@@ -266,7 +266,7 @@ def train(
             target_column=metadata_column,
             unifrac_metric=unifrac_metric_name,
         )
-        
+
         val_dataset = ASVDataset(
             table=val_table,
             metadata=val_metadata,
@@ -276,10 +276,10 @@ def train(
             target_column=metadata_column,
             unifrac_metric=unifrac_metric_name,
         )
-        
+
         train_collate = partial(collate_fn, token_limit=token_limit)
         val_collate = partial(collate_fn, token_limit=token_limit)
-        
+
         train_loader = DataLoader(
             train_dataset,
             batch_size=batch_size,
@@ -287,7 +287,7 @@ def train(
             num_workers=num_workers,
             collate_fn=train_collate,
         )
-        
+
         val_loader = DataLoader(
             val_dataset,
             batch_size=batch_size,
@@ -295,7 +295,7 @@ def train(
             num_workers=num_workers,
             collate_fn=val_collate,
         )
-        
+
         logger.info("Creating model...")
         model = SequencePredictor(
             encoder_type=encoder_type,
@@ -318,18 +318,18 @@ def train(
             freeze_base=freeze_base,
             predict_nucleotides=True,
         )
-        
+
         class_weights_tensor = None
         if class_weights is not None and classifier:
             weights_list = [float(w) for w in class_weights.split(",")]
             class_weights_tensor = torch.tensor(weights_list)
-        
+
         loss_fn = MultiTaskLoss(penalty=penalty, nuc_penalty=nuc_penalty, class_weights=class_weights_tensor)
-        
+
         num_training_steps = len(train_loader) * epochs
         optimizer = create_optimizer(model, lr=lr, weight_decay=weight_decay, freeze_base=freeze_base)
         scheduler = create_scheduler(optimizer, num_warmup_steps=warmup_steps, num_training_steps=num_training_steps)
-        
+
         trainer = Trainer(
             model=model,
             loss_fn=loss_fn,
@@ -338,15 +338,15 @@ def train(
             device=device_obj,
             freeze_base=freeze_base,
         )
-        
+
         if resume_from is not None:
             logger.info(f"Resuming from checkpoint: {resume_from}")
             trainer.load_checkpoint(resume_from, load_optimizer=True, load_scheduler=True)
-        
+
         logger.info("Starting training...")
         checkpoint_dir = output_path / "checkpoints"
         checkpoint_dir.mkdir(exist_ok=True)
-        
+
         history = trainer.train(
             train_loader=train_loader,
             val_loader=val_loader,
@@ -355,14 +355,14 @@ def train(
             checkpoint_dir=str(checkpoint_dir),
             resume_from=resume_from,
         )
-        
+
         logger.info("Training completed")
         logger.info(f"Best validation loss: {min(history['val_loss']) if history['val_loss'] else 'N/A'}")
-        
+
         final_model_path = output_path / "final_model.pt"
         trainer.save_checkpoint(str(final_model_path), epoch=epochs - 1, metrics=history)
         logger.info(f"Final model saved to {final_model_path}")
-        
+
     except Exception as e:
         logger.error(f"Training failed: {e}", exc_info=True)
         raise click.ClickException(str(e))
@@ -388,35 +388,35 @@ def predict(
         logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
         logger = logging.getLogger(__name__)
         logger.info("Starting AAM inference")
-        
+
         validate_file_path(model, "Model checkpoint")
         validate_file_path(table, "BIOM table")
         validate_file_path(tree, "Phylogenetic tree")
-        
+
         validate_arguments(batch_size=batch_size)
-        
+
         device_obj = setup_device(device)
-        
+
         logger.info("Loading model...")
         checkpoint = torch.load(model, map_location=device_obj)
-        
+
         if "model_state_dict" in checkpoint:
             model_state = checkpoint["model_state_dict"]
             model_config = checkpoint.get("config", {})
         else:
             model_state = checkpoint
             model_config = {}
-        
+
         logger.info("Loading data...")
         biom_loader = BIOMLoader()
         table_obj = biom_loader.load_table(table)
-        
+
         dataset = ASVDataset(
             table=table_obj,
             max_bp=model_config.get("max_bp", 150),
             token_limit=model_config.get("token_limit", 1024),
         )
-        
+
         inference_collate = partial(collate_fn, token_limit=model_config.get("token_limit", 1024))
         dataloader = DataLoader(
             dataset,
@@ -425,7 +425,7 @@ def predict(
             num_workers=0,
             collate_fn=inference_collate,
         )
-        
+
         logger.info("Creating model...")
         model_obj = SequencePredictor(
             encoder_type=model_config.get("encoder_type", "unifrac"),
@@ -439,16 +439,16 @@ def predict(
         model_obj.load_state_dict(model_state)
         model_obj.to(device_obj)
         model_obj.eval()
-        
+
         logger.info("Running inference...")
         predictions = []
         sample_ids_list = []
-        
+
         with torch.no_grad():
             for batch in dataloader:
                 tokens = batch["tokens"].to(device_obj)
                 outputs = model_obj(tokens, return_nucleotides=False)
-                
+
                 if "target_prediction" in outputs:
                     pred = outputs["target_prediction"].cpu().numpy()
                     if pred.ndim == 1:
@@ -458,7 +458,7 @@ def predict(
                     else:
                         predictions.extend([p.tolist() for p in pred])
                     sample_ids_list.extend(batch["sample_ids"])
-        
+
         logger.info(f"Writing predictions to {output}...")
         if predictions and isinstance(predictions[0], list):
             pred_cols = {f"prediction_{i}": [p[i] for p in predictions] for i in range(len(predictions[0]))}
@@ -468,9 +468,9 @@ def predict(
         output_path = Path(output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_df.to_csv(output_path, sep="\t", index=False)
-        
+
         logger.info(f"Inference completed. Predictions saved to {output}")
-        
+
     except Exception as e:
         logger.error(f"Inference failed: {e}", exc_info=True)
         raise click.ClickException(str(e))
