@@ -279,18 +279,24 @@ class TestModelPipelineIntegration:
         
         tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len)).to(device)
         counts = torch.rand(batch_size, num_asvs, 1).to(device)
-        targets = torch.randn(batch_size, 1).to(device)
+        target = torch.randn(batch_size, 1).to(device)
+        base_target = torch.randn(batch_size, small_predictor_config["base_output_dim"]).to(device)
         
         model.train()
-        output = model(tokens, counts)
+        outputs = model(tokens, counts)
+        
+        targets = {
+            "target": target,
+            "counts": counts,
+            "base_target": base_target,
+            "tokens": tokens,
+        }
         
         loss_dict = loss_fn(
-            target_prediction=output["target_prediction"],
-            target=targets,
-            count_prediction=output["count_prediction"],
-            count=counts,
-            base_prediction=output.get("base_prediction"),
-            base_target=torch.randn(batch_size, small_predictor_config["base_output_dim"]).to(device),
+            outputs=outputs,
+            targets=targets,
+            is_classifier=False,
+            encoder_type="unifrac",
         )
         
         assert "total_loss" in loss_dict
@@ -323,10 +329,17 @@ class TestTrainingPipelineIntegration:
         model.train()
         optimizer.zero_grad()
         
-        output = model(tokens)
+        outputs = model(tokens)
+        targets = {
+            "base_target": base_targets,
+            "tokens": tokens,
+        }
+        
         loss_dict = loss_fn(
-            base_prediction=output["base_prediction"],
-            base_target=base_targets,
+            outputs=outputs,
+            targets=targets,
+            is_classifier=False,
+            encoder_type="unifrac",
         )
         
         loss_dict["total_loss"].backward()
@@ -349,10 +362,16 @@ class TestTrainingPipelineIntegration:
         model.eval()
         
         with torch.no_grad():
-            output = model(tokens)
+            outputs = model(tokens)
+            targets = {
+                "base_target": base_targets,
+                "tokens": tokens,
+            }
             loss_dict = loss_fn(
-                base_prediction=output["base_prediction"],
-                base_target=base_targets,
+                outputs=outputs,
+                targets=targets,
+                is_classifier=False,
+                encoder_type="unifrac",
             )
         
         assert loss_dict["total_loss"].item() >= 0
@@ -445,10 +464,16 @@ class TestEndToEnd:
             model.train()
             optimizer.zero_grad()
             
-            output = model(tokens)
+            outputs = model(tokens)
+            targets = {
+                "base_target": base_targets,
+                "tokens": tokens,
+            }
             loss_dict = loss_fn(
-                base_prediction=output["base_prediction"],
-                base_target=base_targets,
+                outputs=outputs,
+                targets=targets,
+                is_classifier=False,
+                encoder_type="unifrac",
             )
             
             loss_dict["total_loss"].backward()
@@ -508,10 +533,16 @@ class TestEndToEnd:
             model.train()
             optimizer.zero_grad()
             
-            output = model(tokens)
+            outputs = model(tokens)
+            targets = {
+                "base_target": base_targets,
+                "tokens": tokens,
+            }
             loss_dict = loss_fn(
-                base_prediction=output["base_prediction"],
-                base_target=base_targets,
+                outputs=outputs,
+                targets=targets,
+                is_classifier=False,
+                encoder_type="unifrac",
             )
             
             loss_dict["total_loss"].backward()
