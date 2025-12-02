@@ -24,11 +24,10 @@ Implement functionality to load, process, and rarefy BIOM tables for microbial s
 - Ensures samples are comparable
 - Depth parameter: typically 5000 reads per sample
 
-**3. Filter and Sort**
-- Remove empty samples/ASVs
-- Sort ASVs by abundance (for each sample)
-- Limit to top N ASVs per sample (token_limit)
-- Prepare for tokenization
+**3. Sequence Extraction**
+- Extract sequences from observation IDs (ASV IDs)
+- Observation IDs are assumed to be 150bp DNA sequences
+- No metadata handling required
 
 ### Implementation Requirements
 
@@ -36,9 +35,10 @@ Implement functionality to load, process, and rarefy BIOM tables for microbial s
 - Create `BIOMLoader` class
 - Methods:
   - `load_table(path)`: Load BIOM file
-  - `rarefy(table, depth)`: Rarefy to specified depth
-  - `filter_and_sort(table, token_limit)`: Filter and sort ASVs
-  - `get_sequences(table)`: Extract sequences for ASVs
+  - `rarefy(table, depth, with_replacement, random_seed, inplace)`: Rarefy to specified depth using biom-format's `subsample()`
+  - `get_sequences(table)`: Extract sequences from observation IDs
+
+**Note:** `filter_and_sort()` was removed - all ASVs are used, no filtering needed since sequence length is capped at 150bp.
 
 **Key Considerations**:
 - Handle different BIOM table formats
@@ -54,14 +54,15 @@ Implement functionality to load, process, and rarefy BIOM tables for microbial s
 
 ## Implementation Checklist
 
-- [ ] Create `BIOMLoader` class
-- [ ] Implement `load_table()` method
-- [ ] Implement `rarefy()` method
-- [ ] Implement `filter_and_sort()` method
-- [ ] Handle empty samples/ASVs
-- [ ] Support reproducible rarefaction (random seed)
-- [ ] Test with sample BIOM table
-- [ ] Handle edge cases (empty table, very small table, etc.)
+- [x] Create `BIOMLoader` class
+- [x] Implement `load_table()` method
+- [x] Implement `rarefy()` method (uses biom-format's `subsample()`)
+- [x] Implement `get_sequences()` method (extracts from observation IDs)
+- [x] Handle empty samples/ASVs (drops samples below depth)
+- [x] Support reproducible rarefaction (random seed)
+- [x] Test with sample BIOM table
+- [x] Handle edge cases (empty table, very small table, etc.)
+- [x] Unit tests with 150bp sequences and no metadata
 
 ## Key Considerations
 
@@ -76,10 +77,10 @@ Implement functionality to load, process, and rarefy BIOM tables for microbial s
 - Use sparse matrix representations where possible
 - Consider chunking for very large tables
 
-### ASV Filtering
-- Sort ASVs by abundance (descending) for each sample
-- Keep top `token_limit` ASVs per sample
-- This reduces computational load while keeping most abundant ASVs
+### Sequence Extraction
+- Observation IDs are assumed to be 150bp DNA sequences
+- No metadata is used - sequences extracted directly from observation IDs
+- All ASVs are used - no filtering needed since sequence length is capped at 150bp
 
 ## Testing Requirements
 
