@@ -236,10 +236,12 @@ class TestTransformerEncoder:
     def test_mask_handles_variable_lengths(self, transformer_encoder):
         """Test that mask correctly handles variable sequence lengths."""
         embeddings = torch.randn(3, 10, 64)
-        mask = torch.tensor([
-            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
-            [1, 1, 1, 1, 1, 0, 0, 0, 0, 0],
-            [1, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-        ])
+        mask = torch.tensor(
+            [
+                [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                [1, 1, 1, 1, 1, 0, 0, 0, 0, 0],
+                [1, 1, 0, 0, 0, 0, 0, 0, 0, 0],
+            ]
+        )
         result = transformer_encoder(embeddings, mask=mask)
         assert result.shape == (3, 10, 64)
