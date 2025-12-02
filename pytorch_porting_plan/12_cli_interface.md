@@ -91,17 +91,17 @@ Implement command-line interface for training and inference.
 
 ## Implementation Checklist
 
-- [ ] Create CLI with argument parsing
-- [ ] Implement training command
-- [ ] Implement inference command (optional)
-- [ ] Validate arguments
-- [ ] Setup device and random seed
-- [ ] Integrate with data loading
-- [ ] Integrate with model creation
-- [ ] Integrate with training loop
-- [ ] Add logging
-- [ ] Test with sample data
-- [ ] Add help text and documentation
+- [x] Create CLI with argument parsing
+- [x] Implement training command
+- [x] Implement inference command (optional)
+- [x] Validate arguments
+- [x] Setup device and random seed
+- [x] Integrate with data loading
+- [x] Integrate with model creation
+- [x] Integrate with training loop
+- [x] Add logging
+- [x] Test with sample data
+- [x] Add help text and documentation
 
 ## Key Considerations
 

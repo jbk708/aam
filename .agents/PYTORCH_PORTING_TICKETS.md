@@ -412,25 +412,37 @@ Implement training and validation loops with staged training support as specifie
 ---
 
 ### PYT-4.3: Implement CLI Interface
-**Priority:** MEDIUM | **Effort:** Medium | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** Medium | **Status:** ✅ Completed
 
 **Description:**
 Implement command-line interface as specified in `pytorch_porting_plan/12_cli_interface.md`.
 
-**Files to Create:**
-- `aam/cli.py` or `aam/__main__.py`
+**Files Created:**
+- `aam/cli.py`
+- `tests/test_cli.py`
 
 **Acceptance Criteria:**
-- [ ] Training command implemented
-- [ ] Inference command implemented (optional)
-- [ ] Argument validation implemented
-- [ ] Error handling implemented
-- [ ] Logging implemented
-- [ ] Integration tests pass
+- [x] Training command implemented
+- [x] Inference command implemented (optional)
+- [x] Argument validation implemented
+- [x] Error handling implemented
+- [x] Logging implemented
+- [x] Integration tests pass (28 tests, all passing)
 
 **Dependencies:** PYT-4.2
 
+**Implementation Notes:**
+- Uses `click` for argument parsing
+- Training command includes full pipeline: data loading, model creation, training loop, checkpointing
+- Predict command supports inference with model checkpoint loading
+- Comprehensive argument validation (batch size must be even, classifier requires out_dim > 1, etc.)
+- Logging to both console and file (`training.log`)
+- Helper functions for device setup, random seed, file validation
+- All 28 unit tests pass, covering setup functions, validation, CLI commands, and integration tests
+- CLI can be invoked via `python -m aam.cli train` or `python -m aam.cli predict`
+
 **Estimated Time:** 6-8 hours
+**Actual Time:** ~4 hours
 
 ---
 
