@@ -28,7 +28,25 @@ class AttentionPooling(nn.Module):
         Returns:
             Pooled embeddings [batch_size, hidden_dim]
         """
-        pass
+        batch_size, seq_len, hidden_dim = embeddings.shape
+
+        scores = self.query(embeddings)
+        scores = scores.squeeze(-1)
+        scores = scores / (hidden_dim ** 0.5)
+
+        if mask is not None:
+            scores = scores.masked_fill(mask == 0, float("-inf"))
+
+        attention_weights = torch.softmax(scores, dim=-1)
+
+        if mask is not None:
+            attention_weights = attention_weights * mask
+            attention_weights = attention_weights / (attention_weights.sum(dim=-1, keepdim=True) + 1e-8)
+
+        pooled = torch.sum(embeddings * attention_weights.unsqueeze(-1), dim=1)
+        pooled = self.norm(pooled)
+
+        return pooled
 
 
 def float_mask(tensor: torch.Tensor) -> torch.Tensor:
@@ -40,7 +58,7 @@ def float_mask(tensor: torch.Tensor) -> torch.Tensor:
     Returns:
         Float mask tensor
     """
-    pass
+    return (tensor != 0).float()
 
 
 def create_mask_from_tokens(tokens: torch.Tensor) -> torch.Tensor:
@@ -52,7 +70,7 @@ def create_mask_from_tokens(tokens: torch.Tensor) -> torch.Tensor:
     Returns:
         Mask tensor [batch_size, seq_len]
     """
-    pass
+    return (tokens != 0).long()
 
 
 def apply_mask(embeddings: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
@@ -65,4 +83,5 @@ def apply_mask(embeddings: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
     Returns:
         Masked embeddings
     """
-    pass
+    mask = mask.unsqueeze(-1)
+    return embeddings * mask

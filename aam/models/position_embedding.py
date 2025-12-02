@@ -28,4 +28,10 @@ class PositionEmbedding(nn.Module):
         Returns:
             Embeddings with position information [batch_size, seq_len, hidden_dim]
         """
-        pass
+        batch_size, seq_len, hidden_dim = embeddings.shape
+
+        positions = torch.arange(seq_len, device=embeddings.device)
+        position_embeds = self.position_embedding(positions)
+        position_embeds = position_embeds.unsqueeze(0).expand(batch_size, -1, -1)
+
+        return embeddings + position_embeds
