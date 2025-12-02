@@ -334,6 +334,117 @@ class TestCollateFn:
         assert result["counts"].shape[0] == 1
 
 
+class TestDatasetEdgeCases:
+    """Test edge cases for dataset and collate_fn."""
+
+    def test_collate_fn_token_truncation(self, tokenizer):
+        """Test collate_fn truncates when num_asvs > token_limit."""
+        batch = [
+            {
+                "tokens": torch.LongTensor([[1, 2, 3] for _ in range(15)]),
+                "counts": torch.FloatTensor([[10.0] for _ in range(15)]),
+                "sample_id": "sample1",
+            },
+        ]
+        token_limit = 10
+        result = collate_fn(batch, token_limit)
+        assert result["tokens"].shape[1] == token_limit
+        assert result["counts"].shape[1] == token_limit
+        assert result["tokens"].shape[0] == 1
+
+    def test_dataset_empty_sample(self, tokenizer, tmp_path):
+        """Test dataset with empty sample (no ASVs)."""
+        from biom import Table
+        import numpy as np
+
+        data = np.array([[10, 20], [0, 0]])
+        observation_ids = ["ACGT" * 37 + "A", "ACGT" * 37 + "C"]
+        sample_ids = ["sample1", "empty_sample"]
+        table = Table(data, observation_ids=observation_ids, sample_ids=sample_ids)
+
+        dataset = ASVDataset(
+            table=table,
+            tokenizer=tokenizer,
+            max_bp=150,
+            token_limit=1024,
+        )
+
+        sample = dataset[1]
+        assert "tokens" in sample
+        assert "counts" in sample
+        assert sample["tokens"].shape[0] >= 1
+        assert sample["counts"].shape[0] >= 1
+
+    def test_dataset_string_target_value(self, tokenizer, rarefied_table, tmp_path):
+        """Test dataset with string target value in metadata."""
+        import pandas as pd
+
+        metadata_df = pd.DataFrame(
+            {
+                "sample_id": list(rarefied_table.ids(axis="sample")),
+                "target": ["1.5", "2.3", "3.7"],
+            }
+        )
+
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            max_bp=150,
+            token_limit=1024,
+            metadata=metadata_df,
+            target_column="target",
+        )
+
+        sample = dataset[0]
+        assert "y_target" in sample
+        assert isinstance(sample["y_target"], torch.Tensor)
+        assert sample["y_target"].dtype == torch.float32
+
+    def test_dataset_faith_pd_extraction(self, tokenizer, rarefied_table):
+        """Test Faith PD distance extraction."""
+        import pandas as pd
+        import numpy as np
+
+        sample_ids = list(rarefied_table.ids(axis="sample"))
+        faith_pd_values = pd.Series([2.5, 3.1, 2.8], index=sample_ids)
+
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            max_bp=150,
+            token_limit=1024,
+            unifrac_distances=faith_pd_values,
+            unifrac_metric="faith_pd",
+        )
+
+        sample = dataset[0]
+        assert "unifrac_target" in sample
+        assert isinstance(sample["unifrac_target"], torch.Tensor)
+        assert sample["unifrac_target"].shape == (1,)
+
+    def test_dataset_faith_pd_missing_sample(self, tokenizer, rarefied_table):
+        """Test Faith PD extraction with missing sample ID."""
+        import pandas as pd
+
+        sample_ids = list(rarefied_table.ids(axis="sample"))
+        faith_pd_values = pd.Series([2.5, 3.1], index=sample_ids[:2])
+
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            max_bp=150,
+            token_limit=1024,
+            unifrac_distances=faith_pd_values,
+            unifrac_metric="faith_pd",
+        )
+
+        sample_with_value = dataset[0]
+        assert "unifrac_target" in sample_with_value
+
+        sample_without_value = dataset[2]
+        assert "unifrac_target" not in sample_without_value
+
+
 class TestASVDatasetIntegration:
     """Integration tests for ASVDataset."""
 

@@ -3,6 +3,7 @@
 import pytest
 import numpy as np
 from pathlib import Path
+from unittest.mock import patch
 from biom import Table
 from skbio import DistanceMatrix
 import pandas as pd
@@ -220,6 +221,92 @@ class TestUniFracComputerIntegration:
         """Test compute_faith_pd with non-existent tree file."""
         with pytest.raises(FileNotFoundError):
             computer.compute_faith_pd(rarefied_table, "nonexistent_tree.nwk")
+
+
+class TestUniFracComputerErrorHandling:
+    """Test error handling for UniFracComputer."""
+
+    def test_compute_unweighted_file_not_found(self, computer, rarefied_table, tmp_path):
+        """Test compute_unweighted with non-existent tree file."""
+        non_existent = tmp_path / "nonexistent.nwk"
+        with pytest.raises(FileNotFoundError, match="Tree file not found"):
+            computer.compute_unweighted(rarefied_table, str(non_existent))
+
+    def test_compute_unweighted_invalid_tree_format(self, computer, rarefied_table, tmp_path):
+        """Test compute_unweighted with invalid tree file format."""
+        invalid_tree = tmp_path / "invalid.nwk"
+        invalid_tree.write_text("This is not a valid Newick tree")
+        with pytest.raises(ValueError, match="Error loading phylogenetic tree"):
+            computer.compute_unweighted(rarefied_table, str(invalid_tree))
+
+    def test_compute_unweighted_asv_mismatch(self, computer, rarefied_table, tmp_path):
+        """Test compute_unweighted with ASV ID mismatch."""
+        mismatched_tree = tmp_path / "mismatched.nwk"
+        mismatched_tree.write_text("(ASV999:0.1,ASV888:0.1);")
+        with pytest.raises(ValueError, match="Error computing unweighted UniFrac"):
+            computer.compute_unweighted(rarefied_table, str(mismatched_tree))
+
+    def test_compute_unweighted_general_error(self, computer, rarefied_table, tmp_path):
+        """Test compute_unweighted with general computation error."""
+        tree_file = tmp_path / "tree.nwk"
+        tree_file.write_text("(A:0.1,B:0.2);")
+        with patch("aam.data.unifrac.unifrac.unweighted") as mock_unifrac:
+            mock_unifrac.side_effect = Exception("General error")
+            with pytest.raises(ValueError, match="Error computing unweighted UniFrac"):
+                computer.compute_unweighted(rarefied_table, str(tree_file))
+
+    def test_compute_faith_pd_file_not_found(self, computer, rarefied_table, tmp_path):
+        """Test compute_faith_pd with non-existent tree file."""
+        non_existent = tmp_path / "nonexistent.nwk"
+        with pytest.raises(FileNotFoundError, match="Tree file not found"):
+            computer.compute_faith_pd(rarefied_table, str(non_existent))
+
+    def test_compute_faith_pd_invalid_tree_format(self, computer, rarefied_table, tmp_path):
+        """Test compute_faith_pd with invalid tree file format."""
+        invalid_tree = tmp_path / "invalid.nwk"
+        invalid_tree.write_text("This is not a valid Newick tree")
+        with pytest.raises(ValueError, match="Error loading phylogenetic tree"):
+            computer.compute_faith_pd(rarefied_table, str(invalid_tree))
+
+    def test_compute_faith_pd_asv_mismatch(self, computer, rarefied_table, tmp_path):
+        """Test compute_faith_pd with ASV ID mismatch."""
+        mismatched_tree = tmp_path / "mismatched.nwk"
+        mismatched_tree.write_text("(ASV999:0.1,ASV888:0.1);")
+        with pytest.raises(ValueError, match="Error computing Faith PD"):
+            computer.compute_faith_pd(rarefied_table, str(mismatched_tree))
+
+    def test_compute_faith_pd_general_error(self, computer, rarefied_table, tmp_path):
+        """Test compute_faith_pd with general computation error."""
+        tree_file = tmp_path / "tree.nwk"
+        tree_file.write_text("(A:0.1,B:0.2);")
+        with patch("aam.data.unifrac.unifrac.faith_pd") as mock_faith_pd:
+            mock_faith_pd.side_effect = Exception("General error")
+            with pytest.raises(ValueError, match="Error computing Faith PD"):
+                computer.compute_faith_pd(rarefied_table, str(tree_file))
+
+    def test_extract_batch_distances_missing_sample_id(self, computer, sample_distance_matrix):
+        """Test extract_batch_distances with missing sample ID."""
+        sample_ids = ["sample1", "nonexistent"]
+        with pytest.raises(ValueError, match="not found in distance matrix"):
+            computer.extract_batch_distances(sample_distance_matrix, sample_ids)
+
+    def test_extract_batch_distances_faith_pd_missing_sample_id(self, computer, sample_faith_pd_series):
+        """Test extract_batch_distances with missing sample ID for Faith PD."""
+        sample_ids = ["sample1", "nonexistent"]
+        with pytest.raises(ValueError, match="not found in Faith PD series"):
+            computer.extract_batch_distances(sample_faith_pd_series, sample_ids, metric="faith_pd")
+
+    def test_extract_batch_distances_invalid_batch_size(self, computer, sample_distance_matrix):
+        """Test extract_batch_distances with odd batch size."""
+        sample_ids = ["sample1", "sample2", "sample3"]
+        with pytest.raises(ValueError, match="Batch size must be even"):
+            computer.extract_batch_distances(sample_distance_matrix, sample_ids)
+
+    def test_extract_batch_distances_invalid_metric(self, computer, sample_distance_matrix):
+        """Test extract_batch_distances with invalid metric."""
+        sample_ids = ["sample1", "sample2"]
+        with pytest.raises(ValueError, match="Invalid metric"):
+            computer.extract_batch_distances(sample_distance_matrix, sample_ids, metric="invalid")
 
 
 class TestExtractBatchDistances:

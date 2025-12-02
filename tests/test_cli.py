@@ -477,3 +477,461 @@ class TestCLIIntegration:
 
         assert mock_setup_device.called or result.exit_code == 0
         assert mock_validate_file.called
+
+    def test_setup_device_cuda_when_not_available(self):
+        """Test CUDA device setup when CUDA is not available."""
+        with patch("torch.cuda.is_available", return_value=False):
+            with pytest.raises(ValueError, match="CUDA is not available"):
+                setup_device("cuda")
+
+    def test_setup_random_seed_cuda(self):
+        """Test random seed setup with CUDA available."""
+        with patch("torch.cuda.is_available", return_value=True):
+            with patch("torch.cuda.manual_seed_all") as mock_cuda_seed:
+                with patch("torch.backends.cudnn") as mock_cudnn:
+                    setup_random_seed(42)
+                    mock_cuda_seed.assert_called_with(42)
+                    mock_cudnn.deterministic = True
+                    mock_cudnn.benchmark = False
+
+    @patch("aam.cli.pd.read_csv")
+    @patch("aam.cli.setup_logging")
+    @patch("aam.cli.setup_device")
+    @patch("aam.cli.setup_random_seed")
+    @patch("aam.cli.validate_file_path")
+    @patch("aam.cli.validate_arguments")
+    @patch("aam.cli.BIOMLoader")
+    @patch("aam.cli.UniFracComputer")
+    @patch("aam.cli.train_test_split")
+    @patch("aam.cli.ASVDataset")
+    @patch("aam.cli.DataLoader")
+    @patch("aam.cli.SequencePredictor")
+    @patch("aam.cli.create_optimizer")
+    @patch("aam.cli.create_scheduler")
+    @patch("aam.cli.MultiTaskLoss")
+    @patch("aam.cli.Trainer")
+    def test_train_command_full_flow(
+        self,
+        mock_trainer_class,
+        mock_loss_class,
+        mock_create_scheduler,
+        mock_create_optimizer,
+        mock_model_class,
+        mock_dataloader_class,
+        mock_dataset_class,
+        mock_train_test_split,
+        mock_unifrac_class,
+        mock_biom_loader_class,
+        mock_validate_args,
+        mock_validate_file,
+        mock_setup_seed,
+        mock_setup_device,
+        mock_setup_logging,
+        mock_read_csv,
+        runner,
+        sample_biom_file,
+        sample_tree_file,
+        sample_metadata_file,
+        sample_output_dir,
+    ):
+        """Test train command with full flow including data loading and model setup."""
+        mock_setup_device.return_value = torch.device("cpu")
+
+        mock_metadata_df = MagicMock()
+        mock_metadata_df.columns = ["sample_id", "target"]
+        mock_read_csv.return_value = mock_metadata_df
+
+        mock_biom_loader_instance = MagicMock()
+        mock_biom_loader_class.return_value = mock_biom_loader_instance
+        mock_table = MagicMock()
+        mock_table.ids.return_value = ["sample1", "sample2", "sample3", "sample4"]
+        mock_biom_loader_instance.load_table.return_value = mock_table
+        mock_biom_loader_instance.rarefy.return_value = mock_table
+
+        mock_unifrac_instance = MagicMock()
+        mock_unifrac_class.return_value = mock_unifrac_instance
+        mock_distance_matrix = MagicMock()
+        mock_unifrac_instance.compute_unweighted.return_value = mock_distance_matrix
+        mock_unifrac_instance.extract_batch_distances.return_value = MagicMock()
+
+        mock_train_ids = ["sample1", "sample2", "sample3"]
+        mock_val_ids = ["sample4"]
+        mock_train_test_split.return_value = (mock_train_ids, mock_val_ids)
+
+        mock_train_table = MagicMock()
+        mock_val_table = MagicMock()
+        mock_table.filter.side_effect = lambda ids, **kwargs: mock_train_table if ids == mock_train_ids else mock_val_table
+
+        mock_dataset_instance = MagicMock()
+        mock_dataset_class.return_value = mock_dataset_instance
+
+        mock_dataloader_instance = MagicMock()
+        mock_dataloader_instance.__len__ = MagicMock(return_value=1)
+        mock_dataloader_class.return_value = mock_dataloader_instance
+
+        mock_model_instance = MagicMock()
+        mock_model_class.return_value = mock_model_instance
+
+        mock_optimizer = MagicMock()
+        mock_create_optimizer.return_value = mock_optimizer
+
+        mock_scheduler = MagicMock()
+        mock_create_scheduler.return_value = mock_scheduler
+
+        mock_loss_instance = MagicMock()
+        mock_loss_class.return_value = mock_loss_instance
+
+        mock_trainer_instance = MagicMock()
+        mock_trainer_instance.train.return_value = {"train_loss": [1.0], "val_loss": [0.9]}
+        mock_trainer_class.return_value = mock_trainer_instance
+
+        result = runner.invoke(
+            cli,
+            [
+                "train",
+                "--table",
+                sample_biom_file,
+                "--tree",
+                sample_tree_file,
+                "--metadata",
+                sample_metadata_file,
+                "--metadata-column",
+                "target",
+                "--output-dir",
+                sample_output_dir,
+                "--batch-size",
+                "8",
+                "--epochs",
+                "1",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert mock_biom_loader_instance.load_table.called
+        assert mock_biom_loader_instance.rarefy.called
+        assert mock_unifrac_instance.compute_unweighted.called
+        assert mock_dataset_class.call_count == 2
+        assert mock_model_class.called
+        assert mock_trainer_instance.train.called
+
+    @patch("aam.cli.setup_device")
+    @patch("aam.cli.validate_file_path")
+    @patch("torch.load")
+    @patch("aam.cli.SequencePredictor")
+    @patch("aam.cli.BIOMLoader")
+    @patch("aam.cli.ASVDataset")
+    @patch("aam.cli.DataLoader")
+    @patch("aam.cli.Path")
+    def test_predict_command_with_batches(
+        self,
+        mock_path_class,
+        mock_dataloader_class,
+        mock_dataset_class,
+        mock_biom_loader_class,
+        mock_model_class,
+        mock_load,
+        mock_validate_file,
+        mock_setup_device,
+        runner,
+        sample_biom_file,
+        sample_tree_file,
+        temp_dir,
+    ):
+        """Test predict command with actual batch processing."""
+        mock_setup_device.return_value = torch.device("cpu")
+
+        mock_checkpoint = {
+            "model_state_dict": {},
+            "config": {
+                "max_bp": 150,
+                "token_limit": 1024,
+                "embedding_dim": 128,
+                "encoder_type": "unifrac",
+                "out_dim": 1,
+                "is_classifier": False,
+            },
+        }
+        mock_load.return_value = mock_checkpoint
+
+        mock_biom_loader_instance = MagicMock()
+        mock_biom_loader_class.return_value = mock_biom_loader_instance
+        mock_table = MagicMock()
+        mock_biom_loader_instance.load_table.return_value = mock_table
+
+        mock_dataset_instance = MagicMock()
+        mock_dataset_class.return_value = mock_dataset_instance
+
+        mock_model_instance = MagicMock()
+        mock_output = {"target_prediction": torch.tensor([[1.0], [2.0]])}
+        mock_model_instance.return_value = mock_output
+        mock_model_class.return_value = mock_model_instance
+
+        mock_batch1 = {
+            "tokens": torch.tensor([[[1, 2, 3]]]),
+            "sample_ids": ["sample1"],
+        }
+        mock_batch2 = {
+            "tokens": torch.tensor([[[2, 3, 4]]]),
+            "sample_ids": ["sample2"],
+        }
+        mock_dataloader_instance = MagicMock()
+        mock_dataloader_instance.__iter__ = MagicMock(return_value=iter([mock_batch1, mock_batch2]))
+        mock_dataloader_class.return_value = mock_dataloader_instance
+
+        output_file = temp_dir / "predictions.tsv"
+        model_file = temp_dir / "model.pt"
+        model_file.touch()
+
+        mock_path_instance = MagicMock()
+        mock_path_instance.parent.mkdir = MagicMock()
+        mock_path_class.return_value = mock_path_instance
+
+        import numpy as np
+
+        mock_tensor1 = MagicMock()
+        mock_numpy1 = np.array([1.0])
+        mock_tensor1.cpu.return_value.numpy.return_value = mock_numpy1
+        mock_tensor2 = MagicMock()
+        mock_numpy2 = np.array([2.0])
+        mock_tensor2.cpu.return_value.numpy.return_value = mock_numpy2
+        mock_output1 = {"target_prediction": mock_tensor1}
+        mock_output2 = {"target_prediction": mock_tensor2}
+        mock_model_instance.side_effect = [mock_output1, mock_output2]
+
+        with patch("aam.cli.pd.DataFrame") as mock_df_class:
+            mock_df_instance = MagicMock()
+            mock_df_class.return_value = mock_df_instance
+
+            result = runner.invoke(
+                cli,
+                [
+                    "predict",
+                    "--model",
+                    str(model_file),
+                    "--table",
+                    sample_biom_file,
+                    "--tree",
+                    sample_tree_file,
+                    "--output",
+                    str(output_file),
+                ],
+            )
+
+            assert result.exit_code == 0
+            assert mock_model_instance.call_count == 2
+            assert mock_df_instance.to_csv.called
+
+    @patch("aam.cli.setup_device")
+    @patch("aam.cli.validate_file_path")
+    @patch("torch.load")
+    @patch("aam.cli.SequencePredictor")
+    @patch("aam.cli.BIOMLoader")
+    @patch("aam.cli.ASVDataset")
+    @patch("aam.cli.DataLoader")
+    def test_predict_command_multiclass_output(
+        self,
+        mock_dataloader_class,
+        mock_dataset_class,
+        mock_biom_loader_class,
+        mock_model_class,
+        mock_load,
+        mock_validate_file,
+        mock_setup_device,
+        runner,
+        sample_biom_file,
+        sample_tree_file,
+        temp_dir,
+    ):
+        """Test predict command with multi-class predictions."""
+        mock_setup_device.return_value = torch.device("cpu")
+
+        mock_checkpoint = {
+            "model_state_dict": {},
+            "config": {
+                "max_bp": 150,
+                "token_limit": 1024,
+                "embedding_dim": 128,
+                "encoder_type": "unifrac",
+                "out_dim": 3,
+                "is_classifier": True,
+            },
+        }
+        mock_load.return_value = mock_checkpoint
+
+        mock_biom_loader_instance = MagicMock()
+        mock_biom_loader_class.return_value = mock_biom_loader_instance
+        mock_table = MagicMock()
+        mock_biom_loader_instance.load_table.return_value = mock_table
+
+        mock_dataset_instance = MagicMock()
+        mock_dataset_class.return_value = mock_dataset_instance
+
+        import numpy as np
+
+        mock_model_instance = MagicMock()
+        mock_tensor = MagicMock()
+        mock_numpy = np.array([[0.1, 0.2, 0.7], [0.3, 0.4, 0.3]])
+        mock_tensor.cpu.return_value.numpy.return_value = mock_numpy
+        mock_output = {"target_prediction": mock_tensor}
+        mock_model_instance.return_value = mock_output
+        mock_model_class.return_value = mock_model_instance
+
+        mock_batch = {
+            "tokens": torch.tensor([[[1, 2, 3]], [[2, 3, 4]]]),
+            "sample_ids": ["sample1", "sample2"],
+        }
+        mock_dataloader_instance = MagicMock()
+        mock_dataloader_instance.__iter__ = MagicMock(return_value=iter([mock_batch]))
+        mock_dataloader_class.return_value = mock_dataloader_instance
+
+        output_file = temp_dir / "predictions.tsv"
+        model_file = temp_dir / "model.pt"
+        model_file.touch()
+
+        with patch("aam.cli.pd.DataFrame") as mock_df_class:
+            mock_df_instance = MagicMock()
+            mock_df_class.return_value = mock_df_instance
+
+            result = runner.invoke(
+                cli,
+                [
+                    "predict",
+                    "--model",
+                    str(model_file),
+                    "--table",
+                    sample_biom_file,
+                    "--tree",
+                    sample_tree_file,
+                    "--output",
+                    str(output_file),
+                ],
+            )
+
+            assert result.exit_code == 0
+            call_args = mock_df_class.call_args
+            if call_args and len(call_args) > 0:
+                df_data = call_args[0][0] if call_args[0] else {}
+                assert isinstance(df_data, dict)
+
+    @patch("aam.cli.setup_device")
+    @patch("aam.cli.validate_file_path")
+    @patch("torch.load")
+    @patch("aam.cli.SequencePredictor")
+    def test_predict_command_checkpoint_fallback(
+        self,
+        mock_model_class,
+        mock_load,
+        mock_validate_file,
+        mock_setup_device,
+        runner,
+        sample_biom_file,
+        sample_tree_file,
+        temp_dir,
+    ):
+        """Test predict command with checkpoint fallback (no model_state_dict)."""
+        mock_setup_device.return_value = torch.device("cpu")
+
+        mock_checkpoint = {}  # No model_state_dict, should use checkpoint directly
+        mock_load.return_value = mock_checkpoint
+
+        model_file = temp_dir / "model.pt"
+        model_file.touch()
+
+        with patch("aam.cli.BIOMLoader"), patch("aam.cli.ASVDataset"), patch("aam.cli.DataLoader"):
+            result = runner.invoke(
+                cli,
+                [
+                    "predict",
+                    "--model",
+                    str(model_file),
+                    "--table",
+                    sample_biom_file,
+                    "--tree",
+                    sample_tree_file,
+                    "--output",
+                    str(temp_dir / "output.tsv"),
+                ],
+            )
+
+            assert mock_model_class.called
+
+    @patch("aam.cli.setup_device")
+    @patch("aam.cli.validate_file_path")
+    @patch("aam.cli.BIOMLoader")
+    def test_train_command_error_handling(
+        self,
+        mock_biom_loader_class,
+        mock_validate_file,
+        mock_setup_device,
+        runner,
+        sample_biom_file,
+        sample_tree_file,
+        sample_metadata_file,
+        sample_output_dir,
+    ):
+        """Test train command error handling."""
+        mock_setup_device.return_value = torch.device("cpu")
+
+        mock_biom_loader_instance = MagicMock()
+        mock_biom_loader_class.return_value = mock_biom_loader_instance
+        mock_biom_loader_instance.load_table.side_effect = Exception("Load error")
+
+        result = runner.invoke(
+            cli,
+            [
+                "train",
+                "--table",
+                sample_biom_file,
+                "--tree",
+                sample_tree_file,
+                "--metadata",
+                sample_metadata_file,
+                "--metadata-column",
+                "target",
+                "--output-dir",
+                sample_output_dir,
+                "--batch-size",
+                "8",
+                "--epochs",
+                "1",
+            ],
+        )
+
+        assert result.exit_code != 0
+
+    @patch("aam.cli.setup_device")
+    @patch("aam.cli.validate_file_path")
+    @patch("torch.load")
+    def test_predict_command_error_handling(
+        self,
+        mock_load,
+        mock_validate_file,
+        mock_setup_device,
+        runner,
+        sample_biom_file,
+        sample_tree_file,
+        temp_dir,
+    ):
+        """Test predict command error handling."""
+        mock_setup_device.return_value = torch.device("cpu")
+        mock_load.side_effect = Exception("Load error")
+
+        model_file = temp_dir / "model.pt"
+        model_file.touch()
+
+        result = runner.invoke(
+            cli,
+            [
+                "predict",
+                "--model",
+                str(model_file),
+                "--table",
+                sample_biom_file,
+                "--tree",
+                sample_tree_file,
+                "--output",
+                str(temp_dir / "output.tsv"),
+            ],
+        )
+
+        assert result.exit_code != 0
