@@ -150,24 +150,36 @@ Implement AttentionPooling and PositionEmbedding as specified in `pytorch_portin
 ---
 
 ### PYT-2.2: Implement Transformer Encoder
-**Priority:** HIGH | **Effort:** Medium | **Status:** Not Started
+**Priority:** HIGH | **Effort:** Medium | **Status:** ✅ Completed
 
 **Description:**
 Implement transformer encoder as specified in `pytorch_porting_plan/05_transformer.md`.
 
-**Files to Create:**
+**Files Created:**
 - `aam/models/transformer.py`
+- `tests/test_transformer.py`
 
 **Acceptance Criteria:**
-- [ ] `TransformerEncoder` class implemented
-- [ ] Uses PyTorch built-in or custom implementation
-- [ ] Handles masking correctly
-- [ ] Supports configurable layers, heads, dimensions
-- [ ] Unit tests pass
+- [x] `TransformerEncoder` class implemented
+- [x] Uses PyTorch built-in or custom implementation
+- [x] Handles masking correctly
+- [x] Supports configurable layers, heads, dimensions
+- [x] Unit tests pass (23 tests, all passing)
 
 **Dependencies:** PYT-2.1
 
+**Implementation Notes:**
+- Uses PyTorch built-in `nn.TransformerEncoder` and `nn.TransformerEncoderLayer` (Option 1 from plan)
+- Pre-norm architecture (`norm_first=True`) for training stability
+- Batch-first format (`batch_first=True`) for consistency
+- Mask conversion: converts input mask (1=valid, 0=padding) to PyTorch format (True=padding, False=valid)
+- Output normalization with LayerNorm (eps=1e-6)
+- Supports GELU and ReLU activations
+- Default intermediate_size = 4 * hidden_dim
+- All 23 unit tests pass, covering shapes, masking, gradients, dropout, and device handling
+
 **Estimated Time:** 4-6 hours
+**Actual Time:** ~3 hours
 
 ---
 
