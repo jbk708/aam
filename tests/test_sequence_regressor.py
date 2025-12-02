@@ -252,7 +252,7 @@ class TestSequenceRegressor:
         has_base_gradients = False
         has_count_gradients = False
         has_target_gradients = False
-        
+
         for name, param in sequence_regressor.named_parameters():
             if param.requires_grad and param.grad is not None:
                 assert not torch.isnan(param.grad).any()
@@ -263,7 +263,7 @@ class TestSequenceRegressor:
                     has_count_gradients = True
                 elif "target" in name:
                     has_target_gradients = True
-        
+
         assert has_base_gradients or has_count_gradients or has_target_gradients
 
     def test_gradients_frozen_base(self, sequence_regressor_frozen, sample_tokens):
@@ -375,7 +375,7 @@ class TestSequenceRegressor:
         """Test that base model can be swapped."""
         regressor1 = SequenceRegressor(base_model=base_encoder, out_dim=1)
         result1 = regressor1(sample_tokens)
-        
+
         new_base = SequenceEncoder(
             vocab_size=5,
             embedding_dim=64,
@@ -386,6 +386,6 @@ class TestSequenceRegressor:
         )
         regressor2 = SequenceRegressor(base_model=new_base, out_dim=1)
         result2 = regressor2(sample_tokens)
-        
+
         assert result1["target_prediction"].shape == result2["target_prediction"].shape
         assert result1["count_prediction"].shape == result2["count_prediction"].shape
