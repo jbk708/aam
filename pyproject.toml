@@ -74,6 +74,8 @@ all = [
 
 [tool.ruff]
 line-length = 128
+
+[tool.ruff.lint]
 ignore = ["F841", "F401"]
 
 [tool.pytest.ini_options]
