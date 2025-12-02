@@ -69,18 +69,18 @@ Implement transformer encoder layer for processing sequences with self-attention
 
 ## Implementation Checklist
 
-- [ ] Choose implementation approach (built-in or custom)
-- [ ] If built-in: Create wrapper around `nn.TransformerEncoder`
-- [ ] If custom: Implement multi-head attention
-- [ ] If custom: Implement feed-forward network
-- [ ] If custom: Implement transformer layer
-- [ ] Implement stacking of multiple layers
-- [ ] Handle mask conversion (1 for valid → False for padding)
-- [ ] Add output normalization
-- [ ] Test with dummy data
-- [ ] Verify output shapes
-- [ ] Test with masking
-- [ ] Test with different numbers of layers
+- [x] Choose implementation approach (built-in or custom)
+- [x] If built-in: Create wrapper around `nn.TransformerEncoder`
+- [ ] If custom: Implement multi-head attention (not needed - using built-in)
+- [ ] If custom: Implement feed-forward network (not needed - using built-in)
+- [ ] If custom: Implement transformer layer (not needed - using built-in)
+- [x] Implement stacking of multiple layers
+- [x] Handle mask conversion (1 for valid → False for padding)
+- [x] Add output normalization
+- [x] Test with dummy data
+- [x] Verify output shapes
+- [x] Test with masking
+- [x] Test with different numbers of layers
 
 ## Key Considerations
 
