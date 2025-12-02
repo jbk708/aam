@@ -328,27 +328,45 @@ Implement main regression model as specified in `pytorch_porting_plan/09_sequenc
 ## Phase 4: Training
 
 ### PYT-4.1: Implement Loss Functions
-**Priority:** HIGH | **Effort:** Medium | **Status:** Not Started
+**Priority:** HIGH | **Effort:** Medium | **Status:** ✅ Completed
 
 **Description:**
 Implement multi-task loss functions as specified in `pytorch_porting_plan/10_training_losses.md`.
 
-**Files to Create:**
+**Files Created:**
 - `aam/training/losses.py`
 - `aam/training/metrics.py`
+- `tests/test_losses.py`
+- `tests/test_metrics.py`
 
 **Acceptance Criteria:**
-- [ ] Target loss (MSE/NLL) implemented
-- [ ] Count loss (masked MSE) implemented
-- [ ] Base loss (UniFrac MSE) implemented
-- [ ] Nucleotide loss (masked CrossEntropy) implemented
-- [ ] Total loss computation implemented
-- [ ] Metrics (MAE, accuracy, etc.) implemented
-- [ ] Unit tests pass
+- [x] Target loss (MSE/NLL) implemented
+- [x] Count loss (masked MSE) implemented
+- [x] Base loss (UniFrac MSE) implemented
+- [x] Nucleotide loss (masked CrossEntropy) implemented
+- [x] Total loss computation implemented
+- [x] Metrics (MAE, accuracy, etc.) implemented
+- [x] Unit tests pass (27 tests, all passing)
+
+**Implementation Notes:**
+- `MultiTaskLoss` class implements all loss functions with configurable penalty weights
+- Target loss supports both regression (MSE) and classification (NLL with optional class weights)
+- Count loss uses masked MSE to ignore padding ASVs
+- Base loss handles all encoder types (unifrac, faith_pd, taxonomy, combined)
+- Nucleotide loss uses masked CrossEntropy to ignore padding positions
+- Total loss computes weighted sum of all component losses
+- Metrics module provides regression (MAE, MSE, R2) and classification (accuracy, precision, recall, F1) metrics
+- Count metrics support masked computation for valid ASVs only
+- All losses handle missing outputs gracefully (inference mode)
+- Mask creation from tokens or counts when not explicitly provided
+- Device handling ensures all tensors are on the same device
+- Metrics use `.tolist()` conversion to avoid numpy compatibility issues
+- All 27 unit tests pass (18 for losses, 11 for metrics, 2 CUDA tests skipped)
 
 **Dependencies:** PYT-3.4
 
 **Estimated Time:** 4-6 hours
+**Actual Time:** ~4 hours
 
 ---
 
