@@ -71,27 +71,27 @@ class TestAttentionPooling:
     def test_forward_attention_weights_sum_to_one(self, attention_pooling, sample_embeddings, sample_mask):
         """Test that attention weights sum to 1 over valid positions."""
         result = attention_pooling(sample_embeddings, mask=sample_mask)
-        
+
         query = attention_pooling.query(sample_embeddings)
-        scores = query.squeeze(-1) / (64 ** 0.5)
+        scores = query.squeeze(-1) / (64**0.5)
         scores = scores.masked_fill(sample_mask == 0, float("-inf"))
         attention_weights = torch.softmax(scores, dim=-1)
         attention_weights = attention_weights * sample_mask.float()
         attention_weights = attention_weights / (attention_weights.sum(dim=-1, keepdim=True) + 1e-8)
-        
+
         assert torch.allclose(attention_weights.sum(dim=-1), torch.ones(2), atol=1e-5)
 
     def test_forward_masked_positions_ignored(self, attention_pooling, sample_embeddings, sample_mask):
         """Test that masked positions are ignored in attention."""
         result = attention_pooling(sample_embeddings, mask=sample_mask)
-        
+
         query = attention_pooling.query(sample_embeddings)
-        scores = query.squeeze(-1) / (64 ** 0.5)
+        scores = query.squeeze(-1) / (64**0.5)
         scores = scores.masked_fill(sample_mask == 0, float("-inf"))
         attention_weights = torch.softmax(scores, dim=-1)
         attention_weights = attention_weights * sample_mask.float()
         attention_weights = attention_weights / (attention_weights.sum(dim=-1, keepdim=True) + 1e-8)
-        
+
         assert torch.allclose(attention_weights[0, 5:], torch.zeros(5), atol=1e-5)
         assert torch.allclose(attention_weights[1, 3:], torch.zeros(7), atol=1e-5)
 
