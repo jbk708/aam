@@ -26,8 +26,8 @@ class TestRegressionMetrics:
         assert "mse" in metrics
         assert "r2" in metrics
         
-        y_pred_np = y_pred.detach().cpu().numpy()
-        y_true_np = y_true.detach().cpu().numpy()
+        y_pred_np = np.array(y_pred.detach().cpu().tolist())
+        y_true_np = np.array(y_true.detach().cpu().tolist())
         
         expected_mae = np.mean(np.abs(y_pred_np - y_true_np))
         expected_mse = np.mean((y_pred_np - y_true_np) ** 2)
@@ -50,8 +50,8 @@ class TestRegressionMetrics:
         assert "mse" in metrics
         assert "r2" in metrics
         
-        y_pred_np = y_pred.detach().cpu().numpy().flatten()
-        y_true_np = y_true.detach().cpu().numpy().flatten()
+        y_pred_np = np.array(y_pred.detach().cpu().tolist()).flatten()
+        y_true_np = np.array(y_true.detach().cpu().tolist()).flatten()
         
         expected_mae = np.mean(np.abs(y_pred_np - y_true_np))
         expected_mse = np.mean((y_pred_np - y_true_np) ** 2)
@@ -94,8 +94,8 @@ class TestClassificationMetrics:
         assert "recall" in metrics
         assert "f1" in metrics
         
-        y_pred_np = y_pred.detach().cpu().numpy()
-        y_true_np = y_true.detach().cpu().numpy()
+        y_pred_np = np.array(y_pred.detach().cpu().tolist())
+        y_true_np = np.array(y_true.detach().cpu().tolist())
         
         expected_accuracy = np.mean(y_pred_np == y_true_np)
         assert abs(metrics["accuracy"] - expected_accuracy) < 1e-5
@@ -115,8 +115,8 @@ class TestClassificationMetrics:
         assert "recall" in metrics
         assert "f1" in metrics
         
-        y_pred_np = y_pred.detach().cpu().numpy()
-        y_true_np = y_true.detach().cpu().numpy()
+        y_pred_np = np.array(y_pred.detach().cpu().tolist())
+        y_true_np = np.array(y_true.detach().cpu().tolist())
         
         expected_accuracy = np.mean(y_pred_np == y_true_np)
         assert abs(metrics["accuracy"] - expected_accuracy) < 1e-5
@@ -166,11 +166,16 @@ class TestCountMetrics:
         assert "mse" in metrics
         
         valid_mask = mask.unsqueeze(-1)
-        valid_pred = (count_pred * valid_mask).detach().cpu().numpy()
-        valid_true = (count_true * valid_mask).detach().cpu().numpy()
+        valid_pred = (count_pred * valid_mask).detach().cpu()
+        valid_true = (count_true * valid_mask).detach().cpu()
         
-        valid_pred_flat = valid_pred[valid_mask.bool().cpu().numpy()]
-        valid_true_flat = valid_true[valid_mask.bool().cpu().numpy()]
+        valid_mask_bool = valid_mask.bool().detach().cpu()
+        valid_pred_np = np.array(valid_pred.tolist())
+        valid_true_np = np.array(valid_true.tolist())
+        valid_mask_np = np.array(valid_mask_bool.tolist())
+        
+        valid_pred_flat = valid_pred_np[valid_mask_np]
+        valid_true_flat = valid_true_np[valid_mask_np]
         
         expected_mae = np.mean(np.abs(valid_pred_flat - valid_true_flat))
         expected_mse = np.mean((valid_pred_flat - valid_true_flat) ** 2)
@@ -192,8 +197,8 @@ class TestCountMetrics:
         assert "mae" in metrics
         assert "mse" in metrics
         
-        count_pred_np = count_pred.detach().cpu().numpy().flatten()
-        count_true_np = count_true.detach().cpu().numpy().flatten()
+        count_pred_np = np.array(count_pred.detach().cpu().tolist()).flatten()
+        count_true_np = np.array(count_true.detach().cpu().tolist()).flatten()
         
         expected_mae = np.mean(np.abs(count_pred_np - count_true_np))
         expected_mse = np.mean((count_pred_np - count_true_np) ** 2)

@@ -26,7 +26,18 @@ def compute_regression_metrics(
     Returns:
         Dictionary with metrics
     """
-    pass
+    y_pred_np = np.array(y_pred.detach().cpu().tolist()).flatten()
+    y_true_np = np.array(y_true.detach().cpu().tolist()).flatten()
+    
+    mae = mean_absolute_error(y_true_np, y_pred_np)
+    mse = mean_squared_error(y_true_np, y_pred_np)
+    r2 = r2_score(y_true_np, y_pred_np)
+    
+    return {
+        "mae": float(mae),
+        "mse": float(mse),
+        "r2": float(r2),
+    }
 
 
 def compute_classification_metrics(
@@ -44,7 +55,29 @@ def compute_classification_metrics(
     Returns:
         Dictionary with metrics
     """
-    pass
+    y_true_np = np.array(y_true.detach().cpu().tolist())
+    
+    if y_pred.dim() > 1 and y_pred.size(-1) > 1:
+        y_pred_tensor = y_pred.detach().cpu()
+        y_pred_np = np.array(y_pred_tensor.argmax(dim=-1).tolist())
+    else:
+        y_pred_np = np.array(y_pred.detach().cpu().tolist()).flatten()
+    
+    if num_classes is None:
+        num_classes = max(int(y_pred_np.max()), int(y_true_np.max())) + 1
+    
+    accuracy = accuracy_score(y_true_np, y_pred_np)
+    
+    precision, recall, f1, _ = precision_recall_fscore_support(
+        y_true_np, y_pred_np, average="weighted", zero_division=0
+    )
+    
+    return {
+        "accuracy": float(accuracy),
+        "precision": float(precision),
+        "recall": float(recall),
+        "f1": float(f1),
+    }
 
 
 def compute_count_metrics(
@@ -62,4 +95,22 @@ def compute_count_metrics(
     Returns:
         Dictionary with metrics
     """
-    pass
+    valid_mask = mask.unsqueeze(-1).bool()
+    
+    count_pred_np = np.array(count_pred.detach().cpu().tolist())
+    count_true_np = np.array(count_true.detach().cpu().tolist())
+    valid_mask_np = np.array(valid_mask.detach().cpu().tolist())
+    
+    valid_pred = count_pred_np[valid_mask_np]
+    valid_true = count_true_np[valid_mask_np]
+    
+    if len(valid_pred) == 0:
+        return {"mae": 0.0, "mse": 0.0}
+    
+    mae = np.mean(np.abs(valid_pred - valid_true))
+    mse = np.mean((valid_pred - valid_true) ** 2)
+    
+    return {
+        "mae": float(mae),
+        "mse": float(mse),
+    }
