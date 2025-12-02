@@ -59,18 +59,18 @@ Implement fundamental neural network layers: AttentionPooling and PositionEmbedd
 
 ## Implementation Checklist
 
-- [ ] Create `AttentionPooling` class
-- [ ] Implement query projection
-- [ ] Implement attention computation with masking
-- [ ] Implement weighted sum
-- [ ] Add LayerNorm
-- [ ] Create `PositionEmbedding` class
-- [ ] Implement position index creation
-- [ ] Implement embedding lookup and addition
-- [ ] Create utility masking functions
-- [ ] Test with dummy data
-- [ ] Verify output shapes
-- [ ] Test with masking
+- [x] Create `AttentionPooling` class
+- [x] Implement query projection
+- [x] Implement attention computation with masking
+- [x] Implement weighted sum
+- [x] Add LayerNorm
+- [x] Create `PositionEmbedding` class
+- [x] Implement position index creation
+- [x] Implement embedding lookup and addition
+- [x] Create utility masking functions
+- [x] Test with dummy data
+- [x] Verify output shapes
+- [x] Test with masking
 
 ## Key Considerations
 
