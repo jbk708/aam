@@ -77,18 +77,18 @@ Where:
 
 ## Implementation Checklist
 
-- [ ] Create `ASVEncoder` class
-- [ ] Initialize embedding layer
-- [ ] Initialize position embedding
-- [ ] Initialize transformer encoder
-- [ ] Initialize attention pooling
-- [ ] Initialize nucleotide prediction head (optional)
-- [ ] Implement forward pass with reshaping
-- [ ] Handle mask creation
-- [ ] Handle training vs inference modes
-- [ ] Test with dummy data
-- [ ] Verify output shapes
-- [ ] Test with different sequence lengths
+- [x] Create `ASVEncoder` class
+- [x] Initialize embedding layer
+- [x] Initialize position embedding
+- [x] Initialize transformer encoder
+- [x] Initialize attention pooling
+- [x] Initialize nucleotide prediction head (optional)
+- [x] Implement forward pass with reshaping
+- [x] Handle mask creation
+- [x] Handle training vs inference modes
+- [x] Test with dummy data
+- [x] Verify output shapes
+- [x] Test with different sequence lengths
 
 ## Key Considerations
 

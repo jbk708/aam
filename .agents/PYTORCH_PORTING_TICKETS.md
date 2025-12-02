@@ -186,24 +186,39 @@ Implement transformer encoder as specified in `pytorch_porting_plan/05_transform
 ## Phase 3: Model Architecture
 
 ### PYT-3.1: Implement ASVEncoder
-**Priority:** HIGH | **Effort:** Medium | **Status:** Not Started
+**Priority:** HIGH | **Effort:** Medium | **Status:** ✅ Completed
 
 **Description:**
 Implement ASV-level sequence encoder as specified in `pytorch_porting_plan/06_asv_encoder.md`.
 
-**Files to Create:**
+**Files Created:**
 - `aam/models/asv_encoder.py`
+- `tests/test_asv_encoder.py`
 
 **Acceptance Criteria:**
-- [ ] `ASVEncoder` class implemented
-- [ ] Processes nucleotide sequences
-- [ ] Returns ASV embeddings `[B, S, D]`
-- [ ] Optional nucleotide prediction head
-- [ ] Unit tests pass
+- [x] `ASVEncoder` class implemented
+- [x] Processes nucleotide sequences
+- [x] Returns ASV embeddings `[B, S, D]`
+- [x] Optional nucleotide prediction head
+- [x] Unit tests pass (28 tests, all passing)
 
 **Dependencies:** PYT-2.1, PYT-2.2
 
+**Implementation Notes:**
+- Reshapes input from `[B, S, L]` to `[B*S, L]` for parallel processing of all ASVs
+- Creates mask from tokens (1 for valid, 0 for padding) for transformer and attention pooling
+- Token embedding layer maps vocab_size (default 5) to embedding_dim
+- Position embedding uses max_bp + 1 to account for 0-indexed positions
+- Transformer encoder processes nucleotide sequences with configurable layers, heads, and dimensions
+- Attention pooling reduces sequence-level embeddings to single ASV embedding
+- Optional nucleotide prediction head for self-supervised learning (only computed when requested)
+- Handles variable-length sequences with padding correctly
+- Converts tokens to long integers for embedding layer compatibility
+- All 28 unit tests pass, covering shapes, masking, gradients, dropout, device handling, and various configurations
+- Minimal inline comments following workflow principles
+
 **Estimated Time:** 4-6 hours
+**Actual Time:** ~4 hours
 
 ---
 
