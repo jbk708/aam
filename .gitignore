@@ -80,37 +80,6 @@ htmlcov/
 .dmypy.json
 dmypy.json
 
-# Project-specific data directories
-data/*
-agp-data/*
-base-model/*
-base-model-*/*
-paper/*
-pcoa/*
-veg-prediction/*
-hazel/*
-shu-aging/*
-attention_regression/data/*
-american-gut-redbiom
-agp-health-16S-data
-diet
-diet-model-w-pre
-foundation-model
-foundation-model-2
-foundation-model-healthy-stool
-foundation-model-new
-foundation-model-new-2
-foundation-model-standalone
-foundation-model-standalone-current
-foundation-model-standalone-old
-gotu_data
-miscrosoft-proj
-research-exam
-sepsis/data
-sepsis-trial-figures
-sepsis-trial-model
-session
-
 # Project-specific
 core.*
 .Trash-0
@@ -118,6 +87,9 @@ aam/__pycache__/*
 aam/.ipynb_checkpoints/*
 aam/.DS_Store
 .agents/*
+.ruff_cache
+aam.egg-info
+data/
 
 # CUDA
 *.cubin
