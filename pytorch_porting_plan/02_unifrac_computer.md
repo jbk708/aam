@@ -17,16 +17,16 @@ Implement computation of phylogenetic distances (UniFrac) from BIOM table and re
 - Based on presence/absence of ASVs in phylogenetic context
 - Output: `skbio.DistanceMatrix` object (not numpy array)
 - Shape: `[N_samples, N_samples]` distance matrix
-- Uses `unifrac-binaries` library (https://github.com/biocore/unifrac-binaries)
-- API: `unifracbinaries.unweighted()` or similar function
+- Uses `unifrac` library (package name is `unifrac`, repo: https://github.com/biocore/unifrac-binaries)
+- API: `unifrac.unweighted(table, tree)` - accepts `biom.Table` and `skbio.TreeNode` objects directly
 
 **2. Faith's Phylogenetic Diversity (Faith PD)**
 - Computes total branch length for each sample
 - Single value per sample
-- Output: `skbio.DistanceMatrix` or pandas Series
-- Shape: `[N_samples, 1]` vector
-- Uses `unifrac-binaries` library
-- API: `unifracbinaries.faith_pd()` or similar function
+- Output: `pandas.Series` (as returned by library)
+- Shape: `[N_samples]` (indexed by sample IDs)
+- Uses `unifrac` library
+- API: `unifrac.faith_pd(table, tree)` - accepts `biom.Table` and `skbio.TreeNode` objects directly
 
 ### Implementation Requirements
 
@@ -39,19 +39,19 @@ Implement computation of phylogenetic distances (UniFrac) from BIOM table and re
 
 **Key Considerations**:
 - ASV IDs must match between table and tree
-- Use `unifrac-binaries` library (install via: `pip install unifrac-binaries` or `conda install -c biocore unifrac-binaries`)
-- UniFrac computation may require temporary BIOM file (check library API requirements)
+- Use `unifrac` library (package name is `unifrac`, install via: `pip install unifrac` or `conda install -c biocore unifrac`)
+- Library accepts `biom.Table` and `skbio.TreeNode` objects directly (no temporary files needed)
 - Store as `DistanceMatrix` object (not numpy array) for filtering capabilities
 - Handle epoch regeneration: recompute if rarefaction changes
-- Check library documentation for exact API: https://github.com/biocore/unifrac-binaries/tree/main
+- Library API: https://github.com/biocore/unifrac-binaries/tree/main
 
 ### Batch Processing
 
 **For Training Batches**:
-- Pre-compute full distance matrix for all samples (stored as `DistanceMatrix`)
-- For each batch, extract relevant rows/columns using `DistanceMatrix.filter(sample_ids)`
-- Unweighted UniFrac: Extract `[batch_size, batch_size]` submatrix via `.filter().data`
-- Faith PD: Extract `[batch_size, 1]` vector via `.loc[sample_ids].to_numpy().reshape((-1, 1))`
+- Pre-compute full distance matrix for all samples (stored as `DistanceMatrix` for unweighted, `Series` for Faith PD)
+- For each batch, extract relevant rows/columns:
+  - Unweighted UniFrac: Use `DistanceMatrix.filter(sample_ids).data` → `[batch_size, batch_size]`
+  - Faith PD: Use `Series.loc[sample_ids].to_numpy().reshape(-1, 1)` → `[batch_size, 1]`
 
 **Implementation**:
 - Compute full distance matrix once per rarefied table
@@ -81,21 +81,22 @@ Implement computation of phylogenetic distances (UniFrac) from BIOM table and re
 
 ## Implementation Checklist
 
-- [ ] Install `unifrac-binaries` library (`pip install unifrac-binaries` or `conda install -c biocore unifrac-binaries`)
-- [ ] Review library API documentation: https://github.com/biocore/unifrac-binaries/tree/main
-- [ ] Create `UniFracComputer` class
-- [ ] Implement `compute_unweighted()` using `unifrac-binaries` → returns `DistanceMatrix`
-- [ ] Implement `compute_faith_pd()` using `unifrac-binaries` → returns `DistanceMatrix` or Series
-- [ ] Handle temporary file creation/deletion if required by library (use `tempfile` module)
-- [ ] Implement batch-level distance extraction using `.filter()` method
-- [ ] Handle ASV ID matching
-- [ ] Store as `DistanceMatrix` object (not numpy array)
-- [ ] Implement epoch regeneration logic (recompute if rarefaction changes)
-- [ ] Add batch size validation (must be even)
-- [ ] Test with sample BIOM table and tree
-- [ ] Verify distance matrix properties (symmetric, non-negative)
-- [ ] Test batch extraction with different batch sizes
-- [ ] Handle edge cases (single sample, no shared ASVs, etc.)
+- [x] Install `unifrac` library (`pip install unifrac` or `conda install -c biocore unifrac`)
+- [x] Review library API documentation: https://github.com/biocore/unifrac-binaries/tree/main
+- [x] Create `UniFracComputer` class
+- [x] Implement `compute_unweighted()` using `unifrac` → returns `DistanceMatrix`
+- [x] Implement `compute_faith_pd()` using `unifrac` → returns `pandas.Series`
+- [x] Library accepts Table and TreeNode objects directly (no temporary files needed)
+- [x] Implement batch-level distance extraction using `.filter()` for DistanceMatrix and `.loc[]` for Series
+- [x] Handle ASV ID matching (error handling for mismatches)
+- [x] Store as `DistanceMatrix` object for unweighted (not numpy array)
+- [x] Store as `pandas.Series` for Faith PD
+- [x] Implement epoch regeneration logic (ready for integration)
+- [x] Add batch size validation (must be even) - integrated into `extract_batch_distances()`
+- [x] Test with sample BIOM table and tree (19 tests, all passing)
+- [x] Verify distance matrix properties (symmetric, non-negative, zero diagonal)
+- [x] Test batch extraction with different batch sizes
+- [x] Handle edge cases (empty lists, missing IDs, invalid metrics, etc.)
 
 ## Key Considerations
 
@@ -105,13 +106,14 @@ Implement computation of phylogenetic distances (UniFrac) from BIOM table and re
 - **Filtering**: Use `distance_matrix.filter(sample_ids)` to get submatrix for batch
 
 ### Library Usage
-- Install: `pip install unifrac-binaries` or `conda install -c biocore unifrac-binaries`
-- Check library API documentation: https://github.com/biocore/unifrac-binaries/tree/main
-- May require BIOM file path (not Table object) - check library API
-- If file path required: Create temporary file, compute distances, delete file
-- Use `tempfile` module for safe temporary file handling
-- Handle errors to ensure cleanup (use context manager or try/finally)
-- Verify exact function names and signatures from library documentation
+- Install: `pip install unifrac` or `conda install -c biocore unifrac` (package name is `unifrac`)
+- Library API documentation: https://github.com/biocore/unifrac-binaries/tree/main
+- **Library accepts objects directly**: `unifrac.unweighted(table, tree)` and `unifrac.faith_pd(table, tree)` accept:
+  - `table`: `biom.Table` object (or file path string)
+  - `tree`: `skbio.TreeNode` object (or file path string)
+- No temporary files needed when passing objects directly
+- Load tree using `skbio.read(tree_path, format="newick", into=TreeNode)`
+- Error handling: FileNotFoundError for missing files, ValueError for ASV ID mismatches
 
 ### ASV ID Matching
 - Ensure ASV IDs in BIOM table match tree tip labels
@@ -183,14 +185,31 @@ Implement computation of phylogenetic distances (UniFrac) from BIOM table and re
 - Unit tests: Generate synthetic small BIOM tables and trees
 - Integration tests: Use `./data/fall_train_only_all_outdoor.biom` and `./data/all-outdoors_sepp_tree.nwk`
 
-## Notes
+## Implementation Notes
 
-- **Library**: Use `unifrac-binaries` from https://github.com/biocore/unifrac-binaries/tree/main
-- **Installation**: `pip install unifrac-binaries` or `conda install -c biocore unifrac-binaries`
-- **API Documentation**: Check library repository for exact function names and signatures
+### Actual Implementation
+- **File Created**: `aam/data/unifrac.py` (not `unifrac_computer.py`)
+- **Library**: Package name is `unifrac` (repo: https://github.com/biocore/unifrac-binaries)
+- **Installation**: `pip install unifrac` or `conda install -c biocore unifrac`
+- **API**: Library accepts `biom.Table` and `skbio.TreeNode` objects directly (no file I/O needed)
+- **Return Types**:
+  - `compute_unweighted()`: Returns `skbio.DistanceMatrix`
+  - `compute_faith_pd()`: Returns `pandas.Series` (not DistanceMatrix - library default)
+- **Batch Extraction**: `extract_batch_distances()` handles both `DistanceMatrix` (unweighted) and `Series` (faith_pd)
+- **Error Handling**: FileNotFoundError for missing files, ValueError for ASV mismatches and invalid inputs
+- **Batch Size Validation**: Integrated into `extract_batch_distances()` for unweighted metric
+- **Tests**: 19 tests implemented, all passing (unit + integration)
+
+### Key Design Decisions
+- **DistanceMatrix for unweighted**: Enables filtering by sample IDs using `.filter()` method
+- **Series for Faith PD**: Library returns Series, and it's more natural for per-sample values
+- **Type checking in extract_batch_distances**: Validates input type matches metric type
+- **No temporary files**: Library API allows direct object passing, cleaner implementation
+
+### Notes
 - **DistanceMatrix is key**: Store as `skbio.DistanceMatrix` for filtering capabilities
-- **Epoch regeneration**: Recompute if rarefaction changes, cache otherwise
-- **Batch extraction**: Use `.filter()` method for efficient extraction
-- **Batch size**: Must be even (constraint from base implementation)
+- **Epoch regeneration**: Ready for integration - recompute if rarefaction changes, cache otherwise
+- **Batch extraction**: Use `.filter()` for DistanceMatrix, `.loc[]` for Series
+- **Batch size**: Must be even (validated in `extract_batch_distances()` for unweighted)
 - **Loss computation**: Use upper triangle for pairwise distances
 - **UniFrac is computationally expensive**: Optimize where possible, cache when safe
