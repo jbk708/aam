@@ -51,16 +51,16 @@ Implement multi-task loss functions and metrics.
 
 ## Implementation Checklist
 
-- [ ] Implement target loss (MSE/NLL)
-- [ ] Implement count loss (masked MSE)
-- [ ] Implement base loss (MSE for UniFrac)
-- [ ] Implement nucleotide loss (masked CrossEntropy)
-- [ ] Implement total loss computation
-- [ ] Handle class weights for classification
-- [ ] Implement regression metrics
-- [ ] Implement classification metrics
-- [ ] Test loss computation
-- [ ] Test metrics computation
+- [x] Implement target loss (MSE/NLL)
+- [x] Implement count loss (masked MSE)
+- [x] Implement base loss (MSE for UniFrac)
+- [x] Implement nucleotide loss (masked CrossEntropy)
+- [x] Implement total loss computation
+- [x] Handle class weights for classification
+- [x] Implement regression metrics
+- [x] Implement classification metrics
+- [x] Test loss computation
+- [x] Test metrics computation
 
 ## Key Considerations
 
