@@ -68,6 +68,7 @@ def small_predictor():
         is_classifier=False,
         freeze_base=False,
         predict_nucleotides=False,
+        base_output_dim=32,
     )
 
 
@@ -87,9 +88,8 @@ def simple_dataloader(device):
     tokens = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len)).to(device)
     counts = torch.rand(batch_size * 2, num_asvs, 1).to(device)
     targets = torch.randn(batch_size * 2, 1).to(device)
-    base_targets = torch.randn(batch_size * 2, 16).to(device)
     
-    dataset = TensorDataset(tokens, counts, targets, base_targets)
+    dataset = TensorDataset(tokens, counts, targets)
     return DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
 
@@ -451,7 +451,7 @@ class TestLoadPretrainedEncoder:
             sample_num_heads=2,
             encoder_num_layers=1,
             encoder_num_heads=2,
-            base_output_dim=16,
+            base_output_dim=32,
             encoder_type="unifrac",
             predict_nucleotides=False,
         ).to(device)
