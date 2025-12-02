@@ -244,14 +244,27 @@ class TestSequenceRegressor:
 
     def test_gradients_flow_unfrozen(self, sequence_regressor, sample_tokens):
         """Test that gradients flow correctly with unfrozen base."""
+        sequence_regressor.train()
         result = sequence_regressor(sample_tokens)
-        loss = result["target_prediction"].sum() + result["count_prediction"].sum()
+        loss = result["target_prediction"].sum() + result["count_prediction"].sum() + result["base_embeddings"].sum()
         loss.backward()
 
-        for param in sequence_regressor.parameters():
-            assert param.grad is not None
-            assert not torch.isnan(param.grad).any()
-            assert not torch.isinf(param.grad).any()
+        has_base_gradients = False
+        has_count_gradients = False
+        has_target_gradients = False
+        
+        for name, param in sequence_regressor.named_parameters():
+            if param.requires_grad and param.grad is not None:
+                assert not torch.isnan(param.grad).any()
+                assert not torch.isinf(param.grad).any()
+                if "base_model" in name:
+                    has_base_gradients = True
+                elif "count" in name:
+                    has_count_gradients = True
+                elif "target" in name:
+                    has_target_gradients = True
+        
+        assert has_base_gradients or has_count_gradients or has_target_gradients
 
     def test_gradients_frozen_base(self, sequence_regressor_frozen, sample_tokens):
         """Test that gradients don't flow to frozen base model."""

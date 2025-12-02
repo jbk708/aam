@@ -92,7 +92,72 @@ class SequenceRegressor(nn.Module):
             predict_nucleotides: Whether base model should predict nucleotides
         """
         super().__init__()
-        pass
+        
+        if base_model is None:
+            self.base_model = SequenceEncoder(
+                vocab_size=vocab_size,
+                embedding_dim=embedding_dim,
+                max_bp=max_bp,
+                token_limit=token_limit,
+                asv_num_layers=asv_num_layers,
+                asv_num_heads=asv_num_heads,
+                asv_intermediate_size=asv_intermediate_size,
+                asv_dropout=asv_dropout,
+                asv_activation=asv_activation,
+                sample_num_layers=sample_num_layers,
+                sample_num_heads=sample_num_heads,
+                sample_intermediate_size=sample_intermediate_size,
+                sample_dropout=sample_dropout,
+                sample_activation=sample_activation,
+                encoder_num_layers=encoder_num_layers,
+                encoder_num_heads=encoder_num_heads,
+                encoder_intermediate_size=encoder_intermediate_size,
+                encoder_dropout=encoder_dropout,
+                encoder_activation=encoder_activation,
+                base_output_dim=base_output_dim,
+                encoder_type=encoder_type,
+                predict_nucleotides=predict_nucleotides,
+            )
+            self.embedding_dim = embedding_dim
+        else:
+            self.base_model = base_model
+            self.embedding_dim = base_model.embedding_dim
+        
+        self.out_dim = out_dim
+        self.is_classifier = is_classifier
+        
+        if freeze_base:
+            for param in self.base_model.parameters():
+                param.requires_grad = False
+        
+        if count_intermediate_size is None:
+            count_intermediate_size = 4 * self.embedding_dim
+        
+        self.count_encoder = TransformerEncoder(
+            num_layers=count_num_layers,
+            num_heads=count_num_heads,
+            hidden_dim=self.embedding_dim,
+            intermediate_size=count_intermediate_size,
+            dropout=count_dropout,
+            activation=count_activation,
+        )
+        
+        self.count_head = nn.Linear(self.embedding_dim, 1)
+        
+        if target_intermediate_size is None:
+            target_intermediate_size = 4 * self.embedding_dim
+        
+        self.target_encoder = TransformerEncoder(
+            num_layers=target_num_layers,
+            num_heads=target_num_heads,
+            hidden_dim=self.embedding_dim,
+            intermediate_size=target_intermediate_size,
+            dropout=target_dropout,
+            activation=target_activation,
+        )
+        
+        self.target_pooling = AttentionPooling(hidden_dim=self.embedding_dim)
+        self.target_head = nn.Linear(self.embedding_dim, out_dim)
 
     def forward(
         self,
@@ -110,7 +175,42 @@ class SequenceRegressor(nn.Module):
                 - 'target_prediction': [batch_size, out_dim]
                 - 'count_prediction': [batch_size, num_asvs, 1]
                 - 'base_embeddings': [batch_size, num_asvs, embedding_dim]
-                - 'base_prediction': [batch_size, base_output_dim] (if training)
+                - 'base_prediction': [batch_size, base_output_dim] (if return_nucleotides=True)
                 - 'nuc_predictions': [batch_size, num_asvs, seq_len, vocab_size] (if return_nucleotides=True)
         """
-        pass
+        asv_mask = (tokens.sum(dim=-1) > 0).long()
+        
+        base_outputs = self.base_model(tokens, return_nucleotides=return_nucleotides)
+        
+        base_embeddings = base_outputs["sample_embeddings"]
+        base_prediction = base_outputs.get("base_prediction")
+        nuc_predictions = base_outputs.get("nuc_predictions")
+        
+        count_embeddings = self.count_encoder(base_embeddings, mask=asv_mask)
+        count_prediction = self.count_head(count_embeddings)
+        
+        target_embeddings = self.target_encoder(base_embeddings, mask=asv_mask)
+        pooled_target = self.target_pooling(target_embeddings, mask=asv_mask)
+        target_prediction = self.target_head(pooled_target)
+        
+        if self.is_classifier:
+            target_prediction = nn.functional.log_softmax(target_prediction, dim=-1)
+        
+        result = {
+            "target_prediction": target_prediction,
+            "count_prediction": count_prediction,
+            "base_embeddings": base_embeddings,
+        }
+        
+        if return_nucleotides and base_prediction is not None:
+            result["base_prediction"] = base_prediction
+        
+        if return_nucleotides and nuc_predictions is not None:
+            result["nuc_predictions"] = nuc_predictions
+        
+        if return_nucleotides and "unifrac_pred" in base_outputs:
+            result["unifrac_pred"] = base_outputs["unifrac_pred"]
+            result["faith_pred"] = base_outputs["faith_pred"]
+            result["tax_pred"] = base_outputs["tax_pred"]
+        
+        return result
