@@ -289,25 +289,39 @@ Implement encoder with UniFrac prediction head as specified in `pytorch_porting_
 ---
 
 ### PYT-3.4: Implement SequenceRegressor
-**Priority:** HIGH | **Effort:** Medium | **Status:** Not Started
+**Priority:** HIGH | **Effort:** Medium | **Status:** ✅ Completed
 
 **Description:**
 Implement main regression model as specified in `pytorch_porting_plan/09_sequence_regressor.md`.
 
-**Files to Create:**
+**Files Created:**
 - `aam/models/sequence_regressor.py`
+- `tests/test_sequence_regressor.py`
 
 **Acceptance Criteria:**
-- [ ] `SequenceRegressor` class implemented
-- [ ] Composes SequenceEncoder as base model
-- [ ] Supports `freeze_base` parameter
-- [ ] Predicts target and counts
-- [ ] Returns dictionary of predictions
-- [ ] Unit tests pass
+- [x] `SequenceRegressor` class implemented
+- [x] Composes SequenceEncoder as base model
+- [x] Supports `freeze_base` parameter
+- [x] Predicts target and counts
+- [x] Returns dictionary of predictions
+- [x] Unit tests pass (27 tests, all passing)
+
+**Implementation Notes:**
+- Composes SequenceEncoder as `base_model` (composition pattern, not inheritance)
+- Extracts `embedding_dim` from base_model when provided to ensure dimension consistency
+- Supports freezing base model parameters via `freeze_base=True`
+- Count encoder: TransformerEncoder + Linear head → `[B, S, 1]` predictions
+- Target encoder: TransformerEncoder + AttentionPooling + Linear head → `[B, out_dim]` predictions
+- Uses base embeddings (`sample_embeddings`) from base_model, NOT base predictions (for loss only)
+- Supports classification mode (log-softmax) and regression mode
+- Returns dictionary with `target_prediction`, `count_prediction`, `base_embeddings`, and optionally `base_prediction`/`nuc_predictions`
+- Handles all encoder types (unifrac, taxonomy, faith_pd, combined)
+- All 27 unit tests pass, covering shapes, masking, gradients, device handling, frozen/unfrozen base, and all encoder types
 
 **Dependencies:** PYT-3.3
 
 **Estimated Time:** 6-8 hours
+**Actual Time:** ~4 hours
 
 ---
 
