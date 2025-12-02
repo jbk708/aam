@@ -6,7 +6,7 @@ Implement encoder that adds prediction head for UniFrac distance prediction. Thi
 ## Architecture Philosophy
 
 **Purpose**: SequenceEncoder is designed to be used as a base model for SequenceRegressor. It:
-- Processes sequences through BaseSequenceEncoder
+- Processes sequences through SampleSequenceEncoder
 - Adds encoder-specific prediction head
 - Produces base embeddings for downstream use
 - Can be frozen when used in SequenceRegressor
@@ -17,12 +17,12 @@ Implement encoder that adds prediction head for UniFrac distance prediction. Thi
 ```
 Input: [B, S, L] tokens
   ↓
-BaseSequenceEncoder: 
+SampleSequenceEncoder: 
   - Processes tokens through ASVEncoder
-  - Produces base embeddings: [B, S, D]
+  - Produces sample embeddings: [B, S, D]
   - Also produces nucleotide predictions: [B, S, L, 5] (self-supervised)
   ↓
-Encoder Transformer: [B, S, D] (uses base embeddings, NOT nuc predictions)
+Encoder Transformer: [B, S, D] (uses sample embeddings, NOT nuc predictions)
   ↓
 Attention Pooling: [B, D]
   ↓
@@ -35,16 +35,16 @@ Output: [B, base_output_dim] base prediction
 
 ## Components
 
-**1. BaseSequenceEncoder**
+**1. SampleSequenceEncoder**
 - Core sequence processing
-- Outputs base embeddings: `[B, S, D]`
+- Outputs sample embeddings: `[B, S, D]`
 - Also outputs nucleotide predictions `[B, S, L, 5]` if training (self-supervised task)
 - Nucleotide predictions are NOT used as input to encoder head
 
 **2. Encoder Transformer**
 - Additional transformer layer
 - Encoder-specific processing
-- **Input**: Base embeddings from BaseSequenceEncoder (NOT nucleotide predictions)
+- **Input**: Sample embeddings from SampleSequenceEncoder (NOT nucleotide predictions)
 - Learns features for UniFrac/Taxonomy prediction
 
 **3. Attention Pooling**
@@ -66,10 +66,10 @@ Output: [B, base_output_dim] base prediction
 2. **UniFrac/Taxonomy Prediction**: Encoder-specific task to learn phylogenetic/taxonomic relationships
 
 **Shared Representations**:
-- Both tasks use the same base embeddings from BaseSequenceEncoder
+- Both tasks use the same sample embeddings from SampleSequenceEncoder
 - Learning to predict nucleotides helps learn good sequence representations
 - Learning to predict UniFrac helps learn phylogenetic relationships
-- Both tasks improve the shared base embeddings through multi-task learning
+- Both tasks improve the shared sample embeddings through multi-task learning
 
 **Loss Computation**:
 - Nucleotide loss: CrossEntropy on nucleotide predictions
@@ -80,8 +80,8 @@ Output: [B, base_output_dim] base prediction
 
 **Class Structure**:
 - Inherit from `nn.Module`
-- Composes BaseSequenceEncoder
-- Forward pass: base → transform → pool → predict
+- Composes SampleSequenceEncoder
+- Forward pass: sample → transform → pool → predict
 
 **Output Handling**:
 - Always return base embeddings: `[B, S, D]`
@@ -111,7 +111,7 @@ Output: [B, base_output_dim] base prediction
 ## Implementation Checklist
 
 - [ ] Create `SequenceEncoder` class inheriting from `nn.Module`
-- [ ] Initialize BaseSequenceEncoder
+- [ ] Initialize SampleSequenceEncoder
 - [ ] Initialize encoder transformer
 - [ ] Initialize attention pooling
 - [ ] Initialize dense output layer(s) based on encoder_type
@@ -130,9 +130,9 @@ Output: [B, base_output_dim] base prediction
 
 ## Key Considerations
 
-### Base Embeddings
-- **Critical**: Must return base embeddings for SequenceRegressor
-- Base embeddings are shared between encoder and regressor
+### Sample Embeddings
+- **Critical**: Must return sample embeddings for SequenceRegressor
+- Sample embeddings are shared between encoder and regressor
 - Shape: `[B, S, D]` - ASV-level embeddings
 
 ### Nucleotide Predictions
@@ -189,9 +189,9 @@ Output: [B, base_output_dim] base prediction
 ## Notes
 
 - **Base model role**: Designed to be used as base for SequenceRegressor
-- **Base embeddings**: Critical output for downstream use
+- **Sample embeddings**: Critical output for downstream use
 - **Nucleotide predictions**: Side output for self-supervised learning, NOT input to encoder
-- **Multi-task learning**: Parallel tasks share base embeddings
+- **Multi-task learning**: Parallel tasks share sample embeddings
 - **Output dimension**: Determines prediction size
 - **Freezing**: Can be frozen when used in SequenceRegressor
 - **Multi-purpose**: Used standalone or as base model

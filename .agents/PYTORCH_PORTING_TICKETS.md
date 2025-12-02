@@ -222,25 +222,33 @@ Implement ASV-level sequence encoder as specified in `pytorch_porting_plan/06_as
 
 ---
 
-### PYT-3.2: Implement BaseSequenceEncoder
-**Priority:** HIGH | **Effort:** Medium | **Status:** Not Started
+### PYT-3.2: Implement SampleSequenceEncoder
+**Priority:** HIGH | **Effort:** Medium | **Status:** ✅ Completed
 
 **Description:**
 Implement sample-level encoder as specified in `pytorch_porting_plan/07_base_sequence_encoder.md`.
 
-**Files to Create:**
-- `aam/models/base_sequence_encoder.py`
+**Files Created:**
+- `aam/models/sample_sequence_encoder.py`
+- `tests/test_sample_sequence_encoder.py`
 
 **Acceptance Criteria:**
-- [ ] `BaseSequenceEncoder` class implemented
-- [ ] Composes ASVEncoder
-- [ ] Processes ASV embeddings at sample level
-- [ ] Returns base embeddings `[B, S, D]`
-- [ ] Unit tests pass
+- [x] `SampleSequenceEncoder` class implemented
+- [x] Composes ASVEncoder
+- [x] Processes ASV embeddings at sample level
+- [x] Returns sample embeddings `[B, S, D]`
+- [x] Unit tests pass (30 tests, all passing)
 
 **Dependencies:** PYT-3.1
 
+**Implementation Notes:**
+- Class renamed from `BaseSequenceEncoder` to `SampleSequenceEncoder` for clarity
+- Processes ASV embeddings through sample-level position embeddings and transformer
+- Handles NaN values from fully padded ASVs
+- Supports training mode with nucleotide predictions and inference mode
+
 **Estimated Time:** 4-6 hours
+**Actual Time:** ~4 hours
 
 ---
 

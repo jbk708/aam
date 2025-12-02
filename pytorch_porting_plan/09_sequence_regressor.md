@@ -21,7 +21,7 @@ Implement main model for predicting sample-level targets and ASV counts. This mo
 Input: [B, S, L] tokens, [B, S, 1] counts
   ↓
 SequenceEncoder (base_model): 
-  - Processes sequences through BaseSequenceEncoder
+  - Processes sequences through SampleSequenceEncoder
   - Produces base embeddings: [B, S, D] (shared representations)
   - Produces base predictions: [B, base_output_dim] (for loss only)
   - Produces nucleotide predictions: [B, S, L, 5] (for loss only)

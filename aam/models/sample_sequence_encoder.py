@@ -1,4 +1,4 @@
-"""Base sequence encoder for processing ASV embeddings at the sample level."""
+"""Sample sequence encoder for processing ASV embeddings at the sample level."""
 
 import torch
 import torch.nn as nn
@@ -8,7 +8,7 @@ from aam.models.position_embedding import PositionEmbedding
 from aam.models.transformer import TransformerEncoder
 
 
-class BaseSequenceEncoder(nn.Module):
+class SampleSequenceEncoder(nn.Module):
     """Encoder that processes ASV embeddings at the sample level."""
 
     def __init__(
@@ -29,7 +29,7 @@ class BaseSequenceEncoder(nn.Module):
         sample_activation: str = "gelu",
         predict_nucleotides: bool = False,
     ):
-        """Initialize BaseSequenceEncoder.
+        """Initialize SampleSequenceEncoder.
 
         Args:
             vocab_size: Vocabulary size (default: 5 for pad, A, C, G, T)
@@ -93,8 +93,8 @@ class BaseSequenceEncoder(nn.Module):
             return_nucleotides: Whether to return nucleotide predictions
 
         Returns:
-            If return_nucleotides=False: Base embeddings [batch_size, num_asvs, embedding_dim]
-            If return_nucleotides=True: Tuple of (base_embeddings, nucleotide_predictions)
+            If return_nucleotides=False: Sample embeddings [batch_size, num_asvs, embedding_dim]
+            If return_nucleotides=True: Tuple of (sample_embeddings, nucleotide_predictions)
                 where nucleotide_predictions is [batch_size, num_asvs, seq_len, vocab_size]
         """
         asv_mask = (tokens.sum(dim=-1) > 0).long()
@@ -116,16 +116,16 @@ class BaseSequenceEncoder(nn.Module):
         asv_embeddings = asv_embeddings * asv_mask_expanded
         
         asv_embeddings = self.sample_position_embedding(asv_embeddings)
-        base_embeddings = self.sample_transformer(asv_embeddings, mask=asv_mask)
+        sample_embeddings = self.sample_transformer(asv_embeddings, mask=asv_mask)
         
-        base_embeddings = torch.where(
-            torch.isnan(base_embeddings),
-            torch.zeros_like(base_embeddings),
-            base_embeddings
+        sample_embeddings = torch.where(
+            torch.isnan(sample_embeddings),
+            torch.zeros_like(sample_embeddings),
+            sample_embeddings
         )
-        base_embeddings = base_embeddings * asv_mask_expanded
+        sample_embeddings = sample_embeddings * asv_mask_expanded
         
         if return_nucleotides and nucleotide_predictions is not None:
-            return base_embeddings, nucleotide_predictions
+            return sample_embeddings, nucleotide_predictions
         else:
-            return base_embeddings
+            return sample_embeddings
