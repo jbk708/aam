@@ -51,7 +51,7 @@ See **[00_overview.md](00_overview.md)** for detailed training strategy.
 
 3. **Model Architecture** (06-09)
    - ASVEncoder
-   - BaseSequenceEncoder
+   - SampleSequenceEncoder
    - SequenceEncoder (base model)
    - SequenceRegressor (composes encoder)
 

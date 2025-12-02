@@ -16,7 +16,7 @@ Define comprehensive testing strategy for PyTorch implementation.
 6. PositionEmbedding - Position encoding
 7. TransformerEncoder - Self-attention
 8. ASVEncoder - Sequence processing
-9. BaseSequenceEncoder - Sample processing
+9. SampleSequenceEncoder - Sample processing
 10. SequenceEncoder - UniFrac prediction
 11. SequenceRegressor - Main model
 12. Loss functions - Loss computation

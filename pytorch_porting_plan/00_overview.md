@@ -6,8 +6,8 @@ Build AAM (Attention All Microbes) - a deep learning model for microbial sequenc
 ## Architecture Overview
 
 **Key Architecture Points**:
-- **SequenceRegressor composes SequenceEncoder**: SequenceRegressor contains SequenceEncoder as `base_model` (not BaseSequenceEncoder)
-- **Base embeddings flow**: BaseSequenceEncoder → SequenceEncoder → SequenceRegressor (via base_model output)
+- **SequenceRegressor composes SequenceEncoder**: SequenceRegressor contains SequenceEncoder as `base_model` (not SampleSequenceEncoder)
+- **Sample embeddings flow**: SampleSequenceEncoder → SequenceEncoder → SequenceRegressor (via base_model output)
 - **Parallel tasks**: All prediction tasks (nucleotide, UniFrac, count, target) share base embeddings but are computed in parallel
 - **Side outputs**: Base predictions (UniFrac) and nucleotide predictions are used only for loss computation, NOT as input to other heads
 
@@ -34,21 +34,21 @@ graph TB
         PREPARE --> TOKENS[tokens<br/>B x S x L]
         PREPARE --> COUNTS[counts<br/>B x S x 1]
         
-        TOKENS --> BASE[BaseSequenceEncoder]
-        BASE --> ASV_ENC[ASVEncoder<br/>Nucleotide Level]
+        TOKENS --> SAMPLE[SampleSequenceEncoder]
+        SAMPLE --> ASV_ENC[ASVEncoder<br/>Nucleotide Level]
         ASV_ENC --> ASV_EMB[ASV Embeddings<br/>B x S x D]
         ASV_EMB --> SAMPLE_TRANS[Sample Transformer]
-        SAMPLE_TRANS --> BASE_EMB[Base Embeddings<br/>B x S x D]
+        SAMPLE_TRANS --> SAMPLE_EMB[Sample Embeddings<br/>B x S x D]
         
-        BASE_EMB --> SEQ_ENC[SequenceEncoder<br/>Base Model]
+        SAMPLE_EMB --> SEQ_ENC[SequenceEncoder<br/>Base Model]
         SEQ_ENC --> ENC_TRANS[Encoder Transformer]
         ENC_TRANS --> ENC_POOL[Attention Pooling]
         ENC_POOL --> BASE_PRED[Base Prediction<br/>UniFrac/Taxonomy]
         
         SEQ_ENC --> SEQ_REG[SequenceRegressor<br/>Composes SequenceEncoder]
-        SEQ_REG --> BASE_EMB_REG[Base Embeddings<br/>from SequenceEncoder<br/>B x S x D]
-        BASE_EMB_REG --> COUNT_ENC[Count Encoder]
-        BASE_EMB_REG --> TARGET_ENC[Target Encoder]
+        SEQ_REG --> SAMPLE_EMB_REG[Sample Embeddings<br/>from SequenceEncoder<br/>B x S x D]
+        SAMPLE_EMB_REG --> COUNT_ENC[Count Encoder]
+        SAMPLE_EMB_REG --> TARGET_ENC[Target Encoder]
         COUNT_ENC --> COUNT_PRED[Count Prediction]
         TARGET_ENC --> TARGET_POOL[Attention Pooling]
         TARGET_POOL --> TARGET_PRED[Target Prediction]
@@ -90,17 +90,17 @@ graph TB
 
 ### 1. Hierarchical Multi-Level Attention
 - **Nucleotide level**: Process individual sequences (ASVEncoder)
-- **ASV level**: Process multiple sequences per sample (BaseSequenceEncoder)
+- **ASV level**: Process multiple sequences per sample (SampleSequenceEncoder)
 - **Sample level**: Aggregate to sample-level predictions (SequenceEncoder/SequenceRegressor)
 
 ### 2. Compositional Model Architecture
-- **BaseSequenceEncoder**: Core processing (nucleotide + sample level)
+- **SampleSequenceEncoder**: Core processing (nucleotide + sample level)
 - **SequenceEncoder**: Adds encoder-specific prediction head (UniFrac, Taxonomy, etc.)
-  - Uses BaseSequenceEncoder internally
-  - Produces base embeddings `[B, S, D]` for downstream use
+  - Uses SampleSequenceEncoder internally
+  - Produces sample embeddings `[B, S, D]` for downstream use
   - Produces base predictions (UniFrac/Taxonomy) for loss computation
 - **SequenceRegressor**: Composes SequenceEncoder as `base_model` (composition, not inheritance)
-  - Uses SequenceEncoder's base embeddings (not base predictions) for count/target encoders
+  - Uses SequenceEncoder's sample embeddings (not base predictions) for count/target encoders
   - Base predictions from SequenceEncoder are used only for loss computation (self-supervised)
   - Can freeze SequenceEncoder for transfer learning
 
@@ -175,21 +175,21 @@ graph TB
 
 ## Model Component Relationships
 
-### BaseSequenceEncoder
+### SampleSequenceEncoder
 - **Purpose**: Core sequence processing
-- **Input**: Tokens `[B, S, L]`, Counts `[B, S, 1]`
-- **Output**: Base embeddings `[B, S, D]` + Nucleotide predictions `[B, S, L, 5]` (if training)
+- **Input**: Tokens `[B, S, L]`
+- **Output**: Sample embeddings `[B, S, D]` + Nucleotide predictions `[B, S, L, 5]` (if training)
 - **Components**: ASVEncoder + Sample-level transformer
 - **Used by**: SequenceEncoder (internal component)
 
 ### SequenceEncoder
 - **Purpose**: Encoder-specific prediction (UniFrac, Taxonomy, etc.)
-- **Base**: Uses BaseSequenceEncoder internally
+- **Base**: Uses SampleSequenceEncoder internally
 - **Adds**: Encoder transformer + Attention pooling + Dense head
 - **Output**: 
   - Base predictions `[B, base_output_dim]` (for loss computation only)
-  - Base embeddings `[B, S, D]` (shared representations for downstream use)
-  - Nucleotide predictions `[B, S, L, 5]` (from BaseSequenceEncoder, for loss only)
+  - Sample embeddings `[B, S, D]` (shared representations for downstream use)
+  - Nucleotide predictions `[B, S, L, 5]` (from SampleSequenceEncoder, for loss only)
 - **Types**: UniFracEncoder, TaxonomyEncoder, FaithPDEncoder, CombinedEncoder
 - **Used by**: SequenceRegressor as `base_model` (composition)
 
@@ -198,9 +198,9 @@ graph TB
 - **Base**: Composes SequenceEncoder as `base_model` (composition, not inheritance)
 - **Forward pass**: 
   1. Calls `base_model` (SequenceEncoder) with tokens and counts
-  2. Extracts base embeddings `[B, S, D]` from `base_model` output
-  3. Uses base embeddings (NOT base predictions) for count and target encoders
-- **Input to heads**: Base embeddings `[B, S, D]` from SequenceEncoder (NOT base predictions)
+  2. Extracts sample embeddings `[B, S, D]` from `base_model` output
+  3. Uses sample embeddings (NOT base predictions) for count and target encoders
+- **Input to heads**: Sample embeddings `[B, S, D]` from SequenceEncoder (NOT base predictions)
 - **Adds**: Count encoder + Target encoder (both use base embeddings)
 - **Output**: Target predictions `[B, out_dim]` + Count predictions `[B, S, 1]`
 - **Side outputs**: Base predictions and nucleotide predictions from `base_model` (for loss only, NOT used as input)
@@ -262,7 +262,7 @@ aam/
 
 3. **Model Architecture** (06-09)
    - ASVEncoder
-   - BaseSequenceEncoder
+   - SampleSequenceEncoder
    - SequenceEncoder (base model)
    - SequenceRegressor (composes encoder)
 

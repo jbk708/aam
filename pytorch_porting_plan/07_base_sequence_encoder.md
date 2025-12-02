@@ -1,4 +1,4 @@
-# BaseSequenceEncoder
+# SampleSequenceEncoder
 
 ## Objective
 Implement encoder that processes ASV embeddings at the sample level.
@@ -55,7 +55,7 @@ Output: [B, S, D] base embeddings
 
 ## Implementation Checklist
 
-- [ ] Create `BaseSequenceEncoder` class
+- [x] Create `SampleSequenceEncoder` class
 - [ ] Initialize ASVEncoder
 - [ ] Initialize sample-level position embedding
 - [ ] Initialize sample-level transformer
@@ -93,6 +93,6 @@ Output: [B, S, D] base embeddings
 
 ## Notes
 
-- BaseSequenceEncoder combines nucleotide and sample-level processing
+- SampleSequenceEncoder combines nucleotide and sample-level processing
 - Output embeddings ready for encoder or regression heads
 - Critical component connecting ASV and sample levels
