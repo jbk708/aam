@@ -253,25 +253,38 @@ Implement sample-level encoder as specified in `pytorch_porting_plan/07_base_seq
 ---
 
 ### PYT-3.3: Implement SequenceEncoder
-**Priority:** HIGH | **Effort:** Medium | **Status:** Not Started
+**Priority:** HIGH | **Effort:** Medium | **Status:** ✅ Completed
 
 **Description:**
 Implement encoder with UniFrac prediction head as specified in `pytorch_porting_plan/08_sequence_encoder.md`.
 
-**Files to Create:**
+**Files Created:**
 - `aam/models/sequence_encoder.py`
+- `tests/test_sequence_encoder.py`
 
 **Acceptance Criteria:**
-- [ ] `SequenceEncoder` class implemented
-- [ ] Composes SampleSequenceEncoder
-- [ ] Predicts UniFrac distances
-- [ ] Returns sample embeddings and predictions
-- [ ] Supports different encoder types (unifrac, taxonomy, faith_pd, combined)
-- [ ] Unit tests pass
+- [x] `SequenceEncoder` class implemented
+- [x] Composes SampleSequenceEncoder
+- [x] Predicts UniFrac distances
+- [x] Returns sample embeddings and predictions
+- [x] Supports different encoder types (unifrac, taxonomy, faith_pd, combined)
+- [x] Unit tests pass (25 tests, all passing)
+
+**Implementation Notes:**
+- Composes `SampleSequenceEncoder` as base component
+- Adds encoder transformer, attention pooling, and output head
+- Supports four encoder types: `unifrac`, `taxonomy`, `faith_pd`, `combined`
+- Combined type uses separate heads: `uni_ff`, `faith_ff`, `tax_ff`
+- Returns dictionary with `base_prediction` and `sample_embeddings`
+- Optional nucleotide predictions returned as side output (for loss only, not used as input)
+- Handles mask creation from tokens for transformer and attention pooling
+- Supports optional `base_output_dim` (defaults to `embedding_dim` if None)
+- All 25 unit tests pass, covering shapes, masking, gradients, device handling, and all encoder types
 
 **Dependencies:** PYT-3.2
 
 **Estimated Time:** 6-8 hours
+**Actual Time:** ~4 hours
 
 ---
 
