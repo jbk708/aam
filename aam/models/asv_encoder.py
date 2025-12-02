@@ -46,13 +46,8 @@ class ASVEncoder(nn.Module):
         if intermediate_size is None:
             intermediate_size = 4 * embedding_dim
         
-        # Token embedding layer
         self.token_embedding = nn.Embedding(vocab_size, embedding_dim)
-        
-        # Position embedding (max_bp + 1 to account for 0-indexed positions)
         self.position_embedding = PositionEmbedding(max_length=max_bp + 1, hidden_dim=embedding_dim)
-        
-        # Transformer encoder
         self.transformer = TransformerEncoder(
             num_layers=num_layers,
             num_heads=num_heads,
@@ -61,11 +56,8 @@ class ASVEncoder(nn.Module):
             dropout=dropout,
             activation=activation,
         )
-        
-        # Attention pooling
         self.attention_pooling = AttentionPooling(hidden_dim=embedding_dim)
         
-        # Nucleotide prediction head (optional)
         if predict_nucleotides:
             self.nucleotide_head = nn.Linear(embedding_dim, vocab_size)
 
@@ -85,39 +77,22 @@ class ASVEncoder(nn.Module):
         """
         batch_size, num_asvs, seq_len = tokens.shape
         
-        # Ensure tokens are long integers for embedding layer
         tokens = tokens.long()
-        
-        # Reshape: [B, S, L] -> [B*S, L]
         tokens_flat = tokens.view(batch_size * num_asvs, seq_len)
-        
-        # Create mask: 1 for valid tokens, 0 for padding
         mask = (tokens_flat > 0).long()
         
-        # Embed tokens: [B*S, L] -> [B*S, L, D]
         embeddings = self.token_embedding(tokens_flat)
-        
-        # Add position embeddings: [B*S, L, D] -> [B*S, L, D]
         embeddings = self.position_embedding(embeddings)
-        
-        # Apply transformer: [B*S, L, D] -> [B*S, L, D]
         embeddings = self.transformer(embeddings, mask=mask)
         
-        # Optionally predict nucleotides
         nucleotide_predictions = None
         if self.predict_nucleotides and return_nucleotides:
-            # [B*S, L, D] -> [B*S, L, vocab_size]
             nucleotide_logits = self.nucleotide_head(embeddings)
-            # Reshape back: [B*S, L, vocab_size] -> [B, S, L, vocab_size]
             nucleotide_predictions = nucleotide_logits.view(batch_size, num_asvs, seq_len, self.vocab_size)
         
-        # Pool: [B*S, L, D] -> [B*S, D]
         pooled_embeddings = self.attention_pooling(embeddings, mask=mask)
-        
-        # Reshape back: [B*S, D] -> [B, S, D]
         asv_embeddings = pooled_embeddings.view(batch_size, num_asvs, self.embedding_dim)
         
-        # Return based on whether nucleotide predictions are requested
         if return_nucleotides and nucleotide_predictions is not None:
             return asv_embeddings, nucleotide_predictions
         else:
