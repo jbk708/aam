@@ -189,11 +189,7 @@ class TestASVEncoder:
         loss = result.sum()
         loss.backward()
 
-        max_grad = max(
-            p.grad.abs().max().item()
-            for p in asv_encoder.parameters()
-            if p.grad is not None
-        )
+        max_grad = max(p.grad.abs().max().item() for p in asv_encoder.parameters() if p.grad is not None)
         assert max_grad < 1e6, f"Gradient explosion detected: max_grad={max_grad}"
 
     def test_no_gradient_vanishing(self, asv_encoder, sample_tokens):
@@ -202,11 +198,7 @@ class TestASVEncoder:
         loss = result.sum()
         loss.backward()
 
-        max_grad = max(
-            p.grad.abs().max().item()
-            for p in asv_encoder.parameters()
-            if p.grad is not None
-        )
+        max_grad = max(p.grad.abs().max().item() for p in asv_encoder.parameters() if p.grad is not None)
         assert max_grad > 1e-8, f"Gradient vanishing detected: max_grad={max_grad}"
 
     def test_forward_same_device(self, asv_encoder, sample_tokens):
