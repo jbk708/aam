@@ -258,12 +258,15 @@ class TestSequenceEncoder:
     def test_forward_combined_encoder_type(self, sequence_encoder_combined, sample_tokens):
         """Test forward pass with combined encoder type."""
         result = sequence_encoder_combined(sample_tokens)
-        assert isinstance(result, tuple)
-        assert len(result) == 3
-        unifrac_pred, faith_pred, tax_pred = result
-        assert unifrac_pred.shape == (2, 2)
-        assert faith_pred.shape == (2, 1)
-        assert tax_pred.shape == (2, 7)
+        assert isinstance(result, dict)
+        assert "unifrac_pred" in result
+        assert "faith_pred" in result
+        assert "tax_pred" in result
+        assert "sample_embeddings" in result
+        assert result["unifrac_pred"].shape == (2, 2)
+        assert result["faith_pred"].shape == (2, 1)
+        assert result["tax_pred"].shape == (2, 7)
+        assert result["sample_embeddings"].shape == (2, 10, 64)
 
     def test_forward_different_base_output_dims(self, sample_tokens):
         """Test forward pass with different base_output_dim values."""
