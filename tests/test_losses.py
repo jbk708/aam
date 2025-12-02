@@ -35,9 +35,9 @@ class TestTargetLoss:
         out_dim = 1
         target_pred = torch.randn(batch_size, out_dim)
         target_true = torch.randn(batch_size, out_dim)
-        
+
         loss = loss_fn.compute_target_loss(target_pred, target_true, is_classifier=False)
-        
+
         assert loss.dim() == 0
         assert loss.item() >= 0
         expected_loss = nn.functional.mse_loss(target_pred, target_true)
@@ -49,9 +49,9 @@ class TestTargetLoss:
         out_dim = 3
         target_pred = torch.randn(batch_size, out_dim)
         target_true = torch.randn(batch_size, out_dim)
-        
+
         loss = loss_fn.compute_target_loss(target_pred, target_true, is_classifier=False)
-        
+
         assert loss.dim() == 0
         assert loss.item() >= 0
         expected_loss = nn.functional.mse_loss(target_pred, target_true)
@@ -64,9 +64,9 @@ class TestTargetLoss:
         target_pred = torch.randn(batch_size, num_classes)
         target_pred = nn.functional.log_softmax(target_pred, dim=-1)
         target_true = torch.randint(0, num_classes, (batch_size,))
-        
+
         loss = loss_fn.compute_target_loss(target_pred, target_true, is_classifier=True)
-        
+
         assert loss.dim() == 0
         assert loss.item() >= 0
         expected_loss = nn.functional.nll_loss(target_pred, target_true)
@@ -79,14 +79,12 @@ class TestTargetLoss:
         target_pred = torch.randn(batch_size, num_classes)
         target_pred = nn.functional.log_softmax(target_pred, dim=-1)
         target_true = torch.randint(0, num_classes, (batch_size,))
-        
+
         loss = loss_fn_classifier.compute_target_loss(target_pred, target_true, is_classifier=True)
-        
+
         assert loss.dim() == 0
         assert loss.item() >= 0
-        expected_loss = nn.functional.nll_loss(
-            target_pred, target_true, weight=loss_fn_classifier.class_weights
-        )
+        expected_loss = nn.functional.nll_loss(target_pred, target_true, weight=loss_fn_classifier.class_weights)
         assert torch.allclose(loss, expected_loss)
 
 
@@ -101,12 +99,12 @@ class TestCountLoss:
         count_true = torch.randn(batch_size, num_asvs, 1)
         mask = torch.ones(batch_size, num_asvs)
         mask[:, 5:] = 0
-        
+
         loss = loss_fn.compute_count_loss(count_pred, count_true, mask)
-        
+
         assert loss.dim() == 0
         assert loss.item() >= 0
-        
+
         valid_mask = mask.unsqueeze(-1)
         valid_pred = count_pred * valid_mask
         valid_true = count_true * valid_mask
@@ -121,9 +119,9 @@ class TestCountLoss:
         count_pred = torch.randn(batch_size, num_asvs, 1)
         count_true = torch.randn(batch_size, num_asvs, 1)
         mask = torch.ones(batch_size, num_asvs)
-        
+
         loss = loss_fn.compute_count_loss(count_pred, count_true, mask)
-        
+
         assert loss.dim() == 0
         expected_loss = nn.functional.mse_loss(count_pred, count_true)
         assert torch.allclose(loss, expected_loss)
@@ -137,9 +135,9 @@ class TestBaseLoss:
         batch_size = 4
         base_pred = torch.randn(batch_size, batch_size)
         base_true = torch.randn(batch_size, batch_size)
-        
+
         loss = loss_fn.compute_base_loss(base_pred, base_true, encoder_type="unifrac")
-        
+
         assert loss.dim() == 0
         assert loss.item() >= 0
         expected_loss = nn.functional.mse_loss(base_pred, base_true)
@@ -150,9 +148,9 @@ class TestBaseLoss:
         batch_size = 4
         base_pred = torch.randn(batch_size, 1)
         base_true = torch.randn(batch_size, 1)
-        
+
         loss = loss_fn.compute_base_loss(base_pred, base_true, encoder_type="faith_pd")
-        
+
         assert loss.dim() == 0
         assert loss.item() >= 0
         expected_loss = nn.functional.mse_loss(base_pred, base_true)
@@ -164,9 +162,9 @@ class TestBaseLoss:
         base_output_dim = 7
         base_pred = torch.randn(batch_size, base_output_dim)
         base_true = torch.randn(batch_size, base_output_dim)
-        
+
         loss = loss_fn.compute_base_loss(base_pred, base_true, encoder_type="taxonomy")
-        
+
         assert loss.dim() == 0
         assert loss.item() >= 0
         expected_loss = nn.functional.mse_loss(base_pred, base_true)
@@ -178,9 +176,9 @@ class TestBaseLoss:
         base_output_dim = 10
         base_pred = torch.randn(batch_size, base_output_dim)
         base_true = torch.randn(batch_size, base_output_dim)
-        
+
         loss = loss_fn.compute_base_loss(base_pred, base_true, encoder_type="combined")
-        
+
         assert loss.dim() == 0
         assert loss.item() >= 0
         expected_loss = nn.functional.mse_loss(base_pred, base_true)
@@ -196,25 +194,25 @@ class TestNucleotideLoss:
         num_asvs = 5
         seq_len = 10
         vocab_size = 5
-        
+
         nuc_pred = torch.randn(batch_size, num_asvs, seq_len, vocab_size)
         nuc_true = torch.randint(0, vocab_size, (batch_size, num_asvs, seq_len))
         mask = torch.ones(batch_size, num_asvs, seq_len)
         mask[:, :, 5:] = 0
-        
+
         loss = loss_fn.compute_nucleotide_loss(nuc_pred, nuc_true, mask)
-        
+
         assert loss.dim() == 0
         assert loss.item() >= 0
-        
+
         nuc_pred_flat = nuc_pred.view(-1, vocab_size)
         nuc_true_flat = nuc_true.view(-1)
         mask_flat = mask.view(-1)
-        
+
         valid_indices = mask_flat.bool()
         valid_pred = nuc_pred_flat[valid_indices]
         valid_true = nuc_true_flat[valid_indices]
-        
+
         expected_loss = nn.functional.cross_entropy(valid_pred, valid_true)
         assert torch.allclose(loss, expected_loss)
 
@@ -224,15 +222,15 @@ class TestNucleotideLoss:
         num_asvs = 5
         seq_len = 10
         vocab_size = 5
-        
+
         nuc_pred = torch.randn(batch_size, num_asvs, seq_len, vocab_size)
         nuc_true = torch.randint(0, vocab_size, (batch_size, num_asvs, seq_len))
         mask = torch.ones(batch_size, num_asvs, seq_len)
-        
+
         loss = loss_fn.compute_nucleotide_loss(nuc_pred, nuc_true, mask)
-        
+
         assert loss.dim() == 0
-        
+
         nuc_pred_flat = nuc_pred.view(-1, vocab_size)
         nuc_true_flat = nuc_true.view(-1)
         expected_loss = nn.functional.cross_entropy(nuc_pred_flat, nuc_true_flat)
@@ -248,43 +246,39 @@ class TestTotalLoss:
         num_asvs = 10
         seq_len = 20
         vocab_size = 5
-        
+
         outputs = {
             "target_prediction": torch.randn(batch_size, 1),
             "count_prediction": torch.randn(batch_size, num_asvs, 1),
             "base_prediction": torch.randn(batch_size, batch_size),
         }
-        
+
         targets = {
             "target": torch.randn(batch_size, 1),
             "counts": torch.randn(batch_size, num_asvs, 1),
             "base_target": torch.randn(batch_size, batch_size),
         }
-        
+
         mask = torch.ones(batch_size, num_asvs)
-        
+
         losses = loss_fn(
             outputs,
             targets,
             is_classifier=False,
             encoder_type="unifrac",
         )
-        
+
         assert "target_loss" in losses
         assert "count_loss" in losses
         assert "base_loss" in losses
         assert "total_loss" in losses
-        
+
         assert losses["target_loss"].dim() == 0
         assert losses["count_loss"].dim() == 0
         assert losses["base_loss"].dim() == 0
         assert losses["total_loss"].dim() == 0
-        
-        expected_total = (
-            losses["target_loss"] +
-            losses["count_loss"] +
-            losses["base_loss"] * loss_fn.penalty
-        )
+
+        expected_total = losses["target_loss"] + losses["count_loss"] + losses["base_loss"] * loss_fn.penalty
         assert torch.allclose(losses["total_loss"], expected_total)
 
     def test_total_loss_with_nucleotides(self, loss_fn):
@@ -293,42 +287,42 @@ class TestTotalLoss:
         num_asvs = 10
         seq_len = 20
         vocab_size = 5
-        
+
         outputs = {
             "target_prediction": torch.randn(batch_size, 1),
             "count_prediction": torch.randn(batch_size, num_asvs, 1),
             "base_prediction": torch.randn(batch_size, batch_size),
             "nuc_predictions": torch.randn(batch_size, num_asvs, seq_len, vocab_size),
         }
-        
+
         targets = {
             "target": torch.randn(batch_size, 1),
             "counts": torch.randn(batch_size, num_asvs, 1),
             "base_target": torch.randn(batch_size, batch_size),
             "nucleotides": torch.randint(0, vocab_size, (batch_size, num_asvs, seq_len)),
         }
-        
+
         mask = torch.ones(batch_size, num_asvs)
         nuc_mask = torch.ones(batch_size, num_asvs, seq_len)
-        
+
         losses = loss_fn(
             outputs,
             targets,
             is_classifier=False,
             encoder_type="unifrac",
         )
-        
+
         assert "target_loss" in losses
         assert "count_loss" in losses
         assert "base_loss" in losses
         assert "nuc_loss" in losses
         assert "total_loss" in losses
-        
+
         expected_total = (
-            losses["target_loss"] +
-            losses["count_loss"] +
-            losses["base_loss"] * loss_fn.penalty +
-            losses["nuc_loss"] * loss_fn.nuc_penalty
+            losses["target_loss"]
+            + losses["count_loss"]
+            + losses["base_loss"] * loss_fn.penalty
+            + losses["nuc_loss"] * loss_fn.nuc_penalty
         )
         assert torch.allclose(losses["total_loss"], expected_total)
 
@@ -337,31 +331,31 @@ class TestTotalLoss:
         batch_size = 4
         num_asvs = 10
         num_classes = 3
-        
+
         target_pred = torch.randn(batch_size, num_classes)
         target_pred = nn.functional.log_softmax(target_pred, dim=-1)
-        
+
         outputs = {
             "target_prediction": target_pred,
             "count_prediction": torch.randn(batch_size, num_asvs, 1),
             "base_prediction": torch.randn(batch_size, batch_size),
         }
-        
+
         targets = {
             "target": torch.randint(0, num_classes, (batch_size,)),
             "counts": torch.randn(batch_size, num_asvs, 1),
             "base_target": torch.randn(batch_size, batch_size),
         }
-        
+
         mask = torch.ones(batch_size, num_asvs)
-        
+
         losses = loss_fn_classifier(
             outputs,
             targets,
             is_classifier=True,
             encoder_type="unifrac",
         )
-        
+
         assert "target_loss" in losses
         assert "count_loss" in losses
         assert "base_loss" in losses
@@ -371,59 +365,55 @@ class TestTotalLoss:
         """Test total loss with custom weights."""
         batch_size = 4
         num_asvs = 10
-        
+
         outputs = {
             "target_prediction": torch.randn(batch_size, 1),
             "count_prediction": torch.randn(batch_size, num_asvs, 1),
             "base_prediction": torch.randn(batch_size, batch_size),
         }
-        
+
         targets = {
             "target": torch.randn(batch_size, 1),
             "counts": torch.randn(batch_size, num_asvs, 1),
             "base_target": torch.randn(batch_size, batch_size),
         }
-        
+
         mask = torch.ones(batch_size, num_asvs)
-        
+
         losses = loss_fn_weighted(
             outputs,
             targets,
             is_classifier=False,
             encoder_type="unifrac",
         )
-        
-        expected_total = (
-            losses["target_loss"] +
-            losses["count_loss"] +
-            losses["base_loss"] * loss_fn_weighted.penalty
-        )
+
+        expected_total = losses["target_loss"] + losses["count_loss"] + losses["base_loss"] * loss_fn_weighted.penalty
         assert torch.allclose(losses["total_loss"], expected_total)
 
     def test_total_loss_missing_outputs(self, loss_fn):
         """Test total loss when some outputs are missing (inference mode)."""
         batch_size = 4
         num_asvs = 10
-        
+
         outputs = {
             "target_prediction": torch.randn(batch_size, 1),
             "count_prediction": torch.randn(batch_size, num_asvs, 1),
         }
-        
+
         targets = {
             "target": torch.randn(batch_size, 1),
             "counts": torch.randn(batch_size, num_asvs, 1),
         }
-        
+
         mask = torch.ones(batch_size, num_asvs)
-        
+
         losses = loss_fn(
             outputs,
             targets,
             is_classifier=False,
             encoder_type="unifrac",
         )
-        
+
         assert "target_loss" in losses
         assert "count_loss" in losses
         assert "base_loss" not in losses or losses["base_loss"] == 0
@@ -438,27 +428,27 @@ class TestDeviceHandling:
         """Test that losses work on CUDA."""
         device = torch.device("cuda")
         loss_fn = loss_fn.to(device)
-        
+
         batch_size = 4
         outputs = {
             "target_prediction": torch.randn(batch_size, 1, device=device),
             "count_prediction": torch.randn(batch_size, 10, 1, device=device),
             "base_prediction": torch.randn(batch_size, batch_size, device=device),
         }
-        
+
         targets = {
             "target": torch.randn(batch_size, 1, device=device),
             "counts": torch.randn(batch_size, 10, 1, device=device),
             "base_target": torch.randn(batch_size, batch_size, device=device),
         }
-        
+
         mask = torch.ones(batch_size, 10, device=device)
-        
+
         losses = loss_fn(
             outputs,
             targets,
             is_classifier=False,
             encoder_type="unifrac",
         )
-        
+
         assert losses["total_loss"].device == device

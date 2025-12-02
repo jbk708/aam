@@ -24,7 +24,7 @@ class MultiTaskLoss(nn.Module):
         super().__init__()
         self.penalty = penalty
         self.nuc_penalty = nuc_penalty
-        
+
         if class_weights is not None:
             self.register_buffer("class_weights", class_weights)
         else:
@@ -47,9 +47,7 @@ class MultiTaskLoss(nn.Module):
             Target loss scalar tensor
         """
         if is_classifier:
-            return nn.functional.nll_loss(
-                target_pred, target_true, weight=self.class_weights
-            )
+            return nn.functional.nll_loss(target_pred, target_true, weight=self.class_weights)
         else:
             return nn.functional.mse_loss(target_pred, target_true)
 
@@ -114,14 +112,14 @@ class MultiTaskLoss(nn.Module):
         nuc_pred_flat = nuc_pred.view(-1, nuc_pred.size(-1))
         nuc_true_flat = nuc_true.view(-1)
         mask_flat = mask.view(-1)
-        
+
         valid_indices = mask_flat.bool()
         if valid_indices.sum() == 0:
             return torch.tensor(0.0, device=nuc_pred.device)
-        
+
         valid_pred = nuc_pred_flat[valid_indices]
         valid_true = nuc_true_flat[valid_indices]
-        
+
         return nn.functional.cross_entropy(valid_pred, valid_true)
 
     def forward(
@@ -145,9 +143,9 @@ class MultiTaskLoss(nn.Module):
         device = None
         if outputs:
             device = next(iter(outputs.values())).device
-        
+
         losses = {}
-        
+
         if "target_prediction" in outputs and "target" in targets:
             losses["target_loss"] = self.compute_target_loss(
                 outputs["target_prediction"],
@@ -156,7 +154,7 @@ class MultiTaskLoss(nn.Module):
             )
         else:
             losses["target_loss"] = torch.tensor(0.0, device=device if device else torch.device("cpu"))
-        
+
         if "count_prediction" in outputs and "counts" in targets:
             if "mask" in targets:
                 mask = targets["mask"]
@@ -171,7 +169,7 @@ class MultiTaskLoss(nn.Module):
             )
         else:
             losses["count_loss"] = torch.tensor(0.0, device=device if device else torch.device("cpu"))
-        
+
         if "base_prediction" in outputs and "base_target" in targets:
             losses["base_loss"] = self.compute_base_loss(
                 outputs["base_prediction"],
@@ -180,7 +178,7 @@ class MultiTaskLoss(nn.Module):
             )
         else:
             losses["base_loss"] = torch.tensor(0.0, device=device if device else torch.device("cpu"))
-        
+
         if "nuc_predictions" in outputs and "nucleotides" in targets:
             if "nuc_mask" in targets:
                 nuc_mask = targets["nuc_mask"]
@@ -195,13 +193,13 @@ class MultiTaskLoss(nn.Module):
             )
         else:
             losses["nuc_loss"] = torch.tensor(0.0, device=device if device else torch.device("cpu"))
-        
+
         total_loss = (
-            losses["target_loss"] +
-            losses["count_loss"] +
-            losses["base_loss"] * self.penalty +
-            losses["nuc_loss"] * self.nuc_penalty
+            losses["target_loss"]
+            + losses["count_loss"]
+            + losses["base_loss"] * self.penalty
+            + losses["nuc_loss"] * self.nuc_penalty
         )
         losses["total_loss"] = total_loss
-        
+
         return losses
