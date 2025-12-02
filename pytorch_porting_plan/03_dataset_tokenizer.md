@@ -1,5 +1,7 @@
 # Dataset and Tokenizer
 
+**Status:** ✅ Completed
+
 ## Objective
 Implement PyTorch Dataset class and sequence tokenization for microbial sequencing data.
 
@@ -54,7 +56,7 @@ Implement PyTorch Dataset class and sequence tokenization for microbial sequenci
 - Handle different sequence formats (strings, bytes, etc.)
 
 **Dataset Class**:
-- Create `MicrobialDataset` class inheriting from `Dataset`
+- Create `ASVDataset` class inheriting from `Dataset`
 - Initialize with:
   - BIOM table (rarefied)
   - Metadata DataFrame
@@ -70,20 +72,20 @@ Implement PyTorch Dataset class and sequence tokenization for microbial sequenci
 
 ## Implementation Checklist
 
-- [ ] Create `SequenceTokenizer` class
-- [ ] Implement nucleotide to token mapping
-- [ ] Implement sequence padding
-- [ ] Handle sequence truncation
-- [ ] Create `MicrobialDataset` class
-- [ ] Implement `__len__()` method
-- [ ] Implement `__getitem__()` method
-- [ ] Handle ASV sequence extraction
-- [ ] Integrate UniFrac target extraction
-- [ ] Create custom `collate_fn` for batching
-- [ ] Create DataLoader setup function
-- [ ] Test with sample data
-- [ ] Verify tensor shapes and dtypes
-- [ ] Handle edge cases (no ASVs, very long sequences, etc.)
+- [x] Create `SequenceTokenizer` class
+- [x] Implement nucleotide to token mapping
+- [x] Implement sequence padding
+- [x] Handle sequence truncation
+- [x] Create `ASVDataset` class
+- [x] Implement `__len__()` method
+- [x] Implement `__getitem__()` method
+- [x] Handle ASV sequence extraction
+- [x] Integrate UniFrac target extraction
+- [x] Create custom `collate_fn` for batching
+- [x] Create DataLoader setup function
+- [x] Test with sample data
+- [x] Verify tensor shapes and dtypes
+- [x] Handle edge cases (no ASVs, very long sequences, etc.)
 
 ## Key Considerations
 

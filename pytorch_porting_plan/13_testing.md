@@ -11,7 +11,7 @@ Define comprehensive testing strategy for PyTorch implementation.
 1. BIOMLoader - Table loading and rarefaction
 2. UniFracComputer - Distance computation
 3. SequenceTokenizer - Tokenization
-4. MicrobialDataset - Data loading
+4. ASVDataset - Data loading
 5. AttentionPooling - Attention mechanism
 6. PositionEmbedding - Position encoding
 7. TransformerEncoder - Self-attention
@@ -98,7 +98,7 @@ Test data files are located in the `./data/` folder:
 - [ ] Test BIOMLoader with sample table
 - [ ] Test UniFracComputer with sample table and tree
 - [ ] Test SequenceTokenizer with sample sequences
-- [ ] Test MicrobialDataset with sample data
+- [x] Test ASVDataset with sample data
 - [ ] Test all model components individually
 - [ ] Test loss functions
 - [ ] Test metrics
