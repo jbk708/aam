@@ -7,6 +7,7 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from typing import Optional
+from functools import partial
 from torch.utils.data import DataLoader
 from sklearn.model_selection import train_test_split
 
@@ -236,9 +237,11 @@ def train(
         if unifrac_metric == "unifrac":
             unifrac_distances = unifrac_computer.compute_unweighted(table_obj, tree)
             unifrac_metric_name = "unweighted"
+            encoder_type = "unifrac"
         else:
             unifrac_distances = unifrac_computer.compute_faith_pd(table_obj, tree)
             unifrac_metric_name = "faith_pd"
+            encoder_type = "faith_pd"
         
         logger.info("Splitting data...")
         sample_ids = list(table_obj.ids(axis="sample"))
@@ -274,12 +277,15 @@ def train(
             unifrac_metric=unifrac_metric_name,
         )
         
+        train_collate = partial(collate_fn, token_limit=token_limit)
+        val_collate = partial(collate_fn, token_limit=token_limit)
+        
         train_loader = DataLoader(
             train_dataset,
             batch_size=batch_size,
             shuffle=True,
             num_workers=num_workers,
-            collate_fn=lambda batch: collate_fn(batch, token_limit),
+            collate_fn=train_collate,
         )
         
         val_loader = DataLoader(
@@ -287,11 +293,10 @@ def train(
             batch_size=batch_size,
             shuffle=False,
             num_workers=num_workers,
-            collate_fn=lambda batch: collate_fn(batch, token_limit),
+            collate_fn=val_collate,
         )
         
         logger.info("Creating model...")
-        encoder_type = "unifrac" if unifrac_metric == "unifrac" else "faith_pd"
         model = SequencePredictor(
             encoder_type=encoder_type,
             vocab_size=5,
@@ -412,12 +417,13 @@ def predict(
             token_limit=model_config.get("token_limit", 1024),
         )
         
+        inference_collate = partial(collate_fn, token_limit=model_config.get("token_limit", 1024))
         dataloader = DataLoader(
             dataset,
             batch_size=batch_size,
             shuffle=False,
             num_workers=0,
-            collate_fn=lambda batch: collate_fn(batch, model_config.get("token_limit", 1024)),
+            collate_fn=inference_collate,
         )
         
         logger.info("Creating model...")
@@ -445,14 +451,20 @@ def predict(
                 
                 if "target_prediction" in outputs:
                     pred = outputs["target_prediction"].cpu().numpy()
-                    predictions.extend(pred)
+                    if pred.ndim == 1:
+                        predictions.extend(pred.tolist())
+                    elif pred.ndim == 2 and pred.shape[1] == 1:
+                        predictions.extend(pred.squeeze(1).tolist())
+                    else:
+                        predictions.extend([p.tolist() for p in pred])
                     sample_ids_list.extend(batch["sample_ids"])
         
         logger.info(f"Writing predictions to {output}...")
-        output_df = pd.DataFrame({
-            "sample_id": sample_ids_list,
-            "prediction": predictions if len(predictions[0].shape) == 0 else [p.tolist() for p in predictions],
-        })
+        if predictions and isinstance(predictions[0], list):
+            pred_cols = {f"prediction_{i}": [p[i] for p in predictions] for i in range(len(predictions[0]))}
+            output_df = pd.DataFrame({"sample_id": sample_ids_list, **pred_cols})
+        else:
+            output_df = pd.DataFrame({"sample_id": sample_ids_list, "prediction": predictions})
         output_path = Path(output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_df.to_csv(output_path, sep="\t", index=False)
