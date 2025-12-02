@@ -3,7 +3,7 @@
 import pytest
 import torch
 import numpy as np
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, TensorDataset
 from pathlib import Path
 import tempfile
 import os
