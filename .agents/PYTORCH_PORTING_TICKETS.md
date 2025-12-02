@@ -263,9 +263,9 @@ Implement encoder with UniFrac prediction head as specified in `pytorch_porting_
 
 **Acceptance Criteria:**
 - [ ] `SequenceEncoder` class implemented
-- [ ] Composes BaseSequenceEncoder
+- [ ] Composes SampleSequenceEncoder
 - [ ] Predicts UniFrac distances
-- [ ] Returns base embeddings and predictions
+- [ ] Returns sample embeddings and predictions
 - [ ] Supports different encoder types (unifrac, taxonomy, faith_pd, combined)
 - [ ] Unit tests pass
 

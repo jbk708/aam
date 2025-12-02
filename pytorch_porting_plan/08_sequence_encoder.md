@@ -110,23 +110,23 @@ Output: [B, base_output_dim] base prediction
 
 ## Implementation Checklist
 
-- [ ] Create `SequenceEncoder` class inheriting from `nn.Module`
-- [ ] Initialize SampleSequenceEncoder
-- [ ] Initialize encoder transformer
-- [ ] Initialize attention pooling
-- [ ] Initialize dense output layer(s) based on encoder_type
-- [ ] Handle combined encoder type (multiple heads)
-- [ ] Implement forward pass
-- [ ] Return base embeddings (critical for SequenceRegressor)
-- [ ] Return base predictions
-- [ ] Return nucleotide predictions as side output (for loss only)
-- [ ] Handle mask creation and conversion
-- [ ] Handle optional base_output_dim
-- [ ] Handle training vs inference modes
-- [ ] Test with dummy data
-- [ ] Verify output shapes
-- [ ] Test with different base_output_dim values
-- [ ] Test combined encoder type
+- [x] Create `SequenceEncoder` class inheriting from `nn.Module`
+- [x] Initialize SampleSequenceEncoder
+- [x] Initialize encoder transformer
+- [x] Initialize attention pooling
+- [x] Initialize dense output layer(s) based on encoder_type
+- [x] Handle combined encoder type (multiple heads)
+- [x] Implement forward pass
+- [x] Return sample embeddings (critical for SequenceRegressor)
+- [x] Return base predictions
+- [x] Return nucleotide predictions as side output (for loss only)
+- [x] Handle mask creation and conversion
+- [x] Handle optional base_output_dim
+- [x] Handle training vs inference modes
+- [x] Test with dummy data
+- [x] Verify output shapes
+- [x] Test with different base_output_dim values
+- [x] Test combined encoder type
 
 ## Key Considerations
 
