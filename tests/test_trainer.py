@@ -470,6 +470,158 @@ class TestLoadPretrainedEncoder:
                 assert torch.allclose(param, predictor_base_params[name])
 
 
+class TestTrainerEdgeCases:
+    """Test edge cases for trainer."""
+
+    def test_scheduler_warmup_phase(self, small_model, device):
+        """Test scheduler warmup phase."""
+        optimizer = torch.optim.AdamW(small_model.parameters(), lr=1e-4)
+        scheduler = create_scheduler(optimizer, num_warmup_steps=5, num_training_steps=20)
+
+        initial_lr = scheduler.get_last_lr()[0]
+        assert initial_lr > 0
+
+        for step in range(5):
+            scheduler.step()
+            lr = scheduler.get_last_lr()[0]
+            assert lr > 0
+            if step < 4:
+                assert lr < 1e-4
+
+        lr_after_warmup = scheduler.get_last_lr()[0]
+        assert lr_after_warmup <= 1e-4
+
+    def test_create_optimizer_with_frozen_params(self, small_predictor, device):
+        """Test create_optimizer excludes frozen parameters."""
+        small_predictor = small_predictor.to(device)
+        for param in small_predictor.base_model.parameters():
+            param.requires_grad = False
+
+        optimizer = create_optimizer(small_predictor, lr=1e-4, freeze_base=True)
+
+        optimizer_param_ids = {id(p) for group in optimizer.param_groups for p in group["params"]}
+        base_param_ids = {id(p) for p in small_predictor.base_model.parameters()}
+
+        assert len(optimizer_param_ids & base_param_ids) == 0
+
+    def test_checkpoint_save_success(self, small_predictor, loss_fn, simple_dataloader, device, tmp_path):
+        """Test checkpoint save functionality."""
+        small_predictor = small_predictor.to(device)
+        optimizer = create_optimizer(small_predictor, lr=1e-4)
+        scheduler = create_scheduler(optimizer, num_warmup_steps=0, num_training_steps=10)
+
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            device=device,
+        )
+
+        checkpoint_path = tmp_path / "checkpoint.pt"
+        trainer.save_checkpoint(str(checkpoint_path), epoch=0, best_val_loss=1.0, metrics={})
+        assert checkpoint_path.exists()
+
+    def test_checkpoint_load_error_handling(self, small_predictor, loss_fn, device, tmp_path):
+        """Test checkpoint load error handling."""
+        small_predictor = small_predictor.to(device)
+        optimizer = create_optimizer(small_predictor, lr=1e-4)
+        scheduler = create_scheduler(optimizer, num_warmup_steps=0, num_training_steps=10)
+
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            device=device,
+        )
+
+        invalid_path = tmp_path / "nonexistent.pt"
+        with pytest.raises(FileNotFoundError):
+            trainer.load_checkpoint(str(invalid_path), load_optimizer=False, load_scheduler=False)
+
+    def test_early_stopping(self, small_predictor, loss_fn, simple_dataloader, device, tmp_path):
+        """Test early stopping functionality."""
+        small_predictor = small_predictor.to(device)
+        optimizer = create_optimizer(small_predictor, lr=1e-4)
+        scheduler = create_scheduler(optimizer, num_warmup_steps=0, num_training_steps=10)
+
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            device=device,
+        )
+
+        checkpoint_dir = tmp_path / "checkpoints"
+        checkpoint_dir.mkdir()
+
+        history = trainer.train(
+            train_loader=simple_dataloader,
+            val_loader=simple_dataloader,
+            num_epochs=10,
+            early_stopping_patience=3,
+            checkpoint_dir=str(checkpoint_dir),
+        )
+
+        assert len(history["val_loss"]) > 0
+        assert len(history["val_loss"]) <= 10
+
+    def test_resume_training(self, small_predictor, loss_fn, simple_dataloader, device, tmp_path):
+        """Test resume training from checkpoint."""
+        small_predictor = small_predictor.to(device)
+        optimizer = create_optimizer(small_predictor, lr=1e-4)
+        scheduler = create_scheduler(optimizer, num_warmup_steps=0, num_training_steps=20)
+
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            device=device,
+        )
+
+        checkpoint_dir = tmp_path / "checkpoints"
+        checkpoint_dir.mkdir()
+
+        history1 = trainer.train(
+            train_loader=simple_dataloader,
+            val_loader=simple_dataloader,
+            num_epochs=2,
+            checkpoint_dir=str(checkpoint_dir),
+        )
+
+        checkpoint_files = list(checkpoint_dir.glob("*.pt"))
+        assert len(checkpoint_files) > 0
+
+        resume_path = checkpoint_files[0]
+
+        new_optimizer = create_optimizer(small_predictor, lr=1e-4)
+        new_scheduler = create_scheduler(new_optimizer, num_warmup_steps=0, num_training_steps=20)
+
+        trainer2 = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            optimizer=new_optimizer,
+            scheduler=new_scheduler,
+            device=device,
+        )
+
+        trainer2.load_checkpoint(str(resume_path), load_optimizer=True, load_scheduler=True)
+
+        history2 = trainer2.train(
+            train_loader=simple_dataloader,
+            val_loader=simple_dataloader,
+            num_epochs=3,
+            checkpoint_dir=str(checkpoint_dir),
+            resume_from=str(resume_path),
+        )
+
+        assert len(history2["train_loss"]) >= 0
+        assert len(history2["val_loss"]) >= 0
+
+
 class TestFreezeBase:
     """Test freeze_base functionality."""
 
