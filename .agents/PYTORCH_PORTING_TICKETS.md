@@ -253,48 +253,75 @@ Implement sample-level encoder as specified in `pytorch_porting_plan/07_base_seq
 ---
 
 ### PYT-3.3: Implement SequenceEncoder
-**Priority:** HIGH | **Effort:** Medium | **Status:** Not Started
+**Priority:** HIGH | **Effort:** Medium | **Status:** ✅ Completed
 
 **Description:**
 Implement encoder with UniFrac prediction head as specified in `pytorch_porting_plan/08_sequence_encoder.md`.
 
-**Files to Create:**
+**Files Created:**
 - `aam/models/sequence_encoder.py`
+- `tests/test_sequence_encoder.py`
 
 **Acceptance Criteria:**
-- [ ] `SequenceEncoder` class implemented
-- [ ] Composes SampleSequenceEncoder
-- [ ] Predicts UniFrac distances
-- [ ] Returns sample embeddings and predictions
-- [ ] Supports different encoder types (unifrac, taxonomy, faith_pd, combined)
-- [ ] Unit tests pass
+- [x] `SequenceEncoder` class implemented
+- [x] Composes SampleSequenceEncoder
+- [x] Predicts UniFrac distances
+- [x] Returns sample embeddings and predictions
+- [x] Supports different encoder types (unifrac, taxonomy, faith_pd, combined)
+- [x] Unit tests pass (25 tests, all passing)
+
+**Implementation Notes:**
+- Composes `SampleSequenceEncoder` as base component
+- Adds encoder transformer, attention pooling, and output head
+- Supports four encoder types: `unifrac`, `taxonomy`, `faith_pd`, `combined`
+- Combined type uses separate heads: `uni_ff`, `faith_ff`, `tax_ff`
+- Returns dictionary with `base_prediction` and `sample_embeddings`
+- Optional nucleotide predictions returned as side output (for loss only, not used as input)
+- Handles mask creation from tokens for transformer and attention pooling
+- Supports optional `base_output_dim` (defaults to `embedding_dim` if None)
+- All 25 unit tests pass, covering shapes, masking, gradients, device handling, and all encoder types
 
 **Dependencies:** PYT-3.2
 
 **Estimated Time:** 6-8 hours
+**Actual Time:** ~4 hours
 
 ---
 
 ### PYT-3.4: Implement SequenceRegressor
-**Priority:** HIGH | **Effort:** Medium | **Status:** Not Started
+**Priority:** HIGH | **Effort:** Medium | **Status:** ✅ Completed
 
 **Description:**
 Implement main regression model as specified in `pytorch_porting_plan/09_sequence_regressor.md`.
 
-**Files to Create:**
+**Files Created:**
 - `aam/models/sequence_regressor.py`
+- `tests/test_sequence_regressor.py`
 
 **Acceptance Criteria:**
-- [ ] `SequenceRegressor` class implemented
-- [ ] Composes SequenceEncoder as base model
-- [ ] Supports `freeze_base` parameter
-- [ ] Predicts target and counts
-- [ ] Returns dictionary of predictions
-- [ ] Unit tests pass
+- [x] `SequenceRegressor` class implemented
+- [x] Composes SequenceEncoder as base model
+- [x] Supports `freeze_base` parameter
+- [x] Predicts target and counts
+- [x] Returns dictionary of predictions
+- [x] Unit tests pass (27 tests, all passing)
+
+**Implementation Notes:**
+- Composes SequenceEncoder as `base_model` (composition pattern, not inheritance)
+- Extracts `embedding_dim` from base_model when provided to ensure dimension consistency
+- Supports freezing base model parameters via `freeze_base=True`
+- Count encoder: TransformerEncoder + Linear head → `[B, S, 1]` predictions
+- Target encoder: TransformerEncoder + AttentionPooling + Linear head → `[B, out_dim]` predictions
+- Uses base embeddings (`sample_embeddings`) from base_model, NOT base predictions (for loss only)
+- Supports classification mode (log-softmax) and regression mode
+- Returns dictionary with `target_prediction`, `count_prediction`, `base_embeddings`, and optionally `base_prediction`/`nuc_predictions`
+- Handles all encoder types (unifrac, taxonomy, faith_pd, combined)
+- All 27 unit tests pass, covering shapes, masking, gradients, device handling, frozen/unfrozen base, and all encoder types
 
 **Dependencies:** PYT-3.3
 
 **Estimated Time:** 6-8 hours
+**Actual Time:** ~4 hours
 
 ---
 

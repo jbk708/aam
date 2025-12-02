@@ -143,22 +143,22 @@ count_prediction       ↓
 
 ## Implementation Checklist
 
-- [ ] Create `SequenceRegressor` class inheriting from `nn.Module`
-- [ ] Accept SequenceEncoder as `base_model` parameter or create internally
-- [ ] Handle `encoder_type` parameter for base model creation
-- [ ] Handle `freeze_base` parameter (set `requires_grad=False`)
-- [ ] Initialize count encoder (transformer + linear)
-- [ ] Initialize target encoder (transformer + pooling + linear)
-- [ ] Handle classifier vs regression mode
-- [ ] Implement forward pass
-- [ ] Extract base embeddings from base model output
-- [ ] Use base embeddings (NOT base predictions) for count and target encoders
-- [ ] Return dictionary of predictions
-- [ ] Test with dummy data
-- [ ] Verify output shapes
-- [ ] Test training and inference modes
-- [ ] Test with frozen and unfrozen base model
-- [ ] Verify base predictions are NOT used as input to heads
+- [x] Create `SequenceRegressor` class inheriting from `nn.Module`
+- [x] Accept SequenceEncoder as `base_model` parameter or create internally
+- [x] Handle `encoder_type` parameter for base model creation
+- [x] Handle `freeze_base` parameter (set `requires_grad=False`)
+- [x] Initialize count encoder (transformer + linear)
+- [x] Initialize target encoder (transformer + pooling + linear)
+- [x] Handle classifier vs regression mode
+- [x] Implement forward pass
+- [x] Extract base embeddings from base model output
+- [x] Use base embeddings (NOT base predictions) for count and target encoders
+- [x] Return dictionary of predictions
+- [x] Test with dummy data
+- [x] Verify output shapes
+- [x] Test training and inference modes
+- [x] Test with frozen and unfrozen base model
+- [x] Verify base predictions are NOT used as input to heads
 
 ## Key Considerations
 
