@@ -1,55 +1,67 @@
 # Attention All Microbes (AAM)
 
-Attention-based network for microbial sequencing data. 
+Deep Learning Method for Microbial Sequencing Data using PyTorch
 
-# Installation Instructions
-IMPORTANT: If installing on a server cluster, spawn an instance with a GPU before proceeding with environment setup.
-First create a new conda environment with unifrac
+## Installation
 
-`conda create --name aam -c conda-forge -c bioconda unifrac python=3.9 cython`
+### Prerequisites
 
-`conda activate aam`
+- [Mamba](https://mamba.readthedocs.io/) or [Conda](https://docs.conda.io/) (Mamba is recommended for faster package resolution)
 
-`conda install -c conda-forge gxx_linux-64 hdf5 mkl-include lz4 hdf5-static libcblas liblapacke make`
+### Create Environment
 
-## GPU Support 
+Create the conda/mamba environment from the `environment.yml` file:
 
-Install CUDA 11.8
+```bash
+mamba env create -f environment.yml
+```
 
-`conda install nvidia/label/cuda-11.8.0::cuda-toolkit`
+Or with conda:
 
-Verify the NVIDIA GPU drives are on your path
+```bash
+conda env create -f environment.yml
+```
 
-`nvidia-smi`
+### Activate Environment
 
-Please see [Tensorflow](https://www.tensorflow.org/install) for more information
+Activate the environment:
 
-## Install AAM
+```bash
+mamba activate aam
+```
 
+Or with conda:
 
-For the latest version
+```bash
+conda activate aam
+```
 
-`pip install git+https://github.com/kwcantrell/attention-all-microbes.git`
+### Install Package
 
-or install a specific version
+Install the package in editable mode:
 
-`pip install git+https://github.com/kwcantrell/attention-all-microbes.git@v0.1.1`
+```bash
+pip install -e .
+```
 
-## Developers
+For development with all optional dependencies:
 
-`git clone git@github.com:kwcantrell/attention-all-microbes.git`
+```bash
+pip install -e ".[dev,docs,training]"
+```
 
-`cd attention-all-microbes`
+Or install specific optional dependencies:
 
-`pip install -e .`
+```bash
+# Development dependencies
+pip install -e ".[dev]"
 
-# Training
+# Documentation dependencies
+pip install -e ".[docs]"
 
-Classifiers and Regressors are trained use cross-validation 
-
-`attention --help`
-
-
+# Training dependencies
+pip install -e ".[training]"
+```
 
 
 

@@ -1,24 +1,96 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyTorch
+*.pt
+*.pth
+*.pth.tar
+*.ckpt
+checkpoints/
+models/
+*.onnx
+*.pb
+
+# PyTorch Lightning
+lightning_logs/
+.ckpt/
+
+# TensorBoard
+runs/
+logs/
+tensorboard/
+*.tfevents.*
+
+# Weights & Biases
+wandb/
+
+# Jupyter Notebooks
+*.ipynb
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.conda/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+*.cover
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Project-specific data directories
 data/*
 agp-data/*
 base-model/*
 base-model-*/*
-data/*
 paper/*
 pcoa/*
 veg-prediction/*
 hazel/*
-*.ipynb
-.Trash-0
-amplicon_gpt/__pycache__/*
-amplicon_gpt/.ipynb_checkpoints/*
 shu-aging/*
-core.*
-aam/__pycache__/*
-aam/.ipynb_checkpoints/*
-aam/.DS_Store
 attention_regression/data/*
-attention_regression/.ipynb_checkpoints/*
-attention_regression/__pycache__/*
 american-gut-redbiom
 agp-health-16S-data
 diet
@@ -32,11 +104,27 @@ foundation-model-standalone
 foundation-model-standalone-current
 foundation-model-standalone-old
 gotu_data
-logs
 miscrosoft-proj
 research-exam
 sepsis/data
 sepsis-trial-figures
 sepsis-trial-model
 session
-__pycache__
+
+# Project-specific
+core.*
+.Trash-0
+aam/__pycache__/*
+aam/.ipynb_checkpoints/*
+aam/.DS_Store
+.agents/*
+
+# CUDA
+*.cubin
+*.fatbin
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+*.out
