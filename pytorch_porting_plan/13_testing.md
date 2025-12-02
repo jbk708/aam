@@ -18,7 +18,7 @@ Define comprehensive testing strategy for PyTorch implementation.
 8. ASVEncoder - Sequence processing
 9. SampleSequenceEncoder - Sample processing
 10. SequenceEncoder - UniFrac prediction
-11. SequenceRegressor - Main model
+11. SequencePredictor - Main model
 12. Loss functions - Loss computation
 13. Metrics - Metric computation
 

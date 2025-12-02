@@ -1,15 +1,15 @@
 # SequenceEncoder
 
 ## Objective
-Implement encoder that adds prediction head for UniFrac distance prediction. This serves as the base model for SequenceRegressor.
+Implement encoder that adds prediction head for UniFrac distance prediction. This serves as the base model for SequencePredictor.
 
 ## Architecture Philosophy
 
-**Purpose**: SequenceEncoder is designed to be used as a base model for SequenceRegressor. It:
+**Purpose**: SequenceEncoder is designed to be used as a base model for SequencePredictor. It:
 - Processes sequences through SampleSequenceEncoder
 - Adds encoder-specific prediction head
 - Produces base embeddings for downstream use
-- Can be frozen when used in SequenceRegressor
+- Can be frozen when used in SequencePredictor
 
 **Key Insight**: Nucleotide prediction and UniFrac prediction are **parallel tasks** that share the same base embeddings. They are NOT sequential - nucleotide predictions are not used as input to UniFrac prediction. Both tasks help learn good representations through multi-task learning.
 
@@ -117,7 +117,7 @@ Output: [B, base_output_dim] base prediction
 - [x] Initialize dense output layer(s) based on encoder_type
 - [x] Handle combined encoder type (multiple heads)
 - [x] Implement forward pass
-- [x] Return sample embeddings (critical for SequenceRegressor)
+- [x] Return sample embeddings (critical for SequencePredictor)
 - [x] Return base predictions
 - [x] Return nucleotide predictions as side output (for loss only)
 - [x] Handle mask creation and conversion
@@ -131,7 +131,7 @@ Output: [B, base_output_dim] base prediction
 ## Key Considerations
 
 ### Sample Embeddings
-- **Critical**: Must return sample embeddings for SequenceRegressor
+- **Critical**: Must return sample embeddings for SequencePredictor
 - Sample embeddings are shared between encoder and regressor
 - Shape: `[B, S, D]` - ASV-level embeddings
 
@@ -150,11 +150,11 @@ Output: [B, base_output_dim] base prediction
   - Taxonomy: `7` (taxonomic levels)
   - Combined: Tuple of `(batch_size, 1, num_levels)` dimensions
 
-### Integration with SequenceRegressor
-- SequenceRegressor uses this as `base_model`
+### Integration with SequencePredictor
+- SequencePredictor uses this as `base_model`
 - Base embeddings extracted from output dictionary
 - Base predictions used for loss computation
-- Can be frozen when used in SequenceRegressor
+- Can be frozen when used in SequencePredictor
 
 ### Encoder Types
 - Can support different encoder types (UniFrac, Taxonomy, Faith PD, Combined)
@@ -180,7 +180,7 @@ Output: [B, base_output_dim] base prediction
 - Verify they use the same base embeddings
 - Verify output shapes match expected dimensions
 
-### Integration with SequenceRegressor
+### Integration with SequencePredictor
 - Verify base embeddings can be extracted
 - Verify base predictions are correct shape
 - Verify nucleotide predictions passed through
@@ -188,11 +188,11 @@ Output: [B, base_output_dim] base prediction
 
 ## Notes
 
-- **Base model role**: Designed to be used as base for SequenceRegressor
+- **Base model role**: Designed to be used as base for SequencePredictor
 - **Sample embeddings**: Critical output for downstream use
 - **Nucleotide predictions**: Side output for self-supervised learning, NOT input to encoder
 - **Multi-task learning**: Parallel tasks share sample embeddings
 - **Output dimension**: Determines prediction size
-- **Freezing**: Can be frozen when used in SequenceRegressor
+- **Freezing**: Can be frozen when used in SequencePredictor
 - **Multi-purpose**: Used standalone or as base model
 - **Combined type**: Predicts multiple targets simultaneously using parallel heads

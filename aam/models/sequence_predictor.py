@@ -1,4 +1,4 @@
-"""Main regression model that composes SequenceEncoder as base model."""
+"""Main prediction model that composes SequenceEncoder as base model."""
 
 import torch
 import torch.nn as nn
@@ -9,8 +9,12 @@ from aam.models.attention_pooling import AttentionPooling
 from aam.models.transformer import TransformerEncoder
 
 
-class SequenceRegressor(nn.Module):
-    """Main model for predicting sample-level targets and ASV counts."""
+class SequencePredictor(nn.Module):
+    """Main model for predicting sample-level targets and ASV counts.
+
+    Supports both regression and classification tasks. Composes SequenceEncoder
+    as base model to enable transfer learning and multi-task learning.
+    """
 
     def __init__(
         self,
@@ -51,7 +55,7 @@ class SequenceRegressor(nn.Module):
         freeze_base: bool = False,
         predict_nucleotides: bool = False,
     ):
-        """Initialize SequenceRegressor.
+        """Initialize SequencePredictor.
 
         Args:
             base_model: Optional SequenceEncoder instance (if None, creates one)

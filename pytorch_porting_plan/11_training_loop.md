@@ -10,7 +10,7 @@ Implement training and validation loops with staged training support.
 - No target labels required
 - Save checkpoint for Stage 2
 
-### Stage 2: Train SequenceRegressor
+### Stage 2: Train SequencePredictor
 - Load pre-trained SequenceEncoder
 - Option A: Freeze base (`freeze_base=True`) - faster
 - Option B: Fine-tune jointly (`freeze_base=False`) - better performance

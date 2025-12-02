@@ -1,10 +1,10 @@
-"""Unit tests for SequenceRegressor class."""
+"""Unit tests for SequencePredictor class."""
 
 import pytest
 import torch
 import torch.nn as nn
 
-from aam.models.sequence_regressor import SequenceRegressor
+from aam.models.sequence_predictor import SequencePredictor
 from aam.models.sequence_encoder import SequenceEncoder
 
 
@@ -49,9 +49,9 @@ def base_encoder_with_nucleotides():
 
 
 @pytest.fixture
-def sequence_regressor(base_encoder):
-    """Create a SequenceRegressor instance with provided base model."""
-    return SequenceRegressor(
+def sequence_predictor(base_encoder):
+    """Create a SequencePredictor instance with provided base model."""
+    return SequencePredictor(
         base_model=base_encoder,
         out_dim=1,
         is_classifier=False,
@@ -60,9 +60,9 @@ def sequence_regressor(base_encoder):
 
 
 @pytest.fixture
-def sequence_regressor_frozen(base_encoder):
-    """Create a SequenceRegressor instance with frozen base model."""
-    return SequenceRegressor(
+def sequence_predictor_frozen(base_encoder):
+    """Create a SequencePredictor instance with frozen base model."""
+    return SequencePredictor(
         base_model=base_encoder,
         out_dim=1,
         is_classifier=False,
@@ -71,9 +71,9 @@ def sequence_regressor_frozen(base_encoder):
 
 
 @pytest.fixture
-def sequence_regressor_classifier(base_encoder):
-    """Create a SequenceRegressor instance for classification."""
-    return SequenceRegressor(
+def sequence_predictor_classifier(base_encoder):
+    """Create a SequencePredictor instance for classification."""
+    return SequencePredictor(
         base_model=base_encoder,
         out_dim=7,
         is_classifier=True,
@@ -82,9 +82,9 @@ def sequence_regressor_classifier(base_encoder):
 
 
 @pytest.fixture
-def sequence_regressor_with_nucleotides(base_encoder_with_nucleotides):
-    """Create a SequenceRegressor instance with nucleotide prediction."""
-    return SequenceRegressor(
+def sequence_predictor_with_nucleotides(base_encoder_with_nucleotides):
+    """Create a SequencePredictor instance with nucleotide prediction."""
+    return SequencePredictor(
         base_model=base_encoder_with_nucleotides,
         out_dim=1,
         is_classifier=False,
@@ -93,9 +93,9 @@ def sequence_regressor_with_nucleotides(base_encoder_with_nucleotides):
 
 
 @pytest.fixture
-def sequence_regressor_no_base():
-    """Create a SequenceRegressor instance without providing base model."""
-    return SequenceRegressor(
+def sequence_predictor_no_base():
+    """Create a SequencePredictor instance without providing base model."""
+    return SequencePredictor(
         encoder_type="unifrac",
         embedding_dim=64,
         max_bp=150,
@@ -118,45 +118,45 @@ def sample_tokens():
     return tokens
 
 
-class TestSequenceRegressor:
-    """Test suite for SequenceRegressor class."""
+class TestSequencePredictor:
+    """Test suite for SequencePredictor class."""
 
-    def test_init_with_base_model(self, sequence_regressor):
-        """Test SequenceRegressor initialization with provided base model."""
-        assert sequence_regressor is not None
-        assert isinstance(sequence_regressor, nn.Module)
+    def test_init_with_base_model(self, sequence_predictor):
+        """Test SequencePredictor initialization with provided base model."""
+        assert sequence_predictor is not None
+        assert isinstance(sequence_predictor, nn.Module)
 
-    def test_init_without_base_model(self, sequence_regressor_no_base):
-        """Test SequenceRegressor initialization without base model."""
-        assert sequence_regressor_no_base is not None
-        assert isinstance(sequence_regressor_no_base, nn.Module)
-        assert sequence_regressor_no_base.base_model is not None
+    def test_init_without_base_model(self, sequence_predictor_no_base):
+        """Test SequencePredictor initialization without base model."""
+        assert sequence_predictor_no_base is not None
+        assert isinstance(sequence_predictor_no_base, nn.Module)
+        assert sequence_predictor_no_base.base_model is not None
 
-    def test_init_frozen_base(self, sequence_regressor_frozen):
-        """Test SequenceRegressor initialization with frozen base."""
-        assert sequence_regressor_frozen is not None
-        for param in sequence_regressor_frozen.base_model.parameters():
+    def test_init_frozen_base(self, sequence_predictor_frozen):
+        """Test SequencePredictor initialization with frozen base."""
+        assert sequence_predictor_frozen is not None
+        for param in sequence_predictor_frozen.base_model.parameters():
             assert not param.requires_grad
 
-    def test_init_unfrozen_base(self, sequence_regressor):
-        """Test SequenceRegressor initialization with unfrozen base."""
-        assert sequence_regressor is not None
-        for param in sequence_regressor.base_model.parameters():
+    def test_init_unfrozen_base(self, sequence_predictor):
+        """Test SequencePredictor initialization with unfrozen base."""
+        assert sequence_predictor is not None
+        for param in sequence_predictor.base_model.parameters():
             assert param.requires_grad
 
-    def test_init_classifier(self, sequence_regressor_classifier):
-        """Test SequenceRegressor initialization for classification."""
-        assert sequence_regressor_classifier is not None
-        assert sequence_regressor_classifier.is_classifier
+    def test_init_classifier(self, sequence_predictor_classifier):
+        """Test SequencePredictor initialization for classification."""
+        assert sequence_predictor_classifier is not None
+        assert sequence_predictor_classifier.is_classifier
 
-    def test_init_regressor(self, sequence_regressor):
-        """Test SequenceRegressor initialization for regression."""
-        assert sequence_regressor is not None
-        assert not sequence_regressor.is_classifier
+    def test_init_regressor(self, sequence_predictor):
+        """Test SequencePredictor initialization for regression."""
+        assert sequence_predictor is not None
+        assert not sequence_predictor.is_classifier
 
-    def test_forward_shape_basic(self, sequence_regressor, sample_tokens):
+    def test_forward_shape_basic(self, sequence_predictor, sample_tokens):
         """Test forward pass output shape."""
-        result = sequence_regressor(sample_tokens, return_nucleotides=False)
+        result = sequence_predictor(sample_tokens, return_nucleotides=False)
         assert isinstance(result, dict)
         assert "target_prediction" in result
         assert "count_prediction" in result
@@ -165,9 +165,9 @@ class TestSequenceRegressor:
         assert result["count_prediction"].shape == (2, 10, 1)
         assert result["base_embeddings"].shape == (2, 10, 64)
 
-    def test_forward_shape_with_nucleotides(self, sequence_regressor_with_nucleotides, sample_tokens):
+    def test_forward_shape_with_nucleotides(self, sequence_predictor_with_nucleotides, sample_tokens):
         """Test forward pass output shape with nucleotide predictions."""
-        result = sequence_regressor_with_nucleotides(sample_tokens, return_nucleotides=True)
+        result = sequence_predictor_with_nucleotides(sample_tokens, return_nucleotides=True)
         assert isinstance(result, dict)
         assert "target_prediction" in result
         assert "count_prediction" in result
@@ -180,72 +180,72 @@ class TestSequenceRegressor:
         assert result["base_prediction"].shape == (2, 32)
         assert result["nuc_predictions"].shape == (2, 10, 50, 5)
 
-    def test_forward_shape_classifier(self, sequence_regressor_classifier, sample_tokens):
+    def test_forward_shape_classifier(self, sequence_predictor_classifier, sample_tokens):
         """Test forward pass output shape for classification."""
-        result = sequence_regressor_classifier(sample_tokens)
+        result = sequence_predictor_classifier(sample_tokens)
         assert result["target_prediction"].shape == (2, 7)
 
-    def test_forward_different_batch_sizes(self, sequence_regressor):
+    def test_forward_different_batch_sizes(self, sequence_predictor):
         """Test forward pass with different batch sizes."""
         for batch_size in [1, 4, 8]:
             tokens = torch.randint(1, 5, (batch_size, 10, 50))
-            result = sequence_regressor(tokens)
+            result = sequence_predictor(tokens)
             assert result["target_prediction"].shape == (batch_size, 1)
             assert result["count_prediction"].shape == (batch_size, 10, 1)
             assert result["base_embeddings"].shape == (batch_size, 10, 64)
 
-    def test_forward_different_num_asvs(self, sequence_regressor):
+    def test_forward_different_num_asvs(self, sequence_predictor):
         """Test forward pass with different numbers of ASVs."""
         for num_asvs in [5, 10, 20, 50]:
             tokens = torch.randint(1, 5, (2, num_asvs, 50))
-            result = sequence_regressor(tokens)
+            result = sequence_predictor(tokens)
             assert result["target_prediction"].shape == (2, 1)
             assert result["count_prediction"].shape == (2, num_asvs, 1)
             assert result["base_embeddings"].shape == (2, num_asvs, 64)
 
-    def test_forward_different_seq_lengths(self, sequence_regressor):
+    def test_forward_different_seq_lengths(self, sequence_predictor):
         """Test forward pass with different sequence lengths."""
         for seq_len in [10, 50, 100, 150]:
             tokens = torch.randint(1, 5, (2, 10, seq_len))
-            result = sequence_regressor(tokens)
+            result = sequence_predictor(tokens)
             assert result["target_prediction"].shape == (2, 1)
             assert result["count_prediction"].shape == (2, 10, 1)
             assert result["base_embeddings"].shape == (2, 10, 64)
 
-    def test_forward_with_padding(self, sequence_regressor, sample_tokens):
+    def test_forward_with_padding(self, sequence_predictor, sample_tokens):
         """Test forward pass with padded sequences."""
-        result = sequence_regressor(sample_tokens)
+        result = sequence_predictor(sample_tokens)
         assert not torch.isnan(result["target_prediction"]).any()
         assert not torch.isnan(result["count_prediction"]).any()
         assert not torch.isnan(result["base_embeddings"]).any()
 
-    def test_forward_inference_mode(self, sequence_regressor, sample_tokens):
+    def test_forward_inference_mode(self, sequence_predictor, sample_tokens):
         """Test forward pass in inference mode (no nucleotide predictions)."""
-        sequence_regressor.eval()
-        result = sequence_regressor(sample_tokens, return_nucleotides=False)
+        sequence_predictor.eval()
+        result = sequence_predictor(sample_tokens, return_nucleotides=False)
         assert isinstance(result, dict)
         assert "nuc_predictions" not in result
         assert "base_prediction" not in result
 
-    def test_forward_training_mode_with_nucleotides(self, sequence_regressor_with_nucleotides, sample_tokens):
+    def test_forward_training_mode_with_nucleotides(self, sequence_predictor_with_nucleotides, sample_tokens):
         """Test forward pass in training mode with nucleotide predictions."""
-        sequence_regressor_with_nucleotides.train()
-        result = sequence_regressor_with_nucleotides(sample_tokens, return_nucleotides=True)
+        sequence_predictor_with_nucleotides.train()
+        result = sequence_predictor_with_nucleotides(sample_tokens, return_nucleotides=True)
         assert "nuc_predictions" in result
         assert "base_prediction" in result
 
-    def test_forward_training_mode_without_nucleotides(self, sequence_regressor_with_nucleotides, sample_tokens):
+    def test_forward_training_mode_without_nucleotides(self, sequence_predictor_with_nucleotides, sample_tokens):
         """Test forward pass in training mode without requesting nucleotide predictions."""
-        sequence_regressor_with_nucleotides.train()
-        result = sequence_regressor_with_nucleotides(sample_tokens, return_nucleotides=False)
+        sequence_predictor_with_nucleotides.train()
+        result = sequence_predictor_with_nucleotides(sample_tokens, return_nucleotides=False)
         assert isinstance(result, dict)
         assert "nuc_predictions" not in result
         assert "base_prediction" not in result
 
-    def test_gradients_flow_unfrozen(self, sequence_regressor, sample_tokens):
+    def test_gradients_flow_unfrozen(self, sequence_predictor, sample_tokens):
         """Test that gradients flow correctly with unfrozen base."""
-        sequence_regressor.train()
-        result = sequence_regressor(sample_tokens)
+        sequence_predictor.train()
+        result = sequence_predictor(sample_tokens)
         loss = result["target_prediction"].sum() + result["count_prediction"].sum() + result["base_embeddings"].sum()
         loss.backward()
 
@@ -253,7 +253,7 @@ class TestSequenceRegressor:
         has_count_gradients = False
         has_target_gradients = False
 
-        for name, param in sequence_regressor.named_parameters():
+        for name, param in sequence_predictor.named_parameters():
             if param.requires_grad and param.grad is not None:
                 assert not torch.isnan(param.grad).any()
                 assert not torch.isinf(param.grad).any()
@@ -266,54 +266,54 @@ class TestSequenceRegressor:
 
         assert has_base_gradients or has_count_gradients or has_target_gradients
 
-    def test_gradients_frozen_base(self, sequence_regressor_frozen, sample_tokens):
+    def test_gradients_frozen_base(self, sequence_predictor_frozen, sample_tokens):
         """Test that gradients don't flow to frozen base model."""
-        result = sequence_regressor_frozen(sample_tokens)
+        result = sequence_predictor_frozen(sample_tokens)
         loss = result["target_prediction"].sum() + result["count_prediction"].sum()
         loss.backward()
 
-        for param in sequence_regressor_frozen.base_model.parameters():
+        for param in sequence_predictor_frozen.base_model.parameters():
             assert param.grad is None
 
-        for name, param in sequence_regressor_frozen.named_parameters():
+        for name, param in sequence_predictor_frozen.named_parameters():
             if "base_model" not in name:
                 assert param.grad is not None
 
-    def test_gradients_flow_to_heads(self, sequence_regressor_frozen, sample_tokens):
+    def test_gradients_flow_to_heads(self, sequence_predictor_frozen, sample_tokens):
         """Test that gradients flow to count and target encoders."""
-        result = sequence_regressor_frozen(sample_tokens)
+        result = sequence_predictor_frozen(sample_tokens)
         loss = result["target_prediction"].sum() + result["count_prediction"].sum()
         loss.backward()
 
         has_gradients = False
-        for name, param in sequence_regressor_frozen.named_parameters():
+        for name, param in sequence_predictor_frozen.named_parameters():
             if "base_model" not in name and param.requires_grad:
                 if param.grad is not None:
                     has_gradients = True
                     break
         assert has_gradients
 
-    def test_forward_same_device(self, sequence_regressor, sample_tokens):
+    def test_forward_same_device(self, sequence_predictor, sample_tokens):
         """Test that output is on same device as input."""
         if torch.cuda.is_available():
             device = torch.device("cuda")
-            sequence_regressor = sequence_regressor.to(device)
+            sequence_predictor = sequence_predictor.to(device)
             sample_tokens = sample_tokens.to(device)
-            result = sequence_regressor(sample_tokens)
+            result = sequence_predictor(sample_tokens)
             assert result["target_prediction"].device == device
             assert result["count_prediction"].device == device
             assert result["base_embeddings"].device == device
 
-    def test_base_embeddings_used(self, sequence_regressor, sample_tokens):
+    def test_base_embeddings_used(self, sequence_predictor, sample_tokens):
         """Test that base embeddings are used (not base predictions)."""
-        result = sequence_regressor(sample_tokens)
+        result = sequence_predictor(sample_tokens)
         assert "base_embeddings" in result
         assert result["base_embeddings"].shape == (2, 10, 64)
         assert "base_prediction" not in result or result.get("base_prediction") is None
 
-    def test_base_predictions_not_used_as_input(self, sequence_regressor_with_nucleotides, sample_tokens):
+    def test_base_predictions_not_used_as_input(self, sequence_predictor_with_nucleotides, sample_tokens):
         """Test that base predictions are not used as input to heads."""
-        result = sequence_regressor_with_nucleotides(sample_tokens, return_nucleotides=True)
+        result = sequence_predictor_with_nucleotides(sample_tokens, return_nucleotides=True)
         assert "base_prediction" in result
         assert "base_embeddings" in result
         base_emb_shape = result["base_embeddings"].shape
@@ -325,7 +325,7 @@ class TestSequenceRegressor:
     def test_different_encoder_types(self, sample_tokens):
         """Test forward pass with different encoder types."""
         for encoder_type in ["unifrac", "faith_pd", "taxonomy"]:
-            regressor = SequenceRegressor(
+            regressor = SequencePredictor(
                 encoder_type=encoder_type,
                 embedding_dim=64,
                 max_bp=150,
@@ -341,7 +341,7 @@ class TestSequenceRegressor:
 
     def test_combined_encoder_type(self, sample_tokens):
         """Test forward pass with combined encoder type."""
-        regressor = SequenceRegressor(
+        regressor = SequencePredictor(
             encoder_type="combined",
             embedding_dim=64,
             max_bp=150,
@@ -358,7 +358,7 @@ class TestSequenceRegressor:
     def test_different_out_dims(self, base_encoder, sample_tokens):
         """Test forward pass with different out_dim values."""
         for out_dim in [1, 5, 10]:
-            regressor = SequenceRegressor(
+            regressor = SequencePredictor(
                 base_model=base_encoder,
                 out_dim=out_dim,
             )
@@ -366,14 +366,14 @@ class TestSequenceRegressor:
             assert result["target_prediction"].shape == (2, out_dim)
 
     def test_composition_pattern(self, base_encoder):
-        """Test that SequenceRegressor composes SequenceEncoder."""
-        regressor = SequenceRegressor(base_model=base_encoder)
+        """Test that SequencePredictor composes SequenceEncoder."""
+        regressor = SequencePredictor(base_model=base_encoder)
         assert regressor.base_model is base_encoder
         assert isinstance(regressor.base_model, SequenceEncoder)
 
     def test_base_model_swapping(self, base_encoder, sample_tokens):
         """Test that base model can be swapped."""
-        regressor1 = SequenceRegressor(base_model=base_encoder, out_dim=1)
+        regressor1 = SequencePredictor(base_model=base_encoder, out_dim=1)
         result1 = regressor1(sample_tokens)
 
         new_base = SequenceEncoder(
@@ -384,7 +384,7 @@ class TestSequenceRegressor:
             base_output_dim=32,
             encoder_type="faith_pd",
         )
-        regressor2 = SequenceRegressor(base_model=new_base, out_dim=1)
+        regressor2 = SequencePredictor(base_model=new_base, out_dim=1)
         result2 = regressor2(sample_tokens)
 
         assert result1["target_prediction"].shape == result2["target_prediction"].shape

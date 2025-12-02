@@ -15,7 +15,7 @@ The implementation plan is organized into 13 documents, each covering a specific
 7. **[06_asv_encoder.md](06_asv_encoder.md)** - ASV-level sequence processing
 8. **[07_base_sequence_encoder.md](07_base_sequence_encoder.md)** - Sample-level processing
 9. **[08_sequence_encoder.md](08_sequence_encoder.md)** - UniFrac prediction head
-10. **[09_sequence_regressor.md](09_sequence_regressor.md)** - Main regression model
+10. **[09_sequence_predictor.md](09_sequence_predictor.md)** - Main prediction model
 11. **[10_training_losses.md](10_training_losses.md)** - Loss functions and metrics
 12. **[11_training_loop.md](11_training_loop.md)** - Training and validation loops
 13. **[12_cli_interface.md](12_cli_interface.md)** - Command-line interface
@@ -30,7 +30,7 @@ The implementation plan is organized into 13 documents, each covering a specific
 - No target labels required
 - Save checkpoint
 
-**Stage 2: Train SequenceRegressor**
+**Stage 2: Train SequencePredictor**
 - Load pre-trained SequenceEncoder
 - Option A: Freeze base (`freeze_base=True`) - faster
 - Option B: Fine-tune jointly (`freeze_base=False`) - better performance
@@ -53,7 +53,7 @@ See **[00_overview.md](00_overview.md)** for detailed training strategy.
    - ASVEncoder
    - SampleSequenceEncoder
    - SequenceEncoder (base model)
-   - SequenceRegressor (composes encoder)
+   - SequencePredictor (composes encoder)
 
 4. **Training** (10-12)
    - Loss functions
@@ -73,7 +73,7 @@ See **[00_overview.md](00_overview.md)** for detailed training strategy.
 - Follow PyTorch conventions
 
 ### 2. Composition Over Inheritance
-- SequenceRegressor composes SequenceEncoder
+- SequencePredictor composes SequenceEncoder
 - Enables flexible base model swapping
 - Supports freezing base model
 
@@ -85,7 +85,7 @@ See **[00_overview.md](00_overview.md)** for detailed training strategy.
 
 ### 4. Staged Training
 - Pre-train SequenceEncoder (self-supervised)
-- Fine-tune SequenceRegressor (with optional freezing)
+- Fine-tune SequencePredictor (with optional freezing)
 
 ## File Structure
 
@@ -105,7 +105,7 @@ aam/
 │   ├── asv_encoder.py
 │   ├── base_sequence_encoder.py
 │   ├── sequence_encoder.py
-│   └── sequence_regressor.py
+│   └── sequence_predictor.py
 ├── training/
 │   ├── __init__.py
 │   ├── losses.py

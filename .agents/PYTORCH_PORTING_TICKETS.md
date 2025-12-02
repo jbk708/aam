@@ -288,18 +288,18 @@ Implement encoder with UniFrac prediction head as specified in `pytorch_porting_
 
 ---
 
-### PYT-3.4: Implement SequenceRegressor
+### PYT-3.4: Implement SequencePredictor
 **Priority:** HIGH | **Effort:** Medium | **Status:** ✅ Completed
 
 **Description:**
-Implement main regression model as specified in `pytorch_porting_plan/09_sequence_regressor.md`.
+Implement main prediction model as specified in `pytorch_porting_plan/09_sequence_predictor.md`.
 
 **Files Created:**
-- `aam/models/sequence_regressor.py`
-- `tests/test_sequence_regressor.py`
+- `aam/models/sequence_predictor.py`
+- `tests/test_sequence_predictor.py`
 
 **Acceptance Criteria:**
-- [x] `SequenceRegressor` class implemented
+- [x] `SequencePredictor` class implemented
 - [x] Composes SequenceEncoder as base model
 - [x] Supports `freeze_base` parameter
 - [x] Predicts target and counts
@@ -492,11 +492,11 @@ Add support for pre-training SequenceEncoder separately (Stage 1 of training str
 
 ---
 
-### PYT-6.2: Implement SequenceRegressor Fine-tuning
+### PYT-6.2: Implement SequencePredictor Fine-tuning
 **Priority:** MEDIUM | **Effort:** Low | **Status:** Not Started
 
 **Description:**
-Add support for loading pre-trained SequenceEncoder and fine-tuning SequenceRegressor (Stage 2 of training strategy).
+Add support for loading pre-trained SequenceEncoder and fine-tuning SequencePredictor (Stage 2 of training strategy).
 
 **Files to Modify:**
 - `aam/training/trainer.py`

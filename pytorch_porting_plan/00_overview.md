@@ -6,8 +6,8 @@ Build AAM (Attention All Microbes) - a deep learning model for microbial sequenc
 ## Architecture Overview
 
 **Key Architecture Points**:
-- **SequenceRegressor composes SequenceEncoder**: SequenceRegressor contains SequenceEncoder as `base_model` (not SampleSequenceEncoder)
-- **Sample embeddings flow**: SampleSequenceEncoder → SequenceEncoder → SequenceRegressor (via base_model output)
+- **SequencePredictor composes SequenceEncoder**: SequencePredictor contains SequenceEncoder as `base_model` (not SampleSequenceEncoder)
+- **Sample embeddings flow**: SampleSequenceEncoder → SequenceEncoder → SequencePredictor (via base_model output)
 - **Parallel tasks**: All prediction tasks (nucleotide, UniFrac, count, target) share base embeddings but are computed in parallel
 - **Side outputs**: Base predictions (UniFrac) and nucleotide predictions are used only for loss computation, NOT as input to other heads
 
@@ -45,7 +45,7 @@ graph TB
         ENC_TRANS --> ENC_POOL[Attention Pooling]
         ENC_POOL --> BASE_PRED[Base Prediction<br/>UniFrac/Taxonomy]
         
-        SEQ_ENC --> SEQ_REG[SequenceRegressor<br/>Composes SequenceEncoder]
+        SEQ_ENC --> SEQ_PRED[SequencePredictor<br/>Composes SequenceEncoder]
         SEQ_REG --> SAMPLE_EMB_REG[Sample Embeddings<br/>from SequenceEncoder<br/>B x S x D]
         SAMPLE_EMB_REG --> COUNT_ENC[Count Encoder]
         SAMPLE_EMB_REG --> TARGET_ENC[Target Encoder]
@@ -91,7 +91,7 @@ graph TB
 ### 1. Hierarchical Multi-Level Attention
 - **Nucleotide level**: Process individual sequences (ASVEncoder)
 - **ASV level**: Process multiple sequences per sample (SampleSequenceEncoder)
-- **Sample level**: Aggregate to sample-level predictions (SequenceEncoder/SequenceRegressor)
+- **Sample level**: Aggregate to sample-level predictions (SequenceEncoder/SequencePredictor)
 
 ### 2. Compositional Model Architecture
 - **SampleSequenceEncoder**: Core processing (nucleotide + sample level)
@@ -99,7 +99,7 @@ graph TB
   - Uses SampleSequenceEncoder internally
   - Produces sample embeddings `[B, S, D]` for downstream use
   - Produces base predictions (UniFrac/Taxonomy) for loss computation
-- **SequenceRegressor**: Composes SequenceEncoder as `base_model` (composition, not inheritance)
+- **SequencePredictor**: Composes SequenceEncoder as `base_model` (composition, not inheritance)
   - Uses SequenceEncoder's sample embeddings (not base predictions) for count/target encoders
   - Base predictions from SequenceEncoder are used only for loss computation (self-supervised)
   - Can freeze SequenceEncoder for transfer learning
@@ -121,9 +121,9 @@ graph TB
 - **Important**: Base predictions (UniFrac) and nucleotide predictions are side outputs used for loss computation only. They do NOT feed into target prediction. All tasks share the same base embeddings.
 
 ### 5. Transfer Learning Support
-- **Freeze base model**: Can freeze SequenceEncoder when used in SequenceRegressor
+- **Freeze base model**: Can freeze SequenceEncoder when used in SequencePredictor
 - **Shared embeddings**: Base embeddings shared between encoder and regressor heads
-- **Pre-training**: Can pre-train SequenceEncoder, then fine-tune SequenceRegressor
+- **Pre-training**: Can pre-train SequenceEncoder, then fine-tune SequencePredictor
 
 ## Training Strategy
 
@@ -139,7 +139,7 @@ graph TB
   - Better initialization for downstream tasks
   - Self-supervised learning doesn't require target labels
 
-**Stage 2: Train SequenceRegressor**
+**Stage 2: Train SequencePredictor**
 - **Option A: Freeze Base (Faster)**
   - Load pre-trained SequenceEncoder
   - Set `freeze_base=True`
@@ -191,9 +191,9 @@ graph TB
   - Sample embeddings `[B, S, D]` (shared representations for downstream use)
   - Nucleotide predictions `[B, S, L, 5]` (from SampleSequenceEncoder, for loss only)
 - **Types**: UniFracEncoder, TaxonomyEncoder, FaithPDEncoder, CombinedEncoder
-- **Used by**: SequenceRegressor as `base_model` (composition)
+- **Used by**: SequencePredictor as `base_model` (composition)
 
-### SequenceRegressor
+### SequencePredictor
 - **Purpose**: Sample-level target prediction
 - **Base**: Composes SequenceEncoder as `base_model` (composition, not inheritance)
 - **Forward pass**: 
@@ -239,7 +239,7 @@ aam/
 │   ├── asv_encoder.py
 │   ├── base_sequence_encoder.py
 │   ├── sequence_encoder.py   # Base model for regressor
-│   └── sequence_regressor.py  # Main model (composes encoder)
+│   └── sequence_predictor.py  # Main model (composes encoder)
 ├── training/
 │   ├── __init__.py
 │   ├── losses.py
@@ -264,7 +264,7 @@ aam/
    - ASVEncoder
    - SampleSequenceEncoder
    - SequenceEncoder (base model)
-   - SequenceRegressor (composes encoder)
+   - SequencePredictor (composes encoder)
 
 4. **Training** (10-12)
    - Loss functions

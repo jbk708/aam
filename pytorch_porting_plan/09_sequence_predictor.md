@@ -1,11 +1,11 @@
-# SequenceRegressor
+# SequencePredictor
 
 ## Objective
 Implement main model for predicting sample-level targets and ASV counts. This model composes SequenceEncoder as its base model.
 
 ## Architecture Philosophy
 
-**Key Design**: SequenceRegressor uses SequenceEncoder as its `base_model` through composition (not inheritance). This enables:
+**Key Design**: SequencePredictor uses SequenceEncoder as its `base_model` through composition (not inheritance). This enables:
 - Transfer learning (freeze base model)
 - Shared base embeddings
 - Flexible base model swapping
@@ -47,7 +47,7 @@ count_prediction       ↓
 ## Components
 
 **1. Base Model (SequenceEncoder)**
-- **Composition**: SequenceRegressor contains SequenceEncoder instance as `base_model`
+- **Composition**: SequencePredictor contains SequenceEncoder instance as `base_model`
 - **Purpose**: Processes sequences and predicts UniFrac (or other encoder targets)
 - **Outputs**: 
   - Base embeddings: `[B, S, D]` (used by regressor heads)
@@ -143,7 +143,7 @@ count_prediction       ↓
 
 ## Implementation Checklist
 
-- [x] Create `SequenceRegressor` class inheriting from `nn.Module`
+- [x] Create `SequencePredictor` class inheriting from `nn.Module`
 - [x] Accept SequenceEncoder as `base_model` parameter or create internally
 - [x] Handle `encoder_type` parameter for base model creation
 - [x] Handle `freeze_base` parameter (set `requires_grad=False`)
@@ -163,7 +163,7 @@ count_prediction       ↓
 ## Key Considerations
 
 ### Composition Pattern
-- SequenceRegressor contains SequenceEncoder (composition)
+- SequencePredictor contains SequenceEncoder (composition)
 - Not inheriting from SequenceEncoder
 - Enables flexible base model swapping
 
@@ -232,7 +232,7 @@ count_prediction       ↓
 
 ## Notes
 
-- **Composition over inheritance**: SequenceRegressor composes SequenceEncoder
+- **Composition over inheritance**: SequencePredictor composes SequenceEncoder
 - **Shared embeddings**: Base embeddings shared between heads
 - **Base predictions for loss only**: NOT used as input to regression heads
 - **Multi-task learning**: Parallel tasks with shared representations
