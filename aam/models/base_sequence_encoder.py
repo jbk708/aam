@@ -49,7 +49,39 @@ class BaseSequenceEncoder(nn.Module):
             predict_nucleotides: Whether to include nucleotide prediction head
         """
         super().__init__()
-        pass
+        
+        self.embedding_dim = embedding_dim
+        self.token_limit = token_limit
+        self.predict_nucleotides = predict_nucleotides
+        
+        self.asv_encoder = ASVEncoder(
+            vocab_size=vocab_size,
+            embedding_dim=embedding_dim,
+            max_bp=max_bp,
+            num_layers=asv_num_layers,
+            num_heads=asv_num_heads,
+            intermediate_size=asv_intermediate_size,
+            dropout=asv_dropout,
+            activation=asv_activation,
+            predict_nucleotides=predict_nucleotides,
+        )
+        
+        self.sample_position_embedding = PositionEmbedding(
+            max_length=token_limit + 5,
+            hidden_dim=embedding_dim,
+        )
+        
+        if sample_intermediate_size is None:
+            sample_intermediate_size = 4 * embedding_dim
+        
+        self.sample_transformer = TransformerEncoder(
+            num_layers=sample_num_layers,
+            num_heads=sample_num_heads,
+            hidden_dim=embedding_dim,
+            intermediate_size=sample_intermediate_size,
+            dropout=sample_dropout,
+            activation=sample_activation,
+        )
 
     def forward(
         self, tokens: torch.Tensor, return_nucleotides: bool = False
@@ -65,4 +97,35 @@ class BaseSequenceEncoder(nn.Module):
             If return_nucleotides=True: Tuple of (base_embeddings, nucleotide_predictions)
                 where nucleotide_predictions is [batch_size, num_asvs, seq_len, vocab_size]
         """
-        pass
+        asv_mask = (tokens.sum(dim=-1) > 0).long()
+        
+        if self.predict_nucleotides and return_nucleotides:
+            asv_embeddings, nucleotide_predictions = self.asv_encoder(
+                tokens, return_nucleotides=True
+            )
+        else:
+            asv_embeddings = self.asv_encoder(tokens, return_nucleotides=False)
+            nucleotide_predictions = None
+        
+        asv_mask_expanded = asv_mask.unsqueeze(-1).float()
+        asv_embeddings = torch.where(
+            torch.isnan(asv_embeddings),
+            torch.zeros_like(asv_embeddings),
+            asv_embeddings
+        )
+        asv_embeddings = asv_embeddings * asv_mask_expanded
+        
+        asv_embeddings = self.sample_position_embedding(asv_embeddings)
+        base_embeddings = self.sample_transformer(asv_embeddings, mask=asv_mask)
+        
+        base_embeddings = torch.where(
+            torch.isnan(base_embeddings),
+            torch.zeros_like(base_embeddings),
+            base_embeddings
+        )
+        base_embeddings = base_embeddings * asv_mask_expanded
+        
+        if return_nucleotides and nucleotide_predictions is not None:
+            return base_embeddings, nucleotide_predictions
+        else:
+            return base_embeddings
