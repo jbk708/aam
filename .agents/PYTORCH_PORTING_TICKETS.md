@@ -371,27 +371,43 @@ Implement multi-task loss functions as specified in `pytorch_porting_plan/10_tra
 ---
 
 ### PYT-4.2: Implement Training Loop
-**Priority:** HIGH | **Effort:** High | **Status:** Not Started
+**Priority:** HIGH | **Effort:** High | **Status:** ✅ Completed
 
 **Description:**
 Implement training and validation loops with staged training support as specified in `pytorch_porting_plan/11_training_loop.md`.
 
-**Files to Create:**
+**Files Created:**
 - `aam/training/trainer.py`
+- `tests/test_trainer.py`
 
 **Acceptance Criteria:**
-- [ ] Training epoch function implemented
-- [ ] Validation epoch function implemented
-- [ ] Main training function implemented
-- [ ] Supports loading pre-trained SequenceEncoder
-- [ ] Supports `freeze_base` parameter
-- [ ] Early stopping implemented
-- [ ] Checkpoint saving/loading implemented
-- [ ] Unit tests pass
+- [x] Training epoch function implemented
+- [x] Validation epoch function implemented
+- [x] Main training function implemented
+- [x] Supports loading pre-trained SequenceEncoder
+- [x] Supports `freeze_base` parameter
+- [x] Early stopping implemented
+- [x] Checkpoint saving/loading implemented
+- [x] Unit tests pass (21 tests, 81% coverage)
 
 **Dependencies:** PYT-4.1
 
+**Implementation Notes:**
+- `Trainer` class implements full training and validation loops with progress bars (tqdm)
+- `WarmupCosineScheduler` custom scheduler for warmup + cosine decay
+- `create_optimizer()` creates AdamW optimizer, excludes frozen parameters when `freeze_base=True`
+- `create_scheduler()` creates warmup + cosine decay scheduler
+- `load_pretrained_encoder()` loads pre-trained SequenceEncoder into SequencePredictor
+- Supports both dict and tuple batch formats from DataLoader
+- Handles both SequenceEncoder and SequencePredictor models
+- Early stopping with configurable patience (default: 50 epochs)
+- Checkpoint saving includes model state, optimizer state, scheduler state, epoch, best loss, metrics
+- Checkpoint loading supports resume training with optional optimizer/scheduler loading
+- Metrics computation during validation (regression, classification, count metrics)
+- All 21 unit tests pass, covering all acceptance criteria
+
 **Estimated Time:** 8-10 hours
+**Actual Time:** ~4 hours
 
 ---
 

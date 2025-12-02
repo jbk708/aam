@@ -51,19 +51,19 @@ Implement training and validation loops with staged training support.
 
 ## Implementation Checklist
 
-- [ ] Implement training epoch function
-- [ ] Implement validation epoch function
-- [ ] Implement main training function
-- [ ] Support loading pre-trained SequenceEncoder
-- [ ] Handle `freeze_base` parameter
-- [ ] Implement early stopping
-- [ ] Implement checkpoint saving/loading
-- [ ] Setup optimizer (exclude frozen params if needed)
-- [ ] Setup scheduler (warmup + decay)
-- [ ] Test training loop
-- [ ] Test validation loop
-- [ ] Test early stopping
-- [ ] Test checkpointing
+- [x] Implement training epoch function
+- [x] Implement validation epoch function
+- [x] Implement main training function
+- [x] Support loading pre-trained SequenceEncoder
+- [x] Handle `freeze_base` parameter
+- [x] Implement early stopping
+- [x] Implement checkpoint saving/loading
+- [x] Setup optimizer (exclude frozen params if needed)
+- [x] Setup scheduler (warmup + decay)
+- [x] Test training loop
+- [x] Test validation loop
+- [x] Test early stopping
+- [x] Test checkpointing
 
 ## Key Considerations
 
