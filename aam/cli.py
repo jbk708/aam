@@ -408,7 +408,7 @@ def train(
 @click.option("--epochs", default=100, type=int, help="Number of training epochs")
 @click.option("--batch-size", default=8, type=int, help="Batch size")
 @click.option("--lr", default=1e-4, type=float, help="Learning rate")
-@click.option("--patience", default=50, type=int, help="Early stopping patience")
+@click.option("--patience", default=10, type=int, help="Early stopping patience")
 @click.option("--warmup-steps", default=10000, type=int, help="Learning rate warmup steps")
 @click.option("--weight-decay", default=0.01, type=float, help="Weight decay for AdamW")
 @click.option("--embedding-dim", default=128, type=int, help="Embedding dimension")

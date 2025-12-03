@@ -427,7 +427,7 @@ class Trainer:
         train_loader: DataLoader,
         val_loader: Optional[DataLoader] = None,
         num_epochs: int = 100,
-        early_stopping_patience: int = 50,
+        early_stopping_patience: int = 10,
         checkpoint_dir: Optional[str] = None,
         resume_from: Optional[str] = None,
         gradient_accumulation_steps: int = 1,

@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader, TensorDataset
 import tempfile
 import os
 from pathlib import Path
+import inspect
 
 from aam.training.trainer import (
     Trainer,
@@ -411,6 +412,12 @@ class TestTrainingLoop:
 
         assert "train_loss" in history
         assert len(history["train_loss"]) <= 10
+
+    def test_train_default_early_stopping_patience(self, small_model, loss_fn, simple_dataloader_encoder, device):
+        """Test that default early stopping patience is 10."""
+        sig = inspect.signature(Trainer.train)
+        early_stopping_param = sig.parameters["early_stopping_patience"]
+        assert early_stopping_param.default == 10, f"Expected default to be 10, got {early_stopping_param.default}"
 
     def test_train_checkpoint_saving(self, small_model, loss_fn, simple_dataloader_encoder, device, tmp_path):
         """Test checkpoint saving during training."""
