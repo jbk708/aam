@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aam"
-requires-python = ">= 3.9"
+requires-python = ">= 3.9,<3.13"
 dynamic = ["version"]
 description = "Deep Learning Method for Microbial Sequencing Data using PyTorch"
 readme = "README.md"
@@ -34,6 +34,8 @@ dependencies = [
     "scikit-learn >= 1.3",
     "scipy >= 1.13.0",
     "click",
+    "unifrac",
+    "tqdm",
 ]
 keywords = ["aam", "pytorch", "deep-learning", "microbiome", "unifrac"]
 
