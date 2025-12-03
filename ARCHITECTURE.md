@@ -97,4 +97,4 @@ aam/
 └── cli.py            # Command-line interface
 ```
 
-See `pytorch_porting_plan/` for detailed implementation documentation.
+See `_design_plan/` for detailed implementation documentation.

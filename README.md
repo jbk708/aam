@@ -123,7 +123,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed architecture documentation.
 
 ## Documentation
 
-Implementation details and design decisions are documented in `pytorch_porting_plan/`.
+Implementation details and design decisions are documented in `_design_plan/`.
 
 
 
