@@ -130,7 +130,7 @@ class TestDataPipelineIntegration:
         rarefied_table = loader.rarefy(table, depth=1000, random_seed=42)
         
         computer = UniFracComputer()
-        unifrac_distances = computer.compute_unweighted(rarefied_table, str(tree_file))
+        unifrac_distances = computer.compute_faith_pd(rarefied_table, str(tree_file))
         
         tokenizer = SequenceTokenizer()
         dataset = ASVDataset(
@@ -139,6 +139,7 @@ class TestDataPipelineIntegration:
             max_bp=150,
             token_limit=1024,
             unifrac_distances=unifrac_distances,
+            unifrac_metric="faith_pd",
         )
         
         sample = dataset[0]
@@ -161,7 +162,7 @@ class TestDataPipelineIntegration:
         rarefied_table = loader.rarefy(table, depth=1000, random_seed=42)
         
         computer = UniFracComputer()
-        unifrac_distances = computer.compute_unweighted(rarefied_table, str(tree_file))
+        unifrac_distances = computer.compute_faith_pd(rarefied_table, str(tree_file))
         
         tokenizer = SequenceTokenizer()
         dataset = ASVDataset(
@@ -170,6 +171,7 @@ class TestDataPipelineIntegration:
             max_bp=150,
             token_limit=1024,
             unifrac_distances=unifrac_distances,
+            unifrac_metric="faith_pd",
         )
         
         sample = dataset[0]
@@ -185,7 +187,7 @@ class TestDataPipelineIntegration:
         rarefied_table = loader.rarefy(table, depth=1000, random_seed=42)
         
         computer = UniFracComputer()
-        unifrac_distances = computer.compute_unweighted(rarefied_table, str(tree_file))
+        unifrac_distances = computer.compute_faith_pd(rarefied_table, str(tree_file))
         
         tokenizer = SequenceTokenizer()
         dataset = ASVDataset(
@@ -194,6 +196,7 @@ class TestDataPipelineIntegration:
             max_bp=150,
             token_limit=1024,
             unifrac_distances=unifrac_distances,
+            unifrac_metric="faith_pd",
         )
         
         dataloader = DataLoader(
@@ -370,7 +373,7 @@ class TestTrainingPipelineIntegration:
                 outputs=outputs,
                 targets=targets,
                 is_classifier=False,
-                encoder_type="unifrac",
+                encoder_type="faith_pd",
             )
         
         assert loss_dict["total_loss"].item() >= 0
@@ -418,6 +421,7 @@ class TestEndToEnd:
     @pytest.mark.slow
     def test_end_to_end_training(self, biom_file, tree_file, device, small_model_config, tmp_path):
         """Test full training workflow with real data."""
+        batch_size = 4
         loader = BIOMLoader()
         table = loader.load_table(str(biom_file))
         rarefied_table = loader.rarefy(table, depth=1000, random_seed=42)
@@ -432,17 +436,21 @@ class TestEndToEnd:
             max_bp=150,
             token_limit=1024,
             unifrac_distances=unifrac_distances,
+            unifrac_metric="unweighted",
         )
         
         dataloader = DataLoader(
             dataset,
-            batch_size=4,
+            batch_size=batch_size,
             shuffle=False,
             collate_fn=lambda batch: collate_fn(batch, token_limit=1024),
         )
         
         model_config = small_model_config.copy()
         model_config["max_bp"] = 150
+        model_config["token_limit"] = 1024
+        model_config["encoder_type"] = "unifrac"
+        model_config["base_output_dim"] = batch_size
         model = SequenceEncoder(**model_config).to(device)
         loss_fn = MultiTaskLoss(penalty=1.0, nuc_penalty=1.0)
         optimizer = create_optimizer(model, lr=1e-4)
@@ -460,7 +468,12 @@ class TestEndToEnd:
                 break
             
             tokens = batch["tokens"].to(device)
-            base_targets = batch["unifrac_target"].to(device)
+            sample_ids = batch["sample_ids"]
+            
+            batch_distances = computer.extract_batch_distances(
+                unifrac_distances, sample_ids, metric="unweighted"
+            )
+            base_targets = torch.FloatTensor(batch_distances).to(device)
             
             model.train()
             optimizer.zero_grad()
@@ -489,6 +502,7 @@ class TestEndToEnd:
     @pytest.mark.slow
     def test_end_to_end_loss_decreases(self, biom_file, tree_file, device, small_model_config):
         """Verify loss decreases during training."""
+        batch_size = 4
         loader = BIOMLoader()
         table = loader.load_table(str(biom_file))
         rarefied_table = loader.rarefy(table, depth=1000, random_seed=42)
@@ -503,17 +517,21 @@ class TestEndToEnd:
             max_bp=150,
             token_limit=1024,
             unifrac_distances=unifrac_distances,
+            unifrac_metric="unweighted",
         )
         
         dataloader = DataLoader(
             dataset,
-            batch_size=4,
+            batch_size=batch_size,
             shuffle=False,
             collate_fn=lambda batch: collate_fn(batch, token_limit=1024),
         )
         
         model_config = small_model_config.copy()
         model_config["max_bp"] = 150
+        model_config["token_limit"] = 1024
+        model_config["encoder_type"] = "unifrac"
+        model_config["base_output_dim"] = batch_size
         model = SequenceEncoder(**model_config).to(device)
         loss_fn = MultiTaskLoss(penalty=1.0, nuc_penalty=1.0)
         optimizer = create_optimizer(model, lr=1e-3)
@@ -531,7 +549,12 @@ class TestEndToEnd:
                 break
             
             tokens = batch["tokens"].to(device)
-            base_targets = batch["unifrac_target"].to(device)
+            sample_ids = batch["sample_ids"]
+            
+            batch_distances = computer.extract_batch_distances(
+                unifrac_distances, sample_ids, metric="unweighted"
+            )
+            base_targets = torch.FloatTensor(batch_distances).to(device)
             
             model.train()
             optimizer.zero_grad()
@@ -559,6 +582,7 @@ class TestEndToEnd:
     @pytest.mark.slow
     def test_end_to_end_checkpoint_saving(self, biom_file, tree_file, device, small_model_config, tmp_path):
         """Test checkpoint saving during training."""
+        batch_size = 4
         loader = BIOMLoader()
         table = loader.load_table(str(biom_file))
         rarefied_table = loader.rarefy(table, depth=1000, random_seed=42)
@@ -573,17 +597,21 @@ class TestEndToEnd:
             max_bp=150,
             token_limit=1024,
             unifrac_distances=unifrac_distances,
+            unifrac_metric="unweighted",
         )
         
         dataloader = DataLoader(
             dataset,
-            batch_size=4,
+            batch_size=batch_size,
             shuffle=False,
             collate_fn=lambda batch: collate_fn(batch, token_limit=1024),
         )
         
         model_config = small_model_config.copy()
         model_config["max_bp"] = 150
+        model_config["token_limit"] = 1024
+        model_config["encoder_type"] = "unifrac"
+        model_config["base_output_dim"] = batch_size
         model = SequenceEncoder(**model_config).to(device)
         loss_fn = MultiTaskLoss(penalty=1.0, nuc_penalty=1.0)
         optimizer = create_optimizer(model, lr=1e-4)
@@ -597,12 +625,28 @@ class TestEndToEnd:
             device=device,
         )
         
-        trainer.train_epoch(dataloader)
-        trainer.save_checkpoint(str(checkpoint_path), epoch=1, best_loss=1.0)
+        batch = next(iter(dataloader))
+        tokens = batch["tokens"].to(device)
+        sample_ids = batch["sample_ids"]
+        batch_distances = computer.extract_batch_distances(
+            unifrac_distances, sample_ids, metric="unweighted"
+        )
+        base_targets = torch.FloatTensor(batch_distances).to(device)
+        
+        model.train()
+        optimizer.zero_grad()
+        outputs = model(tokens)
+        targets = {"base_target": base_targets, "tokens": tokens}
+        loss_dict = loss_fn(outputs=outputs, targets=targets, is_classifier=False, encoder_type="unifrac")
+        loss_dict["total_loss"].backward()
+        optimizer.step()
+        
+        trainer.save_checkpoint(str(checkpoint_path), epoch=1, best_val_loss=loss_dict["total_loss"].item())
         
         assert checkpoint_path.exists()
         
         loaded_model = SequenceEncoder(**model_config).to(device)
-        trainer.load_checkpoint(str(checkpoint_path), model=loaded_model)
+        trainer.model = loaded_model
+        trainer.load_checkpoint(str(checkpoint_path))
         
         assert loaded_model is not None
