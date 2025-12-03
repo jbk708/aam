@@ -302,9 +302,7 @@ class TestCLICommands:
         result = runner.invoke(cli, ["pretrain"])
         assert result.exit_code != 0
 
-    def test_pretrain_command_file_validation(
-        self, runner, sample_biom_file, sample_tree_file, sample_output_dir
-    ):
+    def test_pretrain_command_file_validation(self, runner, sample_biom_file, sample_tree_file, sample_output_dir):
         """Test pretrain command file validation."""
         result = runner.invoke(
             cli,
@@ -320,9 +318,7 @@ class TestCLICommands:
         )
         assert result.exit_code != 0
 
-    def test_pretrain_command_batch_size_validation(
-        self, runner, sample_biom_file, sample_tree_file, sample_output_dir
-    ):
+    def test_pretrain_command_batch_size_validation(self, runner, sample_biom_file, sample_tree_file, sample_output_dir):
         """Test pretrain command batch size validation."""
         result = runner.invoke(
             cli,
