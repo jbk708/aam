@@ -494,7 +494,9 @@ class Trainer:
                         patience_counter = 0
 
                         if checkpoint_dir is not None:
-                            checkpoint_path = Path(checkpoint_dir) / f"best_model_epoch_{epoch}.pt"
+                            checkpoint_path = Path(checkpoint_dir) / "best_model.pt"
+                            if checkpoint_path.exists():
+                                checkpoint_path.unlink()
                             self.save_checkpoint(
                                 str(checkpoint_path),
                                 epoch=epoch,
@@ -508,6 +510,26 @@ class Trainer:
                             break
                 else:
                     history["val_loss"].append(None)
+                    train_loss = train_losses["total_loss"]
+                    if train_loss < best_val_loss:
+                        best_val_loss = train_loss
+                        patience_counter = 0
+
+                        if checkpoint_dir is not None:
+                            checkpoint_path = Path(checkpoint_dir) / "best_model.pt"
+                            if checkpoint_path.exists():
+                                checkpoint_path.unlink()
+                            self.save_checkpoint(
+                                str(checkpoint_path),
+                                epoch=epoch,
+                                best_val_loss=best_val_loss,
+                                metrics=train_losses,
+                            )
+                    else:
+                        patience_counter += 1
+                        if patience_counter >= early_stopping_patience:
+                            print(f"Early stopping at epoch {epoch}")
+                            break
 
                 if self.writer is not None:
                     self._log_to_tensorboard(epoch, train_losses, val_results)
