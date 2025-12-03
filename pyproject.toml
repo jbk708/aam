@@ -36,6 +36,7 @@ dependencies = [
     "click",
     "unifrac",
     "tqdm",
+    "tensorboard >= 2.13.0",
 ]
 keywords = ["aam", "pytorch", "deep-learning", "microbiome", "unifrac"]
 

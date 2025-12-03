@@ -3,6 +3,7 @@
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
 from typing import Dict, Optional, Union, Tuple, List
 import os
 from pathlib import Path
@@ -63,6 +64,7 @@ class Trainer:
         scheduler: Optional[Union[torch.optim.lr_scheduler._LRScheduler, WarmupCosineScheduler]] = None,
         device: Union[str, torch.device] = "cpu",
         freeze_base: bool = False,
+        tensorboard_dir: Optional[str] = None,
     ):
         """Initialize Trainer.
 
@@ -73,11 +75,14 @@ class Trainer:
             scheduler: Learning rate scheduler (if None, will be created)
             device: Device to train on
             freeze_base: Whether base model parameters are frozen
+            tensorboard_dir: Directory for TensorBoard logs (if None, TensorBoard disabled)
         """
         self.model = model.to(device)
         self.loss_fn = loss_fn
         self.device = torch.device(device) if isinstance(device, str) else device
         self.freeze_base = freeze_base
+        self.tensorboard_dir = tensorboard_dir
+        self.writer: Optional[SummaryWriter] = None
 
         if optimizer is None:
             self.optimizer = create_optimizer(model, freeze_base=freeze_base)
@@ -142,12 +147,16 @@ class Trainer:
         self,
         dataloader: DataLoader,
         gradient_accumulation_steps: int = 1,
+        epoch: int = 0,
+        num_epochs: int = 1,
     ) -> Dict[str, float]:
         """Run one training epoch.
 
         Args:
             dataloader: Training data loader
             gradient_accumulation_steps: Number of steps to accumulate gradients before optimizer step
+            epoch: Current epoch number
+            num_epochs: Total number of epochs
 
         Returns:
             Dictionary with average losses
@@ -156,10 +165,13 @@ class Trainer:
         total_losses = {}
         num_batches = 0
         accumulated_steps = 0
+        total_steps = len(dataloader)
 
         self.optimizer.zero_grad()
 
-        for batch in tqdm(dataloader, desc="Training", leave=False):
+        current_lr = self.optimizer.param_groups[0]["lr"] if self.optimizer.param_groups else 0.0
+
+        for step, batch in enumerate(tqdm(dataloader, desc="Training", leave=False), 1):
             try:
                 tokens, targets = self._prepare_batch(batch)
 
@@ -185,6 +197,9 @@ class Trainer:
 
                     if self.scheduler is not None:
                         self.scheduler.step()
+                        current_lr = self.scheduler.get_last_lr()[0] if hasattr(self.scheduler, "get_last_lr") else self.optimizer.param_groups[0]["lr"]
+                    else:
+                        current_lr = self.optimizer.param_groups[0]["lr"]
 
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
@@ -224,12 +239,16 @@ class Trainer:
         self,
         dataloader: DataLoader,
         compute_metrics: bool = True,
+        epoch: int = 0,
+        num_epochs: int = 1,
     ) -> Dict[str, float]:
         """Run one validation epoch.
 
         Args:
             dataloader: Validation data loader
             compute_metrics: Whether to compute metrics
+            epoch: Current epoch number
+            num_epochs: Total number of epochs
 
         Returns:
             Dictionary with losses and metrics
@@ -239,9 +258,10 @@ class Trainer:
         all_predictions = {}
         all_targets = {}
         num_batches = 0
+        total_steps = len(dataloader)
 
         with torch.no_grad():
-            for batch in tqdm(dataloader, desc="Validation", leave=False):
+            for step, batch in enumerate(tqdm(dataloader, desc="Validation", leave=False), 1):
                 try:
                     tokens, targets = self._prepare_batch(batch)
 
@@ -354,14 +374,30 @@ class Trainer:
         if checkpoint_dir is not None:
             Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
 
-        for epoch in range(start_epoch, num_epochs):
-            train_losses = self.train_epoch(train_loader, gradient_accumulation_steps=gradient_accumulation_steps)
-            history["train_loss"].append(train_losses["total_loss"])
+        if self.tensorboard_dir is not None:
+            tensorboard_path = Path(self.tensorboard_dir) / "tensorboard"
+            tensorboard_path.mkdir(parents=True, exist_ok=True)
+            self.writer = SummaryWriter(log_dir=str(tensorboard_path))
 
-            if val_loader is not None:
-                val_results = self.validate_epoch(val_loader, compute_metrics=True)
-                val_loss = val_results["total_loss"]
-                history["val_loss"].append(val_loss)
+        try:
+            for epoch in range(start_epoch, num_epochs):
+                train_losses = self.train_epoch(
+                    train_loader,
+                    gradient_accumulation_steps=gradient_accumulation_steps,
+                    epoch=epoch,
+                    num_epochs=num_epochs,
+                )
+                history["train_loss"].append(train_losses["total_loss"])
+
+                if val_loader is not None:
+                    val_results = self.validate_epoch(
+                        val_loader,
+                        compute_metrics=True,
+                        epoch=epoch,
+                        num_epochs=num_epochs,
+                    )
+                    val_loss = val_results["total_loss"]
+                    history["val_loss"].append(val_loss)
 
                 if val_loss < best_val_loss:
                     best_val_loss = val_loss
@@ -383,8 +419,15 @@ class Trainer:
             else:
                 history["val_loss"].append(None)
 
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+                if self.writer is not None:
+                    pass
+
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+
+        finally:
+            if self.writer is not None:
+                self.writer.close()
 
         return history
 
