@@ -9,6 +9,10 @@ import os
 from pathlib import Path
 import math
 from tqdm import tqdm
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
 
 from aam.training.metrics import compute_regression_metrics, compute_count_metrics, compute_classification_metrics
 
@@ -142,6 +146,156 @@ class Trainer:
         if hasattr(self.model, "is_classifier"):
             return self.model.is_classifier
         return False
+
+    def _create_prediction_plot(
+        self,
+        predictions: torch.Tensor,
+        targets: torch.Tensor,
+        epoch: int,
+        r2: float,
+    ) -> plt.Figure:
+        """Create prediction vs actual scatter plot for regression tasks.
+
+        Args:
+            predictions: Predicted values [B, 1] or [B]
+            targets: Actual values [B, 1] or [B]
+            epoch: Current epoch number
+            r2: R² score
+
+        Returns:
+            Matplotlib figure
+        """
+        pred_np = np.array(predictions.detach().cpu().tolist()).flatten()
+        target_np = np.array(targets.detach().cpu().tolist()).flatten()
+
+        fig, ax = plt.subplots(figsize=(8, 6), dpi=100)
+        ax.scatter(target_np, pred_np, alpha=0.6, s=20)
+
+        min_val = min(target_np.min(), pred_np.min())
+        max_val = max(target_np.max(), pred_np.max())
+
+        ax.plot([min_val, max_val], [min_val, max_val], "k--", linewidth=1, label="Perfect Prediction", alpha=0.5)
+
+        if len(target_np) > 1:
+            z = np.polyfit(target_np, pred_np, 1)
+            p = np.poly1d(z)
+            ax.plot(target_np, p(target_np), "b-", linewidth=2, label=f"Linear Fit, R² = {r2:.4f}")
+
+        ax.set_xlabel("Actual", fontsize=12)
+        ax.set_ylabel("Predicted", fontsize=12)
+        ax.set_title(f"Predicted vs Actual (Epoch {epoch}, R² = {r2:.4f})", fontsize=14)
+        ax.legend(loc="upper left")
+        ax.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+        return fig
+
+    def _create_confusion_matrix_plot(
+        self,
+        predictions: torch.Tensor,
+        targets: torch.Tensor,
+        epoch: int,
+        accuracy: float,
+        precision: float,
+        recall: float,
+        f1: float,
+    ) -> plt.Figure:
+        """Create confusion matrix plot for classification tasks.
+
+        Args:
+            predictions: Predicted class indices [B] or logits [B, num_classes]
+            targets: Actual class indices [B]
+            epoch: Current epoch number
+            accuracy: Accuracy score
+            precision: Precision score
+            recall: Recall score
+            f1: F1 score
+
+        Returns:
+            Matplotlib figure
+        """
+        from sklearn.metrics import confusion_matrix
+
+        target_np = np.array(targets.detach().cpu().tolist())
+
+        if predictions.dim() > 1 and predictions.size(-1) > 1:
+            pred_np = np.array(predictions.detach().cpu().argmax(dim=-1).tolist())
+        else:
+            pred_np = np.array(predictions.detach().cpu().tolist()).flatten()
+
+        num_classes = max(int(pred_np.max()), int(target_np.max())) + 1
+        cm = confusion_matrix(target_np, pred_np, labels=list(range(num_classes)))
+
+        fig, ax = plt.subplots(figsize=(8, 6), dpi=100)
+        im = ax.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
+        ax.figure.colorbar(im, ax=ax)
+
+        ax.set(xticks=np.arange(cm.shape[1]), yticks=np.arange(cm.shape[0]), xticklabels=list(range(num_classes)), yticklabels=list(range(num_classes)), ylabel="True Label", xlabel="Predicted Label")
+
+        thresh = cm.max() / 2.0
+        for i in range(cm.shape[0]):
+            for j in range(cm.shape[1]):
+                ax.text(j, i, format(cm[i, j], "d"), ha="center", va="center", color="white" if cm[i, j] > thresh else "black")
+
+        metrics_text = f"Accuracy: {accuracy:.4f}\nPrecision: {precision:.4f}\nRecall: {recall:.4f}\nF1: {f1:.4f}"
+        ax.text(0.98, 0.02, metrics_text, transform=ax.transAxes, fontsize=10, verticalalignment="bottom", horizontalalignment="right", bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5))
+
+        ax.set_title(f"Confusion Matrix (Epoch {epoch})", fontsize=14, pad=20)
+        plt.tight_layout()
+        return fig
+
+    def _save_prediction_plots(
+        self,
+        predictions: torch.Tensor,
+        targets: torch.Tensor,
+        epoch: int,
+        metrics: Dict[str, float],
+        checkpoint_dir: Optional[str],
+    ) -> None:
+        """Create and save prediction plots when validation improves.
+
+        Args:
+            predictions: Predicted values
+            targets: Actual values
+            epoch: Current epoch number
+            metrics: Metrics dictionary
+            checkpoint_dir: Directory to save plots
+        """
+        if checkpoint_dir is None:
+            return
+
+        is_classifier = self._get_is_classifier()
+
+        if is_classifier:
+            if "accuracy" not in metrics or "precision" not in metrics or "recall" not in metrics or "f1" not in metrics:
+                return
+            fig = self._create_confusion_matrix_plot(
+                predictions,
+                targets,
+                epoch,
+                metrics["accuracy"],
+                metrics["precision"],
+                metrics["recall"],
+                metrics["f1"],
+            )
+        else:
+            if "r2" not in metrics:
+                return
+            fig = self._create_prediction_plot(predictions, targets, epoch, metrics["r2"])
+
+        plots_dir = Path(checkpoint_dir) / "plots"
+        plots_dir.mkdir(parents=True, exist_ok=True)
+
+        plot_file = plots_dir / "pred_vs_actual_best.png"
+        if plot_file.exists():
+            plot_file.unlink()
+
+        fig.savefig(plot_file, dpi=100, bbox_inches="tight")
+
+        if self.writer is not None:
+            self.writer.add_figure("validation/prediction_plot", fig, epoch)
+
+        plt.close(fig)
 
     def _log_to_tensorboard(self, epoch: int, train_losses: Dict[str, float], val_results: Optional[Dict[str, float]] = None):
         """Log metrics to TensorBoard.
@@ -303,7 +457,8 @@ class Trainer:
         compute_metrics: bool = True,
         epoch: int = 0,
         num_epochs: int = 1,
-    ) -> Dict[str, float]:
+        return_predictions: bool = False,
+    ) -> Union[Dict[str, float], Tuple[Dict[str, float], Optional[torch.Tensor], Optional[torch.Tensor]]]:
         """Run one validation epoch.
 
         Args:
@@ -401,16 +556,19 @@ class Trainer:
 
         avg_losses = {key: value / num_batches for key, value in total_losses.items()}
 
+        target_pred_tensor = None
+        target_true_tensor = None
+
         if compute_metrics and all_predictions:
             if "target_prediction" in all_predictions:
-                target_pred = torch.cat(all_predictions["target_prediction"], dim=0)
-                target_true = torch.cat(all_targets["target"], dim=0)
+                target_pred_tensor = torch.cat(all_predictions["target_prediction"], dim=0)
+                target_true_tensor = torch.cat(all_targets["target"], dim=0)
 
                 is_classifier = self._get_is_classifier()
                 if is_classifier:
-                    metrics = compute_classification_metrics(target_pred, target_true)
+                    metrics = compute_classification_metrics(target_pred_tensor, target_true_tensor)
                 else:
-                    metrics = compute_regression_metrics(target_pred, target_true)
+                    metrics = compute_regression_metrics(target_pred_tensor, target_true_tensor)
                 avg_losses.update(metrics)
 
             if "count_prediction" in all_predictions:
@@ -420,6 +578,8 @@ class Trainer:
                 metrics = compute_count_metrics(count_pred, count_true, mask)
                 avg_losses.update({f"count_{k}": v for k, v in metrics.items()})
 
+        if return_predictions:
+            return avg_losses, target_pred_tensor, target_true_tensor
         return avg_losses
 
     def train(
@@ -431,6 +591,7 @@ class Trainer:
         checkpoint_dir: Optional[str] = None,
         resume_from: Optional[str] = None,
         gradient_accumulation_steps: int = 1,
+        save_plots: bool = True,
     ) -> Dict[str, list]:
         """Main training loop.
 
@@ -442,6 +603,7 @@ class Trainer:
             checkpoint_dir: Directory to save checkpoints
             resume_from: Path to checkpoint to resume from
             gradient_accumulation_steps: Number of steps to accumulate gradients before optimizer step
+            save_plots: Whether to save prediction plots when validation improves
 
         Returns:
             Dictionary with training history
@@ -480,12 +642,20 @@ class Trainer:
 
                 val_results = None
                 if val_loader is not None:
-                    val_results = self.validate_epoch(
+                    return_predictions = save_plots
+                    val_output = self.validate_epoch(
                         val_loader,
                         compute_metrics=True,
                         epoch=epoch,
                         num_epochs=num_epochs,
+                        return_predictions=return_predictions,
                     )
+                    if return_predictions:
+                        val_results, val_predictions, val_targets = val_output
+                    else:
+                        val_results = val_output
+                        val_predictions = None
+                        val_targets = None
                     val_loss = val_results["total_loss"]
                     history["val_loss"].append(val_loss)
 
@@ -502,6 +672,15 @@ class Trainer:
                                 epoch=epoch,
                                 best_val_loss=best_val_loss,
                                 metrics=val_results,
+                            )
+
+                        if save_plots and val_predictions is not None and val_targets is not None:
+                            self._save_prediction_plots(
+                                val_predictions,
+                                val_targets,
+                                epoch,
+                                val_results,
+                                checkpoint_dir,
                             )
                     else:
                         patience_counter += 1

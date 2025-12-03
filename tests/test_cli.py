@@ -339,15 +339,25 @@ class TestCLICommands:
 
     def test_train_command_default_patience(self):
         """Test that train command has default patience of 10."""
-        sig = inspect.signature(train)
-        patience_param = sig.parameters["patience"]
-        assert patience_param.default == 10, f"Expected default to be 10, got {patience_param.default}"
+        train_cmd = cli.commands["train"]
+        patience_option = None
+        for param in train_cmd.params:
+            if param.name == "patience":
+                patience_option = param
+                break
+        assert patience_option is not None, "patience parameter not found"
+        assert patience_option.default == 10, f"Expected default to be 10, got {patience_option.default}"
 
     def test_pretrain_command_default_patience(self):
         """Test that pretrain command has default patience of 10."""
-        sig = inspect.signature(pretrain)
-        patience_param = sig.parameters["patience"]
-        assert patience_param.default == 10, f"Expected default to be 10, got {patience_param.default}"
+        pretrain_cmd = cli.commands["pretrain"]
+        patience_option = None
+        for param in pretrain_cmd.params:
+            if param.name == "patience":
+                patience_option = param
+                break
+        assert patience_option is not None, "patience parameter not found"
+        assert patience_option.default == 10, f"Expected default to be 10, got {patience_option.default}"
 
     def test_predict_command_help(self, runner):
         """Test predict command help."""

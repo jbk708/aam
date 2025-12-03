@@ -37,6 +37,7 @@ dependencies = [
     "unifrac",
     "tqdm",
     "tensorboard >= 2.13.0",
+    "matplotlib",
 ]
 keywords = ["aam", "pytorch", "deep-learning", "microbiome", "unifrac"]
 

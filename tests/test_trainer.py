@@ -8,6 +8,8 @@ import tempfile
 import os
 from pathlib import Path
 import inspect
+import matplotlib.pyplot as plt
+import numpy as np
 
 from aam.training.trainer import (
     Trainer,
@@ -963,3 +965,267 @@ class TestTensorBoardLogging:
         )
 
         assert "total_loss" in results
+
+
+class TestPredictionPlots:
+    """Test validation prediction plot functionality."""
+
+    def test_create_prediction_plot_regression(self, small_model, loss_fn, device):
+        """Test creating regression prediction plot."""
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+        )
+
+        predictions = torch.randn(100, 1).to(device)
+        targets = predictions + torch.randn(100, 1).to(device) * 0.1
+        r2 = 0.95
+
+        fig = trainer._create_prediction_plot(predictions, targets, epoch=5, r2=r2)
+
+        assert fig is not None
+        assert isinstance(fig, plt.Figure)
+        plt.close(fig)
+
+    def test_create_confusion_matrix_plot_classification(self, loss_fn, device):
+        """Test creating classification confusion matrix plot."""
+        from aam.models.sequence_predictor import SequencePredictor
+
+        classifier_model = SequencePredictor(
+            vocab_size=5,
+            embedding_dim=32,
+            max_bp=50,
+            token_limit=64,
+            asv_num_layers=1,
+            asv_num_heads=2,
+            sample_num_layers=1,
+            sample_num_heads=2,
+            encoder_num_layers=1,
+            encoder_num_heads=2,
+            count_num_layers=1,
+            count_num_heads=2,
+            target_num_layers=1,
+            target_num_heads=2,
+            out_dim=3,
+            is_classifier=True,
+            freeze_base=False,
+            predict_nucleotides=False,
+            base_output_dim=32,
+        )
+
+        trainer = Trainer(
+            model=classifier_model,
+            loss_fn=loss_fn,
+            device=device,
+        )
+
+        predictions = torch.randint(0, 3, (100,)).to(device)
+        targets = torch.randint(0, 3, (100,)).to(device)
+        accuracy = 0.85
+        precision = 0.82
+        recall = 0.80
+        f1 = 0.81
+
+        fig = trainer._create_confusion_matrix_plot(
+            predictions, targets, epoch=5, accuracy=accuracy, precision=precision, recall=recall, f1=f1
+        )
+
+        assert fig is not None
+        assert isinstance(fig, plt.Figure)
+        plt.close(fig)
+
+    def test_validate_epoch_returns_predictions(self, small_predictor, loss_fn, simple_dataloader, device):
+        """Test that validate_epoch returns predictions when return_predictions=True."""
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+        )
+
+        results, predictions, targets = trainer.validate_epoch(
+            simple_dataloader, compute_metrics=True, return_predictions=True
+        )
+
+        assert "total_loss" in results
+        assert predictions is not None
+        assert targets is not None
+        assert predictions.shape[0] == targets.shape[0]
+
+    def test_validate_epoch_no_predictions_when_false(self, small_predictor, loss_fn, simple_dataloader, device):
+        """Test that validate_epoch doesn't return predictions when return_predictions=False."""
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+        )
+
+        results = trainer.validate_epoch(simple_dataloader, compute_metrics=True, return_predictions=False)
+
+        assert "total_loss" in results
+        assert isinstance(results, dict)
+
+    def test_save_prediction_plots_regression(self, small_predictor, loss_fn, simple_dataloader, device, tmp_path):
+        """Test saving regression prediction plots to disk."""
+        checkpoint_dir = tmp_path / "checkpoints"
+        tensorboard_dir = tmp_path / "tensorboard"
+
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+            tensorboard_dir=str(tensorboard_dir),
+        )
+
+        predictions = torch.randn(50, 1).to(device)
+        targets = predictions + torch.randn(50, 1).to(device) * 0.1
+        metrics = {"r2": 0.95, "mse": 0.05}
+
+        trainer._save_prediction_plots(predictions, targets, epoch=5, metrics=metrics, checkpoint_dir=str(checkpoint_dir))
+
+        plots_dir = checkpoint_dir / "plots"
+        plot_file = plots_dir / "pred_vs_actual_best.png"
+        assert plot_file.exists()
+
+    def test_save_prediction_plots_classification(self, loss_fn, device, tmp_path):
+        """Test saving classification confusion matrix plots to disk."""
+        from aam.models.sequence_predictor import SequencePredictor
+
+        classifier_model = SequencePredictor(
+            vocab_size=5,
+            embedding_dim=32,
+            max_bp=50,
+            token_limit=64,
+            asv_num_layers=1,
+            asv_num_heads=2,
+            sample_num_layers=1,
+            sample_num_heads=2,
+            encoder_num_layers=1,
+            encoder_num_heads=2,
+            count_num_layers=1,
+            count_num_heads=2,
+            target_num_layers=1,
+            target_num_heads=2,
+            out_dim=3,
+            is_classifier=True,
+            freeze_base=False,
+            predict_nucleotides=False,
+            base_output_dim=32,
+        )
+
+        checkpoint_dir = tmp_path / "checkpoints"
+        tensorboard_dir = tmp_path / "tensorboard"
+
+        trainer = Trainer(
+            model=classifier_model,
+            loss_fn=loss_fn,
+            device=device,
+            tensorboard_dir=str(tensorboard_dir),
+        )
+
+        predictions = torch.randint(0, 3, (50,)).to(device)
+        targets = torch.randint(0, 3, (50,)).to(device)
+        metrics = {"accuracy": 0.85, "precision": 0.82, "recall": 0.80, "f1": 0.81}
+
+        trainer._save_prediction_plots(predictions, targets, epoch=5, metrics=metrics, checkpoint_dir=str(checkpoint_dir))
+
+        plots_dir = checkpoint_dir / "plots"
+        plot_file = plots_dir / "pred_vs_actual_best.png"
+        assert plot_file.exists()
+
+    def test_train_with_plots_regression(self, small_predictor, loss_fn, simple_dataloader, device, tmp_path):
+        """Test training with plot generation for regression."""
+        checkpoint_dir = tmp_path / "checkpoints"
+        tensorboard_dir = tmp_path / "tensorboard"
+
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+            tensorboard_dir=str(tensorboard_dir),
+        )
+
+        history = trainer.train(
+            train_loader=simple_dataloader,
+            val_loader=simple_dataloader,
+            num_epochs=3,
+            checkpoint_dir=str(checkpoint_dir),
+            save_plots=True,
+        )
+
+        plots_dir = checkpoint_dir / "plots"
+        plot_file = plots_dir / "pred_vs_actual_best.png"
+        assert plot_file.exists()
+
+    def test_train_without_plots(self, small_predictor, loss_fn, simple_dataloader, device, tmp_path):
+        """Test training without plot generation."""
+        checkpoint_dir = tmp_path / "checkpoints"
+        tensorboard_dir = tmp_path / "tensorboard"
+
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+            tensorboard_dir=str(tensorboard_dir),
+        )
+
+        history = trainer.train(
+            train_loader=simple_dataloader,
+            val_loader=simple_dataloader,
+            num_epochs=3,
+            checkpoint_dir=str(checkpoint_dir),
+            save_plots=False,
+        )
+
+        plots_dir = checkpoint_dir / "plots"
+        assert not plots_dir.exists()
+
+    def test_plots_only_on_improvement(self, small_predictor, loss_fn, simple_dataloader, device, tmp_path):
+        """Test that plots are only created when validation improves."""
+        checkpoint_dir = tmp_path / "checkpoints"
+        tensorboard_dir = tmp_path / "tensorboard"
+
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+            tensorboard_dir=str(tensorboard_dir),
+        )
+
+        history = trainer.train(
+            train_loader=simple_dataloader,
+            val_loader=simple_dataloader,
+            num_epochs=5,
+            checkpoint_dir=str(checkpoint_dir),
+            save_plots=True,
+            early_stopping_patience=10,
+        )
+
+        plots_dir = checkpoint_dir / "plots"
+        if plots_dir.exists():
+            plot_files = list(plots_dir.glob("*.png"))
+            assert len(plot_files) >= 1
+            assert any("best" in f.name for f in plot_files)
+
+    def test_plot_save_without_tensorboard(self, small_predictor, loss_fn, simple_dataloader, device, tmp_path):
+        """Test that plots are saved even without TensorBoard."""
+        checkpoint_dir = tmp_path / "checkpoints"
+
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+            tensorboard_dir=None,
+        )
+
+        history = trainer.train(
+            train_loader=simple_dataloader,
+            val_loader=simple_dataloader,
+            num_epochs=3,
+            checkpoint_dir=str(checkpoint_dir),
+            save_plots=True,
+        )
+
+        plots_dir = checkpoint_dir / "plots"
+        plot_file = plots_dir / "pred_vs_actual_best.png"
+        assert plot_file.exists()
