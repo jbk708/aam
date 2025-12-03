@@ -1,796 +1,169 @@
 # PyTorch Porting Tickets
 
-**Priority**: HIGH - Core Implementation  
+**Priority**: MEDIUM - Feature Enhancements  
 **Status**: Not Started
 
-This document contains tickets for implementing the PyTorch port of AAM, organized by implementation order.
+This document contains tickets for implementing feature enhancements for the PyTorch port of AAM.
 
 ---
 
-## Phase 1: Data Pipeline
+## Phase 8: Feature Enhancements
 
-### PYT-1.1: Implement BIOM Loader
-**Priority:** HIGH | **Effort:** Medium | **Status:** ✅ Completed
+### PYT-8.1: Implement TensorBoard Train/Val Overlay Verification
+**Priority:** LOW | **Effort:** Low | **Status:** Not Started
 
 **Description:**
-Implement BIOM table loading and rarefaction as specified in `pytorch_porting_plan/01_biom_loader.md`.
+Verify that TensorBoard train/val metrics automatically overlay correctly for easy comparison. This is primarily a verification and documentation task as TensorBoard already supports automatic overlay.
 
-**Files Created:**
-- `aam/data/biom_loader.py`
-- `tests/test_biom_loader.py`
+**Files to be Modified:**
+- `aam/training/trainer.py` - Verify metric naming consistency
+- Documentation - Add usage guide for overlay feature
 
 **Acceptance Criteria:**
-- [x] `BIOMLoader` class implemented
-- [x] `load_table()` method loads BIOM file
-- [x] `rarefy()` method subsamples to specified depth (uses biom-format's built-in `subsample()`)
-- [x] `get_sequences()` extracts sequences from observation IDs (150bp sequences)
-- [x] Handles empty samples/ASVs (drops samples below depth)
-- [x] Supports reproducible rarefaction (random seed)
-- [x] Unit tests pass (21 tests, 93% coverage)
+- [ ] Verify current TensorBoard logging creates proper tags for overlay
+- [ ] Test overlay functionality in TensorBoard UI
+- [ ] Document overlay usage in README or training guide
+- [ ] Ensure consistent metric names between train/val (verify existing implementation)
+- [ ] Add note in documentation about how to use TensorBoard overlay feature
 
 **Implementation Notes:**
-- Uses biom-format's built-in `subsample()` method for rarefaction
-- `filter_and_sort()` removed - all ASVs are used, no filtering needed
-- Sequences extracted directly from observation IDs (assumed to be 150bp DNA sequences)
-- No metadata handling - BIOM tables assumed to have no metadata
-- Samples with fewer reads than depth are dropped during rarefaction
+- TensorBoard automatically overlays metrics with same base name but different prefixes
+- Users select both `train/{metric}` and `val/{metric}` in TensorBoard UI to see overlay
+- No code changes required - this is primarily documentation/verification
+- Verify that all metrics (losses, regression metrics, classification metrics, count metrics) can be overlaid
 
-**Dependencies:** None
+**Dependencies:** PYT-4.4
 
-**Actual Time:** ~4 hours
+**Estimated Time:** 1-2 hours
 
 ---
 
-### PYT-1.2: Implement UniFrac Computer
-**Priority:** HIGH | **Effort:** Medium | **Status:** ✅ Completed
+### PYT-8.2: Implement Single Best Model File Saving
+**Priority:** MEDIUM | **Effort:** Low | **Status:** Not Started
 
 **Description:**
-Implement UniFrac distance computation using `biocore/unifrac-binaries` library (https://github.com/biocore/unifrac-binaries/tree/main) as specified in `pytorch_porting_plan/02_unifrac_computer.md`.
+Modify checkpoint saving to keep only the single best model file, replacing previous best model instead of saving multiple epoch-specific files.
 
-**Files Created:**
-- `aam/data/unifrac.py`
-- `tests/test_unifrac.py`
+**Files to be Modified:**
+- `aam/training/trainer.py` - Modify checkpoint saving logic
+- `tests/test_trainer.py` - Add tests for single best model saving
 
 **Acceptance Criteria:**
-- [x] `UniFracComputer` class implemented
-- [x] Uses `unifrac` library for computation (package name is `unifrac`, not `unifrac-binaries`)
-- [x] `compute_unweighted()` returns `DistanceMatrix`
-- [x] `compute_faith_pd()` returns `pandas.Series` (as returned by library)
-- [x] `extract_batch_distances()` extracts batch-level distances
-- [x] Handles epoch regeneration (ready for integration)
-- [x] Validates batch size is even
-- [x] Unit tests pass (19 tests, all passing)
-
-**Dependencies:** PYT-1.1
-
-**Library:** `unifrac` (package name is `unifrac`, install via `pip install unifrac` or `conda install -c biocore unifrac`)
+- [ ] Modify `train()` method to save single `best_model.pt` file (no epoch number)
+- [ ] Remove epoch number from best model filename
+- [ ] Ensure old best model is replaced (not accumulated)
+- [ ] Test checkpoint saving/loading with best model
+- [ ] Update documentation to reflect single best model file
+- [ ] Verify resume from checkpoint still works
+- [ ] Unit tests pass (add tests for single best model file)
 
 **Implementation Notes:**
-- Uses `unifrac` package (not `unifrac-binaries` - package name differs from repo name)
-- `compute_unweighted()` loads tree using `skbio.read()` and calls `unifrac.unweighted()`
-- `compute_faith_pd()` returns `pandas.Series` (library default, not DistanceMatrix)
-- `extract_batch_distances()` handles both `DistanceMatrix` (unweighted) and `Series` (faith_pd)
-- Batch size validation integrated into `extract_batch_distances()` for unweighted metric
-- Error handling for file not found, ASV ID mismatches, and invalid inputs
-- Tests include unit tests with synthetic data and integration tests with real BIOM/tree files
-
-**Estimated Time:** 4-6 hours
-**Actual Time:** ~4 hours
-
----
-
-### PYT-1.3: Implement Dataset and Tokenizer
-**Priority:** HIGH | **Effort:** Medium | **Status:** ✅ Completed
-
-**Description:**
-Implement PyTorch Dataset and sequence tokenization as specified in `pytorch_porting_plan/03_dataset_tokenizer.md`.
-
-**Files Created:**
-- `aam/data/tokenizer.py`
-- `aam/data/dataset.py`
-- `tests/test_tokenizer.py`
-- `tests/test_dataset.py`
-
-**Acceptance Criteria:**
-- [x] `SequenceTokenizer` class implemented
-- [x] Nucleotide to token mapping (A/C/G/T → 1/2/3/4)
-- [x] `ASVDataset` class inherits from `Dataset`
-- [x] Custom `collate_fn` handles variable ASV counts
-- [x] Handles epoch regeneration (ready for integration)
-- [x] Unit tests pass (30 tests, all passing)
-
-**Dependencies:** PYT-1.1, PYT-1.2
-
-**Implementation Notes:**
-- Class named `ASVDataset` (not `MicrobialDataset`)
-- `SequenceTokenizer` maps A→1, C→2, G→3, T→4, invalid chars→0
-- `ASVDataset` extracts sequences from BIOM table observation IDs
-- Supports optional metadata with target column
-- Supports optional UniFrac distances (unweighted or faith_pd)
-- `collate_fn` pads samples to `token_limit` ASVs per sample
-- Returns batched tensors: tokens `[B, S, L]`, counts `[B, S, 1]`
-- Tests include unit tests and integration tests with DataLoader
-
-**Estimated Time:** 6-8 hours
-**Actual Time:** ~4 hours
-
----
-
-## Phase 2: Core Components
-
-### PYT-2.1: Implement Core Layers
-**Priority:** HIGH | **Effort:** Low | **Status:** ✅ Completed
-
-**Description:**
-Implement AttentionPooling and PositionEmbedding as specified in `pytorch_porting_plan/04_core_layers.md`.
-
-**Files Created:**
-- `aam/models/attention_pooling.py`
-- `aam/models/position_embedding.py`
-- `tests/test_attention_pooling.py`
-- `tests/test_position_embedding.py`
-
-**Acceptance Criteria:**
-- [x] `AttentionPooling` class implemented
-- [x] `PositionEmbedding` class implemented
-- [x] Masking utility functions implemented (`float_mask`, `create_mask_from_tokens`, `apply_mask`)
-- [x] Unit tests pass (25 tests, 100% coverage)
-
-**Implementation Notes:**
-- `AttentionPooling` uses query projection, scales scores by `sqrt(hidden_dim)`, handles masking with `-inf` before softmax
-- `PositionEmbedding` uses learned embeddings, adds (not concatenates) position information
-- Utility functions handle mask conversion and application
-- All components handle variable sequence lengths and device placement correctly
-
-**Dependencies:** None
-
-**Estimated Time:** 3-4 hours
-**Actual Time:** ~3 hours
-
----
-
-### PYT-2.2: Implement Transformer Encoder
-**Priority:** HIGH | **Effort:** Medium | **Status:** ✅ Completed
-
-**Description:**
-Implement transformer encoder as specified in `pytorch_porting_plan/05_transformer.md`.
-
-**Files Created:**
-- `aam/models/transformer.py`
-- `tests/test_transformer.py`
-
-**Acceptance Criteria:**
-- [x] `TransformerEncoder` class implemented
-- [x] Uses PyTorch built-in or custom implementation
-- [x] Handles masking correctly
-- [x] Supports configurable layers, heads, dimensions
-- [x] Unit tests pass (23 tests, all passing)
-
-**Dependencies:** PYT-2.1
-
-**Implementation Notes:**
-- Uses PyTorch built-in `nn.TransformerEncoder` and `nn.TransformerEncoderLayer` (Option 1 from plan)
-- Pre-norm architecture (`norm_first=True`) for training stability
-- Batch-first format (`batch_first=True`) for consistency
-- Mask conversion: converts input mask (1=valid, 0=padding) to PyTorch format (True=padding, False=valid)
-- Output normalization with LayerNorm (eps=1e-6)
-- Supports GELU and ReLU activations
-- Default intermediate_size = 4 * hidden_dim
-- All 23 unit tests pass, covering shapes, masking, gradients, dropout, and device handling
-
-**Estimated Time:** 4-6 hours
-**Actual Time:** ~3 hours
-
----
-
-## Phase 3: Model Architecture
-
-### PYT-3.1: Implement ASVEncoder
-**Priority:** HIGH | **Effort:** Medium | **Status:** ✅ Completed
-
-**Description:**
-Implement ASV-level sequence encoder as specified in `pytorch_porting_plan/06_asv_encoder.md`.
-
-**Files Created:**
-- `aam/models/asv_encoder.py`
-- `tests/test_asv_encoder.py`
-
-**Acceptance Criteria:**
-- [x] `ASVEncoder` class implemented
-- [x] Processes nucleotide sequences
-- [x] Returns ASV embeddings `[B, S, D]`
-- [x] Optional nucleotide prediction head
-- [x] Unit tests pass (28 tests, all passing)
-
-**Dependencies:** PYT-2.1, PYT-2.2
-
-**Implementation Notes:**
-- Reshapes input from `[B, S, L]` to `[B*S, L]` for parallel processing of all ASVs
-- Creates mask from tokens (1 for valid, 0 for padding) for transformer and attention pooling
-- Token embedding layer maps vocab_size (default 5) to embedding_dim
-- Position embedding uses max_bp + 1 to account for 0-indexed positions
-- Transformer encoder processes nucleotide sequences with configurable layers, heads, and dimensions
-- Attention pooling reduces sequence-level embeddings to single ASV embedding
-- Optional nucleotide prediction head for self-supervised learning (only computed when requested)
-- Handles variable-length sequences with padding correctly
-- Converts tokens to long integers for embedding layer compatibility
-- All 28 unit tests pass, covering shapes, masking, gradients, dropout, device handling, and various configurations
-- Minimal inline comments following workflow principles
-
-**Estimated Time:** 4-6 hours
-**Actual Time:** ~4 hours
-
----
-
-### PYT-3.2: Implement SampleSequenceEncoder
-**Priority:** HIGH | **Effort:** Medium | **Status:** ✅ Completed
-
-**Description:**
-Implement sample-level encoder as specified in `pytorch_porting_plan/07_base_sequence_encoder.md`.
-
-**Files Created:**
-- `aam/models/sample_sequence_encoder.py`
-- `tests/test_sample_sequence_encoder.py`
-
-**Acceptance Criteria:**
-- [x] `SampleSequenceEncoder` class implemented
-- [x] Composes ASVEncoder
-- [x] Processes ASV embeddings at sample level
-- [x] Returns sample embeddings `[B, S, D]`
-- [x] Unit tests pass (30 tests, all passing)
-
-**Dependencies:** PYT-3.1
-
-**Implementation Notes:**
-- Class renamed from `BaseSequenceEncoder` to `SampleSequenceEncoder` for clarity
-- Processes ASV embeddings through sample-level position embeddings and transformer
-- Handles NaN values from fully padded ASVs
-- Supports training mode with nucleotide predictions and inference mode
-
-**Estimated Time:** 4-6 hours
-**Actual Time:** ~4 hours
-
----
-
-### PYT-3.3: Implement SequenceEncoder
-**Priority:** HIGH | **Effort:** Medium | **Status:** ✅ Completed
-
-**Description:**
-Implement encoder with UniFrac prediction head as specified in `pytorch_porting_plan/08_sequence_encoder.md`.
-
-**Files Created:**
-- `aam/models/sequence_encoder.py`
-- `tests/test_sequence_encoder.py`
-
-**Acceptance Criteria:**
-- [x] `SequenceEncoder` class implemented
-- [x] Composes SampleSequenceEncoder
-- [x] Predicts UniFrac distances
-- [x] Returns sample embeddings and predictions
-- [x] Supports different encoder types (unifrac, taxonomy, faith_pd, combined)
-- [x] Unit tests pass (25 tests, all passing)
-
-**Implementation Notes:**
-- Composes `SampleSequenceEncoder` as base component
-- Adds encoder transformer, attention pooling, and output head
-- Supports four encoder types: `unifrac`, `taxonomy`, `faith_pd`, `combined`
-- Combined type uses separate heads: `uni_ff`, `faith_ff`, `tax_ff`
-- Returns dictionary with `base_prediction` and `sample_embeddings`
-- Optional nucleotide predictions returned as side output (for loss only, not used as input)
-- Handles mask creation from tokens for transformer and attention pooling
-- Supports optional `base_output_dim` (defaults to `embedding_dim` if None)
-- All 25 unit tests pass, covering shapes, masking, gradients, device handling, and all encoder types
-
-**Dependencies:** PYT-3.2
-
-**Estimated Time:** 6-8 hours
-**Actual Time:** ~4 hours
-
----
-
-### PYT-3.4: Implement SequencePredictor
-**Priority:** HIGH | **Effort:** Medium | **Status:** ✅ Completed
-
-**Description:**
-Implement main prediction model as specified in `pytorch_porting_plan/09_sequence_predictor.md`.
-
-**Files Created:**
-- `aam/models/sequence_predictor.py`
-- `tests/test_sequence_predictor.py`
-
-**Acceptance Criteria:**
-- [x] `SequencePredictor` class implemented
-- [x] Composes SequenceEncoder as base model
-- [x] Supports `freeze_base` parameter
-- [x] Predicts target and counts
-- [x] Returns dictionary of predictions
-- [x] Unit tests pass (27 tests, all passing)
-
-**Implementation Notes:**
-- Composes SequenceEncoder as `base_model` (composition pattern, not inheritance)
-- Extracts `embedding_dim` from base_model when provided to ensure dimension consistency
-- Supports freezing base model parameters via `freeze_base=True`
-- Count encoder: TransformerEncoder + Linear head → `[B, S, 1]` predictions
-- Target encoder: TransformerEncoder + AttentionPooling + Linear head → `[B, out_dim]` predictions
-- Uses base embeddings (`sample_embeddings`) from base_model, NOT base predictions (for loss only)
-- Supports classification mode (log-softmax) and regression mode
-- Returns dictionary with `target_prediction`, `count_prediction`, `base_embeddings`, and optionally `base_prediction`/`nuc_predictions`
-- Handles all encoder types (unifrac, taxonomy, faith_pd, combined)
-- All 27 unit tests pass, covering shapes, masking, gradients, device handling, frozen/unfrozen base, and all encoder types
-
-**Dependencies:** PYT-3.3
-
-**Estimated Time:** 6-8 hours
-**Actual Time:** ~4 hours
-
----
-
-## Phase 4: Training
-
-### PYT-4.1: Implement Loss Functions
-**Priority:** HIGH | **Effort:** Medium | **Status:** ✅ Completed
-
-**Description:**
-Implement multi-task loss functions as specified in `pytorch_porting_plan/10_training_losses.md`.
-
-**Files Created:**
-- `aam/training/losses.py`
-- `aam/training/metrics.py`
-- `tests/test_losses.py`
-- `tests/test_metrics.py`
-
-**Acceptance Criteria:**
-- [x] Target loss (MSE/NLL) implemented
-- [x] Count loss (masked MSE) implemented
-- [x] Base loss (UniFrac MSE) implemented
-- [x] Nucleotide loss (masked CrossEntropy) implemented
-- [x] Total loss computation implemented
-- [x] Metrics (MAE, accuracy, etc.) implemented
-- [x] Unit tests pass (27 tests, all passing)
-
-**Implementation Notes:**
-- `MultiTaskLoss` class implements all loss functions with configurable penalty weights
-- Target loss supports both regression (MSE) and classification (NLL with optional class weights)
-- Count loss uses masked MSE to ignore padding ASVs
-- Base loss handles all encoder types (unifrac, faith_pd, taxonomy, combined)
-- Nucleotide loss uses masked CrossEntropy to ignore padding positions
-- Total loss computes weighted sum of all component losses
-- Metrics module provides regression (MAE, MSE, R2) and classification (accuracy, precision, recall, F1) metrics
-- Count metrics support masked computation for valid ASVs only
-- All losses handle missing outputs gracefully (inference mode)
-- Mask creation from tokens or counts when not explicitly provided
-- Device handling ensures all tensors are on the same device
-- Metrics use `.tolist()` conversion to avoid numpy compatibility issues
-- All 27 unit tests pass (18 for losses, 11 for metrics, 2 CUDA tests skipped)
-
-**Dependencies:** PYT-3.4
-
-**Estimated Time:** 4-6 hours
-**Actual Time:** ~4 hours
-
----
-
-### PYT-4.2: Implement Training Loop
-**Priority:** HIGH | **Effort:** High | **Status:** ✅ Completed
-
-**Description:**
-Implement training and validation loops with staged training support as specified in `pytorch_porting_plan/11_training_loop.md`.
-
-**Files Created:**
-- `aam/training/trainer.py`
-- `tests/test_trainer.py`
-
-**Acceptance Criteria:**
-- [x] Training epoch function implemented
-- [x] Validation epoch function implemented
-- [x] Main training function implemented
-- [x] Supports loading pre-trained SequenceEncoder
-- [x] Supports `freeze_base` parameter
-- [x] Early stopping implemented
-- [x] Checkpoint saving/loading implemented
-- [x] Unit tests pass (21 tests, 81% coverage)
-
-**Dependencies:** PYT-4.1
-
-**Implementation Notes:**
-- `Trainer` class implements full training and validation loops with progress bars (tqdm)
-- `WarmupCosineScheduler` custom scheduler for warmup + cosine decay
-- `create_optimizer()` creates AdamW optimizer, excludes frozen parameters when `freeze_base=True`
-- `create_scheduler()` creates warmup + cosine decay scheduler
-- `load_pretrained_encoder()` loads pre-trained SequenceEncoder into SequencePredictor
-- Supports both dict and tuple batch formats from DataLoader
-- Handles both SequenceEncoder and SequencePredictor models
-- Early stopping with configurable patience (default: 50 epochs)
-- Checkpoint saving includes model state, optimizer state, scheduler state, epoch, best loss, metrics
-- Checkpoint loading supports resume training with optional optimizer/scheduler loading
-- Metrics computation during validation (regression, classification, count metrics)
-- All 21 unit tests pass, covering all acceptance criteria
-
-**Estimated Time:** 8-10 hours
-**Actual Time:** ~4 hours
-
----
-
-### PYT-4.3: Implement CLI Interface
-**Priority:** MEDIUM | **Effort:** Medium | **Status:** ✅ Completed
-
-**Description:**
-Implement command-line interface as specified in `pytorch_porting_plan/12_cli_interface.md`.
-
-**Files Created:**
-- `aam/cli.py`
-- `tests/test_cli.py`
-
-**Acceptance Criteria:**
-- [x] Training command implemented
-- [x] Inference command implemented (optional)
-- [x] Argument validation implemented
-- [x] Error handling implemented
-- [x] Logging implemented
-- [x] Integration tests pass (28 tests, all passing)
+- Save best model as `best_model.pt` (single file, no epoch number)
+- Replace previous best model file when new best is found
+- Use `Path.unlink()` to remove old file before saving, or just overwrite
+- Keep optimizer and scheduler state in checkpoint
+- Save when validation loss improves (or when training without validation, use train loss)
+- Ensure `load_checkpoint()` can load `best_model.pt`
+- Final model save can remain separate for comparison purposes
 
 **Dependencies:** PYT-4.2
 
-**Implementation Notes:**
-- Uses `click` for argument parsing
-- Training command includes full pipeline: data loading, model creation, training loop, checkpointing
-- Predict command supports inference with model checkpoint loading
-- Comprehensive argument validation (batch size must be even, classifier requires out_dim > 1, etc.)
-- Logging to both console and file (`training.log`)
-- Helper functions for device setup, random seed, file validation
-- All 28 unit tests pass, covering setup functions, validation, CLI commands, and integration tests
-- CLI can be invoked via `python -m aam.cli train` or `python -m aam.cli predict`
-
-**Estimated Time:** 6-8 hours
-**Actual Time:** ~4 hours
+**Estimated Time:** 2-3 hours
 
 ---
 
-### PYT-4.4: Enhance Training Progress Display and Add TensorBoard Logging
-**Priority:** MEDIUM | **Effort:** Medium | **Status:** ✅ Completed
+### PYT-8.3: Change Early Stopping Default to 10 Epochs
+**Priority:** MEDIUM | **Effort:** Low | **Status:** Not Started
 
 **Description:**
-Enhance the training progress bars (tqdm) to display detailed information (loss, epoch, step, learning rate) and add TensorBoard logging for comprehensive training visualization and monitoring.
+Change the default early stopping patience from 50 epochs to 10 epochs for faster iteration and consistency between CLI commands.
 
-**Files Created/Modified:**
-- `aam/training/trainer.py` - Enhanced tqdm progress bars, added TensorBoard logging
-- `aam/cli.py` - Pass output directory to trainer for TensorBoard logs
-- `tests/test_trainer.py` - Added tests for TensorBoard logging and enhanced progress bars
-- `pyproject.toml` - Added tensorboard dependency
-- `environment.yml` - Added tensorboard dependency
+**Files to be Modified:**
+- `aam/training/trainer.py` - Update default `early_stopping_patience` to 10
+- `aam/cli.py` - Update pretrain command `--patience` default to 10
+- `tests/test_trainer.py` - Verify new default works correctly
 
 **Acceptance Criteria:**
-- [x] tqdm progress bars display: current total loss (running average), epoch number, step/batch number, learning rate
-- [x] TensorBoard logging always enabled (no CLI flag needed)
-- [x] TensorBoard logs saved to `{output_dir}/tensorboard/` directory
-- [x] Log losses per epoch: total_loss, target_loss, count_loss, base_loss, nuc_loss (when applicable)
-- [x] Log metrics per epoch: regression metrics (MAE, MSE, R2), classification metrics (accuracy, precision, recall, F1), count metrics (count_mae, count_mse)
-- [x] Log learning rate per epoch
-- [x] Log weight/gradient histograms per epoch (every 10 epochs for key model layers)
-- [x] TensorBoard writer created in Trainer.train() method
-- [x] Writer properly closed after training completes
-- [x] Unit tests verify TensorBoard log files are created with correct structure
-- [x] Unit tests verify tqdm bars display correct information
-- [x] All existing tests continue to pass (37 tests passing)
+- [ ] Change `trainer.py` default `early_stopping_patience` from 50 to 10
+- [ ] Update `cli.py` pretrain command `--patience` default from 50 to 10
+- [ ] Verify train command default is 10 (should already be)
+- [ ] Test early stopping with new default (triggers after 10 epochs without improvement)
+- [ ] Test that `--patience` flag still works to override default
+- [ ] Verify both train and pretrain commands use same default
+- [ ] Update documentation if needed
+- [ ] Unit tests pass
 
 **Implementation Notes:**
-- Used `torch.utils.tensorboard.SummaryWriter` for TensorBoard logging
-- Updated `train_epoch()` to accept epoch number and update tqdm bar with loss, step, epoch, LR
-- Updated `validate_epoch()` to accept epoch number and update tqdm bar with loss, step, epoch
-- Implemented running average loss calculation for stable progress bar display
-- Used `writer.add_scalar()` for scalar metrics (losses, metrics, LR)
-- Used `writer.add_histogram()` for weight/gradient histograms (every 10 epochs)
-- TensorBoard directory created automatically in `{output_dir}/tensorboard/`
-- Writer closed in `finally` block to ensure cleanup
-- Loss extraction uses `.detach().item()` to ensure proper value extraction
-- Format: `"Epoch {epoch+1}/{num_epochs}"` with postfix showing Step, Loss (running avg), LR
-- Note: Loss display shows 0.0000 in some cases - see PYT-4.5 for investigation
+- Current state: CLI train command has `--patience` default=10, CLI pretrain command has `--patience` default=50, trainer has `early_stopping_patience: int = 50`
+- Change trainer default to 10 to match CLI train command
+- Change CLI pretrain default to 10 for consistency
+- Users can still override with `--patience` flag (backward compatible)
+- 10 epochs is more reasonable default for faster iteration
+
+**Dependencies:** PYT-4.2
+
+**Estimated Time:** 1 hour
+
+---
+
+### PYT-8.4: Implement Validation Prediction Plots
+**Priority:** MEDIUM | **Effort:** Medium | **Status:** Not Started
+
+**Description:**
+Create validation prediction plots showing predicted vs actual values with linear fit, R² metric, and 1:1 reference line. Save plots to both TensorBoard and disk files. Support both regression and classification tasks.
+
+**Files to be Created/Modified:**
+- `aam/training/trainer.py` - Add plot creation methods and integration
+- `pyproject.toml` - Add matplotlib dependency
+- `environment.yml` - Add matplotlib dependency
+- `tests/test_trainer.py` - Add tests for plot generation
+
+**Acceptance Criteria:**
+- [ ] Add matplotlib dependency to `pyproject.toml` and `environment.yml`
+- [ ] Create `_create_prediction_plot()` method for regression tasks
+- [ ] Create `_create_confusion_matrix_plot()` method for classification tasks
+- [ ] Integrate plot creation into `train()` method (when validation improves)
+- [ ] Save plots to disk as PNG files in `{output_dir}/plots/` directory
+- [ ] Log plots to TensorBoard using `add_figure()`
+- [ ] Add `save_plots` parameter to `train()` method (default: True)
+- [ ] Create plots directory automatically
+- [ ] Test with regression tasks (scatter plot with linear fit, R², 1:1 line)
+- [ ] Test with classification tasks (confusion matrix with metrics)
+- [ ] Test plot saving and TensorBoard logging
+- [ ] Test that plots are only created when validation improves
+- [ ] Test with `save_plots=False` to disable plotting
+- [ ] Unit tests pass
+
+**Implementation Notes:**
+- Use `matplotlib` for plotting (standard and lightweight)
+- Regression plot: Scatter plot with predicted vs actual, linear fit line, R² value, 1:1 reference line
+- Classification plot: Confusion matrix heatmap with accuracy, precision, recall, F1 scores
+- Plot only when validation improves (reduces overhead)
+- Save plots as `pred_vs_actual_epoch_{epoch}.png` or `pred_vs_actual_best.png`
+- Use `plt.close()` after saving to free memory
+- Figure size: 8x6 inches, DPI: 100-150
+- Use `numpy.polyfit` or `scipy.stats.linregress` for linear fit
+- Use `sklearn.metrics.confusion_matrix` for classification
+- Consider using matplotlib with seaborn style: `plt.style.use('seaborn-v0_8')`
 
 **Dependencies:** PYT-4.2
 
 **Estimated Time:** 4-6 hours
-**Actual Time:** ~4 hours
-
----
-
-## Phase 5: Testing
-
-### PYT-5.1: Write Unit Tests
-**Priority:** HIGH | **Effort:** High | **Status:** ✅ Completed
-
-**Description:**
-Write comprehensive unit tests as specified in `pytorch_porting_plan/13_testing.md`.
-
-**Files Created/Modified:**
-- `tests/test_cli.py` (enhanced with integration tests)
-- `tests/test_unifrac.py` (added error handling tests)
-- `tests/test_dataset.py` (added edge case tests)
-- `tests/test_trainer.py` (added edge case tests)
-- Note: `test_models.py` not needed - all model components have dedicated test files
-
-**Acceptance Criteria:**
-- [x] All components have unit tests
-- [x] Tests cover edge cases
-- [x] All tests pass (333 tests passing, 4 skipped)
-- [x] Test coverage > 80% (achieved 94% coverage)
-
-**Implementation Notes:**
-- Added CLI integration tests covering train() and predict() command flows
-- Added error handling tests for unifrac.py (invalid tree files, ASV mismatches, missing sample IDs)
-- Added edge case tests for dataset.py (token truncation, empty samples, string targets, Faith PD extraction)
-- Added trainer edge case tests (scheduler warmup, checkpoint handling, early stopping, resume training)
-- Coverage improved from 84% to 94% (well above 80% target)
-- All 333 tests passing, 4 skipped (CUDA tests when CUDA not available)
-
-**Dependencies:** All previous tickets
-
-**Estimated Time:** 10-12 hours
-**Actual Time:** ~6 hours
-
----
-
-### PYT-5.2: Write Integration Tests
-**Priority:** HIGH | **Effort:** Medium | **Status:** ✅ Completed
-
-**Description:**
-Write integration tests for data pipeline, model pipeline, and training pipeline.
-
-**Files Created:**
-- `tests/test_integration.py`
-
-**Acceptance Criteria:**
-- [x] Data pipeline integration test passes
-- [x] Model pipeline integration test passes
-- [x] Training pipeline integration test passes
-- [x] End-to-end test passes
-
-**Dependencies:** PYT-5.1
-
-**Implementation Notes:**
-- Created comprehensive integration test suite with 13 tests total
-- Data Pipeline Integration (4 tests): Tests complete pipeline from BIOM loading → rarefaction → UniFrac computation → tokenization → dataset creation → DataLoader
-- Model Pipeline Integration (3 tests): Tests model forward pass, output structure, and loss computation with all components
-- Training Pipeline Integration (3 tests): Tests training step, validation step, and complete training loop
-- End-to-End Tests (3 tests, marked `@pytest.mark.slow`): Tests full training workflow with real data files
-- End-to-end tests use unweighted UniFrac with batch-level pairwise distances extracted via `extract_batch_distances()`
-- Model configured with `base_output_dim = batch_size` for pairwise distance prediction
-- All tests use correct method signatures and follow existing test patterns
-- Tests handle missing data files gracefully with pytest.skip()
-- 10 non-slow tests passing, 3 slow end-to-end tests passing (all 13 tests pass)
-
-**Estimated Time:** 6-8 hours
-**Actual Time:** ~4 hours
-
----
-
-## Phase 6: Staged Training
-
-### PYT-6.1: Implement SequenceEncoder Pre-training
-**Priority:** MEDIUM | **Effort:** Medium | **Status:** ✅ Completed
-
-**Description:**
-Add support for pre-training SequenceEncoder separately (Stage 1 of training strategy).
-
-**Files Created/Modified:**
-- `aam/cli.py` (added `pretrain` command)
-- `tests/test_cli.py` (added tests for pretrain command)
-
-**Acceptance Criteria:**
-- [x] Can train SequenceEncoder standalone
-- [x] Saves checkpoint after pre-training
-- [x] CLI supports pre-training mode
-- [x] Tests pass
-
-**Implementation Notes:**
-- Added `pretrain` CLI command that trains SequenceEncoder on UniFrac + nucleotide prediction (self-supervised)
-- No metadata/target labels required - only needs BIOM table and phylogenetic tree
-- Creates SequenceEncoder model (not SequencePredictor)
-- Loss function only uses base_loss (UniFrac) and nuc_loss (nucleotide prediction)
-- Sets `base_output_dim` based on UniFrac metric: `batch_size` for unweighted UniFrac (pairwise distances), `1` for Faith PD
-- Saves checkpoint as `pretrained_encoder.pt` in output directory
-- Supports all standard training options: epochs, batch_size, learning rate, early stopping, etc.
-- Tests include help command, missing args validation, file validation, batch size validation, and integration test
-- Exception handler safely handles errors before logger initialization
-
-**Dependencies:** PYT-4.2
-
-**Estimated Time:** 4-6 hours
-**Actual Time:** ~3 hours
-
----
-
-### PYT-6.2: Implement SequencePredictor Fine-tuning
-**Priority:** MEDIUM | **Effort:** Low | **Status:** ✅ Completed
-
-**Description:**
-Add support for loading pre-trained SequenceEncoder and fine-tuning SequencePredictor (Stage 2 of training strategy).
-
-**Files Modified:**
-- `aam/training/trainer.py` (has `load_pretrained_encoder` function)
-- `aam/cli.py` (has `--freeze-base` option and `--pretrained-encoder` option)
-- `tests/test_cli.py` (added tests for pretrained encoder loading)
-
-**Acceptance Criteria:**
-- [x] Supports `freeze_base=True` option (implemented in CLI train command)
-- [x] Supports `freeze_base=False` (fine-tune jointly) (implemented in CLI train command)
-- [x] Can load pre-trained SequenceEncoder checkpoint via CLI (implemented with `--pretrained-encoder` option)
-- [x] Tests pass for loading pretrained encoder (5 tests, all passing)
-
-**Implementation Notes:**
-- `freeze_base` parameter is fully implemented and working in `train` command
-- `load_pretrained_encoder()` function exists in `trainer.py` and is now called from CLI
-- Added `--pretrained-encoder` CLI option to `train` command to load pretrained SequenceEncoder checkpoint
-- Option validates file exists (via click's `exists=True`)
-- Loading happens after model creation, before optimizer creation
-- Uses `strict=False` for flexible loading
-- Includes logging for loading actions
-- Added 5 comprehensive tests covering help text, file validation, loading functionality, freeze_base integration, and error handling
-- All 45 CLI tests pass (including 5 new tests)
-
-**Dependencies:** PYT-6.1
-
-**Estimated Time:** 2-4 hours
-**Actual Time:** ~2 hours
 
 ---
 
 ## Summary
 
-**Total Estimated Time:** 80-100 hours
+**Total Estimated Time:** 8-12 hours
 
-**Critical Path:**
-1. Data Pipeline (PYT-1.1 → PYT-1.2 → PYT-1.3)
-2. Core Components (PYT-2.1 → PYT-2.2)
-3. Model Architecture (PYT-3.1 → PYT-3.2 → PYT-3.3 → PYT-3.4)
-4. Training (PYT-4.1 → PYT-4.2 → PYT-4.3)
-5. Testing (PYT-5.1 → PYT-5.2)
-6. Staged Training (PYT-6.1 → PYT-6.2)
+**Implementation Order:**
+1. PYT-8.3: Change Early Stopping Default to 10 Epochs (1 hour) - Simplest, no dependencies
+2. PYT-8.2: Implement Single Best Model File Saving (2-3 hours) - Straightforward modification
+3. PYT-8.1: Implement TensorBoard Train/Val Overlay Verification (1-2 hours) - Documentation/verification
+4. PYT-8.4: Implement Validation Prediction Plots (4-6 hours) - Most complex, requires new dependencies
 
 **Notes:**
-- Implement incrementally, test as you go
-- Each ticket should be independently testable
-- Follow the plan documents for detailed requirements
-- Keep implementation simple and focused
-
----
-
-## Phase 7: Bug Fixes
-
-### PYT-7.1: Fix CUDA Device Test Failures
-**Priority:** HIGH | **Effort:** Low | **Status:** ✅ Completed
-
-**Description:**
-Fix CUDA device comparison failures in tests. Tests compare `device(type='cuda', index=0)` with `device(type='cuda')` which fails because PyTorch assigns explicit indices to CUDA devices.
-
-**Files Modified:**
-- `tests/test_asv_encoder.py` - `test_forward_same_device`
-- `tests/test_position_embedding.py` - `test_forward_same_device`
-- `tests/test_transformer.py` - `test_forward_same_device`
-- `tests/test_sample_sequence_encoder.py` - `test_forward_same_device`
-- `tests/test_sequence_encoder.py` - `test_forward_same_device`
-- `tests/test_sequence_predictor.py` - `test_forward_same_device`
-- `tests/test_losses.py` - `test_losses_on_cuda`
-
-**Acceptance Criteria:**
-- [x] All CUDA device tests compare device types instead of exact device objects
-- [x] Use `result.device.type == device.type` instead of `result.device == device`
-- [x] All 7 failing tests pass on Linux with CUDA GPU
-- [x] Tests still pass on CPU-only systems
-
-**Implementation Notes:**
-- Changed device comparison from `result.device == device` to `result.device.type == device.type`
-- This handles both `cuda` and `cuda:0` correctly by comparing device types rather than exact device objects
-- For dictionary outputs (sequence_encoder, sequence_predictor), updated all device assertions
-- Fix ensures compatibility with both single-GPU and multi-GPU systems
-
-**Dependencies:** None
-
-**Estimated Time:** 1 hour
-**Actual Time:** ~15 minutes
-
-**Verification:**
-- ✅ All 7 tests pass on Linux with CUDA GPU (359 passed, 1 skipped)
-- ✅ Tests verified on Linux machine with CUDA device
-- ✅ Device comparison fix works correctly for both `cuda` and `cuda:0`
-
----
-
-### PYT-7.2: Fix CUDA Out of Memory Error During Pre-training
-**Priority:** HIGH | **Effort:** Medium | **Status:** ✅ Completed
-
-**Description:**
-Address CUDA out of memory errors during pre-training. The error occurs when training SequenceEncoder with batch_size=8, where PyTorch has allocated 21.69 GiB and tries to allocate an additional 2.34 GiB but only 1.67 GiB is free. This suggests memory fragmentation or inefficient memory usage patterns.
-
-**Error Context:**
-```
-CUDA out of memory. Tried to allocate 2.34 GiB. GPU 0 has a total capacity of 23.68 GiB of which 1.67 GiB is free. 
-Including non-PyTorch memory, this process has 22.01 GiB memory in use. 
-Of the allocated memory 21.69 GiB is allocated by PyTorch, and 21.86 MiB is reserved by PyTorch but unallocated.
-```
-
-**Files Created/Modified:**
-- `aam/training/trainer.py` - Added gradient accumulation, memory clearing utilities, OOM error handling
-- `aam/cli.py` - Added gradient accumulation and expandable segments options
-- `aam/models/asv_encoder.py` - Added chunked ASV processing for memory optimization
-- `aam/models/sample_sequence_encoder.py` - Added chunked processing support
-- `aam/models/sequence_encoder.py` - Added chunked processing support
-- `aam/models/transformer.py` - Suppressed nested tensor warning
-- `aam/training/losses.py` - Fixed gradient computation for zero loss components
-- `tests/test_trainer.py` - Added tests for gradient accumulation
-- `MEMORY_OPTIMIZATION.md` - Created comprehensive memory optimization guide
-
-**Acceptance Criteria:**
-- [x] Add gradient accumulation support to reduce effective batch size without reducing memory per step
-- [x] Add option to enable `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` via CLI or environment
-- [x] Add memory clearing utilities (torch.cuda.empty_cache()) at appropriate points
-- [x] Improve OOM error messages with actionable suggestions (reduce batch size, enable gradient accumulation, etc.)
-- [x] Add CLI option `--gradient-accumulation-steps` (default: 1) for both `pretrain` and `train` commands
-- [x] Add CLI option `--use-expandable-segments` to enable PyTorch memory optimization
-- [x] Add CLI option `--asv-chunk-size` for chunked ASV processing (optional optimization)
-- [x] Unit tests pass for gradient accumulation functionality (5 new tests added)
-- [x] Fix gradient computation for zero loss components (torch.zeros_like with requires_grad=True)
-- [x] Suppress nested tensor warning in TransformerEncoder
-
-**Implementation Notes:**
-- Gradient accumulation: Accumulate gradients over N steps before optimizer.step(), scales loss by 1/N for correct averaging
-- Memory clearing: Call `torch.cuda.empty_cache()` after each chunk, batch, and epoch
-- Error handling: Catch `torch.cuda.OutOfMemoryError` in both training and validation with helpful suggestions
-- Chunked ASV processing: Process ASVs in chunks to reduce peak memory (reduces ASV-level attention matrices)
-- Key finding: `--token-limit` reduction is most critical - sample-level attention is O(token_limit^2)
-- Reducing token_limit from 1024 to 256 reduces sample-level attention by 16x
-- Fixed zero loss components to preserve gradient graph using torch.zeros_like with requires_grad=True
-- Suppressed harmless nested tensor warning by setting enable_nested_tensor=False
-
-**Dependencies:** None
-
-**Estimated Time:** 4-6 hours
-**Actual Time:** ~6 hours
-
-**Testing Notes:**
-- Tested on separate machine as specified by user
-- Verified memory usage reduction with gradient accumulation and token_limit reduction
-- All 32 trainer tests pass including 5 new gradient accumulation tests
-- Memory optimization guide created with recommendations for 24GB GPU
-
----
-
-### PYT-7.3: Investigate Loss Display Showing 0.0000 in Progress Bar
-**Priority:** MEDIUM | **Effort:** Low | **Status:** Not Started
-
-**Description:**
-Investigate why the training progress bar shows loss as 0.0000 despite loss values being computed. The loss extraction and display logic has been implemented but may not be correctly accessing or displaying the loss value.
-
-**Files to be Investigated:**
-- `aam/training/trainer.py` - Loss extraction and progress bar display logic
-- `aam/training/losses.py` - Loss computation and return values
-- Check if loss tensors are properly converted to Python values
-- Verify loss values are non-zero during actual training runs
-
-**Acceptance Criteria:**
-- [ ] Identify root cause of 0.0000 loss display
-- [ ] Verify loss values are actually being computed (check TensorBoard logs)
-- [ ] Fix loss extraction/display if issue is in code
-- [ ] Document findings if loss is legitimately 0 (e.g., model converged, zero targets, etc.)
-- [ ] Update progress bar to correctly display loss values
-- [ ] Add debug logging if needed to trace loss values
-- [ ] Verify fix with actual training run
-
-**Investigation Steps:**
-1. Check TensorBoard logs to see if losses are being logged correctly (if logged, issue is display-only)
-2. Add debug print statements to verify loss values before display
-3. Check if loss computation returns valid non-zero values
-4. Verify loss tensor extraction (`.detach().item()`) is working correctly
-5. Check if running average calculation is correct
-6. Verify loss values in `total_losses` dictionary after epoch completion
-7. Check if issue occurs only in certain training configurations
-
-**Possible Causes:**
-- Loss tensor not properly converted to Python float
-- Loss actually is 0 (model converged, zero targets, etc.)
-- Running average calculation error
-- Loss extraction happening at wrong time (before/after backward)
-- Format string issue with very small values
-
-**Dependencies:** PYT-4.4
-
-**Estimated Time:** 1-2 hours
+- All tickets are independent and can be implemented in any order
+- PYT-8.3 is recommended first as it's the simplest and improves consistency
+- PYT-8.4 requires adding matplotlib dependency
+- Follow the workflow in `.agents/workflow.md` for implementation

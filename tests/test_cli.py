@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock, mock_open
 import click
 from click.testing import CliRunner
+import inspect
 
 from aam.cli import (
     setup_logging,
@@ -335,6 +336,18 @@ class TestCLICommands:
             ],
         )
         assert result.exit_code != 0
+
+    def test_train_command_default_patience(self):
+        """Test that train command has default patience of 10."""
+        sig = inspect.signature(train)
+        patience_param = sig.parameters["patience"]
+        assert patience_param.default == 10, f"Expected default to be 10, got {patience_param.default}"
+
+    def test_pretrain_command_default_patience(self):
+        """Test that pretrain command has default patience of 10."""
+        sig = inspect.signature(pretrain)
+        patience_param = sig.parameters["patience"]
+        assert patience_param.default == 10, f"Expected default to be 10, got {patience_param.default}"
 
     def test_predict_command_help(self, runner):
         """Test predict command help."""
