@@ -17,7 +17,7 @@ from aam.data.dataset import ASVDataset, collate_fn
 from aam.models.sequence_predictor import SequencePredictor
 from aam.models.sequence_encoder import SequenceEncoder
 from aam.training.losses import MultiTaskLoss
-from aam.training.trainer import Trainer, create_optimizer, create_scheduler
+from aam.training.trainer import Trainer, create_optimizer, create_scheduler, load_pretrained_encoder
 
 
 def setup_logging(output_dir: Path, log_level: str = "INFO"):
@@ -165,6 +165,7 @@ def cli():
 @click.option("--num-workers", default=0, type=int, help="DataLoader workers")
 @click.option("--resume-from", default=None, type=click.Path(exists=True), help="Path to checkpoint to resume from")
 @click.option("--freeze-base", is_flag=True, help="Freeze base model parameters")
+@click.option("--pretrained-encoder", default=None, type=click.Path(exists=True), help="Path to pretrained SequenceEncoder checkpoint")
 def train(
     table: str,
     tree: str,
@@ -195,6 +196,7 @@ def train(
     num_workers: int,
     resume_from: Optional[str],
     freeze_base: bool,
+    pretrained_encoder: Optional[str],
 ):
     """Train AAM model on microbial sequencing data."""
     try:
@@ -319,6 +321,10 @@ def train(
             freeze_base=freeze_base,
             predict_nucleotides=True,
         )
+
+        # TODO: Load pretrained encoder if provided
+        # if pretrained_encoder is not None:
+        #     load_pretrained_encoder(pretrained_encoder, model, strict=False)
 
         class_weights_tensor = None
         if class_weights is not None and classifier:
