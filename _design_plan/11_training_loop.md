@@ -68,10 +68,39 @@ Implement training and validation loops with staged training support.
 ## Key Considerations
 
 - Device handling: Move model and batches to device
-- Gradient management: Zero gradients, optional accumulation/clipping
-- Memory: Clear cache if needed, gradient checkpointing for large models
+- Gradient management: Zero gradients, gradient accumulation support (configurable steps)
+- Memory: Clear cache after batches/chunks, gradient accumulation, chunked processing for large models
 - Progress: Use `tqdm` for progress bars
 - Logging: Track losses and metrics per epoch
+- OOM handling: Catch CUDA OOM errors with helpful suggestions
+
+## Memory Optimizations (PYT-7.2)
+
+### Gradient Accumulation
+- Accumulate gradients over N steps before optimizer.step()
+- Scales loss by 1/N for correct averaging
+- Reduces effective batch size without reducing memory per forward pass
+- CLI option: `--gradient-accumulation-steps N` (default: 1)
+
+### Memory Clearing
+- Call `torch.cuda.empty_cache()` after each batch, chunk, and epoch
+- Explicit `del` statements for intermediate tensors
+- Helps reduce memory fragmentation
+
+### Chunked ASV Processing
+- Process ASVs in chunks instead of all at once
+- Reduces peak memory for ASV-level attention matrices
+- CLI option: `--asv-chunk-size N` (optional, None = process all)
+
+### Expandable Segments
+- Enable PyTorch's expandable segments allocator
+- Reduces memory fragmentation
+- CLI option: `--use-expandable-segments` (flag)
+
+### Token Limit Reduction
+- Most critical optimization: reduce `--token-limit` from default 1024
+- Sample-level attention is O(token_limit^2)
+- Reducing to 256 reduces sample attention by 16x
 
 ## Testing Requirements
 

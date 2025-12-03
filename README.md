@@ -79,7 +79,13 @@ python -m aam.cli predict \
 - `--attention-heads`: Number of attention heads (default: 4)
 - `--attention-layers`: Number of transformer layers (default: 4)
 - `--max-bp`: Maximum base pairs per sequence (default: 150)
-- `--token-limit`: Maximum ASVs per sample (default: 1024)
+- `--token-limit`: Maximum ASVs per sample (default: 1024, **critical for memory**)
+
+**Memory Optimization:**
+- `--gradient-accumulation-steps`: Accumulate gradients over N steps (default: 1)
+- `--use-expandable-segments`: Enable PyTorch CUDA expandable segments (reduces fragmentation)
+- `--asv-chunk-size`: Process ASVs in chunks to reduce memory (optional)
+- **Important**: Reduce `--token-limit` from 1024 to 256-512 for 24GB GPUs (reduces memory by 4-16x)
 
 **Data:**
 - `--unifrac-metric`: 'unifrac' or 'faith_pd' (default: 'unifrac')
@@ -87,6 +93,28 @@ python -m aam.cli predict \
 - `--test-size`: Validation split size (default: 0.2)
 
 See `python -m aam.cli <command> --help` for full options.
+
+### Memory Optimization
+
+For GPUs with limited memory (e.g., 24GB), use these optimizations:
+
+```bash
+python -m aam.cli pretrain \
+  --table <biom_file> \
+  --tree <tree_file> \
+  --output-dir <output_dir> \
+  --batch-size 2 \
+  --gradient-accumulation-steps 16 \
+  --token-limit 256 \
+  --use-expandable-segments
+```
+
+**Key optimizations:**
+- `--token-limit 256`: Reduces sample-level attention by 16x (most critical)
+- `--gradient-accumulation-steps 16`: Maintains effective batch size while reducing memory
+- `--use-expandable-segments`: Reduces memory fragmentation
+
+See [MEMORY_OPTIMIZATION.md](MEMORY_OPTIMIZATION.md) for detailed memory optimization strategies.
 
 ## Testing
 

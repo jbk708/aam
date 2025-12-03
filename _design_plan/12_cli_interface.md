@@ -45,6 +45,11 @@ Implement command-line interface for training and inference.
 - `--pretrained-encoder`: Path to pretrained SequenceEncoder checkpoint (optional)
 - `--freeze-base`: Freeze base model parameters (flag)
 
+**Memory Optimization:**
+- `--gradient-accumulation-steps`: Number of gradient accumulation steps (default: 1)
+- `--use-expandable-segments`: Enable PyTorch CUDA expandable segments for memory optimization (flag)
+- `--asv-chunk-size`: Process ASVs in chunks of this size to reduce memory (default: None, process all)
+
 **Other**:
 - `--device`: Device ('cuda' or 'cpu', default: 'cuda')
 - `--seed`: Random seed for reproducibility
@@ -82,6 +87,11 @@ Implement command-line interface for training and inference.
 - `--penalty`: Weight for base/UniFrac loss (default: 1.0)
 - `--nuc-penalty`: Weight for nucleotide loss (default: 1.0)
 
+**Memory Optimization:**
+- `--gradient-accumulation-steps`: Number of gradient accumulation steps (default: 1)
+- `--use-expandable-segments`: Enable PyTorch CUDA expandable segments for memory optimization (flag)
+- `--asv-chunk-size`: Process ASVs in chunks of this size to reduce memory (default: None, process all)
+
 **Other**:
 - `--device`: Device ('cuda' or 'cpu', default: 'cuda')
 - `--seed`: Random seed for reproducibility
@@ -89,6 +99,11 @@ Implement command-line interface for training and inference.
 - `--resume-from`: Path to checkpoint to resume from
 
 **Note**: No metadata file required - pre-training is self-supervised (UniFrac + nucleotide prediction only).
+
+**Memory Optimization Tips:**
+- For 24GB GPU with batch_size=2: Use `--token-limit 256` (reduces sample-level attention by 16x)
+- Combine with `--gradient-accumulation-steps 16` for effective batch size of 32
+- See `MEMORY_OPTIMIZATION.md` for detailed memory optimization strategies
 
 ### Inference Command
 
