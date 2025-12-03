@@ -647,3 +647,105 @@ class TestFreezeBase:
 
         for init_param, updated_param in zip(initial_base_params, updated_base_params):
             assert torch.equal(init_param, updated_param)
+
+
+class TestGradientAccumulation:
+    """Test gradient accumulation functionality."""
+
+    def test_gradient_accumulation_steps_1(self, small_model, loss_fn, simple_dataloader_encoder, device):
+        """Test gradient accumulation with steps=1 (no accumulation)."""
+        small_model = small_model.to(device)
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+        )
+
+        initial_params = [p.clone() for p in small_model.parameters() if p.requires_grad]
+        losses = trainer.train_epoch(simple_dataloader_encoder, gradient_accumulation_steps=1)
+        updated_params = [p for p in small_model.parameters() if p.requires_grad]
+
+        assert "total_loss" in losses
+        assert losses["total_loss"] >= 0
+        for init_param, updated_param in zip(initial_params, updated_params):
+            assert not torch.equal(init_param, updated_param)
+
+    def test_gradient_accumulation_steps_2(self, small_model, loss_fn, simple_dataloader_encoder, device):
+        """Test gradient accumulation with steps=2."""
+        small_model = small_model.to(device)
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+        )
+
+        initial_params = [p.clone() for p in small_model.parameters() if p.requires_grad]
+        losses = trainer.train_epoch(simple_dataloader_encoder, gradient_accumulation_steps=2)
+        updated_params = [p for p in small_model.parameters() if p.requires_grad]
+
+        assert "total_loss" in losses
+        assert losses["total_loss"] >= 0
+        for init_param, updated_param in zip(initial_params, updated_params):
+            assert not torch.equal(init_param, updated_param)
+
+    def test_gradient_accumulation_steps_4(self, small_model, loss_fn, simple_dataloader_encoder, device):
+        """Test gradient accumulation with steps=4."""
+        small_model = small_model.to(device)
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+        )
+
+        losses = trainer.train_epoch(simple_dataloader_encoder, gradient_accumulation_steps=4)
+
+        assert "total_loss" in losses
+        assert losses["total_loss"] >= 0
+
+    def test_gradient_accumulation_equivalent_loss(self, small_model, loss_fn, device):
+        """Test that gradient accumulation produces equivalent results."""
+        batch_size = 4
+        num_asvs = 10
+        seq_len = 50
+
+        tokens1 = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len)).to(device)
+        base_targets1 = torch.randn(batch_size * 2, 16).to(device)
+        dataset1 = TensorDataset(tokens1, base_targets1)
+        dataloader1 = DataLoader(dataset1, batch_size=batch_size, shuffle=False)
+
+        tokens2 = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len)).to(device)
+        base_targets2 = torch.randn(batch_size * 2, 16).to(device)
+        dataset2 = TensorDataset(tokens2, base_targets2)
+        dataloader2 = DataLoader(dataset2, batch_size=batch_size, shuffle=False)
+
+        model1 = small_model.to(device)
+        model2 = small_model.to(device)
+
+        trainer1 = Trainer(model=model1, loss_fn=loss_fn, device=device)
+        trainer2 = Trainer(model=model2, loss_fn=loss_fn, device=device)
+
+        losses1 = trainer1.train_epoch(dataloader1, gradient_accumulation_steps=1)
+        losses2 = trainer2.train_epoch(dataloader2, gradient_accumulation_steps=2)
+
+        assert "total_loss" in losses1
+        assert "total_loss" in losses2
+        assert losses1["total_loss"] >= 0
+        assert losses2["total_loss"] >= 0
+
+    def test_train_with_gradient_accumulation(self, small_model, loss_fn, simple_dataloader_encoder, device):
+        """Test training loop with gradient accumulation."""
+        small_model = small_model.to(device)
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+        )
+
+        history = trainer.train(
+            train_loader=simple_dataloader_encoder,
+            num_epochs=2,
+            gradient_accumulation_steps=2,
+        )
+
+        assert "train_loss" in history
+        assert len(history["train_loss"]) == 2

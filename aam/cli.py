@@ -64,6 +64,17 @@ def setup_device(device: str) -> torch.device:
         raise ValueError(f"Invalid device: {device}. Must be 'cpu' or 'cuda'")
 
 
+def setup_expandable_segments(use_expandable_segments: bool) -> None:
+    """Setup PyTorch CUDA memory allocator with expandable segments.
+
+    Args:
+        use_expandable_segments: Whether to enable expandable segments
+    """
+    if use_expandable_segments and torch.cuda.is_available():
+        import os
+        os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
+
+
 def setup_random_seed(seed: Optional[int]):
     """Setup random seed for reproducibility.
 
@@ -168,6 +179,8 @@ def cli():
 @click.option(
     "--pretrained-encoder", default=None, type=click.Path(exists=True), help="Path to pretrained SequenceEncoder checkpoint"
 )
+@click.option("--gradient-accumulation-steps", default=1, type=int, help="Number of gradient accumulation steps")
+@click.option("--use-expandable-segments", is_flag=True, help="Enable PyTorch CUDA expandable segments for memory optimization")
 def train(
     table: str,
     tree: str,
@@ -199,6 +212,8 @@ def train(
     resume_from: Optional[str],
     freeze_base: bool,
     pretrained_encoder: Optional[str],
+    gradient_accumulation_steps: int,
+    use_expandable_segments: bool,
 ):
     """Train AAM model on microbial sequencing data."""
     try:
@@ -223,8 +238,12 @@ def train(
             epochs=epochs,
         )
 
+        setup_expandable_segments(use_expandable_segments)
         device_obj = setup_device(device)
         setup_random_seed(seed)
+
+        if gradient_accumulation_steps < 1:
+            raise click.ClickException("gradient_accumulation_steps must be >= 1")
 
         logger.info("Loading data...")
         biom_loader = BIOMLoader()
@@ -336,7 +355,8 @@ def train(
 
         loss_fn = MultiTaskLoss(penalty=penalty, nuc_penalty=nuc_penalty, class_weights=class_weights_tensor)
 
-        num_training_steps = len(train_loader) * epochs
+        effective_batches_per_epoch = len(train_loader) // gradient_accumulation_steps
+        num_training_steps = effective_batches_per_epoch * epochs
         optimizer = create_optimizer(model, lr=lr, weight_decay=weight_decay, freeze_base=freeze_base)
         scheduler = create_scheduler(optimizer, num_warmup_steps=warmup_steps, num_training_steps=num_training_steps)
 
@@ -364,6 +384,7 @@ def train(
             early_stopping_patience=patience,
             checkpoint_dir=str(checkpoint_dir),
             resume_from=resume_from,
+            gradient_accumulation_steps=gradient_accumulation_steps,
         )
 
         logger.info("Training completed")
@@ -402,6 +423,8 @@ def train(
 @click.option("--seed", default=None, type=int, help="Random seed for reproducibility")
 @click.option("--num-workers", default=0, type=int, help="DataLoader workers")
 @click.option("--resume-from", default=None, type=click.Path(exists=True), help="Path to checkpoint to resume from")
+@click.option("--gradient-accumulation-steps", default=1, type=int, help="Number of gradient accumulation steps")
+@click.option("--use-expandable-segments", is_flag=True, help="Enable PyTorch CUDA expandable segments for memory optimization")
 def pretrain(
     table: str,
     tree: str,
@@ -426,6 +449,8 @@ def pretrain(
     seed: Optional[int],
     num_workers: int,
     resume_from: Optional[str],
+    gradient_accumulation_steps: int,
+    use_expandable_segments: bool,
 ):
     """Pre-train SequenceEncoder on UniFrac and nucleotide prediction (self-supervised)."""
     try:
@@ -447,8 +472,12 @@ def pretrain(
             epochs=epochs,
         )
 
+        setup_expandable_segments(use_expandable_segments)
         device_obj = setup_device(device)
         setup_random_seed(seed)
+
+        if gradient_accumulation_steps < 1:
+            raise click.ClickException("gradient_accumulation_steps must be >= 1")
 
         logger.info("Loading data...")
         biom_loader = BIOMLoader()
@@ -565,6 +594,7 @@ def pretrain(
             early_stopping_patience=patience,
             checkpoint_dir=str(checkpoint_dir),
             resume_from=resume_from,
+            gradient_accumulation_steps=gradient_accumulation_steps,
         )
 
         logger.info("Pre-training completed")
