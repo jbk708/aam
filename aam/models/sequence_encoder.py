@@ -36,6 +36,7 @@ class SequenceEncoder(nn.Module):
         base_output_dim: Optional[int] = None,
         encoder_type: str = "unifrac",
         predict_nucleotides: bool = False,
+        asv_chunk_size: Optional[int] = None,
     ):
         """Initialize SequenceEncoder.
 
@@ -62,6 +63,7 @@ class SequenceEncoder(nn.Module):
             base_output_dim: Output dimension for base prediction (None = use embedding_dim)
             encoder_type: Type of encoder ('unifrac', 'taxonomy', 'faith_pd', 'combined')
             predict_nucleotides: Whether to include nucleotide prediction head
+            asv_chunk_size: Process ASVs in chunks of this size to reduce memory (None = process all)
         """
         super().__init__()
         
@@ -86,6 +88,7 @@ class SequenceEncoder(nn.Module):
             sample_dropout=sample_dropout,
             sample_activation=sample_activation,
             predict_nucleotides=predict_nucleotides,
+            asv_chunk_size=asv_chunk_size,
         )
         
         if encoder_intermediate_size is None:

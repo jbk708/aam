@@ -2,6 +2,7 @@
 
 import torch
 import torch.nn as nn
+from typing import Optional
 
 from aam.models.asv_encoder import ASVEncoder
 from aam.models.position_embedding import PositionEmbedding
@@ -28,6 +29,7 @@ class SampleSequenceEncoder(nn.Module):
         sample_dropout: float = 0.1,
         sample_activation: str = "gelu",
         predict_nucleotides: bool = False,
+        asv_chunk_size: Optional[int] = None,
     ):
         """Initialize SampleSequenceEncoder.
 
@@ -47,6 +49,7 @@ class SampleSequenceEncoder(nn.Module):
             sample_dropout: Dropout rate for sample-level transformer
             sample_activation: Activation function for sample-level transformer ('gelu' or 'relu')
             predict_nucleotides: Whether to include nucleotide prediction head
+            asv_chunk_size: Process ASVs in chunks of this size to reduce memory (None = process all)
         """
         super().__init__()
         
@@ -64,6 +67,7 @@ class SampleSequenceEncoder(nn.Module):
             dropout=asv_dropout,
             activation=asv_activation,
             predict_nucleotides=predict_nucleotides,
+            asv_chunk_size=asv_chunk_size,
         )
         
         self.sample_position_embedding = PositionEmbedding(

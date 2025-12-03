@@ -426,6 +426,7 @@ def train(
 @click.option("--resume-from", default=None, type=click.Path(exists=True), help="Path to checkpoint to resume from")
 @click.option("--gradient-accumulation-steps", default=1, type=int, help="Number of gradient accumulation steps")
 @click.option("--use-expandable-segments", is_flag=True, help="Enable PyTorch CUDA expandable segments for memory optimization")
+@click.option("--asv-chunk-size", default=None, type=int, help="Process ASVs in chunks of this size to reduce memory (None = process all)")
 def pretrain(
     table: str,
     tree: str,
@@ -452,6 +453,7 @@ def pretrain(
     resume_from: Optional[str],
     gradient_accumulation_steps: int,
     use_expandable_segments: bool,
+    asv_chunk_size: Optional[int],
 ):
     """Pre-train SequenceEncoder on UniFrac and nucleotide prediction (self-supervised)."""
     try:
@@ -563,6 +565,7 @@ def pretrain(
             encoder_num_heads=attention_heads,
             base_output_dim=base_output_dim,
             predict_nucleotides=True,
+            asv_chunk_size=asv_chunk_size,
         )
 
         loss_fn = MultiTaskLoss(penalty=penalty, nuc_penalty=nuc_penalty, class_weights=None)
