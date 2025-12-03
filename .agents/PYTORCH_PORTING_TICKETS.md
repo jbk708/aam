@@ -117,48 +117,48 @@ Change the default early stopping patience from 50 epochs to 10 epochs for faste
 ---
 
 ### PYT-8.4: Implement Validation Prediction Plots
-**Priority:** MEDIUM | **Effort:** Medium | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** Medium | **Status:** ✅ Completed
 
 **Description:**
 Create validation prediction plots showing predicted vs actual values with linear fit, R² metric, and 1:1 reference line. Save plots to both TensorBoard and disk files. Support both regression and classification tasks.
 
-**Files to be Created/Modified:**
-- `aam/training/trainer.py` - Add plot creation methods and integration
-- `pyproject.toml` - Add matplotlib dependency
-- `environment.yml` - Add matplotlib dependency
-- `tests/test_trainer.py` - Add tests for plot generation
+**Files Modified:**
+- `aam/training/trainer.py` - Added plot creation methods and integration
+- `pyproject.toml` - Added matplotlib dependency
+- `environment.yml` - Added matplotlib dependency
+- `tests/test_trainer.py` - Added 10 comprehensive tests for plot generation
 
 **Acceptance Criteria:**
-- [ ] Add matplotlib dependency to `pyproject.toml` and `environment.yml`
-- [ ] Create `_create_prediction_plot()` method for regression tasks
-- [ ] Create `_create_confusion_matrix_plot()` method for classification tasks
-- [ ] Integrate plot creation into `train()` method (when validation improves)
-- [ ] Save plots to disk as PNG files in `{output_dir}/plots/` directory
-- [ ] Log plots to TensorBoard using `add_figure()`
-- [ ] Add `save_plots` parameter to `train()` method (default: True)
-- [ ] Create plots directory automatically
-- [ ] Test with regression tasks (scatter plot with linear fit, R², 1:1 line)
-- [ ] Test with classification tasks (confusion matrix with metrics)
-- [ ] Test plot saving and TensorBoard logging
-- [ ] Test that plots are only created when validation improves
-- [ ] Test with `save_plots=False` to disable plotting
-- [ ] Unit tests pass
+- [x] Add matplotlib dependency to `pyproject.toml` and `environment.yml`
+- [x] Create `_create_prediction_plot()` method for regression tasks
+- [x] Create `_create_confusion_matrix_plot()` method for classification tasks
+- [x] Integrate plot creation into `train()` method (when validation improves)
+- [x] Save plots to disk as PNG files in `{checkpoint_dir}/plots/` directory
+- [x] Log plots to TensorBoard using `add_figure()`
+- [x] Add `save_plots` parameter to `train()` method (default: True)
+- [x] Create plots directory automatically
+- [x] Test with regression tasks (scatter plot with linear fit, R², 1:1 line)
+- [x] Test with classification tasks (confusion matrix with metrics)
+- [x] Test plot saving and TensorBoard logging
+- [x] Test that plots are only created when validation improves
+- [x] Test with `save_plots=False` to disable plotting
+- [x] Unit tests pass (51 tests total, all passing)
 
 **Implementation Notes:**
-- Use `matplotlib` for plotting (standard and lightweight)
-- Regression plot: Scatter plot with predicted vs actual, linear fit line, R² value, 1:1 reference line
-- Classification plot: Confusion matrix heatmap with accuracy, precision, recall, F1 scores
-- Plot only when validation improves (reduces overhead)
-- Save plots as `pred_vs_actual_epoch_{epoch}.png` or `pred_vs_actual_best.png`
-- Use `plt.close()` after saving to free memory
-- Figure size: 8x6 inches, DPI: 100-150
-- Use `numpy.polyfit` or `scipy.stats.linregress` for linear fit
-- Use `sklearn.metrics.confusion_matrix` for classification
-- Consider using matplotlib with seaborn style: `plt.style.use('seaborn-v0_8')`
+- Implemented `_create_prediction_plot()` for regression: scatter plot with predicted vs actual, linear fit using `numpy.polyfit`, R² value in title, 1:1 reference line (dashed gray)
+- Implemented `_create_confusion_matrix_plot()` for classification: confusion matrix heatmap using `sklearn.metrics.confusion_matrix`, displays accuracy, precision, recall, F1 in text box
+- Modified `validate_epoch()` to optionally return predictions and targets via `return_predictions` parameter
+- Integrated plot creation into `train()` method: plots created when validation improves (new best model)
+- Plots saved to `{checkpoint_dir}/plots/pred_vs_actual_best.png` (replaces previous best plot)
+- TensorBoard logging: plots logged to `validation/prediction_plot` tag
+- Figure size: 8x6 inches, DPI: 100
+- Uses `plt.close()` after saving/logging to free memory
+- All 10 new tests pass, no regressions in existing tests
 
 **Dependencies:** PYT-4.2
 
 **Estimated Time:** 4-6 hours
+**Actual Time:** ~4 hours
 
 ---
 
