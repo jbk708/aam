@@ -143,6 +143,40 @@ class Trainer:
             return self.model.is_classifier
         return False
 
+    def _log_to_tensorboard(self, epoch: int, train_losses: Dict[str, float], val_results: Optional[Dict[str, float]] = None):
+        """Log metrics to TensorBoard.
+
+        Args:
+            epoch: Current epoch number
+            train_losses: Training losses dictionary
+            val_results: Validation results dictionary (optional)
+        """
+        if self.writer is None:
+            return
+
+        for key, value in train_losses.items():
+            self.writer.add_scalar(f"train/{key}", value, epoch)
+
+        if val_results is not None:
+            for key, value in val_results.items():
+                if isinstance(value, (int, float)):
+                    self.writer.add_scalar(f"val/{key}", value, epoch)
+
+        if self.scheduler is not None:
+            if hasattr(self.scheduler, "get_last_lr"):
+                lr = self.scheduler.get_last_lr()[0]
+            else:
+                lr = self.optimizer.param_groups[0]["lr"]
+        else:
+            lr = self.optimizer.param_groups[0]["lr"]
+        self.writer.add_scalar("train/learning_rate", lr, epoch)
+
+        if epoch % 10 == 0:
+            for name, param in self.model.named_parameters():
+                if param.requires_grad and param.grad is not None:
+                    self.writer.add_histogram(f"weights/{name}", param.data, epoch)
+                    self.writer.add_histogram(f"gradients/{name}", param.grad.data, epoch)
+
     def train_epoch(
         self,
         dataloader: DataLoader,
@@ -171,7 +205,13 @@ class Trainer:
 
         current_lr = self.optimizer.param_groups[0]["lr"] if self.optimizer.param_groups else 0.0
 
-        for step, batch in enumerate(tqdm(dataloader, desc="Training", leave=False), 1):
+        pbar = tqdm(
+            dataloader,
+            desc=f"Epoch {epoch+1}/{num_epochs}",
+            leave=False,
+        )
+
+        for step, batch in enumerate(pbar, 1):
             try:
                 tokens, targets = self._prepare_batch(batch)
 
@@ -208,6 +248,22 @@ class Trainer:
                     if key not in total_losses:
                         total_losses[key] = 0.0
                     total_losses[key] += value.item()
+
+                loss_str = f"Loss: {losses['total_loss']:.4f}"
+                if "target_loss" in losses:
+                    loss_str += f" | Target: {losses['target_loss']:.4f}"
+                if "count_loss" in losses:
+                    loss_str += f" | Count: {losses['count_loss']:.4f}"
+                if "base_loss" in losses:
+                    loss_str += f" | Base: {losses['base_loss']:.4f}"
+                if "nuc_loss" in losses:
+                    loss_str += f" | Nuc: {losses['nuc_loss']:.4f}"
+
+                pbar.set_postfix({
+                    "Step": f"{step}/{total_steps}",
+                    "Loss": f"{losses['total_loss']:.4f}",
+                    "LR": f"{current_lr:.2e}",
+                })
 
                 del losses, scaled_loss
                 num_batches += 1
@@ -261,7 +317,13 @@ class Trainer:
         total_steps = len(dataloader)
 
         with torch.no_grad():
-            for step, batch in enumerate(tqdm(dataloader, desc="Validation", leave=False), 1):
+            pbar = tqdm(
+                dataloader,
+                desc=f"Epoch {epoch+1}/{num_epochs} [Val]",
+                leave=False,
+            )
+
+            for step, batch in enumerate(pbar, 1):
                 try:
                     tokens, targets = self._prepare_batch(batch)
 
@@ -276,6 +338,11 @@ class Trainer:
                         if key not in total_losses:
                             total_losses[key] = 0.0
                         total_losses[key] += value.item()
+
+                    pbar.set_postfix({
+                        "Step": f"{step}/{total_steps}",
+                        "Loss": f"{losses['total_loss']:.4f}",
+                    })
 
                     if compute_metrics:
                         if "target_prediction" in outputs and "target" in targets:
@@ -389,6 +456,7 @@ class Trainer:
                 )
                 history["train_loss"].append(train_losses["total_loss"])
 
+                val_results = None
                 if val_loader is not None:
                     val_results = self.validate_epoch(
                         val_loader,
@@ -399,28 +467,28 @@ class Trainer:
                     val_loss = val_results["total_loss"]
                     history["val_loss"].append(val_loss)
 
-                if val_loss < best_val_loss:
-                    best_val_loss = val_loss
-                    patience_counter = 0
+                    if val_loss < best_val_loss:
+                        best_val_loss = val_loss
+                        patience_counter = 0
 
-                    if checkpoint_dir is not None:
-                        checkpoint_path = Path(checkpoint_dir) / f"best_model_epoch_{epoch}.pt"
-                        self.save_checkpoint(
-                            str(checkpoint_path),
-                            epoch=epoch,
-                            best_val_loss=best_val_loss,
-                            metrics=val_results,
-                        )
+                        if checkpoint_dir is not None:
+                            checkpoint_path = Path(checkpoint_dir) / f"best_model_epoch_{epoch}.pt"
+                            self.save_checkpoint(
+                                str(checkpoint_path),
+                                epoch=epoch,
+                                best_val_loss=best_val_loss,
+                                metrics=val_results,
+                            )
+                    else:
+                        patience_counter += 1
+                        if patience_counter >= early_stopping_patience:
+                            print(f"Early stopping at epoch {epoch}")
+                            break
                 else:
-                    patience_counter += 1
-                    if patience_counter >= early_stopping_patience:
-                        print(f"Early stopping at epoch {epoch}")
-                        break
-            else:
-                history["val_loss"].append(None)
+                    history["val_loss"].append(None)
 
                 if self.writer is not None:
-                    pass
+                    self._log_to_tensorboard(epoch, train_losses, val_results)
 
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
@@ -428,6 +496,7 @@ class Trainer:
         finally:
             if self.writer is not None:
                 self.writer.close()
+                self.writer = None
 
         return history
 

@@ -368,6 +368,7 @@ def train(
             scheduler=scheduler,
             device=device_obj,
             freeze_base=freeze_base,
+            tensorboard_dir=str(output_path),
         )
 
         if resume_from is not None:
