@@ -9,6 +9,7 @@ This document outlines potential future enhancements and improvements to the AAM
 - Model architecture (hierarchical transformer-based model)
 - Training infrastructure (losses, metrics, trainer, CLI)
 - Comprehensive test suite (94% coverage)
+- **PYT-7.3**: Fixed loss display showing 0.0000 in progress bar (removed duplicate `pbar.set_postfix()` calls)
 
 ## Potential Enhancements
 
