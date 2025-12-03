@@ -185,7 +185,7 @@ class Trainer:
 
                     if self.scheduler is not None:
                         self.scheduler.step()
-                    
+
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
 
