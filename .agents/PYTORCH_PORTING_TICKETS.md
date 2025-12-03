@@ -604,3 +604,44 @@ Add support for loading pre-trained SequenceEncoder and fine-tuning SequencePred
 - Each ticket should be independently testable
 - Follow the plan documents for detailed requirements
 - Keep implementation simple and focused
+
+---
+
+## Phase 7: Bug Fixes
+
+### PYT-7.1: Fix CUDA Device Test Failures
+**Priority:** HIGH | **Effort:** Low | **Status:** ✅ Completed
+
+**Description:**
+Fix CUDA device comparison failures in tests. Tests compare `device(type='cuda', index=0)` with `device(type='cuda')` which fails because PyTorch assigns explicit indices to CUDA devices.
+
+**Files Modified:**
+- `tests/test_asv_encoder.py` - `test_forward_same_device`
+- `tests/test_position_embedding.py` - `test_forward_same_device`
+- `tests/test_transformer.py` - `test_forward_same_device`
+- `tests/test_sample_sequence_encoder.py` - `test_forward_same_device`
+- `tests/test_sequence_encoder.py` - `test_forward_same_device`
+- `tests/test_sequence_predictor.py` - `test_forward_same_device`
+- `tests/test_losses.py` - `test_losses_on_cuda`
+
+**Acceptance Criteria:**
+- [x] All CUDA device tests compare device types instead of exact device objects
+- [x] Use `result.device.type == device.type` instead of `result.device == device`
+- [x] All 7 failing tests pass on Linux with CUDA GPU
+- [x] Tests still pass on CPU-only systems
+
+**Implementation Notes:**
+- Changed device comparison from `result.device == device` to `result.device.type == device.type`
+- This handles both `cuda` and `cuda:0` correctly by comparing device types rather than exact device objects
+- For dictionary outputs (sequence_encoder, sequence_predictor), updated all device assertions
+- Fix ensures compatibility with both single-GPU and multi-GPU systems
+
+**Dependencies:** None
+
+**Estimated Time:** 1 hour
+**Actual Time:** ~15 minutes
+
+**Verification:**
+- ✅ All 7 tests pass on Linux with CUDA GPU (359 passed, 1 skipped)
+- ✅ Tests verified on Linux machine with CUDA device
+- ✅ Device comparison fix works correctly for both `cuda` and `cuda:0`

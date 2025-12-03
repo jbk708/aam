@@ -451,4 +451,4 @@ class TestDeviceHandling:
             encoder_type="unifrac",
         )
 
-        assert losses["total_loss"].device == device
+        assert losses["total_loss"].device.type == device.type

@@ -300,9 +300,9 @@ class TestSequencePredictor:
             sequence_predictor = sequence_predictor.to(device)
             sample_tokens = sample_tokens.to(device)
             result = sequence_predictor(sample_tokens)
-            assert result["target_prediction"].device == device
-            assert result["count_prediction"].device == device
-            assert result["base_embeddings"].device == device
+            assert result["target_prediction"].device.type == device.type
+            assert result["count_prediction"].device.type == device.type
+            assert result["base_embeddings"].device.type == device.type
 
     def test_base_embeddings_used(self, sequence_predictor, sample_tokens):
         """Test that base embeddings are used (not base predictions)."""
