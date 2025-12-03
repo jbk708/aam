@@ -208,7 +208,7 @@ class TestASVEncoder:
             asv_encoder = asv_encoder.to(device)
             sample_tokens = sample_tokens.to(device)
             result = asv_encoder(sample_tokens)
-            assert result.device == device
+            assert result.device.type == device.type
 
     def test_dropout_training_mode(self, asv_encoder, sample_tokens):
         """Test that dropout is active in training mode."""

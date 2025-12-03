@@ -56,15 +56,15 @@ Output: [B, S, D] base embeddings
 ## Implementation Checklist
 
 - [x] Create `SampleSequenceEncoder` class
-- [ ] Initialize ASVEncoder
-- [ ] Initialize sample-level position embedding
-- [ ] Initialize sample-level transformer
-- [ ] Implement forward pass
-- [ ] Handle mask creation from tokens
-- [ ] Handle training vs inference modes
-- [ ] Pass through nucleotide predictions
-- [ ] Test with dummy data
-- [ ] Verify output shapes
+- [x] Initialize ASVEncoder
+- [x] Initialize sample-level position embedding
+- [x] Initialize sample-level transformer
+- [x] Implement forward pass
+- [x] Handle mask creation from tokens
+- [x] Handle training vs inference modes
+- [x] Pass through nucleotide predictions
+- [x] Test with dummy data
+- [x] Verify output shapes
 
 ## Key Considerations
 

@@ -65,7 +65,7 @@ class TestPositionEmbedding:
             position_embedding = position_embedding.to(device)
             sample_embeddings = sample_embeddings.to(device)
             result = position_embedding(sample_embeddings)
-            assert result.device == device
+            assert result.device.type == device.type
 
     def test_forward_max_length_boundary(self, position_embedding):
         """Test forward pass at max_length boundary."""

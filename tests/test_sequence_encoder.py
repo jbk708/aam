@@ -237,8 +237,8 @@ class TestSequenceEncoder:
             sequence_encoder = sequence_encoder.to(device)
             sample_tokens = sample_tokens.to(device)
             result = sequence_encoder(sample_tokens)
-            assert result["base_prediction"].device == device
-            assert result["sample_embeddings"].device == device
+            assert result["base_prediction"].device.type == device.type
+            assert result["sample_embeddings"].device.type == device.type
 
     def test_forward_different_encoder_types(self, sample_tokens):
         """Test forward pass with different encoder types."""

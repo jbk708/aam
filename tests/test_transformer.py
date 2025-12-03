@@ -217,7 +217,7 @@ class TestTransformerEncoder:
             transformer_encoder = transformer_encoder.to(device)
             sample_embeddings = sample_embeddings.to(device)
             result = transformer_encoder(sample_embeddings)
-            assert result.device == device
+            assert result.device.type == device.type
 
     def test_dropout_training_mode(self, transformer_encoder, sample_embeddings):
         """Test that dropout is active in training mode."""
