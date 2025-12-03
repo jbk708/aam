@@ -1056,3 +1056,407 @@ class TestCLIIntegration:
         )
 
         assert result.exit_code != 0
+
+
+class TestPretrainedEncoderLoading:
+    """Tests for pretrained encoder loading via CLI."""
+
+    @pytest.fixture
+    def runner(self):
+        """Create CLI runner."""
+        return CliRunner()
+
+    def test_train_command_help_shows_pretrained_encoder_option(self, runner):
+        """Test that --pretrained-encoder option appears in help."""
+        result = runner.invoke(cli, ["train", "--help"])
+        assert result.exit_code == 0
+        assert "--pretrained-encoder" in result.output
+
+    def test_train_command_pretrained_encoder_file_validation(
+        self, runner, sample_biom_file, sample_tree_file, sample_metadata_file, sample_output_dir
+    ):
+        """Test train command validates pretrained encoder file exists."""
+        result = runner.invoke(
+            cli,
+            [
+                "train",
+                "--table",
+                sample_biom_file,
+                "--tree",
+                sample_tree_file,
+                "--metadata",
+                sample_metadata_file,
+                "--metadata-column",
+                "target",
+                "--output-dir",
+                sample_output_dir,
+                "--pretrained-encoder",
+                "nonexistent.pt",
+            ],
+        )
+        assert result.exit_code != 0
+
+    @patch("aam.cli.setup_logging")
+    @patch("aam.cli.setup_device")
+    @patch("aam.cli.setup_random_seed")
+    @patch("aam.cli.validate_file_path")
+    @patch("aam.cli.validate_arguments")
+    @patch("aam.cli.BIOMLoader")
+    @patch("aam.cli.UniFracComputer")
+    @patch("aam.cli.train_test_split")
+    @patch("aam.cli.ASVDataset")
+    @patch("aam.cli.DataLoader")
+    @patch("aam.cli.SequencePredictor")
+    @patch("aam.cli.load_pretrained_encoder")
+    @patch("aam.cli.create_optimizer")
+    @patch("aam.cli.create_scheduler")
+    @patch("aam.cli.MultiTaskLoss")
+    @patch("aam.cli.Trainer")
+    @patch("aam.cli.pd.read_csv")
+    def test_train_command_loads_pretrained_encoder(
+        self,
+        mock_read_csv,
+        mock_trainer_class,
+        mock_loss_class,
+        mock_create_scheduler,
+        mock_create_optimizer,
+        mock_load_pretrained_encoder,
+        mock_model_class,
+        mock_dataloader_class,
+        mock_dataset_class,
+        mock_train_test_split,
+        mock_unifrac_class,
+        mock_biom_loader_class,
+        mock_validate_args,
+        mock_validate_file,
+        mock_setup_seed,
+        mock_setup_device,
+        mock_setup_logging,
+        runner,
+        sample_biom_file,
+        sample_tree_file,
+        sample_metadata_file,
+        sample_output_dir,
+        temp_dir,
+    ):
+        """Test train command loads pretrained encoder when provided."""
+        mock_setup_device.return_value = torch.device("cpu")
+
+        mock_metadata_df = MagicMock()
+        mock_metadata_df.columns = ["sample_id", "target"]
+        mock_read_csv.return_value = mock_metadata_df
+
+        mock_biom_loader_instance = MagicMock()
+        mock_biom_loader_class.return_value = mock_biom_loader_instance
+        mock_table = MagicMock()
+        mock_table.ids.return_value = ["sample1", "sample2", "sample3", "sample4"]
+        mock_biom_loader_instance.load_table.return_value = mock_table
+        mock_biom_loader_instance.rarefy.return_value = mock_table
+
+        mock_unifrac_instance = MagicMock()
+        mock_unifrac_class.return_value = mock_unifrac_instance
+        mock_distance_matrix = MagicMock()
+        mock_unifrac_instance.compute_unweighted.return_value = mock_distance_matrix
+        mock_unifrac_instance.extract_batch_distances.return_value = MagicMock()
+
+        mock_train_ids = ["sample1", "sample2", "sample3"]
+        mock_val_ids = ["sample4"]
+        mock_train_test_split.return_value = (mock_train_ids, mock_val_ids)
+
+        mock_train_table = MagicMock()
+        mock_val_table = MagicMock()
+        mock_table.filter.side_effect = lambda ids, **kwargs: mock_train_table if ids == mock_train_ids else mock_val_table
+
+        mock_dataset_instance = MagicMock()
+        mock_dataset_class.return_value = mock_dataset_instance
+
+        mock_dataloader_instance = MagicMock()
+        mock_dataloader_instance.__len__ = MagicMock(return_value=1)
+        mock_dataloader_class.return_value = mock_dataloader_instance
+
+        mock_model_instance = MagicMock()
+        mock_model_class.return_value = mock_model_instance
+
+        mock_optimizer = MagicMock()
+        mock_create_optimizer.return_value = mock_optimizer
+
+        mock_scheduler = MagicMock()
+        mock_create_scheduler.return_value = mock_scheduler
+
+        mock_loss_instance = MagicMock()
+        mock_loss_class.return_value = mock_loss_instance
+
+        mock_trainer_instance = MagicMock()
+        mock_trainer_instance.train.return_value = {"train_loss": [1.0], "val_loss": [0.9]}
+        mock_trainer_class.return_value = mock_trainer_instance
+
+        pretrained_encoder_path = temp_dir / "pretrained.pt"
+        pretrained_encoder_path.touch()
+
+        result = runner.invoke(
+            cli,
+            [
+                "train",
+                "--table",
+                sample_biom_file,
+                "--tree",
+                sample_tree_file,
+                "--metadata",
+                sample_metadata_file,
+                "--metadata-column",
+                "target",
+                "--output-dir",
+                sample_output_dir,
+                "--batch-size",
+                "8",
+                "--epochs",
+                "1",
+                "--pretrained-encoder",
+                str(pretrained_encoder_path),
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert mock_load_pretrained_encoder.called
+        call_args = mock_load_pretrained_encoder.call_args
+        assert call_args[0][0] == str(pretrained_encoder_path)
+        assert call_args[0][1] == mock_model_instance
+        assert call_args[1]["strict"] == False
+
+    @patch("aam.cli.setup_logging")
+    @patch("aam.cli.setup_device")
+    @patch("aam.cli.setup_random_seed")
+    @patch("aam.cli.validate_file_path")
+    @patch("aam.cli.validate_arguments")
+    @patch("aam.cli.BIOMLoader")
+    @patch("aam.cli.UniFracComputer")
+    @patch("aam.cli.train_test_split")
+    @patch("aam.cli.ASVDataset")
+    @patch("aam.cli.DataLoader")
+    @patch("aam.cli.SequencePredictor")
+    @patch("aam.cli.load_pretrained_encoder")
+    @patch("aam.cli.create_optimizer")
+    @patch("aam.cli.create_scheduler")
+    @patch("aam.cli.MultiTaskLoss")
+    @patch("aam.cli.Trainer")
+    @patch("aam.cli.pd.read_csv")
+    def test_train_command_pretrained_encoder_with_freeze_base(
+        self,
+        mock_read_csv,
+        mock_trainer_class,
+        mock_loss_class,
+        mock_create_scheduler,
+        mock_create_optimizer,
+        mock_load_pretrained_encoder,
+        mock_model_class,
+        mock_dataloader_class,
+        mock_dataset_class,
+        mock_train_test_split,
+        mock_unifrac_class,
+        mock_biom_loader_class,
+        mock_validate_args,
+        mock_validate_file,
+        mock_setup_seed,
+        mock_setup_device,
+        mock_setup_logging,
+        runner,
+        sample_biom_file,
+        sample_tree_file,
+        sample_metadata_file,
+        sample_output_dir,
+        temp_dir,
+    ):
+        """Test train command with pretrained encoder and freeze_base option."""
+        mock_setup_device.return_value = torch.device("cpu")
+
+        mock_metadata_df = MagicMock()
+        mock_metadata_df.columns = ["sample_id", "target"]
+        mock_read_csv.return_value = mock_metadata_df
+
+        mock_biom_loader_instance = MagicMock()
+        mock_biom_loader_class.return_value = mock_biom_loader_instance
+        mock_table = MagicMock()
+        mock_table.ids.return_value = ["sample1", "sample2", "sample3", "sample4"]
+        mock_biom_loader_instance.load_table.return_value = mock_table
+        mock_biom_loader_instance.rarefy.return_value = mock_table
+
+        mock_unifrac_instance = MagicMock()
+        mock_unifrac_class.return_value = mock_unifrac_instance
+        mock_distance_matrix = MagicMock()
+        mock_unifrac_instance.compute_unweighted.return_value = mock_distance_matrix
+        mock_unifrac_instance.extract_batch_distances.return_value = MagicMock()
+
+        mock_train_ids = ["sample1", "sample2", "sample3"]
+        mock_val_ids = ["sample4"]
+        mock_train_test_split.return_value = (mock_train_ids, mock_val_ids)
+
+        mock_train_table = MagicMock()
+        mock_val_table = MagicMock()
+        mock_table.filter.side_effect = lambda ids, **kwargs: mock_train_table if ids == mock_train_ids else mock_val_table
+
+        mock_dataset_instance = MagicMock()
+        mock_dataset_class.return_value = mock_dataset_instance
+
+        mock_dataloader_instance = MagicMock()
+        mock_dataloader_instance.__len__ = MagicMock(return_value=1)
+        mock_dataloader_class.return_value = mock_dataloader_instance
+
+        mock_model_instance = MagicMock()
+        mock_model_class.return_value = mock_model_instance
+
+        mock_optimizer = MagicMock()
+        mock_create_optimizer.return_value = mock_optimizer
+
+        mock_scheduler = MagicMock()
+        mock_create_scheduler.return_value = mock_scheduler
+
+        mock_loss_instance = MagicMock()
+        mock_loss_class.return_value = mock_loss_instance
+
+        mock_trainer_instance = MagicMock()
+        mock_trainer_instance.train.return_value = {"train_loss": [1.0], "val_loss": [0.9]}
+        mock_trainer_class.return_value = mock_trainer_instance
+
+        pretrained_encoder_path = temp_dir / "pretrained.pt"
+        pretrained_encoder_path.touch()
+
+        result = runner.invoke(
+            cli,
+            [
+                "train",
+                "--table",
+                sample_biom_file,
+                "--tree",
+                sample_tree_file,
+                "--metadata",
+                sample_metadata_file,
+                "--metadata-column",
+                "target",
+                "--output-dir",
+                sample_output_dir,
+                "--batch-size",
+                "8",
+                "--epochs",
+                "1",
+                "--pretrained-encoder",
+                str(pretrained_encoder_path),
+                "--freeze-base",
+            ],
+        )
+
+        assert result.exit_code == 0
+        assert mock_load_pretrained_encoder.called
+        assert mock_create_optimizer.called
+        optimizer_call_args = mock_create_optimizer.call_args
+        assert optimizer_call_args[1]["freeze_base"] == True
+
+    @patch("aam.cli.setup_logging")
+    @patch("aam.cli.setup_device")
+    @patch("aam.cli.setup_random_seed")
+    @patch("aam.cli.validate_file_path")
+    @patch("aam.cli.validate_arguments")
+    @patch("aam.cli.BIOMLoader")
+    @patch("aam.cli.UniFracComputer")
+    @patch("aam.cli.train_test_split")
+    @patch("aam.cli.ASVDataset")
+    @patch("aam.cli.DataLoader")
+    @patch("aam.cli.SequencePredictor")
+    @patch("aam.cli.load_pretrained_encoder")
+    @patch("aam.cli.create_optimizer")
+    @patch("aam.cli.create_scheduler")
+    @patch("aam.cli.MultiTaskLoss")
+    @patch("aam.cli.Trainer")
+    @patch("aam.cli.pd.read_csv")
+    def test_train_command_pretrained_encoder_load_error_handling(
+        self,
+        mock_read_csv,
+        mock_trainer_class,
+        mock_loss_class,
+        mock_create_scheduler,
+        mock_create_optimizer,
+        mock_load_pretrained_encoder,
+        mock_model_class,
+        mock_dataloader_class,
+        mock_dataset_class,
+        mock_train_test_split,
+        mock_unifrac_class,
+        mock_biom_loader_class,
+        mock_validate_args,
+        mock_validate_file,
+        mock_setup_seed,
+        mock_setup_device,
+        mock_setup_logging,
+        runner,
+        sample_biom_file,
+        sample_tree_file,
+        sample_metadata_file,
+        sample_output_dir,
+        temp_dir,
+    ):
+        """Test train command handles errors when loading pretrained encoder."""
+        mock_setup_device.return_value = torch.device("cpu")
+
+        mock_metadata_df = MagicMock()
+        mock_metadata_df.columns = ["sample_id", "target"]
+        mock_read_csv.return_value = mock_metadata_df
+
+        mock_biom_loader_instance = MagicMock()
+        mock_biom_loader_class.return_value = mock_biom_loader_instance
+        mock_table = MagicMock()
+        mock_table.ids.return_value = ["sample1", "sample2", "sample3", "sample4"]
+        mock_biom_loader_instance.load_table.return_value = mock_table
+        mock_biom_loader_instance.rarefy.return_value = mock_table
+
+        mock_unifrac_instance = MagicMock()
+        mock_unifrac_class.return_value = mock_unifrac_instance
+        mock_distance_matrix = MagicMock()
+        mock_unifrac_instance.compute_unweighted.return_value = mock_distance_matrix
+        mock_unifrac_instance.extract_batch_distances.return_value = MagicMock()
+
+        mock_train_ids = ["sample1", "sample2", "sample3"]
+        mock_val_ids = ["sample4"]
+        mock_train_test_split.return_value = (mock_train_ids, mock_val_ids)
+
+        mock_train_table = MagicMock()
+        mock_val_table = MagicMock()
+        mock_table.filter.side_effect = lambda ids, **kwargs: mock_train_table if ids == mock_train_ids else mock_val_table
+
+        mock_dataset_instance = MagicMock()
+        mock_dataset_class.return_value = mock_dataset_instance
+
+        mock_dataloader_instance = MagicMock()
+        mock_dataloader_instance.__len__ = MagicMock(return_value=1)
+        mock_dataloader_class.return_value = mock_dataloader_instance
+
+        mock_model_instance = MagicMock()
+        mock_model_class.return_value = mock_model_instance
+
+        mock_load_pretrained_encoder.side_effect = Exception("Failed to load checkpoint")
+
+        pretrained_encoder_path = temp_dir / "pretrained.pt"
+        pretrained_encoder_path.touch()
+
+        result = runner.invoke(
+            cli,
+            [
+                "train",
+                "--table",
+                sample_biom_file,
+                "--tree",
+                sample_tree_file,
+                "--metadata",
+                sample_metadata_file,
+                "--metadata-column",
+                "target",
+                "--output-dir",
+                sample_output_dir,
+                "--batch-size",
+                "8",
+                "--epochs",
+                "1",
+                "--pretrained-encoder",
+                str(pretrained_encoder_path),
+            ],
+        )
+
+        assert result.exit_code != 0
