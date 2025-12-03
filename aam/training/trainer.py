@@ -165,7 +165,30 @@ class Trainer:
         Returns:
             Matplotlib figure
         """
-        pass
+        pred_np = np.array(predictions.detach().cpu().tolist()).flatten()
+        target_np = np.array(targets.detach().cpu().tolist()).flatten()
+
+        fig, ax = plt.subplots(figsize=(8, 6), dpi=100)
+        ax.scatter(target_np, pred_np, alpha=0.6, s=20)
+
+        min_val = min(target_np.min(), pred_np.min())
+        max_val = max(target_np.max(), pred_np.max())
+
+        ax.plot([min_val, max_val], [min_val, max_val], "k--", linewidth=1, label="Perfect Prediction", alpha=0.5)
+
+        if len(target_np) > 1:
+            z = np.polyfit(target_np, pred_np, 1)
+            p = np.poly1d(z)
+            ax.plot(target_np, p(target_np), "b-", linewidth=2, label=f"Linear Fit, R² = {r2:.4f}")
+
+        ax.set_xlabel("Actual", fontsize=12)
+        ax.set_ylabel("Predicted", fontsize=12)
+        ax.set_title(f"Predicted vs Actual (Epoch {epoch}, R² = {r2:.4f})", fontsize=14)
+        ax.legend(loc="upper left")
+        ax.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+        return fig
 
     def _create_confusion_matrix_plot(
         self,
@@ -191,7 +214,35 @@ class Trainer:
         Returns:
             Matplotlib figure
         """
-        pass
+        from sklearn.metrics import confusion_matrix
+
+        target_np = np.array(targets.detach().cpu().tolist())
+
+        if predictions.dim() > 1 and predictions.size(-1) > 1:
+            pred_np = np.array(predictions.detach().cpu().argmax(dim=-1).tolist())
+        else:
+            pred_np = np.array(predictions.detach().cpu().tolist()).flatten()
+
+        num_classes = max(int(pred_np.max()), int(target_np.max())) + 1
+        cm = confusion_matrix(target_np, pred_np, labels=list(range(num_classes)))
+
+        fig, ax = plt.subplots(figsize=(8, 6), dpi=100)
+        im = ax.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
+        ax.figure.colorbar(im, ax=ax)
+
+        ax.set(xticks=np.arange(cm.shape[1]), yticks=np.arange(cm.shape[0]), xticklabels=list(range(num_classes)), yticklabels=list(range(num_classes)), ylabel="True Label", xlabel="Predicted Label")
+
+        thresh = cm.max() / 2.0
+        for i in range(cm.shape[0]):
+            for j in range(cm.shape[1]):
+                ax.text(j, i, format(cm[i, j], "d"), ha="center", va="center", color="white" if cm[i, j] > thresh else "black")
+
+        metrics_text = f"Accuracy: {accuracy:.4f}\nPrecision: {precision:.4f}\nRecall: {recall:.4f}\nF1: {f1:.4f}"
+        ax.text(0.98, 0.02, metrics_text, transform=ax.transAxes, fontsize=10, verticalalignment="bottom", horizontalalignment="right", bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5))
+
+        ax.set_title(f"Confusion Matrix (Epoch {epoch})", fontsize=14, pad=20)
+        plt.tight_layout()
+        return fig
 
     def _save_prediction_plots(
         self,
@@ -210,7 +261,40 @@ class Trainer:
             metrics: Metrics dictionary
             checkpoint_dir: Directory to save plots
         """
-        pass
+        if checkpoint_dir is None:
+            return
+
+        is_classifier = self._get_is_classifier()
+
+        if is_classifier:
+            if "accuracy" not in metrics or "precision" not in metrics or "recall" not in metrics or "f1" not in metrics:
+                return
+            fig = self._create_confusion_matrix_plot(
+                predictions,
+                targets,
+                epoch,
+                metrics["accuracy"],
+                metrics["precision"],
+                metrics["recall"],
+                metrics["f1"],
+            )
+        else:
+            if "r2" not in metrics:
+                return
+            fig = self._create_prediction_plot(predictions, targets, epoch, metrics["r2"])
+
+        plots_dir = Path(checkpoint_dir) / "plots"
+        plots_dir.mkdir(parents=True, exist_ok=True)
+
+        plot_file = plots_dir / "pred_vs_actual_best.png"
+        if plot_file.exists():
+            plot_file.unlink()
+
+        fig.savefig(plot_file, dpi=100, bbox_inches="tight")
+        plt.close(fig)
+
+        if self.writer is not None:
+            self.writer.add_figure("validation/prediction_plot", fig, epoch)
 
     def _log_to_tensorboard(self, epoch: int, train_losses: Dict[str, float], val_results: Optional[Dict[str, float]] = None):
         """Log metrics to TensorBoard.
