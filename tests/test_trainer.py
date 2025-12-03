@@ -441,6 +441,125 @@ class TestTrainingLoop:
         checkpoint_files = list(checkpoint_dir.glob("*.pt"))
         assert len(checkpoint_files) > 0
 
+    def test_single_best_model_file(self, small_model, loss_fn, simple_dataloader_encoder, device, tmp_path):
+        """Test that only single best_model.pt file is saved."""
+        small_model = small_model.to(device)
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+        )
+
+        checkpoint_dir = tmp_path / "checkpoints"
+        checkpoint_dir.mkdir()
+
+        history = trainer.train(
+            train_loader=simple_dataloader_encoder,
+            val_loader=simple_dataloader_encoder,
+            num_epochs=5,
+            checkpoint_dir=str(checkpoint_dir),
+        )
+
+        best_model_path = checkpoint_dir / "best_model.pt"
+        assert best_model_path.exists(), "best_model.pt should exist"
+        
+        checkpoint_files = list(checkpoint_dir.glob("best_model*.pt"))
+        assert len(checkpoint_files) == 1, f"Expected 1 best_model file, found {len(checkpoint_files)}"
+        assert checkpoint_files[0].name == "best_model.pt", f"Expected best_model.pt, found {checkpoint_files[0].name}"
+
+    def test_best_model_replacement(self, small_model, loss_fn, simple_dataloader_encoder, device, tmp_path):
+        """Test that best model file is replaced when new best is found."""
+        small_model = small_model.to(device)
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+        )
+
+        checkpoint_dir = tmp_path / "checkpoints"
+        checkpoint_dir.mkdir()
+
+        best_model_path = checkpoint_dir / "best_model.pt"
+        
+        history = trainer.train(
+            train_loader=simple_dataloader_encoder,
+            val_loader=simple_dataloader_encoder,
+            num_epochs=3,
+            checkpoint_dir=str(checkpoint_dir),
+        )
+
+        assert best_model_path.exists(), "best_model.pt should exist"
+        
+        first_mtime = best_model_path.stat().st_mtime
+        
+        trainer2 = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+        )
+        
+        history2 = trainer2.train(
+            train_loader=simple_dataloader_encoder,
+            val_loader=simple_dataloader_encoder,
+            num_epochs=2,
+            checkpoint_dir=str(checkpoint_dir),
+        )
+        
+        assert best_model_path.exists(), "best_model.pt should still exist after second training"
+        second_mtime = best_model_path.stat().st_mtime
+        
+        checkpoint_files = list(checkpoint_dir.glob("best_model*.pt"))
+        assert len(checkpoint_files) == 1, f"Should only have one best_model file, found {len(checkpoint_files)}"
+
+    def test_load_best_model_checkpoint(self, small_model, loss_fn, simple_dataloader_encoder, device, tmp_path):
+        """Test loading best_model.pt checkpoint."""
+        small_model = small_model.to(device)
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+        )
+
+        checkpoint_dir = tmp_path / "checkpoints"
+        checkpoint_dir.mkdir()
+
+        trainer.train(
+            train_loader=simple_dataloader_encoder,
+            val_loader=simple_dataloader_encoder,
+            num_epochs=2,
+            checkpoint_dir=str(checkpoint_dir),
+        )
+
+        best_model_path = checkpoint_dir / "best_model.pt"
+        assert best_model_path.exists(), "best_model.pt should exist"
+
+        new_model = SequenceEncoder(
+            vocab_size=5,
+            embedding_dim=32,
+            max_bp=50,
+            token_limit=64,
+            asv_num_layers=1,
+            asv_num_heads=2,
+            sample_num_layers=1,
+            sample_num_heads=2,
+            encoder_num_layers=1,
+            encoder_num_heads=2,
+            base_output_dim=16,
+            encoder_type="unifrac",
+            predict_nucleotides=False,
+        ).to(device)
+
+        trainer2 = Trainer(
+            model=new_model,
+            loss_fn=loss_fn,
+            device=device,
+        )
+
+        checkpoint_info = trainer2.load_checkpoint(str(best_model_path))
+        assert "epoch" in checkpoint_info
+        assert "best_val_loss" in checkpoint_info
+        assert checkpoint_info["best_val_loss"] < float("inf")
+
 
 class TestLoadPretrainedEncoder:
     """Test loading pre-trained encoder."""
@@ -599,10 +718,10 @@ class TestTrainerEdgeCases:
             checkpoint_dir=str(checkpoint_dir),
         )
 
-        checkpoint_files = list(checkpoint_dir.glob("*.pt"))
-        assert len(checkpoint_files) > 0
+        best_model_path = checkpoint_dir / "best_model.pt"
+        assert best_model_path.exists(), "best_model.pt should exist"
 
-        resume_path = checkpoint_files[0]
+        resume_path = best_model_path
 
         new_optimizer = create_optimizer(small_predictor, lr=1e-4)
         new_scheduler = create_scheduler(new_optimizer, num_warmup_steps=0, num_training_steps=20)
