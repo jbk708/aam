@@ -519,24 +519,36 @@ Write integration tests for data pipeline, model pipeline, and training pipeline
 ## Phase 6: Staged Training
 
 ### PYT-6.1: Implement SequenceEncoder Pre-training
-**Priority:** MEDIUM | **Effort:** Medium | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** Medium | **Status:** ✅ Completed
 
 **Description:**
 Add support for pre-training SequenceEncoder separately (Stage 1 of training strategy).
 
-**Files to Modify:**
-- `aam/training/trainer.py`
-- `aam/cli.py`
+**Files Created/Modified:**
+- `aam/cli.py` (added `pretrain` command)
+- `tests/test_cli.py` (added tests for pretrain command)
 
 **Acceptance Criteria:**
-- [ ] Can train SequenceEncoder standalone
-- [ ] Saves checkpoint after pre-training
-- [ ] CLI supports pre-training mode
-- [ ] Tests pass
+- [x] Can train SequenceEncoder standalone
+- [x] Saves checkpoint after pre-training
+- [x] CLI supports pre-training mode
+- [x] Tests pass
+
+**Implementation Notes:**
+- Added `pretrain` CLI command that trains SequenceEncoder on UniFrac + nucleotide prediction (self-supervised)
+- No metadata/target labels required - only needs BIOM table and phylogenetic tree
+- Creates SequenceEncoder model (not SequencePredictor)
+- Loss function only uses base_loss (UniFrac) and nuc_loss (nucleotide prediction)
+- Sets `base_output_dim` based on UniFrac metric: `batch_size` for unweighted UniFrac (pairwise distances), `1` for Faith PD
+- Saves checkpoint as `pretrained_encoder.pt` in output directory
+- Supports all standard training options: epochs, batch_size, learning rate, early stopping, etc.
+- Tests include help command, missing args validation, file validation, batch size validation, and integration test
+- Exception handler safely handles errors before logger initialization
 
 **Dependencies:** PYT-4.2
 
 **Estimated Time:** 4-6 hours
+**Actual Time:** ~3 hours
 
 ---
 
