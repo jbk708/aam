@@ -173,6 +173,10 @@ class Trainer:
                 scaled_loss = losses["total_loss"] / gradient_accumulation_steps
                 scaled_loss.backward()
 
+                del outputs, tokens, targets
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+
                 accumulated_steps += 1
 
                 if accumulated_steps % gradient_accumulation_steps == 0:
@@ -181,12 +185,16 @@ class Trainer:
 
                     if self.scheduler is not None:
                         self.scheduler.step()
+                    
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
 
                 for key, value in losses.items():
                     if key not in total_losses:
                         total_losses[key] = 0.0
                     total_losses[key] += value.item()
 
+                del losses, scaled_loss
                 num_batches += 1
 
             except torch.cuda.OutOfMemoryError as e:

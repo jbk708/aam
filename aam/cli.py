@@ -426,7 +426,9 @@ def train(
 @click.option("--resume-from", default=None, type=click.Path(exists=True), help="Path to checkpoint to resume from")
 @click.option("--gradient-accumulation-steps", default=1, type=int, help="Number of gradient accumulation steps")
 @click.option("--use-expandable-segments", is_flag=True, help="Enable PyTorch CUDA expandable segments for memory optimization")
-@click.option("--asv-chunk-size", default=None, type=int, help="Process ASVs in chunks of this size to reduce memory (None = process all)")
+@click.option(
+    "--asv-chunk-size", default=None, type=int, help="Process ASVs in chunks of this size to reduce memory (None = process all)"
+)
 def pretrain(
     table: str,
     tree: str,

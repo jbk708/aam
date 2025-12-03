@@ -109,6 +109,21 @@ Use FP16/BF16 to halve memory usage. Requires PyTorch AMP support.
 
 For a 24GB GPU with `batch_size=2` and `gradient_accumulation_steps=16`:
 
+**Option 1: Aggressive chunking (recommended)**
+```bash
+python -m aam.cli pretrain \
+  --table data/fall_train_only_all_outdoor.biom \
+  --tree data/all-outdoors_sepp_tree.nwk \
+  --output-dir data/model-test \
+  --batch-size 2 \
+  --epochs 1000 \
+  --gradient-accumulation-steps 16 \
+  --asv-chunk-size 128 \
+  --token-limit 256 \
+  --use-expandable-segments
+```
+
+**Option 2: Moderate chunking**
 ```bash
 python -m aam.cli pretrain \
   --table data/fall_train_only_all_outdoor.biom \
@@ -122,10 +137,21 @@ python -m aam.cli pretrain \
   --use-expandable-segments
 ```
 
-This should reduce memory usage significantly:
-- ASV chunking: ~4x reduction in ASV-level attention
-- Token limit reduction: ~4x reduction in sample-level attention
-- Total estimated reduction: ~8-10x
+**Important Notes:**
+- `--token-limit` is critical: Sample-level attention is `O(token_limit^2)`, so reducing from 1024 to 256 reduces sample attention by 16x
+- `--asv-chunk-size` reduces ASV-level attention but doesn't help with sample-level attention
+- Both optimizations are needed for maximum memory savings
+- The code now includes automatic memory clearing after each chunk and batch
+
+**Memory breakdown with token_limit=1024 (default):**
+- Sample-level attention: `[2, 1024, 1024] * 4 heads * 4 layers = ~0.13 GB` (this is the bottleneck!)
+- ASV-level attention (chunked): `[2*128, 150, 150] * 4 heads * 4 layers = ~0.09 GB per chunk`
+- Total with chunking but token_limit=1024: Still ~20-24GB due to sample-level attention
+
+**Memory breakdown with token_limit=256:**
+- Sample-level attention: `[2, 256, 256] * 4 heads * 4 layers = ~0.008 GB` (16x reduction!)
+- ASV-level attention (chunked): `[2*128, 150, 150] * 4 heads * 4 layers = ~0.09 GB per chunk`
+- Total estimated: ~8-12GB
 
 ## Monitoring Memory Usage
 

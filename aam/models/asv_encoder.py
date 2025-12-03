@@ -103,10 +103,15 @@ class ASVEncoder(nn.Module):
                     nucleotide_logits = self.nucleotide_head(embeddings)
                     chunk_nuc_preds = nucleotide_logits.reshape(batch_size, chunk_num_asvs, seq_len, self.vocab_size)
                     nucleotide_predictions_list.append(chunk_nuc_preds)
+                    del nucleotide_logits
                 
                 pooled_embeddings = self.attention_pooling(embeddings, mask=mask)
                 chunk_asv_embeddings = pooled_embeddings.reshape(batch_size, chunk_num_asvs, self.embedding_dim)
                 asv_embeddings_list.append(chunk_asv_embeddings)
+                
+                del embeddings, pooled_embeddings, tokens_flat, mask
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
             
             asv_embeddings = torch.cat(asv_embeddings_list, dim=1)
             
