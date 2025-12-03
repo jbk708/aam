@@ -114,21 +114,35 @@ Test data files are located in the `./data/` folder:
 
 **Coverage:** 94% (333 tests passing, 4 skipped)
 
-### Integration Tests (In Progress - PYT-5.2)
+### Integration Tests (✅ Completed - PYT-5.2)
 - [x] Test CLI integration (train/predict commands with mocked components)
 - [x] Test dataset integration (DataLoader iteration)
 - [x] Test UniFrac integration (with real data files)
-- [ ] Test data pipeline end-to-end using `./data/fall_train_only_all_outdoor.biom` and `./data/all-outdoors_sepp_tree.nwk`
-- [ ] Test model forward pass integration
-- [ ] Test loss computation integration
-- [ ] Test training step integration
-- [ ] Test validation step integration
+- [x] Test data pipeline end-to-end using `./data/fall_train_only_all_outdoor.biom` and `./data/all-outdoors_sepp_tree.nwk`
+- [x] Test model forward pass integration
+- [x] Test loss computation integration
+- [x] Test training step integration
+- [x] Test validation step integration
 
-### End-to-End Tests (Pending - PYT-5.2)
-- [ ] Test full training loop
-- [x] Test checkpoint saving/loading (covered in trainer tests)
+**Implementation:**
+- Created `tests/test_integration.py` with 13 comprehensive integration tests
+- Data Pipeline Integration (4 tests): Complete pipeline from BIOM loading through DataLoader
+- Model Pipeline Integration (3 tests): Forward pass, output structure, loss computation
+- Training Pipeline Integration (3 tests): Training step, validation step, training loop
+- All tests use correct method signatures and follow existing patterns
+- Tests handle missing data files gracefully with pytest.skip()
+
+### End-to-End Tests (✅ Completed - PYT-5.2)
+- [x] Test full training loop
+- [x] Test checkpoint saving/loading (covered in trainer tests and end-to-end tests)
 - [x] Test early stopping (covered in trainer tests)
 - [x] Test CLI interface (covered in CLI integration tests)
+
+**Implementation:**
+- Created 3 end-to-end tests (marked `@pytest.mark.slow`) that test full training workflow with real data
+- Tests use unweighted UniFrac with batch-level pairwise distances
+- Tests verify loss computation, model parameter updates, and checkpoint saving
+- All end-to-end tests passing with real BIOM table and phylogenetic tree files
 
 ### Validation Tests (Partially Complete)
 - [x] Verify tensor shapes throughout (covered in component tests)

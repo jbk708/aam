@@ -483,23 +483,36 @@ Write comprehensive unit tests as specified in `pytorch_porting_plan/13_testing.
 ---
 
 ### PYT-5.2: Write Integration Tests
-**Priority:** HIGH | **Effort:** Medium | **Status:** Not Started
+**Priority:** HIGH | **Effort:** Medium | **Status:** ✅ Completed
 
 **Description:**
 Write integration tests for data pipeline, model pipeline, and training pipeline.
 
-**Files to Create:**
+**Files Created:**
 - `tests/test_integration.py`
 
 **Acceptance Criteria:**
-- [ ] Data pipeline integration test passes
-- [ ] Model pipeline integration test passes
-- [ ] Training pipeline integration test passes
-- [ ] End-to-end test passes
+- [x] Data pipeline integration test passes
+- [x] Model pipeline integration test passes
+- [x] Training pipeline integration test passes
+- [x] End-to-end test passes
 
 **Dependencies:** PYT-5.1
 
+**Implementation Notes:**
+- Created comprehensive integration test suite with 13 tests total
+- Data Pipeline Integration (4 tests): Tests complete pipeline from BIOM loading → rarefaction → UniFrac computation → tokenization → dataset creation → DataLoader
+- Model Pipeline Integration (3 tests): Tests model forward pass, output structure, and loss computation with all components
+- Training Pipeline Integration (3 tests): Tests training step, validation step, and complete training loop
+- End-to-End Tests (3 tests, marked `@pytest.mark.slow`): Tests full training workflow with real data files
+- End-to-end tests use unweighted UniFrac with batch-level pairwise distances extracted via `extract_batch_distances()`
+- Model configured with `base_output_dim = batch_size` for pairwise distance prediction
+- All tests use correct method signatures and follow existing test patterns
+- Tests handle missing data files gracefully with pytest.skip()
+- 10 non-slow tests passing, 3 slow end-to-end tests passing (all 13 tests pass)
+
 **Estimated Time:** 6-8 hours
+**Actual Time:** ~4 hours
 
 ---
 
