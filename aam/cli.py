@@ -584,6 +584,7 @@ def pretrain(
             scheduler=scheduler,
             device=device_obj,
             freeze_base=False,
+            tensorboard_dir=str(output_path),
         )
 
         if resume_from is not None:
