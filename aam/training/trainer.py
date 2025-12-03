@@ -9,6 +9,10 @@ import os
 from pathlib import Path
 import math
 from tqdm import tqdm
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
 
 from aam.training.metrics import compute_regression_metrics, compute_count_metrics, compute_classification_metrics
 
@@ -142,6 +146,71 @@ class Trainer:
         if hasattr(self.model, "is_classifier"):
             return self.model.is_classifier
         return False
+
+    def _create_prediction_plot(
+        self,
+        predictions: torch.Tensor,
+        targets: torch.Tensor,
+        epoch: int,
+        r2: float,
+    ) -> plt.Figure:
+        """Create prediction vs actual scatter plot for regression tasks.
+
+        Args:
+            predictions: Predicted values [B, 1] or [B]
+            targets: Actual values [B, 1] or [B]
+            epoch: Current epoch number
+            r2: R² score
+
+        Returns:
+            Matplotlib figure
+        """
+        pass
+
+    def _create_confusion_matrix_plot(
+        self,
+        predictions: torch.Tensor,
+        targets: torch.Tensor,
+        epoch: int,
+        accuracy: float,
+        precision: float,
+        recall: float,
+        f1: float,
+    ) -> plt.Figure:
+        """Create confusion matrix plot for classification tasks.
+
+        Args:
+            predictions: Predicted class indices [B] or logits [B, num_classes]
+            targets: Actual class indices [B]
+            epoch: Current epoch number
+            accuracy: Accuracy score
+            precision: Precision score
+            recall: Recall score
+            f1: F1 score
+
+        Returns:
+            Matplotlib figure
+        """
+        pass
+
+    def _save_prediction_plots(
+        self,
+        predictions: torch.Tensor,
+        targets: torch.Tensor,
+        epoch: int,
+        metrics: Dict[str, float],
+        checkpoint_dir: Optional[str],
+    ) -> None:
+        """Create and save prediction plots when validation improves.
+
+        Args:
+            predictions: Predicted values
+            targets: Actual values
+            epoch: Current epoch number
+            metrics: Metrics dictionary
+            checkpoint_dir: Directory to save plots
+        """
+        pass
 
     def _log_to_tensorboard(self, epoch: int, train_losses: Dict[str, float], val_results: Optional[Dict[str, float]] = None):
         """Log metrics to TensorBoard.
@@ -303,7 +372,8 @@ class Trainer:
         compute_metrics: bool = True,
         epoch: int = 0,
         num_epochs: int = 1,
-    ) -> Dict[str, float]:
+        return_predictions: bool = False,
+    ) -> Union[Dict[str, float], Tuple[Dict[str, float], Optional[torch.Tensor], Optional[torch.Tensor]]]:
         """Run one validation epoch.
 
         Args:
@@ -401,16 +471,19 @@ class Trainer:
 
         avg_losses = {key: value / num_batches for key, value in total_losses.items()}
 
+        target_pred_tensor = None
+        target_true_tensor = None
+
         if compute_metrics and all_predictions:
             if "target_prediction" in all_predictions:
-                target_pred = torch.cat(all_predictions["target_prediction"], dim=0)
-                target_true = torch.cat(all_targets["target"], dim=0)
+                target_pred_tensor = torch.cat(all_predictions["target_prediction"], dim=0)
+                target_true_tensor = torch.cat(all_targets["target"], dim=0)
 
                 is_classifier = self._get_is_classifier()
                 if is_classifier:
-                    metrics = compute_classification_metrics(target_pred, target_true)
+                    metrics = compute_classification_metrics(target_pred_tensor, target_true_tensor)
                 else:
-                    metrics = compute_regression_metrics(target_pred, target_true)
+                    metrics = compute_regression_metrics(target_pred_tensor, target_true_tensor)
                 avg_losses.update(metrics)
 
             if "count_prediction" in all_predictions:
@@ -420,6 +493,8 @@ class Trainer:
                 metrics = compute_count_metrics(count_pred, count_true, mask)
                 avg_losses.update({f"count_{k}": v for k, v in metrics.items()})
 
+        if return_predictions:
+            return avg_losses, target_pred_tensor, target_true_tensor
         return avg_losses
 
     def train(
@@ -431,6 +506,7 @@ class Trainer:
         checkpoint_dir: Optional[str] = None,
         resume_from: Optional[str] = None,
         gradient_accumulation_steps: int = 1,
+        save_plots: bool = True,
     ) -> Dict[str, list]:
         """Main training loop.
 
@@ -442,6 +518,7 @@ class Trainer:
             checkpoint_dir: Directory to save checkpoints
             resume_from: Path to checkpoint to resume from
             gradient_accumulation_steps: Number of steps to accumulate gradients before optimizer step
+            save_plots: Whether to save prediction plots when validation improves
 
         Returns:
             Dictionary with training history
@@ -480,12 +557,20 @@ class Trainer:
 
                 val_results = None
                 if val_loader is not None:
-                    val_results = self.validate_epoch(
+                    return_predictions = save_plots
+                    val_output = self.validate_epoch(
                         val_loader,
                         compute_metrics=True,
                         epoch=epoch,
                         num_epochs=num_epochs,
+                        return_predictions=return_predictions,
                     )
+                    if return_predictions:
+                        val_results, val_predictions, val_targets = val_output
+                    else:
+                        val_results = val_output
+                        val_predictions = None
+                        val_targets = None
                     val_loss = val_results["total_loss"]
                     history["val_loss"].append(val_loss)
 
@@ -502,6 +587,15 @@ class Trainer:
                                 epoch=epoch,
                                 best_val_loss=best_val_loss,
                                 metrics=val_results,
+                            )
+
+                        if save_plots and val_predictions is not None and val_targets is not None:
+                            self._save_prediction_plots(
+                                val_predictions,
+                                val_targets,
+                                epoch,
+                                val_results,
+                                checkpoint_dir,
                             )
                     else:
                         patience_counter += 1

@@ -17,6 +17,7 @@ dependencies:
   - click
   - tqdm
   - tensorboard >=2.13.0
+  - matplotlib
   # Dev dependencies
   - pytest >=7.0
   - pytest-cov >=4.0

@@ -23,11 +23,11 @@ The implementation plan is organized into 13 documents, each covering a specific
 13. **[12_cli_interface.md](12_cli_interface.md)** - Command-line interface ✅
 14. **[13_testing.md](13_testing.md)** - Testing strategy ✅
 
-## New Features (Pending)
+## New Features
 
 15. **[14_tensorboard_overlay.md](14_tensorboard_overlay.md)** - TensorBoard train/val overlay ⏳
 16. **[15_save_best_model.md](15_save_best_model.md)** - Save single best model file ⏳
-17. **[16_early_stopping_default.md](16_early_stopping_default.md)** - Early stopping default to 10 epochs ⏳
+17. **[16_early_stopping_default.md](16_early_stopping_default.md)** - Early stopping default to 10 epochs ✅
 18. **[17_validation_prediction_plots.md](17_validation_prediction_plots.md)** - Validation prediction plots ⏳
 
 ## Training Strategy
