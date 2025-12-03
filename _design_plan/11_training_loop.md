@@ -70,8 +70,8 @@ Implement training and validation loops with staged training support.
 - Device handling: Move model and batches to device
 - Gradient management: Zero gradients, gradient accumulation support (configurable steps)
 - Memory: Clear cache after batches/chunks, gradient accumulation, chunked processing for large models
-- Progress: Use `tqdm` for progress bars
-- Logging: Track losses and metrics per epoch
+- Progress: Use `tqdm` for progress bars with enhanced display (epoch, step, loss, learning rate)
+- Logging: Track losses and metrics per epoch, TensorBoard logging enabled by default
 - OOM handling: Catch CUDA OOM errors with helpful suggestions
 
 ## Memory Optimizations (PYT-7.2)
@@ -102,6 +102,28 @@ Implement training and validation loops with staged training support.
 - Sample-level attention is O(token_limit^2)
 - Reducing to 256 reduces sample attention by 16x
 
+## Progress Display and Logging (PYT-4.4)
+
+### Enhanced Progress Bars
+- Display epoch number (e.g., "Epoch 5/100")
+- Display step/batch number (e.g., "Step 42/500")
+- Display running average loss (updated each batch)
+- Display current learning rate
+- Format: `"Epoch {epoch+1}/{num_epochs}"` with postfix showing Step, Loss, LR
+
+### TensorBoard Logging
+- Always enabled when `tensorboard_dir` is provided
+- Logs saved to `{output_dir}/tensorboard/`
+- Per-epoch logging:
+  - All losses (total_loss, target_loss, count_loss, base_loss, nuc_loss)
+  - All metrics (regression, classification, count metrics)
+  - Learning rate
+  - Weight and gradient histograms (every 10 epochs)
+- Writer properly closed after training completes
+
+### Known Issues
+- Loss display may show 0.0000 in some cases - see PYT-7.3 for investigation
+
 ## Testing Requirements
 
 - Test with small dataset (10-20 samples) for unit tests
@@ -112,6 +134,8 @@ Implement training and validation loops with staged training support.
 - Verify checkpoint saving/loading
 - Test resume from checkpoint
 - Test with frozen base model
+- Verify TensorBoard logs are created correctly
+- Verify progress bars display correct information
 
 ## Test Data
 
