@@ -749,3 +749,91 @@ class TestGradientAccumulation:
 
         assert "train_loss" in history
         assert len(history["train_loss"]) == 2
+
+
+class TestTensorBoardLogging:
+    """Test TensorBoard logging functionality."""
+
+    def test_tensorboard_dir_created(self, small_model, loss_fn, simple_dataloader_encoder, device, tmp_path):
+        """Test that TensorBoard directory is created when tensorboard_dir is provided."""
+        tensorboard_dir = tmp_path / "output"
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+            tensorboard_dir=str(tensorboard_dir),
+        )
+
+        history = trainer.train(
+            train_loader=simple_dataloader_encoder,
+            num_epochs=1,
+        )
+
+        tensorboard_path = tensorboard_dir / "tensorboard"
+        assert tensorboard_path.exists()
+        assert tensorboard_path.is_dir()
+
+    def test_tensorboard_writer_closed(self, small_model, loss_fn, simple_dataloader_encoder, device, tmp_path):
+        """Test that TensorBoard writer is closed after training."""
+        tensorboard_dir = tmp_path / "output"
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+            tensorboard_dir=str(tensorboard_dir),
+        )
+
+        trainer.train(
+            train_loader=simple_dataloader_encoder,
+            num_epochs=1,
+        )
+
+        assert trainer.writer is None
+
+    def test_tensorboard_no_dir_when_none(self, small_model, loss_fn, simple_dataloader_encoder, device):
+        """Test that TensorBoard is not enabled when tensorboard_dir is None."""
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+            tensorboard_dir=None,
+        )
+
+        history = trainer.train(
+            train_loader=simple_dataloader_encoder,
+            num_epochs=1,
+        )
+
+        assert trainer.writer is None
+
+    def test_train_epoch_with_epoch_info(self, small_model, loss_fn, simple_dataloader_encoder, device):
+        """Test that train_epoch accepts epoch and num_epochs parameters."""
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+        )
+
+        losses = trainer.train_epoch(
+            simple_dataloader_encoder,
+            epoch=5,
+            num_epochs=10,
+        )
+
+        assert "total_loss" in losses
+
+    def test_validate_epoch_with_epoch_info(self, small_model, loss_fn, simple_dataloader_encoder, device):
+        """Test that validate_epoch accepts epoch and num_epochs parameters."""
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+        )
+
+        results = trainer.validate_epoch(
+            simple_dataloader_encoder,
+            epoch=5,
+            num_epochs=10,
+        )
+
+        assert "total_loss" in results
