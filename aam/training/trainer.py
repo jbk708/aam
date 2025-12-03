@@ -223,6 +223,12 @@ class Trainer:
                 is_classifier = self._get_is_classifier()
                 losses = self.loss_fn(outputs, targets, is_classifier=is_classifier, encoder_type=encoder_type)
 
+                current_loss_val = losses["total_loss"]
+                if isinstance(current_loss_val, torch.Tensor):
+                    current_loss_val = current_loss_val.detach().item()
+                else:
+                    current_loss_val = float(current_loss_val)
+
                 scaled_loss = losses["total_loss"] / gradient_accumulation_steps
                 scaled_loss.backward()
 
@@ -248,14 +254,19 @@ class Trainer:
                 for key, value in losses.items():
                     if key not in total_losses:
                         total_losses[key] = 0.0
-                    total_losses[key] += value.item()
+                    if isinstance(value, torch.Tensor):
+                        total_losses[key] += value.detach().item()
+                    else:
+                        total_losses[key] += float(value)
 
-                current_loss = losses["total_loss"].item()
-                running_avg_loss = (running_avg_loss * (num_batches) + current_loss) / (num_batches + 1)
+                if num_batches == 0:
+                    running_avg_loss = current_loss_val
+                else:
+                    running_avg_loss = (running_avg_loss * num_batches + current_loss_val) / (num_batches + 1)
 
                 pbar.set_postfix({
                     "Step": f"{step}/{total_steps}",
-                    "Loss": f"{running_avg_loss:.4f}",
+                    "Loss": f"{running_avg_loss:.6f}" if running_avg_loss < 0.0001 else f"{running_avg_loss:.4f}",
                     "LR": f"{current_lr:.2e}",
                 })
 
@@ -329,17 +340,28 @@ class Trainer:
                     is_classifier = self._get_is_classifier()
                     losses = self.loss_fn(outputs, targets, is_classifier=is_classifier, encoder_type=encoder_type)
 
+                    current_loss_val = losses["total_loss"]
+                    if isinstance(current_loss_val, torch.Tensor):
+                        current_loss_val = current_loss_val.detach().item()
+                    else:
+                        current_loss_val = float(current_loss_val)
+
                     for key, value in losses.items():
                         if key not in total_losses:
                             total_losses[key] = 0.0
-                        total_losses[key] += value.item()
+                        if isinstance(value, torch.Tensor):
+                            total_losses[key] += value.detach().item()
+                        else:
+                            total_losses[key] += float(value)
 
-                    current_loss = losses["total_loss"].item()
-                    running_avg_loss = (running_avg_loss * num_batches + current_loss) / (num_batches + 1)
+                    if num_batches == 0:
+                        running_avg_loss = current_loss_val
+                    else:
+                        running_avg_loss = (running_avg_loss * num_batches + current_loss_val) / (num_batches + 1)
 
                     pbar.set_postfix({
                         "Step": f"{step}/{total_steps}",
-                        "Loss": f"{running_avg_loss:.4f}",
+                        "Loss": f"{running_avg_loss:.6f}" if running_avg_loss < 0.0001 else f"{running_avg_loss:.4f}",
                     })
 
                     if compute_metrics:
