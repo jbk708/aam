@@ -16,6 +16,7 @@ dependencies:
   - scipy >=1.13.0
   - click
   - tqdm
+  - tensorboard >=2.13.0
   # Dev dependencies
   - pytest >=7.0
   - pytest-cov >=4.0
