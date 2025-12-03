@@ -236,6 +236,30 @@ class TestNucleotideLoss:
         expected_loss = nn.functional.cross_entropy(nuc_pred_flat, nuc_true_flat)
         assert torch.allclose(loss, expected_loss)
 
+    def test_nucleotide_loss_from_tokens(self, loss_fn):
+        """Test nucleotide loss when tokens are used instead of explicit nucleotides (pretraining scenario)."""
+        batch_size = 2
+        num_asvs = 5
+        seq_len = 10
+        vocab_size = 5
+
+        nuc_predictions = torch.randn(batch_size, num_asvs, seq_len, vocab_size)
+        tokens = torch.randint(0, vocab_size, (batch_size, num_asvs, seq_len))
+        tokens[:, :, 7:] = 0
+
+        outputs = {"nuc_predictions": nuc_predictions}
+        targets = {"tokens": tokens}
+
+        losses = loss_fn(outputs, targets, is_classifier=False, encoder_type="unifrac")
+
+        assert "nuc_loss" in losses
+        assert losses["nuc_loss"].dim() == 0
+        assert losses["nuc_loss"].item() >= 0
+
+        mask = (tokens > 0).long()
+        expected_loss = loss_fn.compute_nucleotide_loss(nuc_predictions, tokens, mask)
+        assert torch.allclose(losses["nuc_loss"], expected_loss)
+
 
 class TestTotalLoss:
     """Test total loss computation."""
