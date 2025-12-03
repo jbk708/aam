@@ -72,6 +72,7 @@ def setup_expandable_segments(use_expandable_segments: bool) -> None:
     """
     if use_expandable_segments and torch.cuda.is_available():
         import os
+
         os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 
