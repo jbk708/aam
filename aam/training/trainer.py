@@ -494,7 +494,9 @@ class Trainer:
                         patience_counter = 0
 
                         if checkpoint_dir is not None:
-                            checkpoint_path = Path(checkpoint_dir) / f"best_model_epoch_{epoch}.pt"
+                            checkpoint_path = Path(checkpoint_dir) / "best_model.pt"
+                            if checkpoint_path.exists():
+                                checkpoint_path.unlink()
                             self.save_checkpoint(
                                 str(checkpoint_path),
                                 epoch=epoch,
