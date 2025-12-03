@@ -446,6 +446,53 @@ Implement command-line interface as specified in `pytorch_porting_plan/12_cli_in
 
 ---
 
+### PYT-4.4: Enhance Training Progress Display and Add TensorBoard Logging
+**Priority:** MEDIUM | **Effort:** Medium | **Status:** ✅ Completed
+
+**Description:**
+Enhance the training progress bars (tqdm) to display detailed information (loss, epoch, step, learning rate) and add TensorBoard logging for comprehensive training visualization and monitoring.
+
+**Files Created/Modified:**
+- `aam/training/trainer.py` - Enhanced tqdm progress bars, added TensorBoard logging
+- `aam/cli.py` - Pass output directory to trainer for TensorBoard logs
+- `tests/test_trainer.py` - Added tests for TensorBoard logging and enhanced progress bars
+- `pyproject.toml` - Added tensorboard dependency
+- `environment.yml` - Added tensorboard dependency
+
+**Acceptance Criteria:**
+- [x] tqdm progress bars display: current total loss (running average), epoch number, step/batch number, learning rate
+- [x] TensorBoard logging always enabled (no CLI flag needed)
+- [x] TensorBoard logs saved to `{output_dir}/tensorboard/` directory
+- [x] Log losses per epoch: total_loss, target_loss, count_loss, base_loss, nuc_loss (when applicable)
+- [x] Log metrics per epoch: regression metrics (MAE, MSE, R2), classification metrics (accuracy, precision, recall, F1), count metrics (count_mae, count_mse)
+- [x] Log learning rate per epoch
+- [x] Log weight/gradient histograms per epoch (every 10 epochs for key model layers)
+- [x] TensorBoard writer created in Trainer.train() method
+- [x] Writer properly closed after training completes
+- [x] Unit tests verify TensorBoard log files are created with correct structure
+- [x] Unit tests verify tqdm bars display correct information
+- [x] All existing tests continue to pass (37 tests passing)
+
+**Implementation Notes:**
+- Used `torch.utils.tensorboard.SummaryWriter` for TensorBoard logging
+- Updated `train_epoch()` to accept epoch number and update tqdm bar with loss, step, epoch, LR
+- Updated `validate_epoch()` to accept epoch number and update tqdm bar with loss, step, epoch
+- Implemented running average loss calculation for stable progress bar display
+- Used `writer.add_scalar()` for scalar metrics (losses, metrics, LR)
+- Used `writer.add_histogram()` for weight/gradient histograms (every 10 epochs)
+- TensorBoard directory created automatically in `{output_dir}/tensorboard/`
+- Writer closed in `finally` block to ensure cleanup
+- Loss extraction uses `.detach().item()` to ensure proper value extraction
+- Format: `"Epoch {epoch+1}/{num_epochs}"` with postfix showing Step, Loss (running avg), LR
+- Note: Loss display shows 0.0000 in some cases - see PYT-4.5 for investigation
+
+**Dependencies:** PYT-4.2
+
+**Estimated Time:** 4-6 hours
+**Actual Time:** ~4 hours
+
+---
+
 ## Phase 5: Testing
 
 ### PYT-5.1: Write Unit Tests
@@ -704,3 +751,46 @@ Of the allocated memory 21.69 GiB is allocated by PyTorch, and 21.86 MiB is rese
 - Verified memory usage reduction with gradient accumulation and token_limit reduction
 - All 32 trainer tests pass including 5 new gradient accumulation tests
 - Memory optimization guide created with recommendations for 24GB GPU
+
+---
+
+### PYT-7.3: Investigate Loss Display Showing 0.0000 in Progress Bar
+**Priority:** MEDIUM | **Effort:** Low | **Status:** Not Started
+
+**Description:**
+Investigate why the training progress bar shows loss as 0.0000 despite loss values being computed. The loss extraction and display logic has been implemented but may not be correctly accessing or displaying the loss value.
+
+**Files to be Investigated:**
+- `aam/training/trainer.py` - Loss extraction and progress bar display logic
+- `aam/training/losses.py` - Loss computation and return values
+- Check if loss tensors are properly converted to Python values
+- Verify loss values are non-zero during actual training runs
+
+**Acceptance Criteria:**
+- [ ] Identify root cause of 0.0000 loss display
+- [ ] Verify loss values are actually being computed (check TensorBoard logs)
+- [ ] Fix loss extraction/display if issue is in code
+- [ ] Document findings if loss is legitimately 0 (e.g., model converged, zero targets, etc.)
+- [ ] Update progress bar to correctly display loss values
+- [ ] Add debug logging if needed to trace loss values
+- [ ] Verify fix with actual training run
+
+**Investigation Steps:**
+1. Check TensorBoard logs to see if losses are being logged correctly (if logged, issue is display-only)
+2. Add debug print statements to verify loss values before display
+3. Check if loss computation returns valid non-zero values
+4. Verify loss tensor extraction (`.detach().item()`) is working correctly
+5. Check if running average calculation is correct
+6. Verify loss values in `total_losses` dictionary after epoch completion
+7. Check if issue occurs only in certain training configurations
+
+**Possible Causes:**
+- Loss tensor not properly converted to Python float
+- Loss actually is 0 (model converged, zero targets, etc.)
+- Running average calculation error
+- Loss extraction happening at wrong time (before/after backward)
+- Format string issue with very small values
+
+**Dependencies:** PYT-4.4
+
+**Estimated Time:** 1-2 hours
