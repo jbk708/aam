@@ -291,10 +291,11 @@ class Trainer:
             plot_file.unlink()
 
         fig.savefig(plot_file, dpi=100, bbox_inches="tight")
-        plt.close(fig)
 
         if self.writer is not None:
             self.writer.add_figure("validation/prediction_plot", fig, epoch)
+
+        plt.close(fig)
 
     def _log_to_tensorboard(self, epoch: int, train_losses: Dict[str, float], val_results: Optional[Dict[str, float]] = None):
         """Log metrics to TensorBoard.
