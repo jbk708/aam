@@ -3,7 +3,6 @@
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
 from typing import Dict, Optional, Union, Tuple, List
 import os
 from pathlib import Path
@@ -64,7 +63,6 @@ class Trainer:
         scheduler: Optional[Union[torch.optim.lr_scheduler._LRScheduler, WarmupCosineScheduler]] = None,
         device: Union[str, torch.device] = "cpu",
         freeze_base: bool = False,
-        tensorboard_dir: Optional[str] = None,
     ):
         """Initialize Trainer.
 
@@ -75,14 +73,11 @@ class Trainer:
             scheduler: Learning rate scheduler (if None, will be created)
             device: Device to train on
             freeze_base: Whether base model parameters are frozen
-            tensorboard_dir: Directory for TensorBoard logs (if None, TensorBoard disabled)
         """
         self.model = model.to(device)
         self.loss_fn = loss_fn
         self.device = torch.device(device) if isinstance(device, str) else device
         self.freeze_base = freeze_base
-        self.tensorboard_dir = tensorboard_dir
-        self.writer: Optional[SummaryWriter] = None
 
         if optimizer is None:
             self.optimizer = create_optimizer(model, freeze_base=freeze_base)
@@ -143,54 +138,16 @@ class Trainer:
             return self.model.is_classifier
         return False
 
-    def _log_to_tensorboard(self, epoch: int, train_losses: Dict[str, float], val_results: Optional[Dict[str, float]] = None):
-        """Log metrics to TensorBoard.
-
-        Args:
-            epoch: Current epoch number
-            train_losses: Training losses dictionary
-            val_results: Validation results dictionary (optional)
-        """
-        if self.writer is None:
-            return
-
-        for key, value in train_losses.items():
-            self.writer.add_scalar(f"train/{key}", value, epoch)
-
-        if val_results is not None:
-            for key, value in val_results.items():
-                if isinstance(value, (int, float)):
-                    self.writer.add_scalar(f"val/{key}", value, epoch)
-
-        if self.scheduler is not None:
-            if hasattr(self.scheduler, "get_last_lr"):
-                lr = self.scheduler.get_last_lr()[0]
-            else:
-                lr = self.optimizer.param_groups[0]["lr"]
-        else:
-            lr = self.optimizer.param_groups[0]["lr"]
-        self.writer.add_scalar("train/learning_rate", lr, epoch)
-
-        if epoch % 10 == 0:
-            for name, param in self.model.named_parameters():
-                if param.requires_grad and param.grad is not None:
-                    self.writer.add_histogram(f"weights/{name}", param.data, epoch)
-                    self.writer.add_histogram(f"gradients/{name}", param.grad.data, epoch)
-
     def train_epoch(
         self,
         dataloader: DataLoader,
         gradient_accumulation_steps: int = 1,
-        epoch: int = 0,
-        num_epochs: int = 1,
     ) -> Dict[str, float]:
         """Run one training epoch.
 
         Args:
             dataloader: Training data loader
             gradient_accumulation_steps: Number of steps to accumulate gradients before optimizer step
-            epoch: Current epoch number
-            num_epochs: Total number of epochs
 
         Returns:
             Dictionary with average losses
@@ -199,19 +156,10 @@ class Trainer:
         total_losses = {}
         num_batches = 0
         accumulated_steps = 0
-        total_steps = len(dataloader)
 
         self.optimizer.zero_grad()
 
-        current_lr = self.optimizer.param_groups[0]["lr"] if self.optimizer.param_groups else 0.0
-
-        pbar = tqdm(
-            dataloader,
-            desc=f"Epoch {epoch+1}/{num_epochs}",
-            leave=False,
-        )
-
-        for step, batch in enumerate(pbar, 1):
+        for batch in tqdm(dataloader, desc="Training", leave=False):
             try:
                 tokens, targets = self._prepare_batch(batch)
 
@@ -237,9 +185,6 @@ class Trainer:
 
                     if self.scheduler is not None:
                         self.scheduler.step()
-                        current_lr = self.scheduler.get_last_lr()[0] if hasattr(self.scheduler, "get_last_lr") else self.optimizer.param_groups[0]["lr"]
-                    else:
-                        current_lr = self.optimizer.param_groups[0]["lr"]
 
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
@@ -248,22 +193,6 @@ class Trainer:
                     if key not in total_losses:
                         total_losses[key] = 0.0
                     total_losses[key] += value.item()
-
-                loss_str = f"Loss: {losses['total_loss']:.4f}"
-                if "target_loss" in losses:
-                    loss_str += f" | Target: {losses['target_loss']:.4f}"
-                if "count_loss" in losses:
-                    loss_str += f" | Count: {losses['count_loss']:.4f}"
-                if "base_loss" in losses:
-                    loss_str += f" | Base: {losses['base_loss']:.4f}"
-                if "nuc_loss" in losses:
-                    loss_str += f" | Nuc: {losses['nuc_loss']:.4f}"
-
-                pbar.set_postfix({
-                    "Step": f"{step}/{total_steps}",
-                    "Loss": f"{losses['total_loss']:.4f}",
-                    "LR": f"{current_lr:.2e}",
-                })
 
                 del losses, scaled_loss
                 num_batches += 1
@@ -295,16 +224,12 @@ class Trainer:
         self,
         dataloader: DataLoader,
         compute_metrics: bool = True,
-        epoch: int = 0,
-        num_epochs: int = 1,
     ) -> Dict[str, float]:
         """Run one validation epoch.
 
         Args:
             dataloader: Validation data loader
             compute_metrics: Whether to compute metrics
-            epoch: Current epoch number
-            num_epochs: Total number of epochs
 
         Returns:
             Dictionary with losses and metrics
@@ -314,16 +239,9 @@ class Trainer:
         all_predictions = {}
         all_targets = {}
         num_batches = 0
-        total_steps = len(dataloader)
 
         with torch.no_grad():
-            pbar = tqdm(
-                dataloader,
-                desc=f"Epoch {epoch+1}/{num_epochs} [Val]",
-                leave=False,
-            )
-
-            for step, batch in enumerate(pbar, 1):
+            for batch in tqdm(dataloader, desc="Validation", leave=False):
                 try:
                     tokens, targets = self._prepare_batch(batch)
 
@@ -338,11 +256,6 @@ class Trainer:
                         if key not in total_losses:
                             total_losses[key] = 0.0
                         total_losses[key] += value.item()
-
-                    pbar.set_postfix({
-                        "Step": f"{step}/{total_steps}",
-                        "Loss": f"{losses['total_loss']:.4f}",
-                    })
 
                     if compute_metrics:
                         if "target_prediction" in outputs and "target" in targets:
@@ -441,62 +354,37 @@ class Trainer:
         if checkpoint_dir is not None:
             Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
 
-        if self.tensorboard_dir is not None:
-            tensorboard_path = Path(self.tensorboard_dir) / "tensorboard"
-            tensorboard_path.mkdir(parents=True, exist_ok=True)
-            self.writer = SummaryWriter(log_dir=str(tensorboard_path))
+        for epoch in range(start_epoch, num_epochs):
+            train_losses = self.train_epoch(train_loader, gradient_accumulation_steps=gradient_accumulation_steps)
+            history["train_loss"].append(train_losses["total_loss"])
 
-        try:
-            for epoch in range(start_epoch, num_epochs):
-                train_losses = self.train_epoch(
-                    train_loader,
-                    gradient_accumulation_steps=gradient_accumulation_steps,
-                    epoch=epoch,
-                    num_epochs=num_epochs,
-                )
-                history["train_loss"].append(train_losses["total_loss"])
+            if val_loader is not None:
+                val_results = self.validate_epoch(val_loader, compute_metrics=True)
+                val_loss = val_results["total_loss"]
+                history["val_loss"].append(val_loss)
 
-                val_results = None
-                if val_loader is not None:
-                    val_results = self.validate_epoch(
-                        val_loader,
-                        compute_metrics=True,
-                        epoch=epoch,
-                        num_epochs=num_epochs,
-                    )
-                    val_loss = val_results["total_loss"]
-                    history["val_loss"].append(val_loss)
+                if val_loss < best_val_loss:
+                    best_val_loss = val_loss
+                    patience_counter = 0
 
-                    if val_loss < best_val_loss:
-                        best_val_loss = val_loss
-                        patience_counter = 0
-
-                        if checkpoint_dir is not None:
-                            checkpoint_path = Path(checkpoint_dir) / f"best_model_epoch_{epoch}.pt"
-                            self.save_checkpoint(
-                                str(checkpoint_path),
-                                epoch=epoch,
-                                best_val_loss=best_val_loss,
-                                metrics=val_results,
-                            )
-                    else:
-                        patience_counter += 1
-                        if patience_counter >= early_stopping_patience:
-                            print(f"Early stopping at epoch {epoch}")
-                            break
+                    if checkpoint_dir is not None:
+                        checkpoint_path = Path(checkpoint_dir) / f"best_model_epoch_{epoch}.pt"
+                        self.save_checkpoint(
+                            str(checkpoint_path),
+                            epoch=epoch,
+                            best_val_loss=best_val_loss,
+                            metrics=val_results,
+                        )
                 else:
-                    history["val_loss"].append(None)
+                    patience_counter += 1
+                    if patience_counter >= early_stopping_patience:
+                        print(f"Early stopping at epoch {epoch}")
+                        break
+            else:
+                history["val_loss"].append(None)
 
-                if self.writer is not None:
-                    self._log_to_tensorboard(epoch, train_losses, val_results)
-
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-
-        finally:
-            if self.writer is not None:
-                self.writer.close()
-                self.writer = None
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
         return history
 
