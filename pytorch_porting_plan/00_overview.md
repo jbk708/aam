@@ -237,8 +237,8 @@ aam/
 │   ├── position_embedding.py
 │   ├── transformer.py
 │   ├── asv_encoder.py
-│   ├── base_sequence_encoder.py
-│   ├── sequence_encoder.py   # Base model for regressor
+│   ├── sample_sequence_encoder.py
+│   ├── sequence_encoder.py   # Base model for predictor
 │   └── sequence_predictor.py  # Main model (composes encoder)
 ├── training/
 │   ├── __init__.py
