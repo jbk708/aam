@@ -553,24 +553,31 @@ Add support for pre-training SequenceEncoder separately (Stage 1 of training str
 ---
 
 ### PYT-6.2: Implement SequencePredictor Fine-tuning
-**Priority:** MEDIUM | **Effort:** Low | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** Low | **Status:** Partially Implemented
 
 **Description:**
 Add support for loading pre-trained SequenceEncoder and fine-tuning SequencePredictor (Stage 2 of training strategy).
 
-**Files to Modify:**
-- `aam/training/trainer.py`
-- `aam/cli.py`
+**Files Modified:**
+- `aam/training/trainer.py` (has `load_pretrained_encoder` function)
+- `aam/cli.py` (has `--freeze-base` option)
 
 **Acceptance Criteria:**
-- [ ] Can load pre-trained SequenceEncoder checkpoint
-- [ ] Supports `freeze_base=True` option
-- [ ] Supports `freeze_base=False` (fine-tune jointly)
-- [ ] Tests pass
+- [x] Supports `freeze_base=True` option (implemented in CLI train command)
+- [x] Supports `freeze_base=False` (fine-tune jointly) (implemented in CLI train command)
+- [ ] Can load pre-trained SequenceEncoder checkpoint via CLI (function exists but not integrated)
+- [ ] Tests pass for loading pretrained encoder
+
+**Implementation Notes:**
+- `freeze_base` parameter is fully implemented and working in `train` command
+- `load_pretrained_encoder()` function exists in `trainer.py` but is not called from CLI
+- Need to add `--pretrained-encoder` CLI option to `train` command to load pretrained SequenceEncoder checkpoint
+- Current workflow: Users can manually call `load_pretrained_encoder()` in code, but CLI doesn't support it yet
 
 **Dependencies:** PYT-6.1
 
 **Estimated Time:** 2-4 hours
+**Remaining Work:** ~1-2 hours (add CLI option and tests)
 
 ---
 

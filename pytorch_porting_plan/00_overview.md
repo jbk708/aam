@@ -228,7 +228,7 @@ aam/
 ├── data/
 │   ├── __init__.py
 │   ├── biom_loader.py        # BIOM table loading
-│   ├── unifrac_computer.py   # UniFrac distance computation
+│   ├── unifrac.py            # UniFrac distance computation
 │   ├── tokenizer.py          # Sequence tokenization
 │   └── dataset.py            # PyTorch Dataset
 ├── models/
@@ -245,7 +245,7 @@ aam/
 │   ├── losses.py
 │   ├── metrics.py
 │   └── trainer.py
-└── utils.py
+└── cli.py
 ```
 
 ## Implementation Order
