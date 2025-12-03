@@ -190,18 +190,31 @@ class MultiTaskLoss(nn.Module):
             else:
                 losses["base_loss"] = torch.tensor(0.0, device=device if device else torch.device("cpu"), requires_grad=True)
 
-        if "nuc_predictions" in outputs and "nucleotides" in targets:
-            if "nuc_mask" in targets:
-                nuc_mask = targets["nuc_mask"]
+        if "nuc_predictions" in outputs:
+            if "nucleotides" in targets:
+                nuc_true = targets["nucleotides"]
             elif "tokens" in targets:
-                nuc_mask = (targets["tokens"] > 0).long()
+                nuc_true = targets["tokens"]
             else:
-                nuc_mask = torch.ones_like(targets["nucleotides"], dtype=torch.long)
-            losses["nuc_loss"] = self.compute_nucleotide_loss(
-                outputs["nuc_predictions"],
-                targets["nucleotides"],
-                nuc_mask,
-            )
+                nuc_true = None
+            
+            if nuc_true is not None:
+                if "nuc_mask" in targets:
+                    nuc_mask = targets["nuc_mask"]
+                elif "tokens" in targets:
+                    nuc_mask = (targets["tokens"] > 0).long()
+                else:
+                    nuc_mask = torch.ones_like(nuc_true, dtype=torch.long)
+                losses["nuc_loss"] = self.compute_nucleotide_loss(
+                    outputs["nuc_predictions"],
+                    nuc_true,
+                    nuc_mask,
+                )
+            else:
+                if reference_tensor is not None:
+                    losses["nuc_loss"] = torch.zeros_like(reference_tensor.sum(), requires_grad=True)
+                else:
+                    losses["nuc_loss"] = torch.tensor(0.0, device=device if device else torch.device("cpu"), requires_grad=True)
         else:
             if reference_tensor is not None:
                 losses["nuc_loss"] = torch.zeros_like(reference_tensor.sum(), requires_grad=True)
