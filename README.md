@@ -116,6 +116,87 @@ python -m aam.cli pretrain \
 
 See [MEMORY_OPTIMIZATION.md](MEMORY_OPTIMIZATION.md) for detailed memory optimization strategies.
 
+## Monitoring Training with TensorBoard
+
+TensorBoard is automatically enabled during training and logs are saved to `{output_dir}/tensorboard/`. Use it to monitor training progress, losses, metrics, and model weights.
+
+### Starting TensorBoard
+
+```bash
+# Start TensorBoard server (run in separate terminal)
+tensorboard --logdir <output_dir>/tensorboard
+
+# Or specify port explicitly
+tensorboard --logdir <output_dir>/tensorboard --port 6006
+```
+
+Then open your browser to `http://localhost:6006` (or the port you specified).
+
+### What's Logged
+
+**Losses (per epoch):**
+- `train/total_loss`: Total training loss
+- `train/target_loss`: Target prediction loss (MSE/NLL)
+- `train/count_loss`: ASV count prediction loss (masked MSE)
+- `train/base_loss`: UniFrac/base prediction loss (MSE)
+- `train/nuc_loss`: Nucleotide prediction loss (CrossEntropy)
+- `val/total_loss`: Total validation loss
+- `val/target_loss`, `val/count_loss`, `val/base_loss`, `val/nuc_loss`: Validation component losses
+
+**Metrics (per epoch, validation only):**
+- **Regression metrics**: `val/mae`, `val/mse`, `val/r2`
+- **Classification metrics**: `val/accuracy`, `val/precision`, `val/recall`, `val/f1`
+- **Count metrics**: `val/count_mae`, `val/count_mse`
+
+**Training Info:**
+- `train/learning_rate`: Learning rate schedule
+
+**Model Weights & Gradients (every 10 epochs):**
+- `weights/{layer_name}`: Weight histograms
+- `gradients/{layer_name}`: Gradient histograms
+
+### Interpreting Loss Values
+
+**For Pretraining (UniFrac + Nucleotides):**
+- **Epoch 1**: Total loss ~1.5-2.0 (near random baseline)
+  - `nuc_loss` ~1.5-1.7 (random baseline: log(5) ≈ 1.609)
+  - `base_loss` ~0.1-0.5 (depends on distance scale)
+- **Well-trained**: Total loss ~0.1-0.5
+  - `nuc_loss` ~0.1-0.5
+  - `base_loss` ~0.01-0.1
+
+**For Fine-tuning (with Target Prediction):**
+- Monitor `target_loss` decreasing over epochs
+- `base_loss` and `nuc_loss` should remain stable if `freeze_base=True`
+- Total loss should decrease steadily
+
+### Tips
+
+1. **Monitor loss trends**: Look for steady decreases, not just absolute values
+2. **Check for overfitting**: If `val_loss` increases while `train_loss` decreases, model is overfitting
+3. **Learning rate**: Watch `learning_rate` schedule - should warmup then decay
+4. **Gradients**: Check gradient histograms for vanishing/exploding gradients (should be well-distributed)
+5. **Compare runs**: Use different `--output-dir` for different experiments to compare in TensorBoard
+
+### Example: Monitoring Pretraining
+
+```bash
+# Terminal 1: Start training
+python -m aam.cli pretrain \
+  --table data.biom \
+  --tree tree.nwk \
+  --output-dir runs/pretrain_exp1 \
+  --epochs 1000
+
+# Terminal 2: Start TensorBoard
+tensorboard --logdir runs/pretrain_exp1/tensorboard
+```
+
+Then monitor:
+- `train/total_loss` decreasing from ~1.7 → ~0.3 over 100-200 epochs
+- `train/base_loss` and `train/nuc_loss` both decreasing
+- `val/total_loss` tracking `train/total_loss` (no overfitting)
+
 ## Testing
 
 Run the full test suite:
