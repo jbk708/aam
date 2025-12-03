@@ -2,6 +2,7 @@
 
 import torch
 import torch.nn as nn
+from typing import Optional
 
 from aam.models.attention_pooling import AttentionPooling
 from aam.models.position_embedding import PositionEmbedding
@@ -22,6 +23,7 @@ class ASVEncoder(nn.Module):
         dropout: float = 0.1,
         activation: str = "gelu",
         predict_nucleotides: bool = False,
+        asv_chunk_size: Optional[int] = None,
     ):
         """Initialize ASVEncoder.
 
@@ -35,6 +37,7 @@ class ASVEncoder(nn.Module):
             dropout: Dropout rate
             activation: Activation function ('gelu' or 'relu')
             predict_nucleotides: Whether to include nucleotide prediction head
+            asv_chunk_size: Process ASVs in chunks of this size (None = process all at once)
         """
         super().__init__()
         
@@ -42,6 +45,7 @@ class ASVEncoder(nn.Module):
         self.embedding_dim = embedding_dim
         self.max_bp = max_bp
         self.predict_nucleotides = predict_nucleotides
+        self.asv_chunk_size = asv_chunk_size
         
         if intermediate_size is None:
             intermediate_size = 4 * embedding_dim
@@ -78,20 +82,58 @@ class ASVEncoder(nn.Module):
         batch_size, num_asvs, seq_len = tokens.shape
         
         tokens = tokens.long()
-        tokens_flat = tokens.view(batch_size * num_asvs, seq_len)
-        mask = (tokens_flat > 0).long()
         
-        embeddings = self.token_embedding(tokens_flat)
-        embeddings = self.position_embedding(embeddings)
-        embeddings = self.transformer(embeddings, mask=mask)
-        
-        nucleotide_predictions = None
-        if self.predict_nucleotides and return_nucleotides:
-            nucleotide_logits = self.nucleotide_head(embeddings)
-            nucleotide_predictions = nucleotide_logits.view(batch_size, num_asvs, seq_len, self.vocab_size)
-        
-        pooled_embeddings = self.attention_pooling(embeddings, mask=mask)
-        asv_embeddings = pooled_embeddings.view(batch_size, num_asvs, self.embedding_dim)
+        if self.asv_chunk_size is not None and num_asvs > self.asv_chunk_size:
+            asv_embeddings_list = []
+            nucleotide_predictions_list = []
+            
+            for i in range(0, num_asvs, self.asv_chunk_size):
+                end_idx = min(i + self.asv_chunk_size, num_asvs)
+                chunk_tokens = tokens[:, i:end_idx, :]
+                chunk_num_asvs = chunk_tokens.size(1)
+                
+                tokens_flat = chunk_tokens.reshape(batch_size * chunk_num_asvs, seq_len)
+                mask = (tokens_flat > 0).long()
+                
+                embeddings = self.token_embedding(tokens_flat)
+                embeddings = self.position_embedding(embeddings)
+                embeddings = self.transformer(embeddings, mask=mask)
+                
+                if self.predict_nucleotides and return_nucleotides:
+                    nucleotide_logits = self.nucleotide_head(embeddings)
+                    chunk_nuc_preds = nucleotide_logits.reshape(batch_size, chunk_num_asvs, seq_len, self.vocab_size)
+                    nucleotide_predictions_list.append(chunk_nuc_preds)
+                    del nucleotide_logits
+                
+                pooled_embeddings = self.attention_pooling(embeddings, mask=mask)
+                chunk_asv_embeddings = pooled_embeddings.reshape(batch_size, chunk_num_asvs, self.embedding_dim)
+                asv_embeddings_list.append(chunk_asv_embeddings)
+                
+                del embeddings, pooled_embeddings, tokens_flat, mask
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+            
+            asv_embeddings = torch.cat(asv_embeddings_list, dim=1)
+            
+            if return_nucleotides and nucleotide_predictions_list:
+                nucleotide_predictions = torch.cat(nucleotide_predictions_list, dim=1)
+            else:
+                nucleotide_predictions = None
+        else:
+            tokens_flat = tokens.reshape(batch_size * num_asvs, seq_len)
+            mask = (tokens_flat > 0).long()
+            
+            embeddings = self.token_embedding(tokens_flat)
+            embeddings = self.position_embedding(embeddings)
+            embeddings = self.transformer(embeddings, mask=mask)
+            
+            nucleotide_predictions = None
+            if self.predict_nucleotides and return_nucleotides:
+                nucleotide_logits = self.nucleotide_head(embeddings)
+                nucleotide_predictions = nucleotide_logits.reshape(batch_size, num_asvs, seq_len, self.vocab_size)
+            
+            pooled_embeddings = self.attention_pooling(embeddings, mask=mask)
+            asv_embeddings = pooled_embeddings.reshape(batch_size, num_asvs, self.embedding_dim)
         
         if return_nucleotides and nucleotide_predictions is not None:
             return asv_embeddings, nucleotide_predictions

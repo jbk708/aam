@@ -47,7 +47,11 @@ class TransformerEncoder(nn.Module):
             norm_first=True,
         )
 
-        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        self.encoder = nn.TransformerEncoder(
+            encoder_layer, 
+            num_layers=num_layers,
+            enable_nested_tensor=False,
+        )
         self.norm = nn.LayerNorm(hidden_dim, eps=1e-6)
 
     def forward(

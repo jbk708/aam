@@ -141,11 +141,13 @@ class Trainer:
     def train_epoch(
         self,
         dataloader: DataLoader,
+        gradient_accumulation_steps: int = 1,
     ) -> Dict[str, float]:
         """Run one training epoch.
 
         Args:
             dataloader: Training data loader
+            gradient_accumulation_steps: Number of steps to accumulate gradients before optimizer step
 
         Returns:
             Dictionary with average losses
@@ -153,31 +155,67 @@ class Trainer:
         self.model.train()
         total_losses = {}
         num_batches = 0
+        accumulated_steps = 0
+
+        self.optimizer.zero_grad()
 
         for batch in tqdm(dataloader, desc="Training", leave=False):
-            tokens, targets = self._prepare_batch(batch)
+            try:
+                tokens, targets = self._prepare_batch(batch)
 
-            self.optimizer.zero_grad()
+                return_nucleotides = "nucleotides" in targets or self.loss_fn.nuc_penalty > 0
+                outputs = self.model(tokens, return_nucleotides=return_nucleotides)
 
-            return_nucleotides = "nucleotides" in targets or self.loss_fn.nuc_penalty > 0
-            outputs = self.model(tokens, return_nucleotides=return_nucleotides)
+                encoder_type = self._get_encoder_type()
+                is_classifier = self._get_is_classifier()
+                losses = self.loss_fn(outputs, targets, is_classifier=is_classifier, encoder_type=encoder_type)
 
-            encoder_type = self._get_encoder_type()
-            is_classifier = self._get_is_classifier()
-            losses = self.loss_fn(outputs, targets, is_classifier=is_classifier, encoder_type=encoder_type)
+                scaled_loss = losses["total_loss"] / gradient_accumulation_steps
+                scaled_loss.backward()
 
-            losses["total_loss"].backward()
+                del outputs, tokens, targets
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+
+                accumulated_steps += 1
+
+                if accumulated_steps % gradient_accumulation_steps == 0:
+                    self.optimizer.step()
+                    self.optimizer.zero_grad()
+
+                    if self.scheduler is not None:
+                        self.scheduler.step()
+
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+
+                for key, value in losses.items():
+                    if key not in total_losses:
+                        total_losses[key] = 0.0
+                    total_losses[key] += value.item()
+
+                del losses, scaled_loss
+                num_batches += 1
+
+            except torch.cuda.OutOfMemoryError as e:
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+                error_msg = (
+                    f"CUDA out of memory during training. "
+                    f"Try: (1) reducing batch_size, (2) increasing gradient_accumulation_steps "
+                    f"(current: {gradient_accumulation_steps}), (3) reducing model size, "
+                    f"(4) setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True"
+                )
+                raise RuntimeError(error_msg) from e
+
+        if accumulated_steps % gradient_accumulation_steps != 0:
             self.optimizer.step()
-
+            self.optimizer.zero_grad()
             if self.scheduler is not None:
                 self.scheduler.step()
 
-            for key, value in losses.items():
-                if key not in total_losses:
-                    total_losses[key] = 0.0
-                total_losses[key] += value.item()
-
-            num_batches += 1
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
         avg_losses = {key: value / num_batches for key, value in total_losses.items()}
         return avg_losses
@@ -204,39 +242,53 @@ class Trainer:
 
         with torch.no_grad():
             for batch in tqdm(dataloader, desc="Validation", leave=False):
-                tokens, targets = self._prepare_batch(batch)
+                try:
+                    tokens, targets = self._prepare_batch(batch)
 
-                return_nucleotides = "nucleotides" in targets or self.loss_fn.nuc_penalty > 0
-                outputs = self.model(tokens, return_nucleotides=return_nucleotides)
+                    return_nucleotides = "nucleotides" in targets or self.loss_fn.nuc_penalty > 0
+                    outputs = self.model(tokens, return_nucleotides=return_nucleotides)
 
-                encoder_type = self._get_encoder_type()
-                is_classifier = self._get_is_classifier()
-                losses = self.loss_fn(outputs, targets, is_classifier=is_classifier, encoder_type=encoder_type)
+                    encoder_type = self._get_encoder_type()
+                    is_classifier = self._get_is_classifier()
+                    losses = self.loss_fn(outputs, targets, is_classifier=is_classifier, encoder_type=encoder_type)
 
-                for key, value in losses.items():
-                    if key not in total_losses:
-                        total_losses[key] = 0.0
-                    total_losses[key] += value.item()
+                    for key, value in losses.items():
+                        if key not in total_losses:
+                            total_losses[key] = 0.0
+                        total_losses[key] += value.item()
 
-                if compute_metrics:
-                    if "target_prediction" in outputs and "target" in targets:
-                        if "target_prediction" not in all_predictions:
-                            all_predictions["target_prediction"] = []
-                            all_targets["target"] = []
-                        all_predictions["target_prediction"].append(outputs["target_prediction"])
-                        all_targets["target"].append(targets["target"])
+                    if compute_metrics:
+                        if "target_prediction" in outputs and "target" in targets:
+                            if "target_prediction" not in all_predictions:
+                                all_predictions["target_prediction"] = []
+                                all_targets["target"] = []
+                            all_predictions["target_prediction"].append(outputs["target_prediction"])
+                            all_targets["target"].append(targets["target"])
 
-                    if "count_prediction" in outputs and "counts" in targets:
-                        if "count_prediction" not in all_predictions:
-                            all_predictions["count_prediction"] = []
-                            all_targets["counts"] = []
-                            all_targets["mask"] = []
-                        all_predictions["count_prediction"].append(outputs["count_prediction"])
-                        all_targets["counts"].append(targets["counts"])
-                        mask = targets.get("mask", (tokens.sum(dim=-1) > 0).long())
-                        all_targets["mask"].append(mask)
+                        if "count_prediction" in outputs and "counts" in targets:
+                            if "count_prediction" not in all_predictions:
+                                all_predictions["count_prediction"] = []
+                                all_targets["counts"] = []
+                                all_targets["mask"] = []
+                            all_predictions["count_prediction"].append(outputs["count_prediction"])
+                            all_targets["counts"].append(targets["counts"])
+                            mask = targets.get("mask", (tokens.sum(dim=-1) > 0).long())
+                            all_targets["mask"].append(mask)
 
-                num_batches += 1
+                    num_batches += 1
+
+                except torch.cuda.OutOfMemoryError as e:
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    error_msg = (
+                        f"CUDA out of memory during validation. "
+                        f"Try: (1) reducing batch_size, (2) reducing model size, "
+                        f"(3) setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True"
+                    )
+                    raise RuntimeError(error_msg) from e
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
         avg_losses = {key: value / num_batches for key, value in total_losses.items()}
 
@@ -269,6 +321,7 @@ class Trainer:
         early_stopping_patience: int = 50,
         checkpoint_dir: Optional[str] = None,
         resume_from: Optional[str] = None,
+        gradient_accumulation_steps: int = 1,
     ) -> Dict[str, list]:
         """Main training loop.
 
@@ -279,6 +332,7 @@ class Trainer:
             early_stopping_patience: Patience for early stopping
             checkpoint_dir: Directory to save checkpoints
             resume_from: Path to checkpoint to resume from
+            gradient_accumulation_steps: Number of steps to accumulate gradients before optimizer step
 
         Returns:
             Dictionary with training history
@@ -301,7 +355,7 @@ class Trainer:
             Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
 
         for epoch in range(start_epoch, num_epochs):
-            train_losses = self.train_epoch(train_loader)
+            train_losses = self.train_epoch(train_loader, gradient_accumulation_steps=gradient_accumulation_steps)
             history["train_loss"].append(train_losses["total_loss"])
 
             if val_loader is not None:
@@ -328,6 +382,9 @@ class Trainer:
                         break
             else:
                 history["val_loss"].append(None)
+
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
         return history
 

@@ -645,3 +645,52 @@ Fix CUDA device comparison failures in tests. Tests compare `device(type='cuda',
 - ✅ All 7 tests pass on Linux with CUDA GPU (359 passed, 1 skipped)
 - ✅ Tests verified on Linux machine with CUDA device
 - ✅ Device comparison fix works correctly for both `cuda` and `cuda:0`
+
+---
+
+### PYT-7.2: Fix CUDA Out of Memory Error During Pre-training
+**Priority:** HIGH | **Effort:** Medium | **Status:** Not Started
+
+**Description:**
+Address CUDA out of memory errors during pre-training. The error occurs when training SequenceEncoder with batch_size=8, where PyTorch has allocated 21.69 GiB and tries to allocate an additional 2.34 GiB but only 1.67 GiB is free. This suggests memory fragmentation or inefficient memory usage patterns.
+
+**Error Context:**
+```
+CUDA out of memory. Tried to allocate 2.34 GiB. GPU 0 has a total capacity of 23.68 GiB of which 1.67 GiB is free. 
+Including non-PyTorch memory, this process has 22.01 GiB memory in use. 
+Of the allocated memory 21.69 GiB is allocated by PyTorch, and 21.86 MiB is reserved by PyTorch but unallocated.
+```
+
+**Files to Modify:**
+- `aam/training/trainer.py` - Add gradient accumulation, memory clearing utilities
+- `aam/cli.py` - Add gradient accumulation option, better OOM error handling
+- `tests/test_trainer.py` - Add tests for gradient accumulation
+
+**Acceptance Criteria:**
+- [ ] Add gradient accumulation support to reduce effective batch size without reducing memory per step
+- [ ] Add option to enable `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` via CLI or environment
+- [ ] Add memory clearing utilities (torch.cuda.empty_cache()) at appropriate points
+- [ ] Improve OOM error messages with actionable suggestions (reduce batch size, enable gradient accumulation, etc.)
+- [ ] Add CLI option `--gradient-accumulation-steps` (default: 1) for both `pretrain` and `train` commands
+- [ ] Add CLI option `--use-expandable-segments` to enable PyTorch memory optimization
+- [ ] Handle OOM gracefully with retry logic or automatic batch size reduction (optional)
+- [ ] Unit tests pass for gradient accumulation functionality
+- [ ] Integration tests verify memory usage improvements
+
+**Implementation Notes:**
+- Gradient accumulation: Accumulate gradients over N steps before optimizer.step(), effectively reducing memory per step
+- Memory clearing: Call `torch.cuda.empty_cache()` after each epoch or when OOM is detected
+- Error handling: Catch `torch.cuda.OutOfMemoryError` and provide helpful suggestions
+- Environment variable: Document `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` as a workaround
+- Consider adding gradient checkpointing for transformer layers (trade compute for memory)
+- Test on separate machine as specified by user
+
+**Dependencies:** None
+
+**Estimated Time:** 4-6 hours
+
+**Testing Notes:**
+- Will be tested on a separate machine (as specified by user)
+- Test with batch_size=8 and various gradient accumulation steps
+- Verify memory usage reduction with gradient accumulation
+- Test error handling and suggestions for OOM scenarios
