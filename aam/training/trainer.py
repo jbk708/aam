@@ -208,7 +208,7 @@ class Trainer:
 
         pbar = tqdm(
             dataloader,
-            desc=f"Epoch {epoch+1}/{num_epochs}",
+            desc=f"Epoch {epoch + 1}/{num_epochs}",
             leave=False,
         )
 
@@ -244,7 +244,11 @@ class Trainer:
 
                     if self.scheduler is not None:
                         self.scheduler.step()
-                        current_lr = self.scheduler.get_last_lr()[0] if hasattr(self.scheduler, "get_last_lr") else self.optimizer.param_groups[0]["lr"]
+                        current_lr = (
+                            self.scheduler.get_last_lr()[0]
+                            if hasattr(self.scheduler, "get_last_lr")
+                            else self.optimizer.param_groups[0]["lr"]
+                        )
                     else:
                         current_lr = self.optimizer.param_groups[0]["lr"]
 
@@ -264,11 +268,13 @@ class Trainer:
                 else:
                     running_avg_loss = (running_avg_loss * num_batches + current_loss_val) / (num_batches + 1)
 
-                pbar.set_postfix({
-                    "Step": f"{step}/{total_steps}",
-                    "Loss": f"{running_avg_loss:.6f}" if running_avg_loss < 0.0001 else f"{running_avg_loss:.4f}",
-                    "LR": f"{current_lr:.2e}",
-                })
+                pbar.set_postfix(
+                    {
+                        "Step": f"{step}/{total_steps}",
+                        "Loss": f"{running_avg_loss:.6f}" if running_avg_loss < 0.0001 else f"{running_avg_loss:.4f}",
+                        "LR": f"{current_lr:.2e}",
+                    }
+                )
 
                 del losses, scaled_loss
                 num_batches += 1
@@ -325,7 +331,7 @@ class Trainer:
         with torch.no_grad():
             pbar = tqdm(
                 dataloader,
-                desc=f"Epoch {epoch+1}/{num_epochs} [Val]",
+                desc=f"Epoch {epoch + 1}/{num_epochs} [Val]",
                 leave=False,
             )
 
@@ -359,10 +365,12 @@ class Trainer:
                     else:
                         running_avg_loss = (running_avg_loss * num_batches + current_loss_val) / (num_batches + 1)
 
-                    pbar.set_postfix({
-                        "Step": f"{step}/{total_steps}",
-                        "Loss": f"{running_avg_loss:.6f}" if running_avg_loss < 0.0001 else f"{running_avg_loss:.4f}",
-                    })
+                    pbar.set_postfix(
+                        {
+                            "Step": f"{step}/{total_steps}",
+                            "Loss": f"{running_avg_loss:.6f}" if running_avg_loss < 0.0001 else f"{running_avg_loss:.4f}",
+                        }
+                    )
 
                     if compute_metrics:
                         if "target_prediction" in outputs and "target" in targets:
