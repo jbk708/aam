@@ -1,6 +1,6 @@
 # Attention All Microbes (AAM)
 
-Deep Learning Method for Microbial Sequencing Data using PyTorch
+Deep learning model for microbial sequencing data analysis using transformer-based attention mechanisms. Processes nucleotide sequences at multiple levels (nucleotide, ASV, sample) with self-supervised learning from phylogenetic information.
 
 ## Installation
 
@@ -87,6 +87,43 @@ python -m aam.cli predict \
 - `--test-size`: Validation split size (default: 0.2)
 
 See `python -m aam.cli <command> --help` for full options.
+
+## Testing
+
+Run the full test suite:
+
+```bash
+pytest tests/ -v --tb=short --no-header -rA
+```
+
+**Test Coverage:**
+- 359+ tests covering all components
+- Unit tests for data pipeline, models, training
+- Integration tests for end-to-end workflows
+- CUDA GPU support verified
+
+**Quick Test Commands:**
+```bash
+# Run all tests
+pytest tests/ -v
+
+# Run specific test file
+pytest tests/test_biom_loader.py -v
+
+# Run with coverage
+pytest tests/ --cov=aam --cov-report=html
+
+# Run only CUDA tests (if CUDA available)
+pytest tests/ -v -k "cuda or device"
+```
+
+## Architecture
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed architecture documentation.
+
+## Documentation
+
+Implementation details and design decisions are documented in `pytorch_porting_plan/`.
 
 
 
