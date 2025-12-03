@@ -519,46 +519,65 @@ Write integration tests for data pipeline, model pipeline, and training pipeline
 ## Phase 6: Staged Training
 
 ### PYT-6.1: Implement SequenceEncoder Pre-training
-**Priority:** MEDIUM | **Effort:** Medium | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** Medium | **Status:** ✅ Completed
 
 **Description:**
 Add support for pre-training SequenceEncoder separately (Stage 1 of training strategy).
 
-**Files to Modify:**
-- `aam/training/trainer.py`
-- `aam/cli.py`
+**Files Created/Modified:**
+- `aam/cli.py` (added `pretrain` command)
+- `tests/test_cli.py` (added tests for pretrain command)
 
 **Acceptance Criteria:**
-- [ ] Can train SequenceEncoder standalone
-- [ ] Saves checkpoint after pre-training
-- [ ] CLI supports pre-training mode
-- [ ] Tests pass
+- [x] Can train SequenceEncoder standalone
+- [x] Saves checkpoint after pre-training
+- [x] CLI supports pre-training mode
+- [x] Tests pass
+
+**Implementation Notes:**
+- Added `pretrain` CLI command that trains SequenceEncoder on UniFrac + nucleotide prediction (self-supervised)
+- No metadata/target labels required - only needs BIOM table and phylogenetic tree
+- Creates SequenceEncoder model (not SequencePredictor)
+- Loss function only uses base_loss (UniFrac) and nuc_loss (nucleotide prediction)
+- Sets `base_output_dim` based on UniFrac metric: `batch_size` for unweighted UniFrac (pairwise distances), `1` for Faith PD
+- Saves checkpoint as `pretrained_encoder.pt` in output directory
+- Supports all standard training options: epochs, batch_size, learning rate, early stopping, etc.
+- Tests include help command, missing args validation, file validation, batch size validation, and integration test
+- Exception handler safely handles errors before logger initialization
 
 **Dependencies:** PYT-4.2
 
 **Estimated Time:** 4-6 hours
+**Actual Time:** ~3 hours
 
 ---
 
 ### PYT-6.2: Implement SequencePredictor Fine-tuning
-**Priority:** MEDIUM | **Effort:** Low | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** Low | **Status:** Partially Implemented
 
 **Description:**
 Add support for loading pre-trained SequenceEncoder and fine-tuning SequencePredictor (Stage 2 of training strategy).
 
-**Files to Modify:**
-- `aam/training/trainer.py`
-- `aam/cli.py`
+**Files Modified:**
+- `aam/training/trainer.py` (has `load_pretrained_encoder` function)
+- `aam/cli.py` (has `--freeze-base` option)
 
 **Acceptance Criteria:**
-- [ ] Can load pre-trained SequenceEncoder checkpoint
-- [ ] Supports `freeze_base=True` option
-- [ ] Supports `freeze_base=False` (fine-tune jointly)
-- [ ] Tests pass
+- [x] Supports `freeze_base=True` option (implemented in CLI train command)
+- [x] Supports `freeze_base=False` (fine-tune jointly) (implemented in CLI train command)
+- [ ] Can load pre-trained SequenceEncoder checkpoint via CLI (function exists but not integrated)
+- [ ] Tests pass for loading pretrained encoder
+
+**Implementation Notes:**
+- `freeze_base` parameter is fully implemented and working in `train` command
+- `load_pretrained_encoder()` function exists in `trainer.py` but is not called from CLI
+- Need to add `--pretrained-encoder` CLI option to `train` command to load pretrained SequenceEncoder checkpoint
+- Current workflow: Users can manually call `load_pretrained_encoder()` in code, but CLI doesn't support it yet
 
 **Dependencies:** PYT-6.1
 
 **Estimated Time:** 2-4 hours
+**Remaining Work:** ~1-2 hours (add CLI option and tests)
 
 ---
 

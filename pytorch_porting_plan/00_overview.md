@@ -228,7 +228,7 @@ aam/
 ├── data/
 │   ├── __init__.py
 │   ├── biom_loader.py        # BIOM table loading
-│   ├── unifrac_computer.py   # UniFrac distance computation
+│   ├── unifrac.py            # UniFrac distance computation
 │   ├── tokenizer.py          # Sequence tokenization
 │   └── dataset.py            # PyTorch Dataset
 ├── models/
@@ -237,15 +237,15 @@ aam/
 │   ├── position_embedding.py
 │   ├── transformer.py
 │   ├── asv_encoder.py
-│   ├── base_sequence_encoder.py
-│   ├── sequence_encoder.py   # Base model for regressor
+│   ├── sample_sequence_encoder.py
+│   ├── sequence_encoder.py   # Base model for predictor
 │   └── sequence_predictor.py  # Main model (composes encoder)
 ├── training/
 │   ├── __init__.py
 │   ├── losses.py
 │   ├── metrics.py
 │   └── trainer.py
-└── utils.py
+└── cli.py
 ```
 
 ## Implementation Order

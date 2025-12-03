@@ -94,7 +94,7 @@ aam/
 ├── data/
 │   ├── __init__.py
 │   ├── biom_loader.py
-│   ├── unifrac_computer.py
+│   ├── unifrac.py
 │   ├── tokenizer.py
 │   └── dataset.py
 ├── models/
@@ -103,7 +103,7 @@ aam/
 │   ├── position_embedding.py
 │   ├── transformer.py
 │   ├── asv_encoder.py
-│   ├── base_sequence_encoder.py
+│   ├── sample_sequence_encoder.py
 │   ├── sequence_encoder.py
 │   └── sequence_predictor.py
 ├── training/
@@ -111,7 +111,7 @@ aam/
 │   ├── losses.py
 │   ├── metrics.py
 │   └── trainer.py
-└── utils.py
+└── cli.py
 ```
 
 ## Dependencies
@@ -121,8 +121,9 @@ aam/
 - `numpy`, `pandas`
 - `biom-format` - BIOM table I/O
 - `scikit-bio` - Phylogenetic tree handling
-- `unifrac-binaries` - UniFrac distance computation (https://github.com/biocore/unifrac-binaries)
+- `unifrac` - UniFrac distance computation (package name is `unifrac`, install via `pip install unifrac` or `conda install -c biocore unifrac`)
 - `scikit-learn` - Metrics
+- `click` - CLI framework
 
 ### Optional
 - `pytorch-lightning` - Training utilities

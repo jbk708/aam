@@ -18,6 +18,7 @@ from aam.cli import (
     cli,
     train,
     predict,
+    pretrain,
 )
 
 
@@ -290,6 +291,51 @@ class TestCLICommands:
         )
         assert result.exit_code != 0
 
+    def test_pretrain_command_help(self, runner):
+        """Test pretrain command help."""
+        result = runner.invoke(cli, ["pretrain", "--help"])
+        assert result.exit_code == 0
+        assert "Pre-train SequenceEncoder" in result.output
+
+    def test_pretrain_command_missing_required_args(self, runner):
+        """Test pretrain command with missing required arguments."""
+        result = runner.invoke(cli, ["pretrain"])
+        assert result.exit_code != 0
+
+    def test_pretrain_command_file_validation(self, runner, sample_biom_file, sample_tree_file, sample_output_dir):
+        """Test pretrain command file validation."""
+        result = runner.invoke(
+            cli,
+            [
+                "pretrain",
+                "--table",
+                "nonexistent.biom",
+                "--tree",
+                sample_tree_file,
+                "--output-dir",
+                sample_output_dir,
+            ],
+        )
+        assert result.exit_code != 0
+
+    def test_pretrain_command_batch_size_validation(self, runner, sample_biom_file, sample_tree_file, sample_output_dir):
+        """Test pretrain command batch size validation."""
+        result = runner.invoke(
+            cli,
+            [
+                "pretrain",
+                "--table",
+                sample_biom_file,
+                "--tree",
+                sample_tree_file,
+                "--output-dir",
+                sample_output_dir,
+                "--batch-size",
+                "7",
+            ],
+        )
+        assert result.exit_code != 0
+
     def test_predict_command_help(self, runner):
         """Test predict command help."""
         result = runner.invoke(cli, ["predict", "--help"])
@@ -390,6 +436,81 @@ class TestCLIIntegration:
                 sample_metadata_file,
                 "--metadata-column",
                 "target",
+                "--output-dir",
+                sample_output_dir,
+                "--batch-size",
+                "8",
+                "--epochs",
+                "1",
+            ],
+        )
+
+        assert mock_setup_logging.called
+        assert mock_setup_device.called
+        assert mock_setup_seed.called
+        assert mock_validate_file.called
+        assert mock_validate_args.called
+
+    @patch("aam.cli.setup_logging")
+    @patch("aam.cli.setup_device")
+    @patch("aam.cli.setup_random_seed")
+    @patch("aam.cli.validate_file_path")
+    @patch("aam.cli.validate_arguments")
+    @patch("aam.data.biom_loader.BIOMLoader")
+    @patch("aam.data.unifrac.UniFracComputer")
+    @patch("aam.data.dataset.ASVDataset")
+    @patch("aam.models.sequence_encoder.SequenceEncoder")
+    @patch("aam.training.trainer.Trainer")
+    def test_pretrain_command_integration(
+        self,
+        mock_trainer,
+        mock_model,
+        mock_dataset,
+        mock_unifrac,
+        mock_biom_loader,
+        mock_validate_args,
+        mock_validate_file,
+        mock_setup_seed,
+        mock_setup_device,
+        mock_setup_logging,
+        runner,
+        sample_biom_file,
+        sample_tree_file,
+        sample_output_dir,
+    ):
+        """Test pretrain command integration with mocked components."""
+        mock_setup_device.return_value = torch.device("cpu")
+        mock_biom_loader_instance = MagicMock()
+        mock_biom_loader.return_value = mock_biom_loader_instance
+        mock_table = MagicMock()
+        mock_table.ids.return_value = ["sample1", "sample2", "sample3", "sample4"]
+        mock_biom_loader_instance.load_table.return_value = mock_table
+        mock_biom_loader_instance.rarefy.return_value = mock_table
+
+        mock_unifrac_instance = MagicMock()
+        mock_unifrac.return_value = mock_unifrac_instance
+        mock_distance_matrix = MagicMock()
+        mock_unifrac_instance.compute_unweighted.return_value = mock_distance_matrix
+        mock_unifrac_instance.extract_batch_distances.return_value = torch.zeros(4, 4)
+
+        mock_dataset_instance = MagicMock()
+        mock_dataset.return_value = mock_dataset_instance
+
+        mock_model_instance = MagicMock()
+        mock_model.return_value = mock_model_instance
+
+        mock_trainer_instance = MagicMock()
+        mock_trainer_instance.train.return_value = {"train_loss": [1.0], "val_loss": [0.9]}
+        mock_trainer.return_value = mock_trainer_instance
+
+        result = runner.invoke(
+            cli,
+            [
+                "pretrain",
+                "--table",
+                sample_biom_file,
+                "--tree",
+                sample_tree_file,
                 "--output-dir",
                 sample_output_dir,
                 "--batch-size",

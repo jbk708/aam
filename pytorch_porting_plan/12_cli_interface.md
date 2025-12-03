@@ -46,6 +46,45 @@ Implement command-line interface for training and inference.
 - `--seed`: Random seed for reproducibility
 - `--num-workers`: DataLoader workers (default: 0)
 
+### Pre-training Command (Stage 1)
+
+**Required Arguments**:
+- `--table`: Path to BIOM table file
+- `--tree`: Path to phylogenetic tree file (.nwk)
+- `--output-dir`: Output directory for checkpoints and logs
+
+**Training Parameters**:
+- `--epochs`: Number of training epochs (default: 100)
+- `--batch-size`: Batch size (default: 8, must be even)
+- `--lr`: Learning rate (default: 1e-4)
+- `--patience`: Early stopping patience (default: 50)
+- `--warmup-steps`: Learning rate warmup steps (default: 10000)
+- `--weight-decay`: Weight decay for AdamW (default: 0.01)
+
+**Model Parameters**:
+- `--embedding-dim`: Embedding dimension (default: 128)
+- `--attention-heads`: Number of attention heads (default: 4)
+- `--attention-layers`: Number of transformer layers (default: 4)
+- `--max-bp`: Maximum base pairs per sequence (default: 150)
+- `--token-limit`: Maximum ASVs per sample (default: 1024)
+
+**Data Parameters**:
+- `--rarefy-depth`: Rarefaction depth (default: 5000)
+- `--test-size`: Validation split size (default: 0.2)
+- `--unifrac-metric`: UniFrac metric ('unifrac' or 'faith_pd', default: 'unifrac')
+
+**Loss Parameters**:
+- `--penalty`: Weight for base/UniFrac loss (default: 1.0)
+- `--nuc-penalty`: Weight for nucleotide loss (default: 1.0)
+
+**Other**:
+- `--device`: Device ('cuda' or 'cpu', default: 'cuda')
+- `--seed`: Random seed for reproducibility
+- `--num-workers`: DataLoader workers (default: 0)
+- `--resume-from`: Path to checkpoint to resume from
+
+**Note**: No metadata file required - pre-training is self-supervised (UniFrac + nucleotide prediction only).
+
 ### Inference Command
 
 **Required Arguments**:
@@ -93,7 +132,8 @@ Implement command-line interface for training and inference.
 
 - [x] Create CLI with argument parsing
 - [x] Implement training command
-- [x] Implement inference command (optional)
+- [x] Implement pre-training command (Stage 1)
+- [x] Implement inference command
 - [x] Validate arguments
 - [x] Setup device and random seed
 - [x] Integrate with data loading
