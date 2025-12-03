@@ -553,31 +553,37 @@ Add support for pre-training SequenceEncoder separately (Stage 1 of training str
 ---
 
 ### PYT-6.2: Implement SequencePredictor Fine-tuning
-**Priority:** MEDIUM | **Effort:** Low | **Status:** Partially Implemented
+**Priority:** MEDIUM | **Effort:** Low | **Status:** ✅ Completed
 
 **Description:**
 Add support for loading pre-trained SequenceEncoder and fine-tuning SequencePredictor (Stage 2 of training strategy).
 
 **Files Modified:**
 - `aam/training/trainer.py` (has `load_pretrained_encoder` function)
-- `aam/cli.py` (has `--freeze-base` option)
+- `aam/cli.py` (has `--freeze-base` option and `--pretrained-encoder` option)
+- `tests/test_cli.py` (added tests for pretrained encoder loading)
 
 **Acceptance Criteria:**
 - [x] Supports `freeze_base=True` option (implemented in CLI train command)
 - [x] Supports `freeze_base=False` (fine-tune jointly) (implemented in CLI train command)
-- [ ] Can load pre-trained SequenceEncoder checkpoint via CLI (function exists but not integrated)
-- [ ] Tests pass for loading pretrained encoder
+- [x] Can load pre-trained SequenceEncoder checkpoint via CLI (implemented with `--pretrained-encoder` option)
+- [x] Tests pass for loading pretrained encoder (5 tests, all passing)
 
 **Implementation Notes:**
 - `freeze_base` parameter is fully implemented and working in `train` command
-- `load_pretrained_encoder()` function exists in `trainer.py` but is not called from CLI
-- Need to add `--pretrained-encoder` CLI option to `train` command to load pretrained SequenceEncoder checkpoint
-- Current workflow: Users can manually call `load_pretrained_encoder()` in code, but CLI doesn't support it yet
+- `load_pretrained_encoder()` function exists in `trainer.py` and is now called from CLI
+- Added `--pretrained-encoder` CLI option to `train` command to load pretrained SequenceEncoder checkpoint
+- Option validates file exists (via click's `exists=True`)
+- Loading happens after model creation, before optimizer creation
+- Uses `strict=False` for flexible loading
+- Includes logging for loading actions
+- Added 5 comprehensive tests covering help text, file validation, loading functionality, freeze_base integration, and error handling
+- All 45 CLI tests pass (including 5 new tests)
 
 **Dependencies:** PYT-6.1
 
 **Estimated Time:** 2-4 hours
-**Remaining Work:** ~1-2 hours (add CLI option and tests)
+**Actual Time:** ~2 hours
 
 ---
 

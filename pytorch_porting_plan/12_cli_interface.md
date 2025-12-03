@@ -41,10 +41,15 @@ Implement command-line interface for training and inference.
 - `--nuc-penalty`: Weight for nucleotide loss (default: 1.0)
 - `--class-weights`: Class weights for classification (optional)
 
+**Transfer Learning**:
+- `--pretrained-encoder`: Path to pretrained SequenceEncoder checkpoint (optional)
+- `--freeze-base`: Freeze base model parameters (flag)
+
 **Other**:
 - `--device`: Device ('cuda' or 'cpu', default: 'cuda')
 - `--seed`: Random seed for reproducibility
 - `--num-workers`: DataLoader workers (default: 0)
+- `--resume-from`: Path to checkpoint to resume from
 
 ### Pre-training Command (Stage 1)
 
@@ -119,6 +124,7 @@ Implement command-line interface for training and inference.
 
 **Model Initialization**:
 - Create model with specified parameters
+- Load pretrained SequenceEncoder checkpoint if `--pretrained-encoder` provided
 - Load checkpoint if resuming
 - Move to device
 
@@ -138,6 +144,8 @@ Implement command-line interface for training and inference.
 - [x] Setup device and random seed
 - [x] Integrate with data loading
 - [x] Integrate with model creation
+- [x] Support loading pretrained SequenceEncoder checkpoint
+- [x] Support `--freeze-base` option for transfer learning
 - [x] Integrate with training loop
 - [x] Add logging
 - [x] Test with sample data

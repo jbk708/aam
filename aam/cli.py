@@ -165,7 +165,9 @@ def cli():
 @click.option("--num-workers", default=0, type=int, help="DataLoader workers")
 @click.option("--resume-from", default=None, type=click.Path(exists=True), help="Path to checkpoint to resume from")
 @click.option("--freeze-base", is_flag=True, help="Freeze base model parameters")
-@click.option("--pretrained-encoder", default=None, type=click.Path(exists=True), help="Path to pretrained SequenceEncoder checkpoint")
+@click.option(
+    "--pretrained-encoder", default=None, type=click.Path(exists=True), help="Path to pretrained SequenceEncoder checkpoint"
+)
 def train(
     table: str,
     tree: str,
