@@ -566,7 +566,10 @@ def pretrain(
         logger.info(f"Pre-trained encoder saved to {final_model_path}")
 
     except Exception as e:
-        logger.error(f"Pre-training failed: {e}", exc_info=True)
+        if "logger" in locals():
+            logger.error(f"Pre-training failed: {e}", exc_info=True)
+        else:
+            logging.error(f"Pre-training failed: {e}", exc_info=True)
         raise click.ClickException(str(e))
 
 
