@@ -322,9 +322,10 @@ def train(
             predict_nucleotides=True,
         )
 
-        # TODO: Load pretrained encoder if provided
-        # if pretrained_encoder is not None:
-        #     load_pretrained_encoder(pretrained_encoder, model, strict=False)
+        if pretrained_encoder is not None:
+            logger.info(f"Loading pretrained encoder from {pretrained_encoder}")
+            load_pretrained_encoder(pretrained_encoder, model, strict=False)
+            logger.info("Pretrained encoder loaded successfully")
 
         class_weights_tensor = None
         if class_weights is not None and classifier:
