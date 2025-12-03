@@ -200,7 +200,6 @@ class Trainer:
         num_batches = 0
         accumulated_steps = 0
         total_steps = len(dataloader)
-        running_avg_loss = 0.0
 
         self.optimizer.zero_grad()
 
@@ -208,7 +207,7 @@ class Trainer:
 
         pbar = tqdm(
             dataloader,
-            desc=f"Epoch {epoch + 1}/{num_epochs}",
+            desc=f"Epoch {epoch+1}/{num_epochs}",
             leave=False,
         )
 
@@ -244,11 +243,7 @@ class Trainer:
 
                     if self.scheduler is not None:
                         self.scheduler.step()
-                        current_lr = (
-                            self.scheduler.get_last_lr()[0]
-                            if hasattr(self.scheduler, "get_last_lr")
-                            else self.optimizer.param_groups[0]["lr"]
-                        )
+                        current_lr = self.scheduler.get_last_lr()[0] if hasattr(self.scheduler, "get_last_lr") else self.optimizer.param_groups[0]["lr"]
                     else:
                         current_lr = self.optimizer.param_groups[0]["lr"]
 
@@ -275,6 +270,22 @@ class Trainer:
                         "LR": f"{current_lr:.2e}",
                     }
                 )
+
+                loss_str = f"Loss: {losses['total_loss']:.4f}"
+                if "target_loss" in losses:
+                    loss_str += f" | Target: {losses['target_loss']:.4f}"
+                if "count_loss" in losses:
+                    loss_str += f" | Count: {losses['count_loss']:.4f}"
+                if "base_loss" in losses:
+                    loss_str += f" | Base: {losses['base_loss']:.4f}"
+                if "nuc_loss" in losses:
+                    loss_str += f" | Nuc: {losses['nuc_loss']:.4f}"
+
+                pbar.set_postfix({
+                    "Step": f"{step}/{total_steps}",
+                    "Loss": f"{losses['total_loss']:.4f}",
+                    "LR": f"{current_lr:.2e}",
+                })
 
                 del losses, scaled_loss
                 num_batches += 1
@@ -326,12 +337,11 @@ class Trainer:
         all_targets = {}
         num_batches = 0
         total_steps = len(dataloader)
-        running_avg_loss = 0.0
 
         with torch.no_grad():
             pbar = tqdm(
                 dataloader,
-                desc=f"Epoch {epoch + 1}/{num_epochs} [Val]",
+                desc=f"Epoch {epoch+1}/{num_epochs} [Val]",
                 leave=False,
             )
 
@@ -371,6 +381,11 @@ class Trainer:
                             "Loss": f"{running_avg_loss:.6f}" if running_avg_loss < 0.0001 else f"{running_avg_loss:.4f}",
                         }
                     )
+
+                    pbar.set_postfix({
+                        "Step": f"{step}/{total_steps}",
+                        "Loss": f"{losses['total_loss']:.4f}",
+                    })
 
                     if compute_metrics:
                         if "target_prediction" in outputs and "target" in targets:
