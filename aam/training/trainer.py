@@ -271,22 +271,6 @@ class Trainer:
                     }
                 )
 
-                loss_str = f"Loss: {losses['total_loss']:.4f}"
-                if "target_loss" in losses:
-                    loss_str += f" | Target: {losses['target_loss']:.4f}"
-                if "count_loss" in losses:
-                    loss_str += f" | Count: {losses['count_loss']:.4f}"
-                if "base_loss" in losses:
-                    loss_str += f" | Base: {losses['base_loss']:.4f}"
-                if "nuc_loss" in losses:
-                    loss_str += f" | Nuc: {losses['nuc_loss']:.4f}"
-
-                pbar.set_postfix({
-                    "Step": f"{step}/{total_steps}",
-                    "Loss": f"{losses['total_loss']:.4f}",
-                    "LR": f"{current_lr:.2e}",
-                })
-
                 del losses, scaled_loss
                 num_batches += 1
 
@@ -381,11 +365,6 @@ class Trainer:
                             "Loss": f"{running_avg_loss:.6f}" if running_avg_loss < 0.0001 else f"{running_avg_loss:.4f}",
                         }
                     )
-
-                    pbar.set_postfix({
-                        "Step": f"{step}/{total_steps}",
-                        "Loss": f"{losses['total_loss']:.4f}",
-                    })
 
                     if compute_metrics:
                         if "target_prediction" in outputs and "target" in targets:
