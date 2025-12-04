@@ -225,7 +225,8 @@ class TestSequencePredictor:
         result = sequence_predictor(sample_tokens, return_nucleotides=False)
         assert isinstance(result, dict)
         assert "nuc_predictions" not in result
-        assert "base_prediction" not in result
+        # base_prediction should always be present (needed for loss computation)
+        assert "base_prediction" in result
 
     def test_forward_training_mode_with_nucleotides(self, sequence_predictor_with_nucleotides, sample_tokens):
         """Test forward pass in training mode with nucleotide predictions."""
@@ -240,7 +241,8 @@ class TestSequencePredictor:
         result = sequence_predictor_with_nucleotides(sample_tokens, return_nucleotides=False)
         assert isinstance(result, dict)
         assert "nuc_predictions" not in result
-        assert "base_prediction" not in result
+        # base_prediction should always be present (needed for loss computation)
+        assert "base_prediction" in result
 
     def test_gradients_flow_unfrozen(self, sequence_predictor, sample_tokens):
         """Test that gradients flow correctly with unfrozen base."""
@@ -309,7 +311,9 @@ class TestSequencePredictor:
         result = sequence_predictor(sample_tokens)
         assert "base_embeddings" in result
         assert result["base_embeddings"].shape == (2, 10, 64)
-        assert "base_prediction" not in result or result.get("base_prediction") is None
+        # base_prediction should always be present (needed for loss computation)
+        # but it's not used as input to heads (base_embeddings are used instead)
+        assert "base_prediction" in result
 
     def test_base_predictions_not_used_as_input(self, sequence_predictor_with_nucleotides, sample_tokens):
         """Test that base predictions are not used as input to heads."""

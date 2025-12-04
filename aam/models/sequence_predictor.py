@@ -206,15 +206,18 @@ class SequencePredictor(nn.Module):
             "base_embeddings": base_embeddings,
         }
         
-        if return_nucleotides and base_prediction is not None:
+        # Always include base_prediction if it exists (needed for base loss computation)
+        if base_prediction is not None:
             result["base_prediction"] = base_prediction
         
-        if return_nucleotides and nuc_predictions is not None:
-            result["nuc_predictions"] = nuc_predictions
-        
-        if return_nucleotides and "unifrac_pred" in base_outputs:
+        # Always include combined encoder outputs if they exist (needed for base loss computation)
+        if "unifrac_pred" in base_outputs:
             result["unifrac_pred"] = base_outputs["unifrac_pred"]
             result["faith_pred"] = base_outputs["faith_pred"]
             result["tax_pred"] = base_outputs["tax_pred"]
+        
+        # Only include nucleotide predictions if requested (controlled by return_nucleotides)
+        if return_nucleotides and nuc_predictions is not None:
+            result["nuc_predictions"] = nuc_predictions
         
         return result
