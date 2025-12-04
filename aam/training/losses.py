@@ -229,4 +229,12 @@ class MultiTaskLoss(nn.Module):
         )
         losses["total_loss"] = total_loss
 
+        # Add encoder-type-specific loss names for clarity
+        if encoder_type == "unifrac":
+            losses["unifrac_loss"] = losses["base_loss"]
+        elif encoder_type == "faith_pd":
+            losses["faith_loss"] = losses["base_loss"]
+        elif encoder_type == "taxonomy":
+            losses["taxonomy_loss"] = losses["base_loss"]
+
         return losses

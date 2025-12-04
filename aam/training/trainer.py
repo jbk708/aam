@@ -437,13 +437,25 @@ class Trainer:
                     "LR": f"{current_lr:.2e}",
                 }
                 
-                # For pretrain mode, show base_loss (UniFrac) and nuc_loss in progress bar
+                # For pretrain mode, show unifrac_loss (or faith_loss) and nuc_loss in progress bar
                 if self._is_pretrain_mode():
-                    if "base_loss" in losses:
+                    encoder_type = self._get_encoder_type()
+                    if encoder_type == "unifrac" and "unifrac_loss" in losses:
+                        unifrac_loss_val = losses["unifrac_loss"]
+                        if isinstance(unifrac_loss_val, torch.Tensor):
+                            unifrac_loss_val = unifrac_loss_val.detach().item()
+                        postfix_dict["UniFrac"] = f"{unifrac_loss_val:.4f}"
+                    elif encoder_type == "faith_pd" and "faith_loss" in losses:
+                        faith_loss_val = losses["faith_loss"]
+                        if isinstance(faith_loss_val, torch.Tensor):
+                            faith_loss_val = faith_loss_val.detach().item()
+                        postfix_dict["Faith"] = f"{faith_loss_val:.4f}"
+                    elif "base_loss" in losses:
+                        # Fallback to base_loss if specific name not available
                         base_loss_val = losses["base_loss"]
                         if isinstance(base_loss_val, torch.Tensor):
                             base_loss_val = base_loss_val.detach().item()
-                        postfix_dict["UniFrac"] = f"{base_loss_val:.4f}"
+                        postfix_dict["Base"] = f"{base_loss_val:.4f}"
                     
                     if "nuc_loss" in losses:
                         nuc_loss_val = losses["nuc_loss"]
@@ -548,13 +560,25 @@ class Trainer:
                         "Loss": f"{running_avg_loss:.6f}" if running_avg_loss < 0.0001 else f"{running_avg_loss:.4f}",
                     }
                     
-                    # For pretrain mode, show base_loss (UniFrac) and nuc_loss in progress bar
+                    # For pretrain mode, show unifrac_loss (or faith_loss) and nuc_loss in progress bar
                     if self._is_pretrain_mode():
-                        if "base_loss" in losses:
+                        encoder_type = self._get_encoder_type()
+                        if encoder_type == "unifrac" and "unifrac_loss" in losses:
+                            unifrac_loss_val = losses["unifrac_loss"]
+                            if isinstance(unifrac_loss_val, torch.Tensor):
+                                unifrac_loss_val = unifrac_loss_val.detach().item()
+                            postfix_dict["UniFrac"] = f"{unifrac_loss_val:.4f}"
+                        elif encoder_type == "faith_pd" and "faith_loss" in losses:
+                            faith_loss_val = losses["faith_loss"]
+                            if isinstance(faith_loss_val, torch.Tensor):
+                                faith_loss_val = faith_loss_val.detach().item()
+                            postfix_dict["Faith"] = f"{faith_loss_val:.4f}"
+                        elif "base_loss" in losses:
+                            # Fallback to base_loss if specific name not available
                             base_loss_val = losses["base_loss"]
                             if isinstance(base_loss_val, torch.Tensor):
                                 base_loss_val = base_loss_val.detach().item()
-                            postfix_dict["UniFrac"] = f"{base_loss_val:.4f}"
+                            postfix_dict["Base"] = f"{base_loss_val:.4f}"
                         
                         if "nuc_loss" in losses:
                             nuc_loss_val = losses["nuc_loss"]
