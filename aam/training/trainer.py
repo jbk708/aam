@@ -147,6 +147,11 @@ class Trainer:
             return self.model.is_classifier
         return False
 
+    def _is_pretrain_mode(self) -> bool:
+        """Check if we're in pretrain mode (SequenceEncoder) vs train mode (SequencePredictor)."""
+        # SequenceEncoder has encoder_type directly, SequencePredictor has base_model
+        return hasattr(self.model, "encoder_type") and not hasattr(self.model, "base_model")
+
     def _create_prediction_plot(
         self,
         predictions: torch.Tensor,
@@ -302,8 +307,16 @@ class Trainer:
 
         Args:
             epoch: Current epoch number
-            train_losses: Training losses dictionary
-            val_results: Validation results dictionary (optional)
+            train_losses: Training losses dictionary (includes total_loss, base_loss, nuc_loss, etc.)
+            val_results: Validation results dictionary (optional, includes same losses as train_losses)
+        
+        Note:
+            All losses in the dictionary are logged, including:
+            - total_loss: Total weighted loss
+            - base_loss: UniFrac/base prediction loss (always present)
+            - nuc_loss: Nucleotide prediction loss (always present)
+            - target_loss: Target prediction loss (if applicable)
+            - count_loss: Count prediction loss (if applicable)
         """
         if self.writer is None:
             return
@@ -417,13 +430,28 @@ class Trainer:
                 else:
                     running_avg_loss = (running_avg_loss * num_batches + current_loss_val) / (num_batches + 1)
 
-                pbar.set_postfix(
-                    {
-                        "Step": f"{step}/{total_steps}",
-                        "Loss": f"{running_avg_loss:.6f}" if running_avg_loss < 0.0001 else f"{running_avg_loss:.4f}",
-                        "LR": f"{current_lr:.2e}",
-                    }
-                )
+                # Build progress bar display
+                postfix_dict = {
+                    "Step": f"{step}/{total_steps}",
+                    "Loss": f"{running_avg_loss:.6f}" if running_avg_loss < 0.0001 else f"{running_avg_loss:.4f}",
+                    "LR": f"{current_lr:.2e}",
+                }
+                
+                # For pretrain mode, show base_loss (UniFrac) and nuc_loss in progress bar
+                if self._is_pretrain_mode():
+                    if "base_loss" in losses:
+                        base_loss_val = losses["base_loss"]
+                        if isinstance(base_loss_val, torch.Tensor):
+                            base_loss_val = base_loss_val.detach().item()
+                        postfix_dict["UniFrac"] = f"{base_loss_val:.4f}"
+                    
+                    if "nuc_loss" in losses:
+                        nuc_loss_val = losses["nuc_loss"]
+                        if isinstance(nuc_loss_val, torch.Tensor):
+                            nuc_loss_val = nuc_loss_val.detach().item()
+                        postfix_dict["Nuc"] = f"{nuc_loss_val:.4f}"
+
+                pbar.set_postfix(postfix_dict)
 
                 del losses, scaled_loss
                 num_batches += 1
@@ -514,12 +542,27 @@ class Trainer:
                     else:
                         running_avg_loss = (running_avg_loss * num_batches + current_loss_val) / (num_batches + 1)
 
-                    pbar.set_postfix(
-                        {
-                            "Step": f"{step}/{total_steps}",
-                            "Loss": f"{running_avg_loss:.6f}" if running_avg_loss < 0.0001 else f"{running_avg_loss:.4f}",
-                        }
-                    )
+                    # Build progress bar display
+                    postfix_dict = {
+                        "Step": f"{step}/{total_steps}",
+                        "Loss": f"{running_avg_loss:.6f}" if running_avg_loss < 0.0001 else f"{running_avg_loss:.4f}",
+                    }
+                    
+                    # For pretrain mode, show base_loss (UniFrac) and nuc_loss in progress bar
+                    if self._is_pretrain_mode():
+                        if "base_loss" in losses:
+                            base_loss_val = losses["base_loss"]
+                            if isinstance(base_loss_val, torch.Tensor):
+                                base_loss_val = base_loss_val.detach().item()
+                            postfix_dict["UniFrac"] = f"{base_loss_val:.4f}"
+                        
+                        if "nuc_loss" in losses:
+                            nuc_loss_val = losses["nuc_loss"]
+                            if isinstance(nuc_loss_val, torch.Tensor):
+                                nuc_loss_val = nuc_loss_val.detach().item()
+                            postfix_dict["Nuc"] = f"{nuc_loss_val:.4f}"
+
+                    pbar.set_postfix(postfix_dict)
 
                     if compute_metrics:
                         if "target_prediction" in outputs and "target" in targets:
