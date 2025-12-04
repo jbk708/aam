@@ -432,8 +432,8 @@ class Trainer:
 
                 # Build progress bar display
                 postfix_dict = {
-                    "Step": f"{step}/{total_steps}",
-                    "Loss": f"{running_avg_loss:.6f}" if running_avg_loss < 0.0001 else f"{running_avg_loss:.4f}",
+                    "S": f"{step}/{total_steps}",
+                    "L": f"{running_avg_loss:.6f}" if running_avg_loss < 0.0001 else f"{running_avg_loss:.4f}",
                     "LR": f"{current_lr:.2e}",
                 }
                 
@@ -444,24 +444,24 @@ class Trainer:
                         unifrac_loss_val = losses["unifrac_loss"]
                         if isinstance(unifrac_loss_val, torch.Tensor):
                             unifrac_loss_val = unifrac_loss_val.detach().item()
-                        postfix_dict["UniFrac"] = f"{unifrac_loss_val:.4f}"
+                        postfix_dict["UF"] = f"{unifrac_loss_val:.4f}"
                     elif encoder_type == "faith_pd" and "faith_loss" in losses:
                         faith_loss_val = losses["faith_loss"]
                         if isinstance(faith_loss_val, torch.Tensor):
                             faith_loss_val = faith_loss_val.detach().item()
-                        postfix_dict["Faith"] = f"{faith_loss_val:.4f}"
+                        postfix_dict["F"] = f"{faith_loss_val:.4f}"
                     elif "base_loss" in losses:
                         # Fallback to base_loss if specific name not available
                         base_loss_val = losses["base_loss"]
                         if isinstance(base_loss_val, torch.Tensor):
                             base_loss_val = base_loss_val.detach().item()
-                        postfix_dict["Base"] = f"{base_loss_val:.4f}"
+                        postfix_dict["B"] = f"{base_loss_val:.4f}"
                     
                     if "nuc_loss" in losses:
                         nuc_loss_val = losses["nuc_loss"]
                         if isinstance(nuc_loss_val, torch.Tensor):
                             nuc_loss_val = nuc_loss_val.detach().item()
-                        postfix_dict["Nuc"] = f"{nuc_loss_val:.4f}"
+                        postfix_dict["N"] = f"{nuc_loss_val:.4f}"
 
                 pbar.set_postfix(postfix_dict)
 
@@ -556,8 +556,8 @@ class Trainer:
 
                     # Build progress bar display
                     postfix_dict = {
-                        "Step": f"{step}/{total_steps}",
-                        "Loss": f"{running_avg_loss:.6f}" if running_avg_loss < 0.0001 else f"{running_avg_loss:.4f}",
+                        "S": f"{step}/{total_steps}",
+                        "L": f"{running_avg_loss:.6f}" if running_avg_loss < 0.0001 else f"{running_avg_loss:.4f}",
                     }
                     
                     # For pretrain mode, show unifrac_loss (or faith_loss) and nuc_loss in progress bar
@@ -567,24 +567,24 @@ class Trainer:
                             unifrac_loss_val = losses["unifrac_loss"]
                             if isinstance(unifrac_loss_val, torch.Tensor):
                                 unifrac_loss_val = unifrac_loss_val.detach().item()
-                            postfix_dict["UniFrac"] = f"{unifrac_loss_val:.4f}"
+                            postfix_dict["UF"] = f"{unifrac_loss_val:.4f}"
                         elif encoder_type == "faith_pd" and "faith_loss" in losses:
                             faith_loss_val = losses["faith_loss"]
                             if isinstance(faith_loss_val, torch.Tensor):
                                 faith_loss_val = faith_loss_val.detach().item()
-                            postfix_dict["Faith"] = f"{faith_loss_val:.4f}"
+                            postfix_dict["F"] = f"{faith_loss_val:.4f}"
                         elif "base_loss" in losses:
                             # Fallback to base_loss if specific name not available
                             base_loss_val = losses["base_loss"]
                             if isinstance(base_loss_val, torch.Tensor):
                                 base_loss_val = base_loss_val.detach().item()
-                            postfix_dict["Base"] = f"{base_loss_val:.4f}"
+                            postfix_dict["B"] = f"{base_loss_val:.4f}"
                         
                         if "nuc_loss" in losses:
                             nuc_loss_val = losses["nuc_loss"]
                             if isinstance(nuc_loss_val, torch.Tensor):
                                 nuc_loss_val = nuc_loss_val.detach().item()
-                            postfix_dict["Nuc"] = f"{nuc_loss_val:.4f}"
+                            postfix_dict["N"] = f"{nuc_loss_val:.4f}"
 
                     pbar.set_postfix(postfix_dict)
 
