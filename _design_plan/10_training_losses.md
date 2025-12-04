@@ -9,6 +9,8 @@ Multi-task loss functions and metrics. Implemented in `aam/training/losses.py` a
 - **Target Loss**: MSE (regression) or NLL (classification) with optional class weights
 - **Count Loss**: Masked MSE for ASV counts
 - **Base Loss**: MSE for UniFrac distances (weighted by `penalty`)
+  - Also available as `unifrac_loss` (when encoder_type="unifrac"), `faith_loss` (when encoder_type="faith_pd"), or `taxonomy_loss` (when encoder_type="taxonomy")
+  - These are aliases to `base_loss` for clarity in logging and progress bars
 - **Nucleotide Loss**: Masked CrossEntropy (weighted by `nuc_penalty`)
 - **Total Loss**: Weighted sum of all losses
 

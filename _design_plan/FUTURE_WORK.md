@@ -10,6 +10,11 @@ This document outlines potential future enhancements and improvements to the AAM
 - Training infrastructure (losses, metrics, trainer, CLI)
 - Comprehensive test suite (94% coverage)
 - **PYT-7.3**: Fixed loss display showing 0.0000 in progress bar (removed duplicate `pbar.set_postfix()` calls)
+- **UniFrac Loss Reporting**: Fixed UniFrac loss reporting and display
+  - Added encoder-type-specific loss names (`unifrac_loss`, `faith_loss`, `taxonomy_loss`) as aliases to `base_loss`
+  - Enhanced progress bar to show UniFrac and nucleotide losses in pretrain mode
+  - Fixed precision display for small loss values (uses 6 decimal places to prevent rounding to 0.0000)
+  - Fixed dataset to handle numpy arrays from `extract_batch_distances`
 
 ## Potential Enhancements
 
@@ -33,6 +38,7 @@ This document outlines potential future enhancements and improvements to the AAM
 - [ ] Data augmentation strategies
 - [ ] Caching mechanisms for expensive computations (UniFrac)
 - [ ] Support for variable-length sequences without truncation
+- [ ] **PYT-8.5**: Support shuffled batches for UniFrac distance extraction (properly map batch sample_ids to dataset indices)
 
 ### Training Improvements
 - [ ] Learning rate scheduling improvements
