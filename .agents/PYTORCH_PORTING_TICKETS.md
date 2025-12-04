@@ -162,15 +162,56 @@ Create validation prediction plots showing predicted vs actual values with linea
 
 ---
 
+### PYT-8.5: Support Shuffled Batches for UniFrac Distance Extraction
+**Priority:** MEDIUM | **Effort:** Medium | **Status:** Not Started
+
+**Description:**
+Fix batch-level UniFrac distance extraction to properly handle shuffled batches. Currently, the `collate_fn` assumes sample order matches dataset order when extracting batch-level pairwise distances `[batch_size, batch_size]` from dataset-level distances. When batches are shuffled (which is the default for training), this assumption breaks and incorrect distances are extracted.
+
+**Files to Modify:**
+- `aam/data/dataset.py` - Update `collate_fn` to properly map batch sample_ids to dataset indices
+- `tests/test_dataset.py` - Add tests for shuffled batch distance extraction
+- `tests/test_integration.py` - Add integration tests for shuffled batches
+
+**Acceptance Criteria:**
+- [ ] Update `collate_fn` to properly extract batch-level distances for shuffled batches
+- [ ] Create mapping from batch sample_ids to their positions in dataset's distance matrix
+- [ ] Extract correct `[batch_size, batch_size]` pairwise distance matrix for batch samples
+- [ ] Handle both unweighted UniFrac (pairwise matrix) and Faith PD (per-sample values)
+- [ ] Test with shuffled batches (default DataLoader behavior)
+- [ ] Test with non-shuffled batches (validation sets)
+- [ ] Test with different batch sizes
+- [ ] Verify extracted distances match expected pairwise distances
+- [ ] Ensure backward compatibility with existing code
+- [ ] Unit tests pass (add comprehensive tests for shuffled batch scenarios)
+- [ ] Integration tests verify correct loss computation with shuffled batches
+
+**Implementation Notes:**
+- Current issue: `collate_fn` assumes first `batch_size` columns correspond to batch samples
+- Solution: Map batch `sample_ids` to their indices in `dataset.sample_ids`, then extract corresponding columns from distance matrix
+- For unweighted UniFrac: Extract `[batch_size, batch_size]` submatrix where `distances[i, j]` is distance from batch sample `i` to batch sample `j`
+- For Faith PD: Already per-sample, so stacking should work correctly
+- Consider passing dataset reference to collate_fn or storing sample_id-to-index mapping in dataset
+- Alternative: Use `UniFracComputer.extract_batch_distances()` in collate_fn if we can pass DistanceMatrix
+- Need to ensure distance matrix symmetry is preserved (dist[i,j] == dist[j,i])
+- Verify diagonal is zero (distance from sample to itself)
+
+**Dependencies:** None (can be implemented independently)
+
+**Estimated Time:** 3-4 hours
+
+---
+
 ## Summary
 
-**Total Estimated Time:** 8-12 hours
+**Total Estimated Time:** 11-16 hours
 
 **Implementation Order:**
 1. ✅ PYT-8.3: Change Early Stopping Default to 10 Epochs (1 hour) - Completed
 2. ✅ PYT-8.2: Implement Single Best Model File Saving (2-3 hours) - Completed
 3. ✅ PYT-8.1: Implement TensorBoard Train/Val Overlay Verification (1-2 hours) - Completed
 4. ✅ PYT-8.4: Implement Validation Prediction Plots (4-6 hours) - Completed
+5. ⏳ PYT-8.5: Support Shuffled Batches for UniFrac Distance Extraction (3-4 hours) - Not Started
 
 **Notes:**
 - All tickets are independent and can be implemented in any order
@@ -178,4 +219,5 @@ Create validation prediction plots showing predicted vs actual values with linea
 - PYT-8.2 completed - single best model file saving implemented
 - PYT-8.1 completed - TensorBoard overlay verification documented
 - PYT-8.4 completed - validation prediction plots with matplotlib dependency added
+- PYT-8.5 not started - needed to fix UniFrac loss computation with shuffled batches
 - Follow the workflow in `.agents/workflow.md` for implementation
