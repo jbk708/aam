@@ -440,28 +440,31 @@ class Trainer:
                 # For pretrain mode, show unifrac_loss (or faith_loss) and nuc_loss in progress bar
                 if self._is_pretrain_mode():
                     encoder_type = self._get_encoder_type()
+                    # Try to get encoder-specific loss, fallback to base_loss
+                    base_loss_val = None
                     if encoder_type == "unifrac" and "unifrac_loss" in losses:
-                        unifrac_loss_val = losses["unifrac_loss"]
-                        if isinstance(unifrac_loss_val, torch.Tensor):
-                            unifrac_loss_val = unifrac_loss_val.detach().item()
-                        postfix_dict["UF"] = f"{unifrac_loss_val:.4f}"
+                        base_loss_val = losses["unifrac_loss"]
                     elif encoder_type == "faith_pd" and "faith_loss" in losses:
-                        faith_loss_val = losses["faith_loss"]
-                        if isinstance(faith_loss_val, torch.Tensor):
-                            faith_loss_val = faith_loss_val.detach().item()
-                        postfix_dict["F"] = f"{faith_loss_val:.4f}"
+                        base_loss_val = losses["faith_loss"]
                     elif "base_loss" in losses:
-                        # Fallback to base_loss if specific name not available
                         base_loss_val = losses["base_loss"]
+                    
+                    if base_loss_val is not None:
                         if isinstance(base_loss_val, torch.Tensor):
                             base_loss_val = base_loss_val.detach().item()
-                        postfix_dict["B"] = f"{base_loss_val:.4f}"
+                        # Use more precision for small values, same as total loss
+                        if encoder_type == "unifrac":
+                            postfix_dict["UF"] = f"{base_loss_val:.6f}" if base_loss_val < 0.0001 else f"{base_loss_val:.4f}"
+                        elif encoder_type == "faith_pd":
+                            postfix_dict["F"] = f"{base_loss_val:.6f}" if base_loss_val < 0.0001 else f"{base_loss_val:.4f}"
+                        else:
+                            postfix_dict["B"] = f"{base_loss_val:.6f}" if base_loss_val < 0.0001 else f"{base_loss_val:.4f}"
                     
                     if "nuc_loss" in losses:
                         nuc_loss_val = losses["nuc_loss"]
                         if isinstance(nuc_loss_val, torch.Tensor):
                             nuc_loss_val = nuc_loss_val.detach().item()
-                        postfix_dict["N"] = f"{nuc_loss_val:.4f}"
+                        postfix_dict["N"] = f"{nuc_loss_val:.6f}" if nuc_loss_val < 0.0001 else f"{nuc_loss_val:.4f}"
 
                 pbar.set_postfix(postfix_dict)
 
@@ -563,28 +566,31 @@ class Trainer:
                     # For pretrain mode, show unifrac_loss (or faith_loss) and nuc_loss in progress bar
                     if self._is_pretrain_mode():
                         encoder_type = self._get_encoder_type()
+                        # Try to get encoder-specific loss, fallback to base_loss
+                        base_loss_val = None
                         if encoder_type == "unifrac" and "unifrac_loss" in losses:
-                            unifrac_loss_val = losses["unifrac_loss"]
-                            if isinstance(unifrac_loss_val, torch.Tensor):
-                                unifrac_loss_val = unifrac_loss_val.detach().item()
-                            postfix_dict["UF"] = f"{unifrac_loss_val:.4f}"
+                            base_loss_val = losses["unifrac_loss"]
                         elif encoder_type == "faith_pd" and "faith_loss" in losses:
-                            faith_loss_val = losses["faith_loss"]
-                            if isinstance(faith_loss_val, torch.Tensor):
-                                faith_loss_val = faith_loss_val.detach().item()
-                            postfix_dict["F"] = f"{faith_loss_val:.4f}"
+                            base_loss_val = losses["faith_loss"]
                         elif "base_loss" in losses:
-                            # Fallback to base_loss if specific name not available
                             base_loss_val = losses["base_loss"]
+                        
+                        if base_loss_val is not None:
                             if isinstance(base_loss_val, torch.Tensor):
                                 base_loss_val = base_loss_val.detach().item()
-                            postfix_dict["B"] = f"{base_loss_val:.4f}"
+                            # Use more precision for small values, same as total loss
+                            if encoder_type == "unifrac":
+                                postfix_dict["UF"] = f"{base_loss_val:.6f}" if base_loss_val < 0.0001 else f"{base_loss_val:.4f}"
+                            elif encoder_type == "faith_pd":
+                                postfix_dict["F"] = f"{base_loss_val:.6f}" if base_loss_val < 0.0001 else f"{base_loss_val:.4f}"
+                            else:
+                                postfix_dict["B"] = f"{base_loss_val:.6f}" if base_loss_val < 0.0001 else f"{base_loss_val:.4f}"
                         
                         if "nuc_loss" in losses:
                             nuc_loss_val = losses["nuc_loss"]
                             if isinstance(nuc_loss_val, torch.Tensor):
                                 nuc_loss_val = nuc_loss_val.detach().item()
-                            postfix_dict["N"] = f"{nuc_loss_val:.4f}"
+                            postfix_dict["N"] = f"{nuc_loss_val:.6f}" if nuc_loss_val < 0.0001 else f"{nuc_loss_val:.4f}"
 
                     pbar.set_postfix(postfix_dict)
 
