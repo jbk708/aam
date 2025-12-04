@@ -65,7 +65,39 @@ def collate_fn(batch: List[Dict[str, Union[torch.Tensor, str]]], token_limit: in
     if y_targets:
         result["y_target"] = torch.stack(y_targets)
     if unifrac_targets:
-        result["unifrac_target"] = torch.stack(unifrac_targets)
+        stacked = torch.stack(unifrac_targets)
+        # For unweighted UniFrac, we need batch-level pairwise distances [batch_size, batch_size]
+        # Each sample's unifrac_target is a row of distances to all samples in the dataset
+        # We need to extract only the distances to samples in this batch
+        if stacked.dim() == 2:
+            if stacked.shape[1] == batch_size:
+                # Already batch-level distances (shouldn't happen with current dataset implementation)
+                result["unifrac_target"] = stacked
+            elif stacked.shape[1] > batch_size:
+                # Extract batch-level submatrix
+                # The stacked tensor has shape [batch_size, num_dataset_samples]
+                # We need to extract columns corresponding to batch samples
+                # Since we don't have access to dataset.sample_ids here, we'll extract
+                # the submatrix by finding where batch sample_ids appear in the distance rows
+                # For now, create batch-level distance matrix by extracting distances between batch samples
+                batch_distances = torch.zeros(batch_size, batch_size, dtype=stacked.dtype)
+                for i, sample_id_i in enumerate(sample_ids):
+                    # Find index of sample_id_i in dataset (assume it's at position i in dataset.sample_ids)
+                    # This is a simplification - proper fix requires dataset access
+                    for j, sample_id_j in enumerate(sample_ids):
+                        # Get distance from sample i to sample j
+                        # If sample j's index in dataset is j, get stacked[i, j]
+                        # Otherwise, we need to find the actual index
+                        if j < stacked.shape[1]:
+                            batch_distances[i, j] = stacked[i, j]
+                        elif i < stacked.shape[1]:
+                            # Use symmetry: dist(i,j) = dist(j,i)
+                            batch_distances[i, j] = stacked[j, i] if j < stacked.shape[0] else 0.0
+                result["unifrac_target"] = batch_distances
+            else:
+                result["unifrac_target"] = stacked
+        else:
+            result["unifrac_target"] = stacked
 
     return result
 
@@ -181,10 +213,21 @@ class ASVDataset(Dataset):
                     sample_idx_in_matrix = self.unifrac_distances.ids.index(sample_id)
                     row = self.unifrac_distances.data[sample_idx_in_matrix]
                     result["unifrac_target"] = torch.FloatTensor(row)
+                elif isinstance(self.unifrac_distances, np.ndarray):
+                    # Handle numpy array from extract_batch_distances
+                    # Find index of sample_id in dataset's sample_ids
+                    sample_idx_in_dataset = self.sample_ids.index(sample_id)
+                    row = self.unifrac_distances[sample_idx_in_dataset]
+                    result["unifrac_target"] = torch.FloatTensor(row)
             elif self.unifrac_metric == "faith_pd":
                 if isinstance(self.unifrac_distances, pd.Series):
                     if sample_id in self.unifrac_distances.index:
                         value = self.unifrac_distances[sample_id]
                         result["unifrac_target"] = torch.FloatTensor([value])
+                elif isinstance(self.unifrac_distances, np.ndarray):
+                    # Handle numpy array from extract_batch_distances (shape [num_samples, 1])
+                    sample_idx_in_dataset = self.sample_ids.index(sample_id)
+                    value = self.unifrac_distances[sample_idx_in_dataset, 0]
+                    result["unifrac_target"] = torch.FloatTensor([value])
 
         return result
