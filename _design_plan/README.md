@@ -25,10 +25,10 @@ The implementation plan is organized into 13 documents, each covering a specific
 
 ## New Features
 
-15. **[14_tensorboard_overlay.md](14_tensorboard_overlay.md)** - TensorBoard train/val overlay ⏳
-16. **[15_save_best_model.md](15_save_best_model.md)** - Save single best model file ⏳
+15. **[14_tensorboard_overlay.md](14_tensorboard_overlay.md)** - TensorBoard train/val overlay ✅
+16. **[15_save_best_model.md](15_save_best_model.md)** - Save single best model file ✅
 17. **[16_early_stopping_default.md](16_early_stopping_default.md)** - Early stopping default to 10 epochs ✅
-18. **[17_validation_prediction_plots.md](17_validation_prediction_plots.md)** - Validation prediction plots ⏳
+18. **[17_validation_prediction_plots.md](17_validation_prediction_plots.md)** - Validation prediction plots ✅
 
 ## Training Strategy
 

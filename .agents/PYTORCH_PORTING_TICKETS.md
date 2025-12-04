@@ -168,12 +168,14 @@ Create validation prediction plots showing predicted vs actual values with linea
 
 **Implementation Order:**
 1. ✅ PYT-8.3: Change Early Stopping Default to 10 Epochs (1 hour) - Completed
-2. PYT-8.2: Implement Single Best Model File Saving (2-3 hours) - Straightforward modification
-3. PYT-8.1: Implement TensorBoard Train/Val Overlay Verification (1-2 hours) - Documentation/verification
-4. PYT-8.4: Implement Validation Prediction Plots (4-6 hours) - Most complex, requires new dependencies
+2. ✅ PYT-8.2: Implement Single Best Model File Saving (2-3 hours) - Completed
+3. ✅ PYT-8.1: Implement TensorBoard Train/Val Overlay Verification (1-2 hours) - Completed
+4. ✅ PYT-8.4: Implement Validation Prediction Plots (4-6 hours) - Completed
 
 **Notes:**
 - All tickets are independent and can be implemented in any order
 - PYT-8.3 completed - early stopping defaults now consistent at 10 epochs
-- PYT-8.4 requires adding matplotlib dependency
+- PYT-8.2 completed - single best model file saving implemented
+- PYT-8.1 completed - TensorBoard overlay verification documented
+- PYT-8.4 completed - validation prediction plots with matplotlib dependency added
 - Follow the workflow in `.agents/workflow.md` for implementation
