@@ -7,6 +7,8 @@ import torch
 class SequenceTokenizer:
     """Tokenize nucleotide sequences for model input."""
 
+    START_TOKEN = 5
+
     def __init__(self):
         """Initialize SequenceTokenizer."""
         self.nucleotide_to_token = {"A": 1, "C": 2, "G": 3, "T": 4}
@@ -18,9 +20,9 @@ class SequenceTokenizer:
             sequence: Nucleotide sequence string (A, C, G, T)
 
         Returns:
-            torch.LongTensor of token IDs
+            torch.LongTensor of token IDs with start token prepended
         """
-        tokens = []
+        tokens = [self.START_TOKEN]
         for char in sequence.upper():
             token = self.nucleotide_to_token.get(char, 0)
             tokens.append(token)

@@ -173,12 +173,13 @@ class ASVDataset(Dataset):
         for asv_idx in asv_indices:
             sequence = self.sequences[asv_idx]
             tokenized = self.tokenizer.tokenize(sequence)
-            padded = self.tokenizer.pad_sequences([tokenized], self.max_bp)[0]
+            padded = self.tokenizer.pad_sequences([tokenized], self.max_bp + 1)[0]
             tokens_list.append(padded)
             counts_list.append(data[asv_idx])
 
         if not tokens_list:
-            tokens = torch.zeros(1, self.max_bp, dtype=torch.long)
+            tokens = torch.zeros(1, self.max_bp + 1, dtype=torch.long)
+            tokens[0, 0] = self.tokenizer.START_TOKEN
             counts = torch.zeros(1, 1, dtype=torch.float)
         else:
             tokens = torch.stack(tokens_list)

@@ -14,7 +14,7 @@ class ASVEncoder(nn.Module):
 
     def __init__(
         self,
-        vocab_size: int = 5,
+        vocab_size: int = 6,
         embedding_dim: int = 128,
         max_bp: int = 150,
         num_layers: int = 2,
@@ -28,7 +28,7 @@ class ASVEncoder(nn.Module):
         """Initialize ASVEncoder.
 
         Args:
-            vocab_size: Vocabulary size (default: 5 for pad, A, C, G, T)
+            vocab_size: Vocabulary size (default: 6 for pad, A, C, G, T, START)
             embedding_dim: Embedding dimension
             max_bp: Maximum sequence length (base pairs)
             num_layers: Number of transformer layers

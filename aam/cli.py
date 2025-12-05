@@ -347,7 +347,7 @@ def train(
         logger.info("Creating model...")
         model = SequencePredictor(
             encoder_type=encoder_type,
-            vocab_size=5,
+            vocab_size=6,
             embedding_dim=embedding_dim,
             max_bp=max_bp,
             token_limit=token_limit,
@@ -602,7 +602,7 @@ def pretrain(
         logger.info("Creating model...")
         model = SequenceEncoder(
             encoder_type=encoder_type,
-            vocab_size=5,
+            vocab_size=6,
             embedding_dim=embedding_dim,
             max_bp=max_bp,
             token_limit=token_limit,
@@ -733,7 +733,7 @@ def predict(
         logger.info("Creating model...")
         model_obj = SequencePredictor(
             encoder_type=model_config.get("encoder_type", "unifrac"),
-            vocab_size=5,
+            vocab_size=6,
             embedding_dim=model_config.get("embedding_dim", 128),
             max_bp=model_config.get("max_bp", 150),
             token_limit=model_config.get("token_limit", 1024),
