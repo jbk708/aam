@@ -189,7 +189,7 @@ class TestASVDataset:
         assert isinstance(sample["y_target"], torch.FloatTensor)
 
     def test_getitem_with_unifrac(self, rarefied_table, tokenizer, simple_unifrac_distances):
-        """Test __getitem__ with UniFrac distances."""
+        """Test __getitem__ with UniFrac distances (unifrac_target is added in collate_fn, not __getitem__)."""
         dataset = ASVDataset(
             table=rarefied_table,
             unifrac_distances=simple_unifrac_distances,
@@ -201,8 +201,10 @@ class TestASVDataset:
 
         sample = dataset[0]
 
-        assert "unifrac_target" in sample
-        assert isinstance(sample["unifrac_target"], torch.FloatTensor)
+        # unifrac_target is NOT in __getitem__ output - it's added in collate_fn
+        assert "unifrac_target" not in sample
+        # But the dataset should store unifrac_distances for use in collate_fn
+        assert dataset.unifrac_distances is not None
 
     def test_getitem_sample_id(self, rarefied_table, tokenizer):
         """Test that sample_id is correct."""
@@ -401,7 +403,7 @@ class TestDatasetEdgeCases:
         assert sample["y_target"].dtype == torch.float32
 
     def test_dataset_faith_pd_extraction(self, tokenizer, rarefied_table):
-        """Test Faith PD distance extraction."""
+        """Test Faith PD distance extraction (unifrac_target is added in collate_fn, not __getitem__)."""
         import pandas as pd
         import numpy as np
 
@@ -418,12 +420,13 @@ class TestDatasetEdgeCases:
         )
 
         sample = dataset[0]
-        assert "unifrac_target" in sample
-        assert isinstance(sample["unifrac_target"], torch.Tensor)
-        assert sample["unifrac_target"].shape == (1,)
+        # unifrac_target is NOT in __getitem__ output - it's added in collate_fn
+        assert "unifrac_target" not in sample
+        # But the dataset should store unifrac_distances for use in collate_fn
+        assert dataset.unifrac_distances is not None
 
     def test_dataset_faith_pd_missing_sample(self, tokenizer, rarefied_table):
-        """Test Faith PD extraction with missing sample ID."""
+        """Test Faith PD extraction with missing sample ID (unifrac_target is added in collate_fn, not __getitem__)."""
         import pandas as pd
 
         sample_ids = list(rarefied_table.ids(axis="sample"))
@@ -438,11 +441,22 @@ class TestDatasetEdgeCases:
             unifrac_metric="faith_pd",
         )
 
+        # unifrac_target is NOT in __getitem__ output - it's added in collate_fn
+        # The missing sample ID will cause an error in collate_fn when trying to extract distances
         sample_with_value = dataset[0]
-        assert "unifrac_target" in sample_with_value
+        assert "unifrac_target" not in sample_with_value
 
         sample_without_value = dataset[2]
         assert "unifrac_target" not in sample_without_value
+        
+        # Test that collate_fn will raise an error for missing sample ID
+        from aam.data.dataset import collate_fn
+        from functools import partial
+        batch = [dataset[0], dataset[2]]  # sample 2 is missing from faith_pd_values
+        collate = partial(collate_fn, token_limit=1024, unifrac_distances=faith_pd_values, unifrac_metric="faith_pd")
+        # This should raise ValueError because sample_ids[2] is not in faith_pd_values
+        with pytest.raises(ValueError, match="not found"):
+            collate(batch)
 
 
 class TestASVDatasetIntegration:
