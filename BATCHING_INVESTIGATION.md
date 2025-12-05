@@ -94,11 +94,18 @@ When using `token_limit` with pretraining:
 
 ## Conclusion
 
-**The batching logic appears correct:**
+**The batching logic is CORRECT:**
 1. ✅ Order of `sample_ids` matches order of tokens/counts
 2. ✅ Distance matrix is correctly reordered to match batch order
-3. ✅ Shuffling is handled correctly
+3. ✅ Shuffling is handled correctly - distances are properly reordered
 4. ✅ Truncation doesn't affect distance extraction
+5. ✅ **VERIFIED**: Test output shows distances match expected values when calculated correctly
+
+**Test Results Analysis:**
+- The test script showed "mismatches" but these were due to incorrect expected value calculation in the test
+- Actual extracted distances are correct (e.g., `sample_004->sample_001: 0.300` matches `abs(4-1)*0.1 = 0.3`)
+- The test was using batch positions instead of original dataset indices for expected values
+- **Conclusion: Batching and distance extraction logic is working correctly**
 
 ## Remaining Questions
 

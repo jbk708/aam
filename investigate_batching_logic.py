@@ -271,21 +271,39 @@ def test_dataloader_shuffling():
         assert np.allclose(np.diag(distances), 0), "Distance matrix diagonal not zero!"
         
         # Verify distances match expected values based on sample_ids
+        # The distance matrix was created with sample_ids in order: sample_000, sample_001, ..., sample_009
+        # So we need to extract the numeric part to get the original index
+        def get_sample_index(sample_id):
+            """Extract numeric index from sample_id like 'sample_004' -> 4"""
+            try:
+                # Handle both string and numpy string types
+                sample_id_str = str(sample_id)
+                if '_' in sample_id_str:
+                    return int(sample_id_str.split('_')[1])
+                return -1
+            except (ValueError, AttributeError):
+                return -1
+        
+        distance_mismatches = []
         for i, id_i in enumerate(sample_ids):
             for j, id_j in enumerate(sample_ids):
                 if i != j:
-                    idx_i = sample_ids.index(id_i) if id_i in sample_ids else -1
-                    idx_j = sample_ids.index(id_j) if id_j in sample_ids else -1
-                    # Get original indices
-                    # Get original indices from the full dataset sample_ids
-                    orig_idx_i = sample_ids.index(id_i) if id_i in sample_ids else -1
-                    orig_idx_j = sample_ids.index(id_j) if id_j in sample_ids else -1
+                    # Get original indices from sample ID names (e.g., 'sample_004' -> 4)
+                    orig_idx_i = get_sample_index(id_i)
+                    orig_idx_j = get_sample_index(id_j)
                     
                     if orig_idx_i >= 0 and orig_idx_j >= 0:
                         expected_dist = abs(orig_idx_i - orig_idx_j) * 0.1
                         actual_dist = distances[i, j]
                         if not np.isclose(actual_dist, expected_dist, atol=0.01):
-                            print(f"  ⚠️  Distance mismatch: {id_i}->{id_j}: got {actual_dist:.3f}, expected {expected_dist:.3f}")
+                            distance_mismatches.append(f"{id_i}->{id_j}: got {actual_dist:.3f}, expected {expected_dist:.3f}")
+        
+        if distance_mismatches:
+            print(f"  ⚠️  Found {len(distance_mismatches)} distance mismatches (showing first 5):")
+            for mismatch in distance_mismatches[:5]:
+                print(f"    {mismatch}")
+        else:
+            print(f"  ✅ All distances match expected values")
         
         # Verify tokens order matches sample_ids order
         # Check that each sample's tokens are valid
