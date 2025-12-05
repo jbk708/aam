@@ -203,10 +203,10 @@ def debug_model_forward(model, tokens, step_name="forward"):
     
     # 4. ASVEncoder: Attention pooling
     print("\n--- ASVEncoder: Attention Pooling ---")
-    transformer_out_reshaped = transformer_out.reshape(batch_size, num_asvs, seq_len, -1)
-    mask_reshaped = mask.reshape(batch_size, num_asvs, seq_len).unsqueeze(-1).float()
+    # Attention pooling expects [batch_size * num_asvs, seq_len, hidden_dim] (3D)
+    # transformer_out is already in this shape, mask should be [batch_size * num_asvs, seq_len]
     pooled = model.sample_encoder.asv_encoder.attention_pooling(
-        transformer_out_reshaped, mask=mask_reshaped
+        transformer_out, mask=mask
     )
     check_tensor_stats(pooled, "ASV embeddings (pooled)", step_name)
     if check_for_nan(pooled, "ASV embeddings", step_name):
@@ -214,15 +214,20 @@ def debug_model_forward(model, tokens, step_name="forward"):
     
     # 5. ASVEncoder: Nucleotide head
     print("\n--- ASVEncoder: Nucleotide Prediction Head ---")
-    nuc_logits = model.sample_encoder.asv_encoder.nucleotide_head(transformer_out_reshaped)
+    # Nucleotide head also operates on flattened tensor [batch_size * num_asvs, seq_len, hidden_dim]
+    nuc_logits = model.sample_encoder.asv_encoder.nucleotide_head(transformer_out)
     check_tensor_stats(nuc_logits, "Nucleotide logits", step_name)
     if check_for_nan(nuc_logits, "nucleotide logits", step_name):
         return None
     
+    # Reshape pooled embeddings for sample encoder
+    # pooled: [batch_size * num_asvs, embedding_dim] -> [batch_size, num_asvs, embedding_dim]
+    pooled_reshaped = pooled.reshape(batch_size, num_asvs, -1)
+    
     # 6. SampleSequenceEncoder: Sample position embedding
     print("\n--- SampleSequenceEncoder: Position Embedding ---")
     asv_mask = (tokens.sum(dim=-1) > 0).long()
-    sample_pos_emb = model.sample_encoder.sample_position_embedding(pooled)
+    sample_pos_emb = model.sample_encoder.sample_position_embedding(pooled_reshaped)
     check_tensor_stats(sample_pos_emb, "Sample position embeddings", step_name)
     if check_for_nan(sample_pos_emb, "sample position embeddings", step_name):
         return None
