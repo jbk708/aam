@@ -76,9 +76,16 @@ def collate_fn(
         
         # Validate extracted distances
         if np.any(np.isnan(batch_distances)):
-            raise ValueError(f"NaN values found in extracted batch distances for sample_ids: {sample_ids}")
+            import sys
+            error_msg = f"NaN values found in extracted batch distances for sample_ids: {sample_ids}"
+            print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
+            print(f"batch_distances shape={batch_distances.shape}, min={np.nanmin(batch_distances)}, max={np.nanmax(batch_distances)}", file=sys.stderr, flush=True)
+            raise ValueError(error_msg)
         if np.any(np.isinf(batch_distances)):
-            raise ValueError(f"Inf values found in extracted batch distances for sample_ids: {sample_ids}")
+            import sys
+            error_msg = f"Inf values found in extracted batch distances for sample_ids: {sample_ids}"
+            print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
+            raise ValueError(error_msg)
         
         result["unifrac_target"] = torch.FloatTensor(batch_distances)
 

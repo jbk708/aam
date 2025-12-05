@@ -93,20 +93,37 @@ class MultiTaskLoss(nn.Module):
         """
         # Validate shapes match
         if base_pred.shape != base_true.shape:
-            raise ValueError(
+            import sys
+            error_msg = (
                 f"Shape mismatch in base loss: base_pred.shape={base_pred.shape}, "
                 f"base_true.shape={base_true.shape}, encoder_type={encoder_type}"
             )
+            print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
+            raise ValueError(error_msg)
         
         # Check for NaN or Inf values
         if torch.any(torch.isnan(base_pred)):
-            raise ValueError(f"NaN values found in base_pred with shape {base_pred.shape}")
+            import sys
+            error_msg = f"NaN values found in base_pred with shape {base_pred.shape}"
+            print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
+            print(f"base_pred min={base_pred.min().item()}, max={base_pred.max().item()}, mean={base_pred.mean().item()}", file=sys.stderr, flush=True)
+            raise ValueError(error_msg)
         if torch.any(torch.isnan(base_true)):
-            raise ValueError(f"NaN values found in base_true with shape {base_true.shape}")
+            import sys
+            error_msg = f"NaN values found in base_true with shape {base_true.shape}"
+            print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
+            print(f"base_true min={base_true.min().item()}, max={base_true.max().item()}, mean={base_true.mean().item()}", file=sys.stderr, flush=True)
+            raise ValueError(error_msg)
         if torch.any(torch.isinf(base_pred)):
-            raise ValueError(f"Inf values found in base_pred with shape {base_pred.shape}")
+            import sys
+            error_msg = f"Inf values found in base_pred with shape {base_pred.shape}"
+            print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
+            raise ValueError(error_msg)
         if torch.any(torch.isinf(base_true)):
-            raise ValueError(f"Inf values found in base_true with shape {base_true.shape}")
+            import sys
+            error_msg = f"Inf values found in base_true with shape {base_true.shape}"
+            print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
+            raise ValueError(error_msg)
         
         return nn.functional.mse_loss(base_pred, base_true)
 
