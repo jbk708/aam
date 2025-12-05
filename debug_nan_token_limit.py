@@ -205,6 +205,15 @@ def debug_model_forward(model, tokens, step_name="forward"):
     print("\n--- ASVEncoder: Attention Pooling ---")
     # Attention pooling expects [batch_size * num_asvs, seq_len, hidden_dim] (3D)
     # transformer_out is already in this shape, mask should be [batch_size * num_asvs, seq_len]
+    
+    # Debug: Check for all-padding sequences (which cause NaN in softmax)
+    mask_sum = mask.sum(dim=1)  # [batch_size * num_asvs]
+    all_padding = (mask_sum == 0)
+    num_all_padding = all_padding.sum().item()
+    if num_all_padding > 0:
+        print(f"  ⚠️  WARNING: {num_all_padding} sequences have all padding (will cause NaN in attention pooling)")
+        print(f"  All-padding indices: {torch.where(all_padding)[0].tolist()[:10]}...")
+    
     pooled = model.sample_encoder.asv_encoder.attention_pooling(
         transformer_out, mask=mask
     )

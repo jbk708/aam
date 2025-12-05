@@ -36,12 +36,32 @@ class AttentionPooling(nn.Module):
 
         if mask is not None:
             scores = scores.masked_fill(mask == 0, float("-inf"))
+            
+            # Handle all-padding sequences (all positions masked)
+            # softmax(all -inf) = NaN, so we need special handling
+            mask_sum = mask.sum(dim=-1, keepdim=True)  # [batch_size, 1]
+            all_padding = (mask_sum == 0)  # [batch_size, 1]
+            
+            # For all-padding sequences, use uniform attention weights
+            # This prevents NaN from softmax(all -inf)
+            if all_padding.any():
+                # Set scores to 0 for all-padding sequences (will give uniform softmax)
+                scores = scores.masked_fill(all_padding, 0.0)
 
         attention_weights = torch.softmax(scores, dim=-1)
 
         if mask is not None:
             attention_weights = attention_weights * mask
             attention_weights = attention_weights / (attention_weights.sum(dim=-1, keepdim=True) + 1e-8)
+            
+            # For all-padding sequences, set to zero (will be handled by normalization)
+            if all_padding.any():
+                attention_weights = attention_weights.masked_fill(all_padding, 0.0)
+                # Re-normalize (all-padding sequences will have sum=0, so use uniform)
+                weight_sum = attention_weights.sum(dim=-1, keepdim=True)
+                attention_weights = attention_weights / (weight_sum + 1e-8)
+                # For truly all-padding, use uniform weights
+                attention_weights = attention_weights.masked_fill(all_padding, 1.0 / seq_len)
 
         pooled = torch.sum(embeddings * attention_weights.unsqueeze(-1), dim=1)
         pooled = self.norm(pooled)
