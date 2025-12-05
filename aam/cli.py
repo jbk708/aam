@@ -14,6 +14,7 @@ from sklearn.model_selection import train_test_split
 from aam.data.biom_loader import BIOMLoader
 from aam.data.unifrac import UniFracComputer
 from aam.data.dataset import ASVDataset, collate_fn
+from skbio import DistanceMatrix
 from aam.models.sequence_predictor import SequencePredictor
 from aam.models.sequence_encoder import SequenceEncoder
 from aam.training.losses import MultiTaskLoss
@@ -278,14 +279,20 @@ def train(
         train_metadata = metadata_df[metadata_df["sample_id"].isin(train_ids)]
         val_metadata = metadata_df[metadata_df["sample_id"].isin(val_ids)]
 
-        train_unifrac = unifrac_computer.extract_batch_distances(unifrac_distances, train_ids, unifrac_metric_name)
-        val_unifrac = unifrac_computer.extract_batch_distances(unifrac_distances, val_ids, unifrac_metric_name)
+        train_distance_matrix = None
+        val_distance_matrix = None
+        if unifrac_metric_name == "unweighted":
+            train_distance_matrix = unifrac_distances.filter(train_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
+            val_distance_matrix = unifrac_distances.filter(val_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
+        elif unifrac_metric_name == "faith_pd":
+            train_distance_matrix = unifrac_distances.loc[train_ids] if isinstance(unifrac_distances, pd.Series) else None
+            val_distance_matrix = unifrac_distances.loc[val_ids] if isinstance(unifrac_distances, pd.Series) else None
 
         logger.info("Creating datasets...")
         train_dataset = ASVDataset(
             table=train_table,
             metadata=train_metadata,
-            unifrac_distances=train_unifrac,
+            unifrac_distances=train_distance_matrix,
             max_bp=max_bp,
             token_limit=token_limit,
             target_column=metadata_column,
@@ -295,15 +302,25 @@ def train(
         val_dataset = ASVDataset(
             table=val_table,
             metadata=val_metadata,
-            unifrac_distances=val_unifrac,
+            unifrac_distances=val_distance_matrix,
             max_bp=max_bp,
             token_limit=token_limit,
             target_column=metadata_column,
             unifrac_metric=unifrac_metric_name,
         )
 
-        train_collate = partial(collate_fn, token_limit=token_limit)
-        val_collate = partial(collate_fn, token_limit=token_limit)
+        train_collate = partial(
+            collate_fn,
+            token_limit=token_limit,
+            unifrac_distances=train_distance_matrix,
+            unifrac_metric=unifrac_metric_name,
+        )
+        val_collate = partial(
+            collate_fn,
+            token_limit=token_limit,
+            unifrac_distances=val_distance_matrix,
+            unifrac_metric=unifrac_metric_name,
+        )
 
         train_loader = DataLoader(
             train_dataset,
@@ -510,14 +527,20 @@ def pretrain(
         train_table = table_obj.filter(train_ids, axis="sample", inplace=False)
         val_table = table_obj.filter(val_ids, axis="sample", inplace=False)
 
-        train_unifrac = unifrac_computer.extract_batch_distances(unifrac_distances, train_ids, unifrac_metric_name)
-        val_unifrac = unifrac_computer.extract_batch_distances(unifrac_distances, val_ids, unifrac_metric_name)
+        train_distance_matrix = None
+        val_distance_matrix = None
+        if unifrac_metric_name == "unweighted":
+            train_distance_matrix = unifrac_distances.filter(train_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
+            val_distance_matrix = unifrac_distances.filter(val_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
+        elif unifrac_metric_name == "faith_pd":
+            train_distance_matrix = unifrac_distances.loc[train_ids] if isinstance(unifrac_distances, pd.Series) else None
+            val_distance_matrix = unifrac_distances.loc[val_ids] if isinstance(unifrac_distances, pd.Series) else None
 
         logger.info("Creating datasets...")
         train_dataset = ASVDataset(
             table=train_table,
             metadata=None,
-            unifrac_distances=train_unifrac,
+            unifrac_distances=train_distance_matrix,
             max_bp=max_bp,
             token_limit=token_limit,
             target_column=None,
@@ -527,15 +550,25 @@ def pretrain(
         val_dataset = ASVDataset(
             table=val_table,
             metadata=None,
-            unifrac_distances=val_unifrac,
+            unifrac_distances=val_distance_matrix,
             max_bp=max_bp,
             token_limit=token_limit,
             target_column=None,
             unifrac_metric=unifrac_metric_name,
         )
 
-        train_collate = partial(collate_fn, token_limit=token_limit)
-        val_collate = partial(collate_fn, token_limit=token_limit)
+        train_collate = partial(
+            collate_fn,
+            token_limit=token_limit,
+            unifrac_distances=train_distance_matrix,
+            unifrac_metric=unifrac_metric_name,
+        )
+        val_collate = partial(
+            collate_fn,
+            token_limit=token_limit,
+            unifrac_distances=val_distance_matrix,
+            unifrac_metric=unifrac_metric_name,
+        )
 
         train_loader = DataLoader(
             train_dataset,
