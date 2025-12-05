@@ -242,44 +242,59 @@ Fix tensor shape mismatch error in `compute_base_loss` when training in pretrain
 
 ---
 
-### PYT-8.7: Fix Nucleotide Loss NaN Issue and Add Gradient Clipping
+### PYT-8.7: Fix Model NaN Issue and Add Gradient Clipping
 **Priority:** HIGH | **Effort:** Medium | **Status:** ⏳ Not Started
 
 **Description:**
-Fix NaN values appearing in nucleotide predictions during training. The model produces NaN in `nuc_predictions` which causes `nuc_loss` to be NaN, making `total_loss` NaN. Disabling nucleotide loss (`--nuc-penalty 0`) stabilizes training, indicating the issue is specific to the nucleotide prediction head. Add gradient clipping as a general training stability measure.
+Fix NaN values appearing in model outputs during training. The model produces NaN in both `base_prediction` and `nuc_predictions` from the forward pass, causing all losses to be NaN. This indicates a deeper issue with the model architecture or training setup, not just the loss computation. Gradient clipping has been added as a general training stability measure.
 
 **Acceptance Criteria:**
-- [ ] Investigate root cause of NaN in nucleotide predictions
-- [ ] Fix numerical instability in nucleotide prediction head
-- [ ] Add gradient clipping to prevent gradient explosion
-- [ ] Add CLI option for gradient clipping threshold
-- [ ] Verify training stability with nucleotide loss enabled
+- [x] Add gradient clipping to prevent gradient explosion
+- [x] Add CLI option for gradient clipping threshold
+- [ ] Investigate root cause of NaN in model outputs (both base_prediction and nuc_predictions)
+- [ ] Fix numerical instability in model forward pass
+- [ ] Verify training stability with all losses enabled
 - [ ] Test gradient clipping with various threshold values
 - [ ] Unit tests for gradient clipping functionality
-- [ ] Integration tests verify stable training with nucleotide loss
+- [ ] Integration tests verify stable training
 
 **Implementation Notes:**
-- **Root Cause Analysis:**
-  - NaN appears in `nuc_predictions` from model forward pass, not in loss computation
-  - Base loss (UniFrac) works correctly, indicating issue is specific to nucleotide head
-  - May be due to: numerical instability, initialization issues, or gradient explosion
+- **Gradient Clipping (COMPLETED):**
+  - ✅ Implemented `torch.nn.utils.clip_grad_norm_()` for gradient clipping
+  - ✅ Added `--max-grad-norm` CLI option (default: None, disabled)
+  - ✅ Apply clipping after `backward()` but before `optimizer.step()`
+  - ✅ Log gradient norms to TensorBoard for monitoring
+
+- **Root Cause Analysis (IN PROGRESS):**
+  - **Critical Finding**: Both `base_prediction` and `nuc_predictions` contain NaN from model forward pass
+  - This indicates the issue is NOT specific to nucleotide head, but affects the entire model
+  - NaN appears early in training (step 4-5), suggesting:
+    1. Model initialization issue (weights initialized incorrectly)
+    2. Numerical instability in model architecture (e.g., attention, normalization)
+    3. Invalid input data causing NaN propagation
+    4. Gradient explosion corrupting weights immediately
   
-- **Gradient Clipping:**
-  - Use `torch.nn.utils.clip_grad_norm_()` for gradient clipping
-  - Add `--max-grad-norm` CLI option (default: None, disabled)
-  - Apply clipping after `backward()` but before `optimizer.step()`
-  - Log gradient norms to TensorBoard for monitoring
+- **Investigation Steps:**
+  1. Check model weight initialization - verify no NaN/Inf in initial weights
+  2. Check input data - verify tokens are valid (0-4 range, no NaN)
+  3. Add intermediate checks in model forward pass to identify where NaN first appears
+  4. Check attention mechanisms for numerical stability (softmax overflow, etc.)
+  5. Verify layer normalization is applied correctly
+  6. Check if issue occurs with different batch sizes or learning rates
+  7. Monitor gradient norms before clipping to see if explosion occurs
   
-- **Potential Fixes for Nucleotide Loss:**
-  1. Check model initialization for nucleotide prediction head
-  2. Add layer normalization or batch normalization if missing
-  3. Reduce learning rate specifically for nucleotide head (if using separate optimizers)
-  4. Add numerical stability checks (e.g., clamping logits)
-  5. Investigate if issue is related to token padding/masking
+- **Potential Fixes:**
+  1. Fix model initialization (use proper initialization schemes)
+  2. Add numerical stability to attention (e.g., scale before softmax)
+  3. Add gradient clipping earlier or with different threshold
+  4. Reduce learning rate or use learning rate warmup
+  5. Add weight initialization checks and NaN detection in model forward pass
+  6. Consider using mixed precision training with proper scaling
 
 **Dependencies:** PYT-8.5 (completed)
 
 **Estimated Time:** 4-6 hours
+**Actual Time:** ~1 hour (gradient clipping implemented, root cause investigation pending)
 
 ---
 
@@ -304,6 +319,6 @@ Fix NaN values appearing in nucleotide predictions during training. The model pr
 - PYT-8.4 completed - validation prediction plots with matplotlib dependency added
 - PYT-8.5 completed - UniFrac distance extraction now supports shuffled batches with proper reordering
 - PYT-8.6 not started - HIGH priority bug fix for pretrain mode with variable batch sizes
-- PYT-8.7 not started - HIGH priority fix for NaN in nucleotide predictions, gradient clipping added
+- PYT-8.7 partially completed - Gradient clipping implemented, root cause investigation needed for NaN in model outputs (both base_prediction and nuc_predictions)
 - **PYT-8.6 REVERTED**: Previous implementation (commit 1a68364) caused NaN propagation issues. Reverted to commit 68597fc. See implementation notes for critical lessons learned.
 - Follow the workflow in `.agents/workflow.md` for implementation
