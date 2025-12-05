@@ -155,7 +155,7 @@ class TestASVDataset:
         tokens = sample["tokens"]
 
         assert len(tokens.shape) == 2
-        assert tokens.shape[1] == 150
+        assert tokens.shape[1] == 151
 
     def test_getitem_counts_shape(self, rarefied_table, tokenizer):
         """Test that counts have correct shape [num_asvs, 1]."""

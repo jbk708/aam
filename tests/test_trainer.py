@@ -33,7 +33,7 @@ def device():
 def small_model():
     """Create a small SequenceEncoder for testing."""
     return SequenceEncoder(
-        vocab_size=5,
+        vocab_size=6,
         embedding_dim=32,
         max_bp=50,
         token_limit=64,
@@ -53,7 +53,7 @@ def small_model():
 def small_predictor():
     """Create a small SequencePredictor for testing."""
     return SequencePredictor(
-        vocab_size=5,
+        vocab_size=6,
         embedding_dim=32,
         max_bp=50,
         token_limit=64,
@@ -536,7 +536,7 @@ class TestTrainingLoop:
         assert best_model_path.exists(), "best_model.pt should exist"
 
         new_model = SequenceEncoder(
-            vocab_size=5,
+            vocab_size=6,
             embedding_dim=32,
             max_bp=50,
             token_limit=64,
@@ -569,7 +569,7 @@ class TestLoadPretrainedEncoder:
     def test_load_pretrained_encoder(self, small_predictor, device, tmp_path):
         """Test loading pre-trained SequenceEncoder into SequencePredictor."""
         encoder = SequenceEncoder(
-            vocab_size=5,
+            vocab_size=6,
             embedding_dim=32,
             max_bp=50,
             token_limit=64,
@@ -993,7 +993,7 @@ class TestPredictionPlots:
         from aam.models.sequence_predictor import SequencePredictor
 
         classifier_model = SequencePredictor(
-            vocab_size=5,
+            vocab_size=6,
             embedding_dim=32,
             max_bp=50,
             token_limit=64,
@@ -1090,7 +1090,7 @@ class TestPredictionPlots:
         from aam.models.sequence_predictor import SequencePredictor
 
         classifier_model = SequencePredictor(
-            vocab_size=5,
+            vocab_size=6,
             embedding_dim=32,
             max_bp=50,
             token_limit=64,

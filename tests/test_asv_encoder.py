@@ -11,7 +11,7 @@ from aam.models.asv_encoder import ASVEncoder
 def asv_encoder():
     """Create an ASVEncoder instance without nucleotide prediction."""
     return ASVEncoder(
-        vocab_size=5,
+        vocab_size=6,
         embedding_dim=64,
         max_bp=150,
         num_layers=2,
@@ -25,7 +25,7 @@ def asv_encoder():
 def asv_encoder_with_nucleotides():
     """Create an ASVEncoder instance with nucleotide prediction."""
     return ASVEncoder(
-        vocab_size=5,
+        vocab_size=6,
         embedding_dim=64,
         max_bp=150,
         num_layers=2,
@@ -69,7 +69,7 @@ class TestASVEncoder:
         assert isinstance(asv_encoder_with_nucleotides, nn.Module)
 
     def test_init_default_vocab_size(self):
-        """Test that vocab_size defaults to 5."""
+        """Test that vocab_size defaults to 6."""
         encoder = ASVEncoder(
             embedding_dim=64,
             max_bp=150,
@@ -77,6 +77,7 @@ class TestASVEncoder:
             num_heads=4,
         )
         assert encoder is not None
+        assert encoder.vocab_size == 6
 
     def test_init_default_max_bp(self):
         """Test that max_bp defaults to 150."""
@@ -97,7 +98,7 @@ class TestASVEncoder:
         """Test forward pass output shape with nucleotide predictions."""
         embeddings, nucleotides = asv_encoder_with_nucleotides(sample_tokens, return_nucleotides=True)
         assert embeddings.shape == (2, 10, 64)
-        assert nucleotides.shape == (2, 10, 50, 5)
+        assert nucleotides.shape == (2, 10, 50, 6)
 
     def test_forward_different_batch_sizes(self, asv_encoder):
         """Test forward pass with different batch sizes."""

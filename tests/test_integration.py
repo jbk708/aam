@@ -149,7 +149,7 @@ class TestDataPipelineIntegration:
         sample = dataset[0]
 
         assert len(sample["tokens"].shape) == 2
-        assert sample["tokens"].shape[1] == 150
+        assert sample["tokens"].shape[1] == 151
         assert sample["tokens"].shape[0] <= 1024
 
         assert len(sample["counts"].shape) == 2

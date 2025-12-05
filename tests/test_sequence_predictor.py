@@ -12,7 +12,7 @@ from aam.models.sequence_encoder import SequenceEncoder
 def base_encoder():
     """Create a SequenceEncoder instance for use as base model."""
     return SequenceEncoder(
-        vocab_size=5,
+        vocab_size=6,
         embedding_dim=64,
         max_bp=150,
         token_limit=1024,
@@ -32,7 +32,7 @@ def base_encoder():
 def base_encoder_with_nucleotides():
     """Create a SequenceEncoder instance with nucleotide prediction."""
     return SequenceEncoder(
-        vocab_size=5,
+        vocab_size=6,
         embedding_dim=64,
         max_bp=150,
         token_limit=1024,
@@ -377,7 +377,7 @@ class TestSequencePredictor:
         result1 = regressor1(sample_tokens)
 
         new_base = SequenceEncoder(
-            vocab_size=5,
+            vocab_size=6,
             embedding_dim=64,
             max_bp=150,
             token_limit=1024,
