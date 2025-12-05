@@ -91,6 +91,8 @@ class Trainer:
         self.tensorboard_dir = tensorboard_dir
         self.max_grad_norm = max_grad_norm
         self.writer: Optional[SummaryWriter] = None
+        self.log_histograms: bool = True
+        self.histogram_frequency: int = 50
 
         if optimizer is None:
             self.optimizer = create_optimizer(model, freeze_base=freeze_base)
@@ -345,11 +347,14 @@ class Trainer:
             lr = self.optimizer.param_groups[0]["lr"]
         self.writer.add_scalar("train/learning_rate", lr, epoch)
 
-        if epoch % 10 == 0:
+        if self.log_histograms and epoch % self.histogram_frequency == 0:
             for name, param in self.model.named_parameters():
                 if param.requires_grad and param.grad is not None:
-                    self.writer.add_histogram(f"weights/{name}", param.data, epoch)
-                    self.writer.add_histogram(f"gradients/{name}", param.grad.data, epoch)
+                    # Only log histograms for parameters with non-zero gradients
+                    grad_norm = param.grad.data.norm().item()
+                    if grad_norm > 0:
+                        self.writer.add_histogram(f"weights/{name}", param.data, epoch)
+                        self.writer.add_histogram(f"gradients/{name}", param.grad.data, epoch)
 
     def train_epoch(
         self,
@@ -374,6 +379,9 @@ class Trainer:
         num_batches = 0
         accumulated_steps = 0
         total_steps = len(dataloader)
+        running_avg_loss = 0.0
+        running_avg_unifrac_loss = 0.0
+        running_avg_nuc_loss = 0.0
 
         self.optimizer.zero_grad()
 
@@ -465,8 +473,8 @@ class Trainer:
                 if torch.any(torch.isnan(losses["total_loss"])):
                     print(f"ERROR: NaN in total_loss after computation", file=sys.stderr, flush=True)
                     print(f"losses: {losses}", file=sys.stderr, flush=True)
-                    if "base_loss" in losses:
-                        print(f"base_loss: {losses['base_loss']}", file=sys.stderr, flush=True)
+                    if "unifrac_loss" in losses:
+                        print(f"unifrac_loss: {losses['unifrac_loss']}", file=sys.stderr, flush=True)
 
                 current_loss_val = losses["total_loss"]
                 if isinstance(current_loss_val, torch.Tensor):
@@ -518,16 +526,46 @@ class Trainer:
 
                 if num_batches == 0:
                     running_avg_loss = current_loss_val
+                    if "unifrac_loss" in losses:
+                        unifrac_val = losses["unifrac_loss"]
+                        if isinstance(unifrac_val, torch.Tensor):
+                            running_avg_unifrac_loss = unifrac_val.detach().item()
+                        else:
+                            running_avg_unifrac_loss = float(unifrac_val)
+                    if "nuc_loss" in losses:
+                        nuc_val = losses["nuc_loss"]
+                        if isinstance(nuc_val, torch.Tensor):
+                            running_avg_nuc_loss = nuc_val.detach().item()
+                        else:
+                            running_avg_nuc_loss = float(nuc_val)
                 else:
                     running_avg_loss = (running_avg_loss * num_batches + current_loss_val) / (num_batches + 1)
+                    if "unifrac_loss" in losses:
+                        unifrac_val = losses["unifrac_loss"]
+                        if isinstance(unifrac_val, torch.Tensor):
+                            unifrac_val = unifrac_val.detach().item()
+                        else:
+                            unifrac_val = float(unifrac_val)
+                        running_avg_unifrac_loss = (running_avg_unifrac_loss * num_batches + unifrac_val) / (num_batches + 1)
+                    if "nuc_loss" in losses:
+                        nuc_val = losses["nuc_loss"]
+                        if isinstance(nuc_val, torch.Tensor):
+                            nuc_val = nuc_val.detach().item()
+                        else:
+                            nuc_val = float(nuc_val)
+                        running_avg_nuc_loss = (running_avg_nuc_loss * num_batches + nuc_val) / (num_batches + 1)
 
-                pbar.set_postfix(
-                    {
-                        "Step": f"{step}/{total_steps}",
-                        "Loss": f"{running_avg_loss:.6f}" if running_avg_loss < 0.0001 else f"{running_avg_loss:.4f}",
-                        "LR": f"{current_lr:.2e}",
-                    }
-                )
+                # Format progress bar
+                postfix_dict = {
+                    "Total Loss": f"{running_avg_loss:.6f}" if running_avg_loss < 0.0001 else f"{running_avg_loss:.4f}",
+                    "LR": f"{current_lr:.2e}",
+                }
+                if "unifrac_loss" in losses:
+                    postfix_dict["Unifrac Loss"] = f"{running_avg_unifrac_loss:.6f}" if running_avg_unifrac_loss < 0.0001 else f"{running_avg_unifrac_loss:.4f}"
+                if "nuc_loss" in losses:
+                    postfix_dict["Nuc Loss"] = f"{running_avg_nuc_loss:.6f}" if running_avg_nuc_loss < 0.0001 else f"{running_avg_nuc_loss:.4f}"
+                
+                pbar.set_postfix(postfix_dict)
 
                 del losses, scaled_loss
                 num_batches += 1
@@ -615,15 +653,45 @@ class Trainer:
 
                     if num_batches == 0:
                         running_avg_loss = current_loss_val
+                        if "unifrac_loss" in losses:
+                            unifrac_val = losses["unifrac_loss"]
+                            if isinstance(unifrac_val, torch.Tensor):
+                                running_avg_unifrac_loss = unifrac_val.detach().item()
+                            else:
+                                running_avg_unifrac_loss = float(unifrac_val)
+                        if "nuc_loss" in losses:
+                            nuc_val = losses["nuc_loss"]
+                            if isinstance(nuc_val, torch.Tensor):
+                                running_avg_nuc_loss = nuc_val.detach().item()
+                            else:
+                                running_avg_nuc_loss = float(nuc_val)
                     else:
                         running_avg_loss = (running_avg_loss * num_batches + current_loss_val) / (num_batches + 1)
+                        if "unifrac_loss" in losses:
+                            unifrac_val = losses["unifrac_loss"]
+                            if isinstance(unifrac_val, torch.Tensor):
+                                unifrac_val = unifrac_val.detach().item()
+                            else:
+                                unifrac_val = float(unifrac_val)
+                            running_avg_unifrac_loss = (running_avg_unifrac_loss * num_batches + unifrac_val) / (num_batches + 1)
+                        if "nuc_loss" in losses:
+                            nuc_val = losses["nuc_loss"]
+                            if isinstance(nuc_val, torch.Tensor):
+                                nuc_val = nuc_val.detach().item()
+                            else:
+                                nuc_val = float(nuc_val)
+                            running_avg_nuc_loss = (running_avg_nuc_loss * num_batches + nuc_val) / (num_batches + 1)
 
-                    pbar.set_postfix(
-                        {
-                            "Step": f"{step}/{total_steps}",
-                            "Loss": f"{running_avg_loss:.6f}" if running_avg_loss < 0.0001 else f"{running_avg_loss:.4f}",
-                        }
-                    )
+                    # Format validation progress bar
+                    postfix_dict = {
+                        "Total Loss": f"{running_avg_loss:.6f}" if running_avg_loss < 0.0001 else f"{running_avg_loss:.4f}",
+                    }
+                    if "unifrac_loss" in losses:
+                        postfix_dict["Unifrac Loss"] = f"{running_avg_unifrac_loss:.6f}" if running_avg_unifrac_loss < 0.0001 else f"{running_avg_unifrac_loss:.4f}"
+                    if "nuc_loss" in losses:
+                        postfix_dict["Nuc Loss"] = f"{running_avg_nuc_loss:.6f}" if running_avg_nuc_loss < 0.0001 else f"{running_avg_nuc_loss:.4f}"
+                    
+                    pbar.set_postfix(postfix_dict)
 
                     if compute_metrics:
                         if "target_prediction" in outputs and "target" in targets:

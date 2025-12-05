@@ -303,16 +303,16 @@ class MultiTaskLoss(nn.Module):
                 losses["count_loss"] = torch.tensor(0.0, device=device if device else torch.device("cpu"), requires_grad=True)
 
         if "base_prediction" in outputs and "base_target" in targets:
-            losses["base_loss"] = self.compute_base_loss(
+            losses["unifrac_loss"] = self.compute_base_loss(
                 outputs["base_prediction"],
                 targets["base_target"],
                 encoder_type=encoder_type,
             )
         else:
             if reference_tensor is not None:
-                losses["base_loss"] = torch.zeros_like(reference_tensor.sum(), requires_grad=True)
+                losses["unifrac_loss"] = torch.zeros_like(reference_tensor.sum(), requires_grad=True)
             else:
-                losses["base_loss"] = torch.tensor(0.0, device=device if device else torch.device("cpu"), requires_grad=True)
+                losses["unifrac_loss"] = torch.tensor(0.0, device=device if device else torch.device("cpu"), requires_grad=True)
 
         if "nuc_predictions" in outputs:
             if "nucleotides" in targets:
@@ -348,7 +348,7 @@ class MultiTaskLoss(nn.Module):
         total_loss = (
             losses["target_loss"]
             + losses["count_loss"]
-            + losses["base_loss"] * self.penalty
+            + losses["unifrac_loss"] * self.penalty
             + losses["nuc_loss"] * self.nuc_penalty
         )
         losses["total_loss"] = total_loss
