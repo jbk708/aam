@@ -464,7 +464,7 @@ class TestTrainingLoop:
 
         best_model_path = checkpoint_dir / "best_model.pt"
         assert best_model_path.exists(), "best_model.pt should exist"
-        
+
         checkpoint_files = list(checkpoint_dir.glob("best_model*.pt"))
         assert len(checkpoint_files) == 1, f"Expected 1 best_model file, found {len(checkpoint_files)}"
         assert checkpoint_files[0].name == "best_model.pt", f"Expected best_model.pt, found {checkpoint_files[0].name}"
@@ -482,7 +482,7 @@ class TestTrainingLoop:
         checkpoint_dir.mkdir()
 
         best_model_path = checkpoint_dir / "best_model.pt"
-        
+
         history = trainer.train(
             train_loader=simple_dataloader_encoder,
             val_loader=simple_dataloader_encoder,
@@ -491,25 +491,25 @@ class TestTrainingLoop:
         )
 
         assert best_model_path.exists(), "best_model.pt should exist"
-        
+
         first_mtime = best_model_path.stat().st_mtime
-        
+
         trainer2 = Trainer(
             model=small_model,
             loss_fn=loss_fn,
             device=device,
         )
-        
+
         history2 = trainer2.train(
             train_loader=simple_dataloader_encoder,
             val_loader=simple_dataloader_encoder,
             num_epochs=2,
             checkpoint_dir=str(checkpoint_dir),
         )
-        
+
         assert best_model_path.exists(), "best_model.pt should still exist after second training"
         second_mtime = best_model_path.stat().st_mtime
-        
+
         checkpoint_files = list(checkpoint_dir.glob("best_model*.pt"))
         assert len(checkpoint_files) == 1, f"Should only have one best_model file, found {len(checkpoint_files)}"
 
@@ -1043,9 +1043,7 @@ class TestPredictionPlots:
             device=device,
         )
 
-        results, predictions, targets = trainer.validate_epoch(
-            simple_dataloader, compute_metrics=True, return_predictions=True
-        )
+        results, predictions, targets = trainer.validate_epoch(simple_dataloader, compute_metrics=True, return_predictions=True)
 
         assert "total_loss" in results
         assert predictions is not None

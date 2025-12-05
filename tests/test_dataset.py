@@ -448,10 +448,11 @@ class TestDatasetEdgeCases:
 
         sample_without_value = dataset[2]
         assert "unifrac_target" not in sample_without_value
-        
+
         # Test that collate_fn will raise an error for missing sample ID
         from aam.data.dataset import collate_fn
         from functools import partial
+
         batch = [dataset[0], dataset[2]]  # sample 2 is missing from faith_pd_values
         collate = partial(collate_fn, token_limit=1024, unifrac_distances=faith_pd_values, unifrac_metric="faith_pd")
         # This should raise ValueError because sample_ids[2] is not in faith_pd_values

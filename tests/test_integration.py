@@ -158,9 +158,10 @@ class TestDataPipelineIntegration:
 
         # unifrac_target is added in collate_fn, not __getitem__
         assert "unifrac_target" not in sample
-        
+
         # Test that collate_fn adds unifrac_target correctly
         from functools import partial
+
         collate = partial(collate_fn, token_limit=1024, unifrac_distances=unifrac_distances, unifrac_metric="faith_pd")
         batch = [dataset[0], dataset[1]]
         batched = collate(batch)
@@ -195,9 +196,10 @@ class TestDataPipelineIntegration:
         assert sample["counts"].dtype == torch.float32
         # unifrac_target is added in collate_fn, not __getitem__
         assert "unifrac_target" not in sample
-        
+
         # Test that collate_fn adds unifrac_target with correct dtype
         from functools import partial
+
         collate = partial(collate_fn, token_limit=1024, unifrac_distances=unifrac_distances, unifrac_metric="faith_pd")
         batch = [dataset[0]]
         batched = collate(batch)
@@ -226,7 +228,9 @@ class TestDataPipelineIntegration:
             dataset,
             batch_size=4,
             shuffle=False,
-            collate_fn=lambda batch: collate_fn(batch, token_limit=1024, unifrac_distances=unifrac_distances, unifrac_metric="faith_pd"),
+            collate_fn=lambda batch: collate_fn(
+                batch, token_limit=1024, unifrac_distances=unifrac_distances, unifrac_metric="faith_pd"
+            ),
         )
 
         batch = next(iter(dataloader))
