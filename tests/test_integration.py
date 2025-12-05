@@ -243,7 +243,7 @@ class TestDataPipelineIntegration:
         assert len(batch["tokens"].shape) == 3
         assert batch["tokens"].shape[0] == 4
         assert batch["tokens"].shape[1] <= 1024
-        assert batch["tokens"].shape[2] == 150
+        assert batch["tokens"].shape[2] == 151
 
 
 class TestModelPipelineIntegration:
