@@ -68,10 +68,20 @@ def check_tensor_stats(tensor: torch.Tensor, name: str, step: str = ""):
     print(f"\n[{step}] {name}:")
     print(f"  Shape: {tensor.shape}")
     print(f"  Dtype: {tensor.dtype}")
-    print(f"  Min: {tensor.min().item():.6f}, Max: {tensor.max().item():.6f}, Mean: {tensor.mean().item():.6f}")
-    print(f"  Std: {tensor.std().item():.6f}")
-    print(f"  Has NaN: {torch.any(torch.isnan(tensor))}")
-    print(f"  Has Inf: {torch.any(torch.isinf(tensor))}")
+    
+    # Handle integer tensors differently (can't compute mean/std)
+    if tensor.dtype in (torch.int64, torch.int32, torch.int16, torch.int8, torch.long):
+        print(f"  Min: {tensor.min().item()}, Max: {tensor.max().item()}")
+        unique_count = torch.unique(tensor).numel()
+        print(f"  Unique values: {unique_count}")
+        print(f"  Has NaN: False (integer tensor)")
+        print(f"  Has Inf: False (integer tensor)")
+    else:
+        # Floating point tensors
+        print(f"  Min: {tensor.min().item():.6f}, Max: {tensor.max().item():.6f}, Mean: {tensor.mean().item():.6f}")
+        print(f"  Std: {tensor.std().item():.6f}")
+        print(f"  Has NaN: {torch.any(torch.isnan(tensor))}")
+        print(f"  Has Inf: {torch.any(torch.isinf(tensor))}")
     
     # Check for invalid token values (should be 0-5 for vocab_size=6)
     if tensor.dtype == torch.long:
