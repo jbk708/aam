@@ -183,6 +183,7 @@ def cli():
 )
 @click.option("--gradient-accumulation-steps", default=1, type=int, help="Number of gradient accumulation steps")
 @click.option("--use-expandable-segments", is_flag=True, help="Enable PyTorch CUDA expandable segments for memory optimization")
+@click.option("--max-grad-norm", default=None, type=float, help="Maximum gradient norm for clipping (None to disable)")
 def train(
     table: str,
     tree: str,
@@ -216,6 +217,7 @@ def train(
     pretrained_encoder: Optional[str],
     gradient_accumulation_steps: int,
     use_expandable_segments: bool,
+    max_grad_norm: Optional[float],
 ):
     """Train AAM model on microbial sequencing data."""
     try:
@@ -282,7 +284,9 @@ def train(
         train_distance_matrix = None
         val_distance_matrix = None
         if unifrac_metric_name == "unweighted":
-            train_distance_matrix = unifrac_distances.filter(train_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
+            train_distance_matrix = (
+                unifrac_distances.filter(train_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
+            )
             val_distance_matrix = unifrac_distances.filter(val_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
         elif unifrac_metric_name == "faith_pd":
             train_distance_matrix = unifrac_distances.loc[train_ids] if isinstance(unifrac_distances, pd.Series) else None
@@ -388,6 +392,7 @@ def train(
             device=device_obj,
             freeze_base=freeze_base,
             tensorboard_dir=str(output_path),
+            max_grad_norm=max_grad_norm,
         )
 
         if resume_from is not None:
@@ -446,6 +451,7 @@ def train(
 @click.option("--resume-from", default=None, type=click.Path(exists=True), help="Path to checkpoint to resume from")
 @click.option("--gradient-accumulation-steps", default=1, type=int, help="Number of gradient accumulation steps")
 @click.option("--use-expandable-segments", is_flag=True, help="Enable PyTorch CUDA expandable segments for memory optimization")
+@click.option("--max-grad-norm", default=None, type=float, help="Maximum gradient norm for clipping (None to disable)")
 @click.option(
     "--asv-chunk-size", default=None, type=int, help="Process ASVs in chunks of this size to reduce memory (None = process all)"
 )
@@ -475,6 +481,7 @@ def pretrain(
     resume_from: Optional[str],
     gradient_accumulation_steps: int,
     use_expandable_segments: bool,
+    max_grad_norm: Optional[float],
     asv_chunk_size: Optional[int],
 ):
     """Pre-train SequenceEncoder on UniFrac and nucleotide prediction (self-supervised)."""
@@ -532,7 +539,9 @@ def pretrain(
         train_distance_matrix = None
         val_distance_matrix = None
         if unifrac_metric_name == "unweighted":
-            train_distance_matrix = unifrac_distances.filter(train_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
+            train_distance_matrix = (
+                unifrac_distances.filter(train_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
+            )
             val_distance_matrix = unifrac_distances.filter(val_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
         elif unifrac_metric_name == "faith_pd":
             train_distance_matrix = unifrac_distances.loc[train_ids] if isinstance(unifrac_distances, pd.Series) else None
@@ -622,6 +631,7 @@ def pretrain(
             device=device_obj,
             freeze_base=False,
             tensorboard_dir=str(output_path),
+            max_grad_norm=max_grad_norm,
         )
 
         if resume_from is not None:

@@ -70,6 +70,7 @@ class Trainer:
         device: Union[str, torch.device] = "cpu",
         freeze_base: bool = False,
         tensorboard_dir: Optional[str] = None,
+        max_grad_norm: Optional[float] = None,
     ):
         """Initialize Trainer.
 
@@ -81,12 +82,14 @@ class Trainer:
             device: Device to train on
             freeze_base: Whether base model parameters are frozen
             tensorboard_dir: Directory for TensorBoard logs (if None, TensorBoard disabled)
+            max_grad_norm: Maximum gradient norm for clipping (None to disable)
         """
         self.model = model.to(device)
         self.loss_fn = loss_fn
         self.device = torch.device(device) if isinstance(device, str) else device
         self.freeze_base = freeze_base
         self.tensorboard_dir = tensorboard_dir
+        self.max_grad_norm = max_grad_norm
         self.writer: Optional[SummaryWriter] = None
 
         if optimizer is None:
@@ -450,6 +453,15 @@ class Trainer:
                 accumulated_steps += 1
 
                 if accumulated_steps % gradient_accumulation_steps == 0:
+                    # Apply gradient clipping if enabled
+                    if self.max_grad_norm is not None:
+                        grad_norm = torch.nn.utils.clip_grad_norm_(
+                            self.model.parameters(), self.max_grad_norm
+                        )
+                        # Log gradient norm to TensorBoard if available
+                        if self.writer is not None:
+                            self.writer.add_scalar("train/grad_norm", grad_norm.item(), step)
+                    
                     self.optimizer.step()
                     self.optimizer.zero_grad()
 
