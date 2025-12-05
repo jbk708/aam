@@ -144,7 +144,19 @@ def main():
         
         # Transformer
         transformer_out = model.sample_encoder.asv_encoder.transformer(pos_emb, mask=mask_flat)
-        check_tensor_stats(transformer_out, "Transformer output")
+        check_tensor_stats(transformer_out, "Transformer output (before NaN fix)")
+        
+        # Apply NaN fix (matching ASVEncoder.forward())
+        mask_sum = mask_flat.sum(dim=-1)  # [batch_size * num_asvs]
+        all_padding = (mask_sum == 0)  # [batch_size * num_asvs]
+        if all_padding.any():
+            all_padding_expanded = all_padding.unsqueeze(-1).unsqueeze(-1)  # [batch_size * num_asvs, 1, 1]
+            transformer_out = torch.where(
+                all_padding_expanded,
+                torch.zeros_like(transformer_out),
+                transformer_out
+            )
+        check_tensor_stats(transformer_out, "Transformer output (after NaN fix)")
         
         # Attention pooling
         pooled = model.sample_encoder.asv_encoder.attention_pooling(transformer_out, mask=mask_flat)
