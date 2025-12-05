@@ -10,6 +10,7 @@ from pathlib import Path
 import math
 from tqdm import tqdm
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
@@ -69,6 +70,7 @@ class Trainer:
         device: Union[str, torch.device] = "cpu",
         freeze_base: bool = False,
         tensorboard_dir: Optional[str] = None,
+        max_grad_norm: Optional[float] = None,
     ):
         """Initialize Trainer.
 
@@ -80,12 +82,14 @@ class Trainer:
             device: Device to train on
             freeze_base: Whether base model parameters are frozen
             tensorboard_dir: Directory for TensorBoard logs (if None, TensorBoard disabled)
+            max_grad_norm: Maximum gradient norm for clipping (None to disable)
         """
         self.model = model.to(device)
         self.loss_fn = loss_fn
         self.device = torch.device(device) if isinstance(device, str) else device
         self.freeze_base = freeze_base
         self.tensorboard_dir = tensorboard_dir
+        self.max_grad_norm = max_grad_norm
         self.writer: Optional[SummaryWriter] = None
 
         if optimizer is None:
@@ -230,7 +234,14 @@ class Trainer:
         im = ax.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
         ax.figure.colorbar(im, ax=ax)
 
-        ax.set(xticks=np.arange(cm.shape[1]), yticks=np.arange(cm.shape[0]), xticklabels=list(range(num_classes)), yticklabels=list(range(num_classes)), ylabel="True Label", xlabel="Predicted Label")
+        ax.set(
+            xticks=np.arange(cm.shape[1]),
+            yticks=np.arange(cm.shape[0]),
+            xticklabels=list(range(num_classes)),
+            yticklabels=list(range(num_classes)),
+            ylabel="True Label",
+            xlabel="Predicted Label",
+        )
 
         thresh = cm.max() / 2.0
         for i in range(cm.shape[0]):
@@ -238,7 +249,16 @@ class Trainer:
                 ax.text(j, i, format(cm[i, j], "d"), ha="center", va="center", color="white" if cm[i, j] > thresh else "black")
 
         metrics_text = f"Accuracy: {accuracy:.4f}\nPrecision: {precision:.4f}\nRecall: {recall:.4f}\nF1: {f1:.4f}"
-        ax.text(0.98, 0.02, metrics_text, transform=ax.transAxes, fontsize=10, verticalalignment="bottom", horizontalalignment="right", bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5))
+        ax.text(
+            0.98,
+            0.02,
+            metrics_text,
+            transform=ax.transAxes,
+            fontsize=10,
+            verticalalignment="bottom",
+            horizontalalignment="right",
+            bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
+        )
 
         ax.set_title(f"Confusion Matrix (Epoch {epoch})", fontsize=14, pad=20)
         plt.tight_layout()
@@ -361,7 +381,7 @@ class Trainer:
 
         pbar = tqdm(
             dataloader,
-            desc=f"Epoch {epoch+1}/{num_epochs}",
+            desc=f"Epoch {epoch + 1}/{num_epochs}",
             leave=False,
         )
 
@@ -369,12 +389,73 @@ class Trainer:
             try:
                 tokens, targets = self._prepare_batch(batch)
 
+                # Check for invalid token values before model forward pass
+                import sys
+
+                if torch.any(tokens < 0) or torch.any(tokens >= 5):
+                    invalid_mask = (tokens < 0) | (tokens >= 5)
+                    invalid_count = invalid_mask.sum().item()
+                    print(f"ERROR: Invalid token values detected before model forward", file=sys.stderr, flush=True)
+                    print(
+                        f"tokens shape={tokens.shape}, min={tokens.min().item()}, max={tokens.max().item()}, invalid_count={invalid_count}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    raise ValueError(
+                        f"Invalid token values: min={tokens.min().item()}, max={tokens.max().item()}, vocab_size=5"
+                    )
+                if torch.any(torch.isnan(tokens)):
+                    print(f"ERROR: NaN in tokens before model forward", file=sys.stderr, flush=True)
+                    raise ValueError("NaN values found in tokens")
+
                 return_nucleotides = "nucleotides" in targets or self.loss_fn.nuc_penalty > 0
                 outputs = self.model(tokens, return_nucleotides=return_nucleotides)
+
+                # Check for NaN in model outputs before loss computation
+                import sys
+
+                if "base_prediction" in outputs:
+                    if torch.any(torch.isnan(outputs["base_prediction"])):
+                        print(f"ERROR: NaN in base_prediction before loss computation", file=sys.stderr, flush=True)
+                        print(f"base_prediction shape={outputs['base_prediction'].shape}", file=sys.stderr, flush=True)
+                        print(
+                            f"base_prediction min={outputs['base_prediction'].min().item()}, max={outputs['base_prediction'].max().item()}",
+                            file=sys.stderr,
+                            flush=True,
+                        )
+
+                if "base_target" in targets:
+                    if torch.any(torch.isnan(targets["base_target"])):
+                        print(f"ERROR: NaN in base_target before loss computation", file=sys.stderr, flush=True)
+                        print(f"base_target shape={targets['base_target'].shape}", file=sys.stderr, flush=True)
+                        print(
+                            f"base_target min={targets['base_target'].min().item()}, max={targets['base_target'].max().item()}",
+                            file=sys.stderr,
+                            flush=True,
+                        )
+                        if isinstance(batch, dict) and "sample_ids" in batch:
+                            print(f"sample_ids in batch: {batch['sample_ids']}", file=sys.stderr, flush=True)
+
+                if "nuc_predictions" in outputs:
+                    if torch.any(torch.isnan(outputs["nuc_predictions"])):
+                        print(f"ERROR: NaN in nuc_predictions before loss computation", file=sys.stderr, flush=True)
+                        print(f"nuc_predictions shape={outputs['nuc_predictions'].shape}", file=sys.stderr, flush=True)
+                        print(
+                            f"nuc_predictions min={outputs['nuc_predictions'].min().item()}, max={outputs['nuc_predictions'].max().item()}",
+                            file=sys.stderr,
+                            flush=True,
+                        )
 
                 encoder_type = self._get_encoder_type()
                 is_classifier = self._get_is_classifier()
                 losses = self.loss_fn(outputs, targets, is_classifier=is_classifier, encoder_type=encoder_type)
+
+                # Check for NaN in loss after computation
+                if torch.any(torch.isnan(losses["total_loss"])):
+                    print(f"ERROR: NaN in total_loss after computation", file=sys.stderr, flush=True)
+                    print(f"losses: {losses}", file=sys.stderr, flush=True)
+                    if "base_loss" in losses:
+                        print(f"base_loss: {losses['base_loss']}", file=sys.stderr, flush=True)
 
                 current_loss_val = losses["total_loss"]
                 if isinstance(current_loss_val, torch.Tensor):
@@ -392,12 +473,24 @@ class Trainer:
                 accumulated_steps += 1
 
                 if accumulated_steps % gradient_accumulation_steps == 0:
+                    # Apply gradient clipping if enabled
+                    if self.max_grad_norm is not None:
+                        grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
+                        # Log gradient norm to TensorBoard if available
+                        if self.writer is not None:
+                            global_step = epoch * len(dataloader) + step
+                            self.writer.add_scalar("train/grad_norm", grad_norm.item(), global_step)
+
                     self.optimizer.step()
                     self.optimizer.zero_grad()
 
                     if self.scheduler is not None:
                         self.scheduler.step()
-                        current_lr = self.scheduler.get_last_lr()[0] if hasattr(self.scheduler, "get_last_lr") else self.optimizer.param_groups[0]["lr"]
+                        current_lr = (
+                            self.scheduler.get_last_lr()[0]
+                            if hasattr(self.scheduler, "get_last_lr")
+                            else self.optimizer.param_groups[0]["lr"]
+                        )
                     else:
                         current_lr = self.optimizer.param_groups[0]["lr"]
 
@@ -480,7 +573,7 @@ class Trainer:
         with torch.no_grad():
             pbar = tqdm(
                 dataloader,
-                desc=f"Epoch {epoch+1}/{num_epochs} [Val]",
+                desc=f"Epoch {epoch + 1}/{num_epochs} [Val]",
                 leave=False,
             )
 

@@ -11,14 +11,22 @@ from skbio import DistanceMatrix
 
 from aam.data.tokenizer import SequenceTokenizer
 from aam.data.biom_loader import BIOMLoader
+from aam.data.unifrac import UniFracComputer
 
 
-def collate_fn(batch: List[Dict[str, Union[torch.Tensor, str]]], token_limit: int) -> Dict[str, torch.Tensor]:
+def collate_fn(
+    batch: List[Dict[str, Union[torch.Tensor, str]]],
+    token_limit: int,
+    unifrac_distances: Optional[Union[DistanceMatrix, pd.Series]] = None,
+    unifrac_metric: str = "unweighted",
+) -> Dict[str, torch.Tensor]:
     """Custom collate function for batching samples with variable ASV counts.
 
     Args:
         batch: List of sample dictionaries
         token_limit: Maximum number of ASVs per sample
+        unifrac_distances: Optional full distance matrix/series for batch extraction
+        unifrac_metric: Type of UniFrac metric ("unweighted" or "faith_pd")
 
     Returns:
         Batched dictionary with padded tensors
@@ -30,7 +38,6 @@ def collate_fn(batch: List[Dict[str, Union[torch.Tensor, str]]], token_limit: in
     counts_list = []
     sample_ids = []
     y_targets = []
-    unifrac_targets = []
 
     for sample in batch:
         tokens = sample["tokens"]
@@ -53,8 +60,6 @@ def collate_fn(batch: List[Dict[str, Union[torch.Tensor, str]]], token_limit: in
 
         if "y_target" in sample:
             y_targets.append(sample["y_target"])
-        if "unifrac_target" in sample:
-            unifrac_targets.append(sample["unifrac_target"])
 
     result = {
         "tokens": torch.stack(tokens_list),
@@ -64,8 +69,25 @@ def collate_fn(batch: List[Dict[str, Union[torch.Tensor, str]]], token_limit: in
 
     if y_targets:
         result["y_target"] = torch.stack(y_targets)
-    if unifrac_targets:
-        result["unifrac_target"] = torch.stack(unifrac_targets)
+
+    if unifrac_distances is not None:
+        computer = UniFracComputer()
+        batch_distances = computer.extract_batch_distances(unifrac_distances, sample_ids, metric=unifrac_metric)
+        
+        # Validate extracted distances
+        if np.any(np.isnan(batch_distances)):
+            import sys
+            error_msg = f"NaN values found in extracted batch distances for sample_ids: {sample_ids}"
+            print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
+            print(f"batch_distances shape={batch_distances.shape}, min={np.nanmin(batch_distances)}, max={np.nanmax(batch_distances)}", file=sys.stderr, flush=True)
+            raise ValueError(error_msg)
+        if np.any(np.isinf(batch_distances)):
+            import sys
+            error_msg = f"Inf values found in extracted batch distances for sample_ids: {sample_ids}"
+            print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
+            raise ValueError(error_msg)
+        
+        result["unifrac_target"] = torch.FloatTensor(batch_distances)
 
     return result
 
@@ -174,17 +196,5 @@ class ASVDataset(Dataset):
                 result["y_target"] = torch.FloatTensor([target_value])
             else:
                 result["y_target"] = torch.FloatTensor([float(target_value)])
-
-        if self.unifrac_distances is not None:
-            if self.unifrac_metric == "unweighted":
-                if isinstance(self.unifrac_distances, DistanceMatrix):
-                    sample_idx_in_matrix = self.unifrac_distances.ids.index(sample_id)
-                    row = self.unifrac_distances.data[sample_idx_in_matrix]
-                    result["unifrac_target"] = torch.FloatTensor(row)
-            elif self.unifrac_metric == "faith_pd":
-                if isinstance(self.unifrac_distances, pd.Series):
-                    if sample_id in self.unifrac_distances.index:
-                        value = self.unifrac_distances[sample_id]
-                        result["unifrac_target"] = torch.FloatTensor([value])
 
         return result

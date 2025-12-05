@@ -123,7 +123,9 @@ class TestDataPipelineIntegration:
         assert "tokens" in sample
         assert "counts" in sample
         assert "sample_id" in sample
-        assert "unifrac_target" in sample
+        # unifrac_target is added in collate_fn, not __getitem__
+        assert "unifrac_target" not in sample
+        assert dataset.unifrac_distances is not None
 
     def test_data_pipeline_tensor_shapes(self, biom_file, tree_file):
         """Verify tensor shapes throughout data pipeline."""
@@ -154,8 +156,20 @@ class TestDataPipelineIntegration:
         assert sample["counts"].shape[1] == 1
         assert sample["counts"].shape[0] <= 1024
 
-        assert isinstance(sample["unifrac_target"], torch.FloatTensor)
-        assert len(sample["unifrac_target"].shape) == 1
+        # unifrac_target is added in collate_fn, not __getitem__
+        assert "unifrac_target" not in sample
+
+        # Test that collate_fn adds unifrac_target correctly
+        from functools import partial
+
+        collate = partial(collate_fn, token_limit=1024, unifrac_distances=unifrac_distances, unifrac_metric="faith_pd")
+        batch = [dataset[0], dataset[1]]
+        batched = collate(batch)
+        assert "unifrac_target" in batched
+        assert isinstance(batched["unifrac_target"], torch.FloatTensor)
+        assert len(batched["unifrac_target"].shape) == 2  # [batch_size, 1] for faith_pd
+        assert batched["unifrac_target"].shape[0] == 2
+        assert batched["unifrac_target"].shape[1] == 1
 
     def test_data_pipeline_dtypes(self, biom_file, tree_file):
         """Verify tensor dtypes throughout data pipeline."""
@@ -180,7 +194,16 @@ class TestDataPipelineIntegration:
 
         assert sample["tokens"].dtype == torch.long
         assert sample["counts"].dtype == torch.float32
-        assert sample["unifrac_target"].dtype == torch.float32
+        # unifrac_target is added in collate_fn, not __getitem__
+        assert "unifrac_target" not in sample
+
+        # Test that collate_fn adds unifrac_target with correct dtype
+        from functools import partial
+
+        collate = partial(collate_fn, token_limit=1024, unifrac_distances=unifrac_distances, unifrac_metric="faith_pd")
+        batch = [dataset[0]]
+        batched = collate(batch)
+        assert batched["unifrac_target"].dtype == torch.float32
 
     def test_data_pipeline_dataloader(self, biom_file, tree_file):
         """Test data pipeline with DataLoader."""
@@ -205,7 +228,9 @@ class TestDataPipelineIntegration:
             dataset,
             batch_size=4,
             shuffle=False,
-            collate_fn=lambda batch: collate_fn(batch, token_limit=1024),
+            collate_fn=lambda batch: collate_fn(
+                batch, token_limit=1024, unifrac_distances=unifrac_distances, unifrac_metric="faith_pd"
+            ),
         )
 
         batch = next(iter(dataloader))
@@ -446,7 +471,7 @@ class TestEndToEnd:
             dataset,
             batch_size=batch_size,
             shuffle=False,
-            collate_fn=lambda batch: collate_fn(batch, token_limit=1024),
+            collate_fn=lambda batch: collate_fn(batch, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted"),
         )
 
         model_config = small_model_config.copy()
@@ -525,7 +550,7 @@ class TestEndToEnd:
             dataset,
             batch_size=batch_size,
             shuffle=False,
-            collate_fn=lambda batch: collate_fn(batch, token_limit=1024),
+            collate_fn=lambda batch: collate_fn(batch, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted"),
         )
 
         model_config = small_model_config.copy()
@@ -603,7 +628,7 @@ class TestEndToEnd:
             dataset,
             batch_size=batch_size,
             shuffle=False,
-            collate_fn=lambda batch: collate_fn(batch, token_limit=1024),
+            collate_fn=lambda batch: collate_fn(batch, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted"),
         )
 
         model_config = small_model_config.copy()

@@ -14,6 +14,7 @@ from sklearn.model_selection import train_test_split
 from aam.data.biom_loader import BIOMLoader
 from aam.data.unifrac import UniFracComputer
 from aam.data.dataset import ASVDataset, collate_fn
+from skbio import DistanceMatrix
 from aam.models.sequence_predictor import SequencePredictor
 from aam.models.sequence_encoder import SequenceEncoder
 from aam.training.losses import MultiTaskLoss
@@ -182,6 +183,7 @@ def cli():
 )
 @click.option("--gradient-accumulation-steps", default=1, type=int, help="Number of gradient accumulation steps")
 @click.option("--use-expandable-segments", is_flag=True, help="Enable PyTorch CUDA expandable segments for memory optimization")
+@click.option("--max-grad-norm", default=None, type=float, help="Maximum gradient norm for clipping (None to disable)")
 def train(
     table: str,
     tree: str,
@@ -215,6 +217,7 @@ def train(
     pretrained_encoder: Optional[str],
     gradient_accumulation_steps: int,
     use_expandable_segments: bool,
+    max_grad_norm: Optional[float],
 ):
     """Train AAM model on microbial sequencing data."""
     try:
@@ -278,14 +281,22 @@ def train(
         train_metadata = metadata_df[metadata_df["sample_id"].isin(train_ids)]
         val_metadata = metadata_df[metadata_df["sample_id"].isin(val_ids)]
 
-        train_unifrac = unifrac_computer.extract_batch_distances(unifrac_distances, train_ids, unifrac_metric_name)
-        val_unifrac = unifrac_computer.extract_batch_distances(unifrac_distances, val_ids, unifrac_metric_name)
+        train_distance_matrix = None
+        val_distance_matrix = None
+        if unifrac_metric_name == "unweighted":
+            train_distance_matrix = (
+                unifrac_distances.filter(train_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
+            )
+            val_distance_matrix = unifrac_distances.filter(val_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
+        elif unifrac_metric_name == "faith_pd":
+            train_distance_matrix = unifrac_distances.loc[train_ids] if isinstance(unifrac_distances, pd.Series) else None
+            val_distance_matrix = unifrac_distances.loc[val_ids] if isinstance(unifrac_distances, pd.Series) else None
 
         logger.info("Creating datasets...")
         train_dataset = ASVDataset(
             table=train_table,
             metadata=train_metadata,
-            unifrac_distances=train_unifrac,
+            unifrac_distances=train_distance_matrix,
             max_bp=max_bp,
             token_limit=token_limit,
             target_column=metadata_column,
@@ -295,15 +306,25 @@ def train(
         val_dataset = ASVDataset(
             table=val_table,
             metadata=val_metadata,
-            unifrac_distances=val_unifrac,
+            unifrac_distances=val_distance_matrix,
             max_bp=max_bp,
             token_limit=token_limit,
             target_column=metadata_column,
             unifrac_metric=unifrac_metric_name,
         )
 
-        train_collate = partial(collate_fn, token_limit=token_limit)
-        val_collate = partial(collate_fn, token_limit=token_limit)
+        train_collate = partial(
+            collate_fn,
+            token_limit=token_limit,
+            unifrac_distances=train_distance_matrix,
+            unifrac_metric=unifrac_metric_name,
+        )
+        val_collate = partial(
+            collate_fn,
+            token_limit=token_limit,
+            unifrac_distances=val_distance_matrix,
+            unifrac_metric=unifrac_metric_name,
+        )
 
         train_loader = DataLoader(
             train_dataset,
@@ -311,6 +332,7 @@ def train(
             shuffle=True,
             num_workers=num_workers,
             collate_fn=train_collate,
+            drop_last=True,
         )
 
         val_loader = DataLoader(
@@ -319,6 +341,7 @@ def train(
             shuffle=False,
             num_workers=num_workers,
             collate_fn=val_collate,
+            drop_last=True,
         )
 
         logger.info("Creating model...")
@@ -369,6 +392,7 @@ def train(
             device=device_obj,
             freeze_base=freeze_base,
             tensorboard_dir=str(output_path),
+            max_grad_norm=max_grad_norm,
         )
 
         if resume_from is not None:
@@ -427,6 +451,7 @@ def train(
 @click.option("--resume-from", default=None, type=click.Path(exists=True), help="Path to checkpoint to resume from")
 @click.option("--gradient-accumulation-steps", default=1, type=int, help="Number of gradient accumulation steps")
 @click.option("--use-expandable-segments", is_flag=True, help="Enable PyTorch CUDA expandable segments for memory optimization")
+@click.option("--max-grad-norm", default=None, type=float, help="Maximum gradient norm for clipping (None to disable)")
 @click.option(
     "--asv-chunk-size", default=None, type=int, help="Process ASVs in chunks of this size to reduce memory (None = process all)"
 )
@@ -456,6 +481,7 @@ def pretrain(
     resume_from: Optional[str],
     gradient_accumulation_steps: int,
     use_expandable_segments: bool,
+    max_grad_norm: Optional[float],
     asv_chunk_size: Optional[int],
 ):
     """Pre-train SequenceEncoder on UniFrac and nucleotide prediction (self-supervised)."""
@@ -510,14 +536,22 @@ def pretrain(
         train_table = table_obj.filter(train_ids, axis="sample", inplace=False)
         val_table = table_obj.filter(val_ids, axis="sample", inplace=False)
 
-        train_unifrac = unifrac_computer.extract_batch_distances(unifrac_distances, train_ids, unifrac_metric_name)
-        val_unifrac = unifrac_computer.extract_batch_distances(unifrac_distances, val_ids, unifrac_metric_name)
+        train_distance_matrix = None
+        val_distance_matrix = None
+        if unifrac_metric_name == "unweighted":
+            train_distance_matrix = (
+                unifrac_distances.filter(train_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
+            )
+            val_distance_matrix = unifrac_distances.filter(val_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
+        elif unifrac_metric_name == "faith_pd":
+            train_distance_matrix = unifrac_distances.loc[train_ids] if isinstance(unifrac_distances, pd.Series) else None
+            val_distance_matrix = unifrac_distances.loc[val_ids] if isinstance(unifrac_distances, pd.Series) else None
 
         logger.info("Creating datasets...")
         train_dataset = ASVDataset(
             table=train_table,
             metadata=None,
-            unifrac_distances=train_unifrac,
+            unifrac_distances=train_distance_matrix,
             max_bp=max_bp,
             token_limit=token_limit,
             target_column=None,
@@ -527,15 +561,25 @@ def pretrain(
         val_dataset = ASVDataset(
             table=val_table,
             metadata=None,
-            unifrac_distances=val_unifrac,
+            unifrac_distances=val_distance_matrix,
             max_bp=max_bp,
             token_limit=token_limit,
             target_column=None,
             unifrac_metric=unifrac_metric_name,
         )
 
-        train_collate = partial(collate_fn, token_limit=token_limit)
-        val_collate = partial(collate_fn, token_limit=token_limit)
+        train_collate = partial(
+            collate_fn,
+            token_limit=token_limit,
+            unifrac_distances=train_distance_matrix,
+            unifrac_metric=unifrac_metric_name,
+        )
+        val_collate = partial(
+            collate_fn,
+            token_limit=token_limit,
+            unifrac_distances=val_distance_matrix,
+            unifrac_metric=unifrac_metric_name,
+        )
 
         train_loader = DataLoader(
             train_dataset,
@@ -543,6 +587,7 @@ def pretrain(
             shuffle=True,
             num_workers=num_workers,
             collate_fn=train_collate,
+            drop_last=True,
         )
 
         val_loader = DataLoader(
@@ -551,6 +596,7 @@ def pretrain(
             shuffle=False,
             num_workers=num_workers,
             collate_fn=val_collate,
+            drop_last=True,
         )
 
         logger.info("Creating model...")
@@ -585,6 +631,7 @@ def pretrain(
             device=device_obj,
             freeze_base=False,
             tensorboard_dir=str(output_path),
+            max_grad_norm=max_grad_norm,
         )
 
         if resume_from is not None:
@@ -669,7 +716,12 @@ def predict(
             token_limit=model_config.get("token_limit", 1024),
         )
 
-        inference_collate = partial(collate_fn, token_limit=model_config.get("token_limit", 1024))
+        inference_collate = partial(
+            collate_fn,
+            token_limit=model_config.get("token_limit", 1024),
+            unifrac_distances=None,
+            unifrac_metric="unweighted",
+        )
         dataloader = DataLoader(
             dataset,
             batch_size=batch_size,

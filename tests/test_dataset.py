@@ -189,7 +189,7 @@ class TestASVDataset:
         assert isinstance(sample["y_target"], torch.FloatTensor)
 
     def test_getitem_with_unifrac(self, rarefied_table, tokenizer, simple_unifrac_distances):
-        """Test __getitem__ with UniFrac distances."""
+        """Test __getitem__ with UniFrac distances (unifrac_target is added in collate_fn, not __getitem__)."""
         dataset = ASVDataset(
             table=rarefied_table,
             unifrac_distances=simple_unifrac_distances,
@@ -201,8 +201,10 @@ class TestASVDataset:
 
         sample = dataset[0]
 
-        assert "unifrac_target" in sample
-        assert isinstance(sample["unifrac_target"], torch.FloatTensor)
+        # unifrac_target is NOT in __getitem__ output - it's added in collate_fn
+        assert "unifrac_target" not in sample
+        # But the dataset should store unifrac_distances for use in collate_fn
+        assert dataset.unifrac_distances is not None
 
     def test_getitem_sample_id(self, rarefied_table, tokenizer):
         """Test that sample_id is correct."""
@@ -307,7 +309,7 @@ class TestCollateFn:
         ]
 
         token_limit = 5
-        result = collate_fn(batch, token_limit)
+        result = collate_fn(batch, token_limit, unifrac_distances=None, unifrac_metric="unweighted")
 
         assert result["tokens"].shape[0] == 2
         assert result["tokens"].shape[1] <= token_limit
@@ -326,7 +328,7 @@ class TestCollateFn:
         ]
 
         token_limit = 5
-        result = collate_fn(batch, token_limit)
+        result = collate_fn(batch, token_limit, unifrac_distances=None, unifrac_metric="unweighted")
 
         assert result["tokens"].shape[1] == token_limit
         assert result["counts"].shape[1] == token_limit
@@ -347,7 +349,7 @@ class TestDatasetEdgeCases:
             },
         ]
         token_limit = 10
-        result = collate_fn(batch, token_limit)
+        result = collate_fn(batch, token_limit, unifrac_distances=None, unifrac_metric="unweighted")
         assert result["tokens"].shape[1] == token_limit
         assert result["counts"].shape[1] == token_limit
         assert result["tokens"].shape[0] == 1
@@ -401,7 +403,7 @@ class TestDatasetEdgeCases:
         assert sample["y_target"].dtype == torch.float32
 
     def test_dataset_faith_pd_extraction(self, tokenizer, rarefied_table):
-        """Test Faith PD distance extraction."""
+        """Test Faith PD distance extraction (unifrac_target is added in collate_fn, not __getitem__)."""
         import pandas as pd
         import numpy as np
 
@@ -418,12 +420,13 @@ class TestDatasetEdgeCases:
         )
 
         sample = dataset[0]
-        assert "unifrac_target" in sample
-        assert isinstance(sample["unifrac_target"], torch.Tensor)
-        assert sample["unifrac_target"].shape == (1,)
+        # unifrac_target is NOT in __getitem__ output - it's added in collate_fn
+        assert "unifrac_target" not in sample
+        # But the dataset should store unifrac_distances for use in collate_fn
+        assert dataset.unifrac_distances is not None
 
     def test_dataset_faith_pd_missing_sample(self, tokenizer, rarefied_table):
-        """Test Faith PD extraction with missing sample ID."""
+        """Test Faith PD extraction with missing sample ID (unifrac_target is added in collate_fn, not __getitem__)."""
         import pandas as pd
 
         sample_ids = list(rarefied_table.ids(axis="sample"))
@@ -438,11 +441,23 @@ class TestDatasetEdgeCases:
             unifrac_metric="faith_pd",
         )
 
+        # unifrac_target is NOT in __getitem__ output - it's added in collate_fn
+        # The missing sample ID will cause an error in collate_fn when trying to extract distances
         sample_with_value = dataset[0]
-        assert "unifrac_target" in sample_with_value
+        assert "unifrac_target" not in sample_with_value
 
         sample_without_value = dataset[2]
         assert "unifrac_target" not in sample_without_value
+
+        # Test that collate_fn will raise an error for missing sample ID
+        from aam.data.dataset import collate_fn
+        from functools import partial
+
+        batch = [dataset[0], dataset[2]]  # sample 2 is missing from faith_pd_values
+        collate = partial(collate_fn, token_limit=1024, unifrac_distances=faith_pd_values, unifrac_metric="faith_pd")
+        # This should raise ValueError because sample_ids[2] is not in faith_pd_values
+        with pytest.raises(ValueError, match="not found"):
+            collate(batch)
 
 
 class TestASVDatasetIntegration:
@@ -458,7 +473,7 @@ class TestASVDatasetIntegration:
         )
 
         def custom_collate(batch):
-            return collate_fn(batch, token_limit=1024)
+            return collate_fn(batch, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted")
 
         dataloader = DataLoader(dataset, batch_size=2, collate_fn=custom_collate, shuffle=False)
 
@@ -481,7 +496,7 @@ class TestASVDatasetIntegration:
         )
 
         def custom_collate(batch):
-            return collate_fn(batch, token_limit=1024)
+            return collate_fn(batch, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted")
 
         dataloader = DataLoader(dataset, batch_size=2, collate_fn=custom_collate, shuffle=False)
 
@@ -502,10 +517,385 @@ class TestASVDatasetIntegration:
         )
 
         def custom_collate(batch):
-            return collate_fn(batch, token_limit=1024)
+            return collate_fn(batch, token_limit=1024, unifrac_distances=simple_unifrac_distances, unifrac_metric="unweighted")
 
         dataloader = DataLoader(dataset, batch_size=2, collate_fn=custom_collate, shuffle=False)
 
         for batch in dataloader:
             assert "unifrac_target" in batch
+            assert batch["unifrac_target"].shape == (2, 2)
             break
+
+
+class TestShuffledBatchDistances:
+    """Test shuffled batch distance extraction for PYT-8.5."""
+
+    def test_collate_fn_extracts_batch_distances_unweighted(self, rarefied_table, tokenizer, simple_unifrac_distances):
+        """Test collate_fn extracts batch-specific distances for unweighted UniFrac."""
+        batch = [
+            {
+                "tokens": torch.LongTensor([[1, 2, 3], [4, 1, 2]]),
+                "counts": torch.FloatTensor([[10.0], [20.0]]),
+                "sample_id": "sample1",
+            },
+            {
+                "tokens": torch.LongTensor([[2, 3, 4], [1, 2, 3]]),
+                "counts": torch.FloatTensor([[15.0], [25.0]]),
+                "sample_id": "sample2",
+            },
+        ]
+
+        token_limit = 5
+        result = collate_fn(
+            batch,
+            token_limit=token_limit,
+            unifrac_distances=simple_unifrac_distances,
+            unifrac_metric="unweighted",
+        )
+
+        assert "unifrac_target" in result
+        assert result["unifrac_target"].shape == (2, 2)
+        assert isinstance(result["unifrac_target"], torch.FloatTensor)
+
+        sample_ids = result["sample_ids"]
+        computer = UniFracComputer()
+        expected_distances = computer.extract_batch_distances(simple_unifrac_distances, sample_ids, metric="unweighted")
+        np.testing.assert_array_almost_equal(result["unifrac_target"].numpy(), expected_distances)
+
+    def test_collate_fn_extracts_batch_distances_shuffled_order(self, rarefied_table, tokenizer, simple_unifrac_distances):
+        """Test collate_fn extracts distances in shuffled batch order."""
+        batch = [
+            {
+                "tokens": torch.LongTensor([[1, 2, 3], [4, 1, 2]]),
+                "counts": torch.FloatTensor([[10.0], [20.0]]),
+                "sample_id": "sample3",
+            },
+            {
+                "tokens": torch.LongTensor([[2, 3, 4], [1, 2, 3]]),
+                "counts": torch.FloatTensor([[15.0], [25.0]]),
+                "sample_id": "sample1",
+            },
+        ]
+
+        token_limit = 5
+        result = collate_fn(
+            batch,
+            token_limit=token_limit,
+            unifrac_distances=simple_unifrac_distances,
+            unifrac_metric="unweighted",
+        )
+
+        assert "unifrac_target" in result
+        assert result["unifrac_target"].shape == (2, 2)
+        sample_ids = result["sample_ids"]
+        assert sample_ids == ["sample3", "sample1"]
+
+        computer = UniFracComputer()
+        expected_distances = computer.extract_batch_distances(simple_unifrac_distances, sample_ids, metric="unweighted")
+        np.testing.assert_array_almost_equal(result["unifrac_target"].numpy(), expected_distances)
+
+    def test_collate_fn_extracts_batch_distances_faith_pd(self, rarefied_table, tokenizer, tmp_path):
+        """Test collate_fn extracts batch-specific distances for Faith PD."""
+        computer = UniFracComputer()
+        observation_ids = list(rarefied_table.ids(axis="observation"))
+        tree_file = create_simple_tree_file(tmp_path, observation_ids)
+        faith_pd = computer.compute_faith_pd(rarefied_table, tree_file)
+
+        batch = [
+            {
+                "tokens": torch.LongTensor([[1, 2, 3], [4, 1, 2]]),
+                "counts": torch.FloatTensor([[10.0], [20.0]]),
+                "sample_id": "sample1",
+            },
+            {
+                "tokens": torch.LongTensor([[2, 3, 4], [1, 2, 3]]),
+                "counts": torch.FloatTensor([[15.0], [25.0]]),
+                "sample_id": "sample2",
+            },
+        ]
+
+        token_limit = 5
+        result = collate_fn(
+            batch,
+            token_limit=token_limit,
+            unifrac_distances=faith_pd,
+            unifrac_metric="faith_pd",
+        )
+
+        assert "unifrac_target" in result
+        assert result["unifrac_target"].shape == (2, 1)
+        assert isinstance(result["unifrac_target"], torch.FloatTensor)
+
+        sample_ids = result["sample_ids"]
+        expected_distances = computer.extract_batch_distances(faith_pd, sample_ids, metric="faith_pd")
+        np.testing.assert_array_almost_equal(result["unifrac_target"].numpy(), expected_distances)
+
+    def test_dataloader_shuffled_batches(self, rarefied_table, tokenizer, simple_unifrac_distances):
+        """Test DataLoader with shuffled batches extracts correct distances."""
+        dataset = ASVDataset(
+            table=rarefied_table,
+            unifrac_distances=simple_unifrac_distances,
+            tokenizer=tokenizer,
+            max_bp=150,
+            token_limit=1024,
+            unifrac_metric="unweighted",
+        )
+
+        def custom_collate(batch):
+            return collate_fn(
+                batch,
+                token_limit=1024,
+                unifrac_distances=simple_unifrac_distances,
+                unifrac_metric="unweighted",
+            )
+
+        dataloader = DataLoader(dataset, batch_size=2, collate_fn=custom_collate, shuffle=True)
+
+        computer = UniFracComputer()
+        for batch in dataloader:
+            assert "unifrac_target" in batch
+            assert batch["unifrac_target"].shape == (2, 2)
+            sample_ids = batch["sample_ids"]
+            expected_distances = computer.extract_batch_distances(simple_unifrac_distances, sample_ids, metric="unweighted")
+            np.testing.assert_array_almost_equal(batch["unifrac_target"].numpy(), expected_distances)
+            break
+
+    def test_dataloader_non_shuffled_batches(self, rarefied_table, tokenizer, simple_unifrac_distances):
+        """Test DataLoader with non-shuffled batches extracts correct distances."""
+        dataset = ASVDataset(
+            table=rarefied_table,
+            unifrac_distances=simple_unifrac_distances,
+            tokenizer=tokenizer,
+            max_bp=150,
+            token_limit=1024,
+            unifrac_metric="unweighted",
+        )
+
+        def custom_collate(batch):
+            return collate_fn(
+                batch,
+                token_limit=1024,
+                unifrac_distances=simple_unifrac_distances,
+                unifrac_metric="unweighted",
+            )
+
+        dataloader = DataLoader(dataset, batch_size=2, collate_fn=custom_collate, shuffle=False)
+
+        computer = UniFracComputer()
+        for batch in dataloader:
+            assert "unifrac_target" in batch
+            assert batch["unifrac_target"].shape == (2, 2)
+            sample_ids = batch["sample_ids"]
+            expected_distances = computer.extract_batch_distances(simple_unifrac_distances, sample_ids, metric="unweighted")
+            np.testing.assert_array_almost_equal(batch["unifrac_target"].numpy(), expected_distances)
+            break
+
+    def test_collate_fn_no_unifrac_distances(self, tokenizer):
+        """Test collate_fn works without UniFrac distances."""
+        batch = [
+            {
+                "tokens": torch.LongTensor([[1, 2, 3], [4, 1, 2]]),
+                "counts": torch.FloatTensor([[10.0], [20.0]]),
+                "sample_id": "sample1",
+            },
+            {
+                "tokens": torch.LongTensor([[2, 3, 4], [1, 2, 3]]),
+                "counts": torch.FloatTensor([[15.0], [25.0]]),
+                "sample_id": "sample2",
+            },
+        ]
+
+        token_limit = 5
+        result = collate_fn(batch, token_limit=token_limit, unifrac_distances=None, unifrac_metric="unweighted")
+
+        assert "unifrac_target" not in result
+        assert "tokens" in result
+        assert "counts" in result
+        assert "sample_ids" in result
+
+
+class TestShuffledBatchDistances:
+    """Test shuffled batch distance extraction for PYT-8.5."""
+
+    def test_collate_fn_extracts_batch_distances_unweighted(self, rarefied_table, tokenizer, simple_unifrac_distances):
+        """Test collate_fn extracts batch-specific distances for unweighted UniFrac."""
+        batch = [
+            {
+                "tokens": torch.LongTensor([[1, 2, 3], [4, 1, 2]]),
+                "counts": torch.FloatTensor([[10.0], [20.0]]),
+                "sample_id": "sample1",
+            },
+            {
+                "tokens": torch.LongTensor([[2, 3, 4], [1, 2, 3]]),
+                "counts": torch.FloatTensor([[15.0], [25.0]]),
+                "sample_id": "sample2",
+            },
+        ]
+
+        token_limit = 5
+        result = collate_fn(
+            batch,
+            token_limit=token_limit,
+            unifrac_distances=simple_unifrac_distances,
+            unifrac_metric="unweighted",
+        )
+
+        assert "unifrac_target" in result
+        assert result["unifrac_target"].shape == (2, 2)
+        assert isinstance(result["unifrac_target"], torch.FloatTensor)
+
+        sample_ids = result["sample_ids"]
+        computer = UniFracComputer()
+        expected_distances = computer.extract_batch_distances(simple_unifrac_distances, sample_ids, metric="unweighted")
+        np.testing.assert_array_almost_equal(result["unifrac_target"].numpy(), expected_distances)
+
+    def test_collate_fn_extracts_batch_distances_shuffled_order(self, rarefied_table, tokenizer, simple_unifrac_distances):
+        """Test collate_fn extracts distances in shuffled batch order."""
+        batch = [
+            {
+                "tokens": torch.LongTensor([[1, 2, 3], [4, 1, 2]]),
+                "counts": torch.FloatTensor([[10.0], [20.0]]),
+                "sample_id": "sample3",
+            },
+            {
+                "tokens": torch.LongTensor([[2, 3, 4], [1, 2, 3]]),
+                "counts": torch.FloatTensor([[15.0], [25.0]]),
+                "sample_id": "sample1",
+            },
+        ]
+
+        token_limit = 5
+        result = collate_fn(
+            batch,
+            token_limit=token_limit,
+            unifrac_distances=simple_unifrac_distances,
+            unifrac_metric="unweighted",
+        )
+
+        assert "unifrac_target" in result
+        assert result["unifrac_target"].shape == (2, 2)
+        sample_ids = result["sample_ids"]
+        assert sample_ids == ["sample3", "sample1"]
+
+        computer = UniFracComputer()
+        expected_distances = computer.extract_batch_distances(simple_unifrac_distances, sample_ids, metric="unweighted")
+        np.testing.assert_array_almost_equal(result["unifrac_target"].numpy(), expected_distances)
+
+    def test_collate_fn_extracts_batch_distances_faith_pd(self, rarefied_table, tokenizer, tmp_path):
+        """Test collate_fn extracts batch-specific distances for Faith PD."""
+        computer = UniFracComputer()
+        observation_ids = list(rarefied_table.ids(axis="observation"))
+        tree_file = create_simple_tree_file(tmp_path, observation_ids)
+        faith_pd = computer.compute_faith_pd(rarefied_table, tree_file)
+
+        batch = [
+            {
+                "tokens": torch.LongTensor([[1, 2, 3], [4, 1, 2]]),
+                "counts": torch.FloatTensor([[10.0], [20.0]]),
+                "sample_id": "sample1",
+            },
+            {
+                "tokens": torch.LongTensor([[2, 3, 4], [1, 2, 3]]),
+                "counts": torch.FloatTensor([[15.0], [25.0]]),
+                "sample_id": "sample2",
+            },
+        ]
+
+        token_limit = 5
+        result = collate_fn(
+            batch,
+            token_limit=token_limit,
+            unifrac_distances=faith_pd,
+            unifrac_metric="faith_pd",
+        )
+
+        assert "unifrac_target" in result
+        assert result["unifrac_target"].shape == (2, 1)
+        assert isinstance(result["unifrac_target"], torch.FloatTensor)
+
+        sample_ids = result["sample_ids"]
+        expected_distances = computer.extract_batch_distances(faith_pd, sample_ids, metric="faith_pd")
+        np.testing.assert_array_almost_equal(result["unifrac_target"].numpy(), expected_distances)
+
+    def test_dataloader_shuffled_batches(self, rarefied_table, tokenizer, simple_unifrac_distances):
+        """Test DataLoader with shuffled batches extracts correct distances."""
+        dataset = ASVDataset(
+            table=rarefied_table,
+            unifrac_distances=simple_unifrac_distances,
+            tokenizer=tokenizer,
+            max_bp=150,
+            token_limit=1024,
+            unifrac_metric="unweighted",
+        )
+
+        def custom_collate(batch):
+            return collate_fn(
+                batch,
+                token_limit=1024,
+                unifrac_distances=simple_unifrac_distances,
+                unifrac_metric="unweighted",
+            )
+
+        dataloader = DataLoader(dataset, batch_size=2, collate_fn=custom_collate, shuffle=True)
+
+        computer = UniFracComputer()
+        for batch in dataloader:
+            assert "unifrac_target" in batch
+            assert batch["unifrac_target"].shape == (2, 2)
+            sample_ids = batch["sample_ids"]
+            expected_distances = computer.extract_batch_distances(simple_unifrac_distances, sample_ids, metric="unweighted")
+            np.testing.assert_array_almost_equal(batch["unifrac_target"].numpy(), expected_distances)
+            break
+
+    def test_dataloader_non_shuffled_batches(self, rarefied_table, tokenizer, simple_unifrac_distances):
+        """Test DataLoader with non-shuffled batches extracts correct distances."""
+        dataset = ASVDataset(
+            table=rarefied_table,
+            unifrac_distances=simple_unifrac_distances,
+            tokenizer=tokenizer,
+            max_bp=150,
+            token_limit=1024,
+            unifrac_metric="unweighted",
+        )
+
+        def custom_collate(batch):
+            return collate_fn(
+                batch,
+                token_limit=1024,
+                unifrac_distances=simple_unifrac_distances,
+                unifrac_metric="unweighted",
+            )
+
+        dataloader = DataLoader(dataset, batch_size=2, collate_fn=custom_collate, shuffle=False)
+
+        computer = UniFracComputer()
+        for batch in dataloader:
+            assert "unifrac_target" in batch
+            assert batch["unifrac_target"].shape == (2, 2)
+            sample_ids = batch["sample_ids"]
+            expected_distances = computer.extract_batch_distances(simple_unifrac_distances, sample_ids, metric="unweighted")
+            np.testing.assert_array_almost_equal(batch["unifrac_target"].numpy(), expected_distances)
+            break
+
+    def test_collate_fn_no_unifrac_distances(self, tokenizer):
+        """Test collate_fn works without UniFrac distances."""
+        batch = [
+            {
+                "tokens": torch.LongTensor([[1, 2, 3], [4, 1, 2]]),
+                "counts": torch.FloatTensor([[10.0], [20.0]]),
+                "sample_id": "sample1",
+            },
+            {
+                "tokens": torch.LongTensor([[2, 3, 4], [1, 2, 3]]),
+                "counts": torch.FloatTensor([[15.0], [25.0]]),
+                "sample_id": "sample2",
+            },
+        ]
+
+        token_limit = 5
+        result = collate_fn(batch, token_limit=token_limit, unifrac_distances=None, unifrac_metric="unweighted")
+
+        assert "unifrac_target" not in result
+        assert "tokens" in result
+        assert "counts" in result
+        assert "sample_ids" in result

@@ -163,27 +163,36 @@ Create validation prediction plots showing predicted vs actual values with linea
 ---
 
 ### PYT-8.5: Support Shuffled Batches for UniFrac Distance Extraction
-**Priority:** MEDIUM | **Effort:** Medium | **Status:** ⏳ Not Started
+**Priority:** MEDIUM | **Effort:** Medium | **Status:** ✅ Completed
 
 **Description:**
 Support shuffled batches for UniFrac distance extraction. Currently, UniFrac distances are computed assuming batches are in a specific order, but with shuffled batches, the distance matrix needs to be reordered to match the batch order.
 
 **Acceptance Criteria:**
-- [ ] Modify UniFrac distance extraction to handle shuffled batches
-- [ ] Ensure distance matrix rows/columns match batch sample order
-- [ ] Test with shuffled and non-shuffled batches
-- [ ] Verify loss computation works correctly with shuffled batches
-- [ ] Unit tests pass
-- [ ] Integration tests verify correct behavior
+- [x] Modify UniFrac distance extraction to handle shuffled batches
+- [x] Ensure distance matrix rows/columns match batch sample order
+- [x] Test with shuffled and non-shuffled batches
+- [x] Verify loss computation works correctly with shuffled batches
+- [x] Unit tests pass
+- [x] Integration tests verify correct behavior
 
 **Implementation Notes:**
-- May need to reorder distance matrix based on sample IDs in batch
-- Consider caching reordered matrices for performance
-- Ensure backward compatibility with non-shuffled batches
+- Modified `extract_batch_distances()` to reorder filtered distance matrix to match batch sample order using `np.ix_()`
+- Added `drop_last=True` to DataLoaders to ensure consistent batch sizes
+- Moved UniFrac target extraction from `__getitem__()` to `collate_fn()` to handle batch-level extraction
+- Updated tests to reflect new architecture
+
+**Files Modified:**
+- `aam/data/unifrac.py` - Added reordering logic in `extract_batch_distances()`
+- `aam/data/dataset.py` - Moved UniFrac target extraction to `collate_fn()`
+- `aam/cli.py` - Pass filtered distance matrices to datasets and `collate_fn()`, added `drop_last=True`
+- `tests/test_dataset.py` - Updated tests for new architecture
+- `tests/test_integration.py` - Updated integration tests
 
 **Dependencies:** None
 
 **Estimated Time:** 3-4 hours
+**Actual Time:** ~4 hours
 
 ---
 
@@ -233,17 +242,74 @@ Fix tensor shape mismatch error in `compute_base_loss` when training in pretrain
 
 ---
 
+### PYT-8.7: Fix Model NaN Issue and Add Gradient Clipping
+**Priority:** HIGH | **Effort:** Medium | **Status:** ⏳ Not Started
+
+**Description:**
+Fix NaN values appearing in model outputs during training. The model produces NaN in both `base_prediction` and `nuc_predictions` from the forward pass, causing all losses to be NaN. This indicates a deeper issue with the model architecture or training setup, not just the loss computation. Gradient clipping has been added as a general training stability measure.
+
+**Acceptance Criteria:**
+- [x] Add gradient clipping to prevent gradient explosion
+- [x] Add CLI option for gradient clipping threshold
+- [ ] Investigate root cause of NaN in model outputs (both base_prediction and nuc_predictions)
+- [ ] Fix numerical instability in model forward pass
+- [ ] Verify training stability with all losses enabled
+- [ ] Test gradient clipping with various threshold values
+- [ ] Unit tests for gradient clipping functionality
+- [ ] Integration tests verify stable training
+
+**Implementation Notes:**
+- **Gradient Clipping (COMPLETED):**
+  - ✅ Implemented `torch.nn.utils.clip_grad_norm_()` for gradient clipping
+  - ✅ Added `--max-grad-norm` CLI option (default: None, disabled)
+  - ✅ Apply clipping after `backward()` but before `optimizer.step()`
+  - ✅ Log gradient norms to TensorBoard for monitoring
+
+- **Root Cause Analysis (IN PROGRESS):**
+  - **Critical Finding**: Both `base_prediction` and `nuc_predictions` contain NaN from model forward pass
+  - This indicates the issue is NOT specific to nucleotide head, but affects the entire model
+  - NaN appears early in training (step 4-5), suggesting:
+    1. Model initialization issue (weights initialized incorrectly)
+    2. Numerical instability in model architecture (e.g., attention, normalization)
+    3. Invalid input data causing NaN propagation
+    4. Gradient explosion corrupting weights immediately
+  
+- **Investigation Steps:**
+  1. Check model weight initialization - verify no NaN/Inf in initial weights
+  2. Check input data - verify tokens are valid (0-4 range, no NaN)
+  3. Add intermediate checks in model forward pass to identify where NaN first appears
+  4. Check attention mechanisms for numerical stability (softmax overflow, etc.)
+  5. Verify layer normalization is applied correctly
+  6. Check if issue occurs with different batch sizes or learning rates
+  7. Monitor gradient norms before clipping to see if explosion occurs
+  
+- **Potential Fixes:**
+  1. Fix model initialization (use proper initialization schemes)
+  2. Add numerical stability to attention (e.g., scale before softmax)
+  3. Add gradient clipping earlier or with different threshold
+  4. Reduce learning rate or use learning rate warmup
+  5. Add weight initialization checks and NaN detection in model forward pass
+  6. Consider using mixed precision training with proper scaling
+
+**Dependencies:** PYT-8.5 (completed)
+
+**Estimated Time:** 4-6 hours
+**Actual Time:** ~1 hour (gradient clipping implemented, root cause investigation pending)
+
+---
+
 ## Summary
 
-**Total Estimated Time:** 15-19 hours
+**Total Estimated Time:** 19-25 hours
 
 **Implementation Order:**
 1. ✅ PYT-8.3: Change Early Stopping Default to 10 Epochs (1 hour) - Completed
 2. ✅ PYT-8.2: Implement Single Best Model File Saving (2-3 hours) - Completed
 3. ✅ PYT-8.1: Implement TensorBoard Train/Val Overlay Verification (1-2 hours) - Completed
 4. ✅ PYT-8.4: Implement Validation Prediction Plots (4-6 hours) - Completed
-5. ⏳ PYT-8.5: Support Shuffled Batches for UniFrac Distance Extraction (3-4 hours) - Not Started
+5. ✅ PYT-8.5: Support Shuffled Batches for UniFrac Distance Extraction (3-4 hours) - Completed
 6. ⏳ PYT-8.6: Fix Base Loss Shape Mismatch for Variable Batch Sizes in Pretrain Mode (2-3 hours) - Not Started
+7. ⏳ PYT-8.7: Fix Nucleotide Loss NaN Issue and Add Gradient Clipping (4-6 hours) - Not Started
 
 **Notes:**
 - All tickets are independent and can be implemented in any order
@@ -251,7 +317,8 @@ Fix tensor shape mismatch error in `compute_base_loss` when training in pretrain
 - PYT-8.2 completed - single best model file saving implemented
 - PYT-8.1 completed - TensorBoard overlay verification documented
 - PYT-8.4 completed - validation prediction plots with matplotlib dependency added
-- PYT-8.5 not started - needed to fix UniFrac loss computation with shuffled batches
+- PYT-8.5 completed - UniFrac distance extraction now supports shuffled batches with proper reordering
 - PYT-8.6 not started - HIGH priority bug fix for pretrain mode with variable batch sizes
+- PYT-8.7 partially completed - Gradient clipping implemented, root cause investigation needed for NaN in model outputs (both base_prediction and nuc_predictions)
 - **PYT-8.6 REVERTED**: Previous implementation (commit 1a68364) caused NaN propagation issues. Reverted to commit 68597fc. See implementation notes for critical lessons learned.
 - Follow the workflow in `.agents/workflow.md` for implementation

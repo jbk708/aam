@@ -321,8 +321,37 @@ class TestExtractBatchDistances:
         assert result.shape == (2, 2)
         np.testing.assert_array_almost_equal(result, result.T)
         np.testing.assert_array_almost_equal(np.diag(result), 0)
-        expected = sample_distance_matrix.filter(sample_ids).data
+        # Result should match the order of sample_ids (even if filtered matrix has different order)
+        expected_filtered = sample_distance_matrix.filter(sample_ids)
+        # Extract distances in the exact order of sample_ids
+        id_to_idx = {id_: idx for idx, id_ in enumerate(expected_filtered.ids)}
+        reorder_indices = [id_to_idx[id_] for id_ in sample_ids]
+        expected = expected_filtered.data[np.ix_(reorder_indices, reorder_indices)]
         np.testing.assert_array_almost_equal(result, expected)
+
+    def test_extract_batch_distances_unweighted_shuffled_order(self, computer, sample_distance_matrix):
+        """Test extract_batch_distances preserves shuffled batch order."""
+        # Test with shuffled order: sample2, sample1 (instead of sample1, sample2)
+        sample_ids = ["sample2", "sample1"]
+        result = computer.extract_batch_distances(sample_distance_matrix, sample_ids, metric="unweighted")
+
+        assert isinstance(result, np.ndarray)
+        assert result.shape == (2, 2)
+        np.testing.assert_array_almost_equal(result, result.T)
+        np.testing.assert_array_almost_equal(np.diag(result), 0)
+
+        # Verify the order matches sample_ids: [sample2, sample1]
+        # Distance from sample2 to sample2 should be 0 (diagonal)
+        # Distance from sample2 to sample1 should be at position [0, 1]
+        expected_filtered = sample_distance_matrix.filter(sample_ids)
+        id_to_idx = {id_: idx for idx, id_ in enumerate(expected_filtered.ids)}
+        reorder_indices = [id_to_idx[id_] for id_ in sample_ids]
+        expected = expected_filtered.data[np.ix_(reorder_indices, reorder_indices)]
+        np.testing.assert_array_almost_equal(result, expected)
+
+        # Verify that result[0, 1] is the distance from sample2 to sample1
+        # In the original matrix: sample1=idx0, sample2=idx1, so distance is at [1, 0] = 0.5
+        assert np.isclose(result[0, 1], 0.5), f"Expected distance from sample2 to sample1 to be 0.5, got {result[0, 1]}"
 
     def test_extract_batch_distances_faith_pd(self, computer, sample_faith_pd_series):
         """Test extract_batch_distances for Faith PD."""
