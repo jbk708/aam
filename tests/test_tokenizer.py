@@ -153,7 +153,7 @@ class TestSequenceTokenizer:
 
     def test_start_token_constant(self, tokenizer):
         """Test that START_TOKEN constant is defined correctly."""
-        assert hasattr(SequenceTokenizer, 'START_TOKEN')
+        assert hasattr(SequenceTokenizer, "START_TOKEN")
         assert SequenceTokenizer.START_TOKEN == 5
 
     def test_start_token_never_masked(self, tokenizer):
@@ -161,7 +161,7 @@ class TestSequenceTokenizer:
         sequence = "ACGT"
         result = tokenizer.tokenize(sequence)
         mask = (result > 0).long()
-        
+
         assert mask[0].item() == 1
         assert all(mask[i].item() == 1 for i in range(len(result)))
 
@@ -170,7 +170,7 @@ class TestSequenceTokenizer:
         sequence = "ACGT"
         tokenized = tokenizer.tokenize(sequence)
         padded = tokenizer.pad_sequences([tokenized], max_length=10)[0]
-        
+
         assert padded[0].item() == SequenceTokenizer.START_TOKEN
         assert padded[1].item() == 1
         assert padded[2].item() == 2
