@@ -147,7 +147,7 @@ class TestASVEncoder:
         asv_encoder_with_nucleotides.train()
         embeddings, nucleotides = asv_encoder_with_nucleotides(sample_tokens, return_nucleotides=True)
         assert embeddings.shape == (2, 10, 64)
-        assert nucleotides.shape == (2, 10, 50, 5)
+        assert nucleotides.shape == (2, 10, 50, 6)
 
     def test_forward_training_mode_without_nucleotides(self, asv_encoder_with_nucleotides, sample_tokens):
         """Test forward pass in training mode without requesting nucleotide predictions."""
