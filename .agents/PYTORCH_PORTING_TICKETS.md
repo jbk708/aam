@@ -470,34 +470,60 @@ ValueError: NaN values found in nuc_pred with shape torch.Size([6, 512, 151, 6])
 
 ---
 
-### PYT-8.10: Update Training Progress Bar to Show Loss Breakdown
-**Priority:** LOW | **Effort:** Low | **Status:** ⏳ Not Started
+### PYT-8.10: Update Training Progress Bar and Rename base_loss to unifrac_loss
+**Priority:** LOW | **Effort:** Low-Medium | **Status:** ⏳ Not Started
 
 **Description:**
-Update the training progress bar to remove the "Step" field (since step information is already shown in the tqdm loading bar) and display a breakdown of losses: total loss, unifrac loss (base_loss), and nucleotide loss (nuc_loss). This provides better visibility into individual loss components during training.
+1. Update the training progress bar to remove the "Step" field (since step information is already shown in the tqdm loading bar) and display a breakdown of losses: total loss, unifrac loss, and nucleotide loss. This provides better visibility into individual loss components during training.
+2. Rename `base_loss` to `unifrac_loss` throughout the codebase for better clarity and consistency.
+3. Optimize TensorBoard reporting to reduce overhead and improve performance.
 
 **Current Behavior:**
 - Progress bar shows: `Step: {step}/{total_steps}`, `Loss: {total_loss}`, `LR: {learning_rate}`
 - Step information is redundant (already shown in tqdm progress bar)
 - Only total loss is shown, making it difficult to monitor individual loss components
+- Loss dictionary uses `base_loss` key, which is less descriptive than `unifrac_loss`
+- TensorBoard logs histograms every 10 epochs for all parameters (can be expensive)
+- TensorBoard logs all metrics individually, which can create many scalar logs
 
 **Acceptance Criteria:**
+
+**Progress Bar Updates:**
 - [ ] Remove "Step" field from progress bar in `train()` method
 - [ ] Remove "Step" field from progress bar in `validate_epoch()` method (if present)
 - [ ] Add "Total Loss" field showing total_loss value
-- [ ] Add "Unifrac Loss" field showing base_loss value (if available)
+- [ ] Add "Unifrac Loss" field showing unifrac_loss value (if available)
 - [ ] Add "Nucleotide Loss" field showing nuc_loss value (if available)
-- [ ] Handle cases where base_loss or nuc_loss may not be present (e.g., when not in pretrain mode)
+- [ ] Handle cases where unifrac_loss or nuc_loss may not be present (e.g., when not in pretrain mode)
 - [ ] Format loss values appropriately (e.g., 6 decimals for small values, 4 decimals for larger values)
 - [ ] Keep "LR" field in training progress bar (not in validation)
 - [ ] Test with both training and validation loops
 - [ ] Test with pretrain mode (should show unifrac and nucleotide losses)
 - [ ] Test with regular training mode (may not have all losses)
 
+**Rename base_loss to unifrac_loss:**
+- [ ] Rename `base_loss` key to `unifrac_loss` in `MultiTaskLoss.forward()` return dictionary
+- [ ] Update all references to `losses["base_loss"]` to `losses["unifrac_loss"]` in `trainer.py`
+- [ ] Update error messages and debug prints that reference `base_loss`
+- [ ] Update TensorBoard logging keys from `train/base_loss` to `train/unifrac_loss`
+- [ ] Update any tests that check for `base_loss` key
+- [ ] Ensure backward compatibility considerations (if any external code depends on `base_loss` key)
+
+**TensorBoard Optimizations:**
+- [ ] Reduce histogram logging frequency (currently every 10 epochs) - consider every 50 epochs or configurable
+- [ ] Add option to disable histogram logging entirely (for faster training)
+- [ ] Batch scalar logging operations where possible
+- [ ] Consider grouping related metrics (e.g., all losses together)
+- [ ] Add configurable TensorBoard logging frequency option
+- [ ] Optimize histogram logging to only log active parameters (skip frozen/zero gradients)
+- [ ] Test TensorBoard performance impact before and after optimizations
+
 **Implementation Notes:**
 - **Files to Modify:**
-  - `aam/training/trainer.py` - Update `pbar.set_postfix()` calls in `train()` method (around line 524)
-  - `aam/training/trainer.py` - Update `pbar.set_postfix()` calls in `validate_epoch()` method (around line 621)
+  - `aam/training/trainer.py` - Update `pbar.set_postfix()` calls, rename `base_loss` references, optimize TensorBoard logging
+  - `aam/training/losses.py` - Rename `base_loss` key to `unifrac_loss` in return dictionary
+  - `tests/test_trainer.py` - Update tests for renamed loss key
+  - `tests/test_losses.py` - Update tests for renamed loss key
 
 - **Current Progress Bar Code:**
   ```python
@@ -510,39 +536,53 @@ Update the training progress bar to remove the "Step" field (since step informat
   )
   ```
 
-- **Proposed Changes:**
+- **Proposed Progress Bar Changes:**
   - Remove "Step" field
   - Change "Loss" to "Total Loss"
-  - Add "Unifrac Loss" (from `losses["base_loss"]` if available)
+  - Add "Unifrac Loss" (from `losses["unifrac_loss"]` if available)
   - Add "Nuc Loss" (from `losses["nuc_loss"]` if available)
   - Need to track running averages for each loss component, not just total_loss
   - Format each loss appropriately based on magnitude
 
 - **Loss Tracking:**
   - Currently only `running_avg_loss` (total_loss) is tracked
-  - Need to track running averages for `base_loss` and `nuc_loss` separately
+  - Need to track running averages for `unifrac_loss` and `nuc_loss` separately
   - Similar to how `total_losses` dictionary accumulates losses, need running averages per component
 
-- **Example Output:**
+- **Example Progress Bar Output:**
   ```
   Total Loss: 0.1234 | Unifrac Loss: 0.0456 | Nuc Loss: 0.0123 | LR: 1.00e-04
   ```
 
+- **Rename base_loss to unifrac_loss:**
+  - In `losses.py`: Change `losses["base_loss"]` to `losses["unifrac_loss"]` in `MultiTaskLoss.forward()`
+  - In `trainer.py`: Update all references from `losses["base_loss"]` to `losses["unifrac_loss"]`
+  - Update TensorBoard keys from `train/base_loss` to `train/unifrac_loss`
+  - Update error messages: `"base_loss: {losses['base_loss']}"` → `"unifrac_loss: {losses['unifrac_loss']}"`
+
+- **TensorBoard Optimizations:**
+  - **Histogram Frequency**: Change from every 10 epochs to every 50 epochs (or make configurable)
+  - **Histogram Filtering**: Only log histograms for parameters with non-zero gradients
+  - **Disable Option**: Add `log_histograms=False` parameter to Trainer `__init__` to disable histogram logging entirely
+  - **Batch Scalar Logging**: Consider using `writer.add_scalars()` for related metrics
+  - **Performance**: Histogram logging can be expensive, especially with large models - reducing frequency significantly improves training speed
+
 - **Edge Cases:**
-  - When `base_loss` is not computed (e.g., not in pretrain mode)
+  - When `unifrac_loss` is not computed (e.g., not in pretrain mode)
   - When `nuc_loss` is not computed (e.g., `nuc_penalty=0` or no nucleotide predictions)
   - When losses are very small (< 0.0001) vs larger values
   - Validation loop doesn't have LR, so format will be different
+  - Ensure all tests pass after renaming `base_loss` to `unifrac_loss`
 
 **Dependencies:** None
 
-**Estimated Time:** 1-2 hours
+**Estimated Time:** 2-3 hours (increased due to rename and TensorBoard optimizations)
 
 ---
 
 ## Summary
 
-**Total Estimated Time:** 23-31 hours
+**Total Estimated Time:** 24-33 hours
 
 **Implementation Order:**
 1. ✅ PYT-8.3: Change Early Stopping Default to 10 Epochs (1 hour) - Completed
@@ -554,7 +594,7 @@ Update the training progress bar to remove the "Step" field (since step informat
 7. ✅ **PYT-8.6: Fix Base Loss Shape Mismatch for Variable Batch Sizes in Pretrain Mode (2-3 hours) - HIGH PRIORITY** - Completed
 8. ✅ **PYT-8.9: Fix NaN in Nucleotide Predictions During Pretraining with Token Limit (3-4 hours) - HIGH PRIORITY** - Completed
 9. ⏳ PYT-8.7: Fix Model NaN Issue and Add Gradient Clipping (4-6 hours) - Partially Completed
-10. ⏳ PYT-8.10: Update Training Progress Bar to Show Loss Breakdown (1-2 hours) - Not Started
+10. ⏳ PYT-8.10: Update Training Progress Bar and Rename base_loss to unifrac_loss (2-3 hours) - Not Started
 
 **Notes:**
 - All tickets are independent and can be implemented in any order
@@ -567,5 +607,5 @@ Update the training progress bar to remove the "Step" field (since step informat
 - **PYT-8.6 completed** - Verified `drop_last=True` is set in all DataLoaders (train, pretrain, validation), preventing shape mismatches. Added 7 comprehensive tests for shape mismatch scenarios. All tests passing. Solution uses `drop_last=True` to ensure consistent batch sizes, eliminating shape mismatches at the source.
 - **PYT-8.9 completed** - Fixed NaN in nucleotide predictions during pretraining with token_limit. Root cause was all-padding sequences causing NaN in transformer attention. Fixed by: (1) handling all-padding sequences in AttentionPooling, (2) masking NaN from transformer output in ASVEncoder, (3) adding data validation in dataset.py, (4) safe tensor stats formatting in losses.py. All fixes verified and training is stable.
 - PYT-8.7 partially completed - Gradient clipping implemented, root cause investigation needed for NaN in model outputs (both base_prediction and nuc_predictions)
-- PYT-8.10 not started - Update training progress bar to remove redundant "Step" field and show loss breakdown (total, unifrac, nucleotide)
+- PYT-8.10 not started - Update training progress bar to remove redundant "Step" field and show loss breakdown (total, unifrac, nucleotide). Also rename `base_loss` to `unifrac_loss` throughout codebase and optimize TensorBoard reporting performance.
 - Follow the workflow in `.agents/workflow.md` for implementation
