@@ -392,8 +392,19 @@ class Trainer:
                 # Check for invalid token values before model forward pass
                 import sys
 
-                if torch.any(tokens < 0) or torch.any(tokens >= 5):
-                    invalid_mask = (tokens < 0) | (tokens >= 5)
+                # Get vocab_size from model (supports both SequenceEncoder and SequencePredictor)
+                if hasattr(self.model, 'vocab_size'):
+                    vocab_size = self.model.vocab_size
+                elif hasattr(self.model, 'base_model') and hasattr(self.model.base_model, 'vocab_size'):
+                    vocab_size = self.model.base_model.vocab_size
+                elif hasattr(self.model, 'sample_encoder') and hasattr(self.model.sample_encoder, 'asv_encoder'):
+                    vocab_size = self.model.sample_encoder.asv_encoder.vocab_size
+                else:
+                    # Default to 6 if we can't find it (new default with START_TOKEN)
+                    vocab_size = 6
+
+                if torch.any(tokens < 0) or torch.any(tokens >= vocab_size):
+                    invalid_mask = (tokens < 0) | (tokens >= vocab_size)
                     invalid_count = invalid_mask.sum().item()
                     print(f"ERROR: Invalid token values detected before model forward", file=sys.stderr, flush=True)
                     print(
@@ -402,7 +413,7 @@ class Trainer:
                         flush=True,
                     )
                     raise ValueError(
-                        f"Invalid token values: min={tokens.min().item()}, max={tokens.max().item()}, vocab_size=5"
+                        f"Invalid token values: min={tokens.min().item()}, max={tokens.max().item()}, vocab_size={vocab_size}"
                     )
                 if torch.any(torch.isnan(tokens)):
                     print(f"ERROR: NaN in tokens before model forward", file=sys.stderr, flush=True)
