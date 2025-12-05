@@ -7,18 +7,18 @@ from typing import Dict, Optional
 
 def _format_tensor_stats(tensor: torch.Tensor) -> str:
     """Safely format tensor statistics for error messages.
-    
+
     Handles both integer and floating point tensors.
-    
+
     Args:
         tensor: Tensor to format
-        
+
     Returns:
         String with tensor statistics
     """
     min_val = tensor.min().item()
     max_val = tensor.max().item()
-    
+
     # Handle integer tensors (can't compute mean)
     if tensor.dtype in (torch.int64, torch.int32, torch.int16, torch.int8, torch.long):
         return f"min={min_val}, max={max_val} (integer tensor)"

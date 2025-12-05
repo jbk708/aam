@@ -239,7 +239,7 @@ class TestBaseLoss:
         """Test that NaN in base_pred raises ValueError."""
         batch_size = 4
         base_pred = torch.randn(batch_size, batch_size)
-        base_pred[0, 0] = float('nan')
+        base_pred[0, 0] = float("nan")
         base_true = torch.randn(batch_size, batch_size)
 
         with pytest.raises(ValueError, match="NaN values found in base_pred"):
@@ -250,7 +250,7 @@ class TestBaseLoss:
         batch_size = 4
         base_pred = torch.randn(batch_size, batch_size)
         base_true = torch.randn(batch_size, batch_size)
-        base_true[0, 0] = float('nan')
+        base_true[0, 0] = float("nan")
 
         with pytest.raises(ValueError, match="NaN values found in base_true"):
             loss_fn.compute_base_loss(base_pred, base_true, encoder_type="unifrac")
