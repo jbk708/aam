@@ -328,6 +328,7 @@ def train(
             shuffle=True,
             num_workers=num_workers,
             collate_fn=train_collate,
+            drop_last=True,
         )
 
         val_loader = DataLoader(
@@ -336,6 +337,7 @@ def train(
             shuffle=False,
             num_workers=num_workers,
             collate_fn=val_collate,
+            drop_last=True,
         )
 
         logger.info("Creating model...")
@@ -576,6 +578,7 @@ def pretrain(
             shuffle=True,
             num_workers=num_workers,
             collate_fn=train_collate,
+            drop_last=True,
         )
 
         val_loader = DataLoader(
@@ -584,6 +587,7 @@ def pretrain(
             shuffle=False,
             num_workers=num_workers,
             collate_fn=val_collate,
+            drop_last=True,
         )
 
         logger.info("Creating model...")
