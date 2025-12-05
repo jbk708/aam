@@ -5,6 +5,29 @@ import torch.nn as nn
 from typing import Dict, Optional
 
 
+def _format_tensor_stats(tensor: torch.Tensor) -> str:
+    """Safely format tensor statistics for error messages.
+
+    Handles both integer and floating point tensors.
+
+    Args:
+        tensor: Tensor to format
+
+    Returns:
+        String with tensor statistics
+    """
+    min_val = tensor.min().item()
+    max_val = tensor.max().item()
+
+    # Handle integer tensors (can't compute mean)
+    if tensor.dtype in (torch.int64, torch.int32, torch.int16, torch.int8, torch.long):
+        return f"min={min_val}, max={max_val} (integer tensor)"
+    else:
+        # Floating point tensors
+        mean_val = tensor.mean().item()
+        return f"min={min_val:.6f}, max={max_val:.6f}, mean={mean_val:.6f}"
+
+
 class MultiTaskLoss(nn.Module):
     """Multi-task loss computation for AAM model."""
 
@@ -109,7 +132,7 @@ class MultiTaskLoss(nn.Module):
             error_msg = f"NaN values found in base_pred with shape {base_pred.shape}"
             print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
             print(
-                f"base_pred min={base_pred.min().item()}, max={base_pred.max().item()}, mean={base_pred.mean().item()}",
+                f"base_pred {_format_tensor_stats(base_pred)}",
                 file=sys.stderr,
                 flush=True,
             )
@@ -120,7 +143,7 @@ class MultiTaskLoss(nn.Module):
             error_msg = f"NaN values found in base_true with shape {base_true.shape}"
             print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
             print(
-                f"base_true min={base_true.min().item()}, max={base_true.max().item()}, mean={base_true.mean().item()}",
+                f"base_true {_format_tensor_stats(base_true)}",
                 file=sys.stderr,
                 flush=True,
             )
@@ -213,10 +236,11 @@ class MultiTaskLoss(nn.Module):
             print(f"ERROR: NaN in nucleotide loss after cross_entropy", file=sys.stderr, flush=True)
             print(f"valid_pred shape={valid_pred.shape}, valid_true shape={valid_true.shape}", file=sys.stderr, flush=True)
             print(
-                f"valid_pred min={valid_pred.min().item()}, max={valid_pred.max().item()}, mean={valid_pred.mean().item()}",
+                f"valid_pred {_format_tensor_stats(valid_pred)}",
                 file=sys.stderr,
                 flush=True,
             )
+            # valid_true is integer (token indices), so format it separately
             print(f"valid_true min={valid_true.min().item()}, max={valid_true.max().item()}", file=sys.stderr, flush=True)
             raise ValueError(f"NaN in nucleotide loss after cross_entropy computation")
 

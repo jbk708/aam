@@ -19,12 +19,12 @@ Multi-task loss functions and metrics. Implemented in `aam/training/losses.py` a
 ## Implementation
 - **Losses**: `MultiTaskLoss` in `aam/training/losses.py`
 - **Metrics**: `compute_regression_metrics()`, `compute_classification_metrics()`, `compute_count_metrics()` in `aam/training/metrics.py`
-- **Testing**: Comprehensive unit tests (18 loss tests + 11 metrics tests passing)
+- **Testing**: Comprehensive unit tests (25 loss tests + 11 metrics tests passing)
 
 ## Known Issues and Lessons Learned
 
 ### Shape Mismatch Handling (PYT-8.6)
-**Status:** Reverted - Needs re-implementation
+**Status:** ✅ Completed
 
 **Issue:**
 Previous attempt to handle shape mismatches in `compute_base_loss` (commit 1a68364) caused NaN propagation issues that corrupted model weights. The implementation used slicing operations (`base_pred[:, :base_true.shape[1]]`) which, while preserving gradients, caused numerical instability when combined with other losses.
@@ -34,21 +34,28 @@ Previous attempt to handle shape mismatches in `compute_base_loss` (commit 1a683
 - Complex conditional logic in loss functions can affect autograd behavior
 - NaN in model outputs (from corrupted embeddings) propagates through loss computation, creating NaN gradients that corrupt weights
 
+**Solution:**
+- **Primary Fix:** Use `drop_last=True` in DataLoader to ensure all batches are exactly `batch_size`, eliminating shape mismatches at the source
+- **Verification:** Confirmed `drop_last=True` is set in all DataLoaders (train, pretrain, validation)
+- **NaN Checks:** Verified NaN checks are in place before loss computation (trainer.py and losses.py)
+- **Tests:** Added 7 comprehensive tests for shape mismatch scenarios
+
 **Lessons Learned:**
-1. **Use `drop_last=True` in DataLoader** - Ensures all batches are exactly `batch_size`, eliminating shape mismatches at the source
-2. **Keep loss computation simple** - Avoid complex conditionals and slicing operations in loss functions
-3. **Add early NaN detection** - Check for NaN in model outputs BEFORE computing loss, not after
-4. **Test with remainder batches** - Always test edge cases (last batch with fewer samples)
-5. **Monitor embedding weights** - NaN in embeddings propagates through entire forward pass. Check early.
+1. **Use `drop_last=True` in DataLoader** - Ensures all batches are exactly `batch_size`, eliminating shape mismatches at the source ✅ IMPLEMENTED
+2. **Keep loss computation simple** - Avoid complex conditionals and slicing operations in loss functions ✅ VERIFIED
+3. **Add early NaN detection** - Check for NaN in model outputs BEFORE computing loss, not after ✅ VERIFIED
+4. **Test with remainder batches** - Always test edge cases (last batch with fewer samples) ✅ COMPLETED
+5. **Monitor embedding weights** - NaN in embeddings propagates through entire forward pass. Check early. ✅ VERIFIED
 
 **Current State:**
-- Reverted to commit 68597fc (pre-shape-mismatch-fix)
-- Current implementation: Simple MSE loss without shape handling
-- Works correctly with consistent batch sizes (using `drop_last=True`)
-- See PYT-8.6 ticket for proper re-implementation approach
+- ✅ `drop_last=True` verified in all DataLoaders (prevents shape mismatches)
+- ✅ Simple MSE loss without shape handling (keeps computation simple)
+- ✅ Shape validation in `compute_base_loss` raises clear errors if mismatch occurs
+- ✅ Comprehensive tests added (7 new tests covering all scenarios)
+- ✅ All tests passing (25 passed, 1 skipped)
 
-**Future Implementation:**
-- Use `drop_last=True` as primary solution (prevents shape mismatches)
-- If shape handling still needed, use `torch.index_select` or padding instead of slicing
-- Add NaN checks before loss computation
-- Keep loss functions simple and straightforward
+**Implementation Details:**
+- `drop_last=True` ensures consistent batch sizes, preventing shape mismatches
+- Shape validation in `compute_base_loss` provides clear error messages if issues occur
+- NaN checks prevent corrupted gradients from propagating
+- Tests verify correct behavior with consistent batch sizes and error handling for mismatches

@@ -49,6 +49,17 @@ def collate_fn(
             counts = counts[:token_limit]
             num_asvs = token_limit
 
+        # Verify sample has at least one ASV with count > 0
+        # This prevents all-padding samples that cause NaN in attention pooling
+        if num_asvs == 0 or (counts.sum() == 0).all():
+            import sys
+            error_msg = (
+                f"Sample {sample['sample_id']} has no ASVs with count > 0 "
+                f"(num_asvs={num_asvs}, counts_sum={counts.sum().item()})"
+            )
+            print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
+            raise ValueError(error_msg)
+
         padded_tokens = torch.zeros(token_limit, max_bp, dtype=torch.long)
         padded_counts = torch.zeros(token_limit, 1, dtype=torch.float)
         padded_tokens[:num_asvs] = tokens
@@ -177,13 +188,19 @@ class ASVDataset(Dataset):
             tokens_list.append(padded)
             counts_list.append(data[asv_idx])
 
+        # Ensure sample has at least one ASV with count > 0
+        # If not, this is a data quality issue that should be caught
         if not tokens_list:
-            tokens = torch.zeros(1, self.max_bp + 1, dtype=torch.long)
-            tokens[0, 0] = self.tokenizer.START_TOKEN
-            counts = torch.zeros(1, 1, dtype=torch.float)
-        else:
-            tokens = torch.stack(tokens_list)
-            counts = torch.FloatTensor(counts_list).unsqueeze(1)
+            import sys
+            error_msg = (
+                f"Sample {sample_id} has no ASVs with count > 0. "
+                f"This sample should be filtered out before creating the dataset."
+            )
+            print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
+            raise ValueError(error_msg)
+        
+        tokens = torch.stack(tokens_list)
+        counts = torch.FloatTensor(counts_list).unsqueeze(1)
 
         result = {
             "tokens": tokens,
