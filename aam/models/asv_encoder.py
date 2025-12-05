@@ -95,9 +95,24 @@ class ASVEncoder(nn.Module):
                 tokens_flat = chunk_tokens.reshape(batch_size * chunk_num_asvs, seq_len)
                 mask = (tokens_flat > 0).long()
                 
+                # Identify all-padding sequences (will cause NaN in transformer)
+                mask_sum = mask.sum(dim=-1)  # [batch_size * chunk_num_asvs]
+                all_padding = (mask_sum == 0)  # [batch_size * chunk_num_asvs]
+                
                 embeddings = self.token_embedding(tokens_flat)
                 embeddings = self.position_embedding(embeddings)
                 embeddings = self.transformer(embeddings, mask=mask)
+                
+                # Mask out NaN values for all-padding sequences
+                # Transformer may produce NaN for all-padding sequences
+                if all_padding.any():
+                    # Set embeddings to zero for all-padding sequences
+                    all_padding_expanded = all_padding.unsqueeze(-1).unsqueeze(-1)  # [batch_size * chunk_num_asvs, 1, 1]
+                    embeddings = torch.where(
+                        all_padding_expanded,
+                        torch.zeros_like(embeddings),
+                        embeddings
+                    )
                 
                 if self.predict_nucleotides and return_nucleotides:
                     nucleotide_logits = self.nucleotide_head(embeddings)
@@ -123,9 +138,24 @@ class ASVEncoder(nn.Module):
             tokens_flat = tokens.reshape(batch_size * num_asvs, seq_len)
             mask = (tokens_flat > 0).long()
             
+            # Identify all-padding sequences (will cause NaN in transformer)
+            mask_sum = mask.sum(dim=-1)  # [batch_size * num_asvs]
+            all_padding = (mask_sum == 0)  # [batch_size * num_asvs]
+            
             embeddings = self.token_embedding(tokens_flat)
             embeddings = self.position_embedding(embeddings)
             embeddings = self.transformer(embeddings, mask=mask)
+            
+            # Mask out NaN values for all-padding sequences
+            # Transformer may produce NaN for all-padding sequences
+            if all_padding.any():
+                # Set embeddings to zero for all-padding sequences
+                all_padding_expanded = all_padding.unsqueeze(-1).unsqueeze(-1)  # [batch_size * num_asvs, 1, 1]
+                embeddings = torch.where(
+                    all_padding_expanded,
+                    torch.zeros_like(embeddings),
+                    embeddings
+                )
             
             nucleotide_predictions = None
             if self.predict_nucleotides and return_nucleotides:
