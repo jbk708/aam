@@ -404,6 +404,12 @@ class Trainer:
                         print(f"base_target min={targets['base_target'].min().item()}, max={targets['base_target'].max().item()}", file=sys.stderr, flush=True)
                         if isinstance(batch, dict) and "sample_ids" in batch:
                             print(f"sample_ids in batch: {batch['sample_ids']}", file=sys.stderr, flush=True)
+                
+                if "nuc_predictions" in outputs:
+                    if torch.any(torch.isnan(outputs["nuc_predictions"])):
+                        print(f"ERROR: NaN in nuc_predictions before loss computation", file=sys.stderr, flush=True)
+                        print(f"nuc_predictions shape={outputs['nuc_predictions'].shape}", file=sys.stderr, flush=True)
+                        print(f"nuc_predictions min={outputs['nuc_predictions'].min().item()}, max={outputs['nuc_predictions'].max().item()}", file=sys.stderr, flush=True)
 
                 encoder_type = self._get_encoder_type()
                 is_classifier = self._get_is_classifier()
