@@ -71,6 +71,7 @@ def sequence_encoder_combined():
 def sample_tokens():
     """Create sample tokens for testing [B, S, L]."""
     from aam.data.tokenizer import SequenceTokenizer
+
     batch_size = 2
     num_asvs = 10
     seq_len = 50

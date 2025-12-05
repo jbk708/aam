@@ -39,6 +39,7 @@ def asv_encoder_with_nucleotides():
 def sample_tokens():
     """Create sample tokens for testing [B, S, L]."""
     from aam.data.tokenizer import SequenceTokenizer
+
     batch_size = 2
     num_asvs = 10
     seq_len = 50
@@ -52,6 +53,7 @@ def sample_tokens():
 def sample_tokens_full_length():
     """Create sample tokens with full length sequences."""
     from aam.data.tokenizer import SequenceTokenizer
+
     batch_size = 2
     num_asvs = 5
     seq_len = 50

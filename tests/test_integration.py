@@ -264,6 +264,7 @@ class TestModelPipelineIntegration:
         seq_len = 50
 
         from aam.data.tokenizer import SequenceTokenizer
+
         tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
         tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
         tokens = tokens.to(device)
@@ -290,6 +291,7 @@ class TestModelPipelineIntegration:
         seq_len = 50
 
         from aam.data.tokenizer import SequenceTokenizer
+
         tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
         tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
         tokens = tokens.to(device)
@@ -319,6 +321,7 @@ class TestModelPipelineIntegration:
         seq_len = 50
 
         from aam.data.tokenizer import SequenceTokenizer
+
         tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
         tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
         tokens = tokens.to(device)
@@ -367,6 +370,7 @@ class TestTrainingPipelineIntegration:
         seq_len = 50
 
         from aam.data.tokenizer import SequenceTokenizer
+
         tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
         tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
         tokens = tokens.to(device)
@@ -403,6 +407,7 @@ class TestTrainingPipelineIntegration:
         seq_len = 50
 
         from aam.data.tokenizer import SequenceTokenizer
+
         tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
         tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
         tokens = tokens.to(device)
@@ -437,6 +442,7 @@ class TestTrainingPipelineIntegration:
         seq_len = 50
 
         from aam.data.tokenizer import SequenceTokenizer
+
         tokens = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len))
         tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
         tokens = tokens.to(device)

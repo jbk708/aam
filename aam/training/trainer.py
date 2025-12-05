@@ -393,11 +393,11 @@ class Trainer:
                 import sys
 
                 # Get vocab_size from model (supports both SequenceEncoder and SequencePredictor)
-                if hasattr(self.model, 'vocab_size'):
+                if hasattr(self.model, "vocab_size"):
                     vocab_size = self.model.vocab_size
-                elif hasattr(self.model, 'base_model') and hasattr(self.model.base_model, 'vocab_size'):
+                elif hasattr(self.model, "base_model") and hasattr(self.model.base_model, "vocab_size"):
                     vocab_size = self.model.base_model.vocab_size
-                elif hasattr(self.model, 'sample_encoder') and hasattr(self.model.sample_encoder, 'asv_encoder'):
+                elif hasattr(self.model, "sample_encoder") and hasattr(self.model.sample_encoder, "asv_encoder"):
                     vocab_size = self.model.sample_encoder.asv_encoder.vocab_size
                 else:
                     # Default to 6 if we can't find it (new default with START_TOKEN)

@@ -85,6 +85,7 @@ def loss_fn():
 def simple_dataloader(device):
     """Create a simple DataLoader for testing."""
     from aam.data.tokenizer import SequenceTokenizer
+
     batch_size = 4
     num_asvs = 10
     seq_len = 50
@@ -103,6 +104,7 @@ def simple_dataloader(device):
 def simple_dataloader_encoder(device):
     """Create a simple DataLoader for SequenceEncoder training."""
     from aam.data.tokenizer import SequenceTokenizer
+
     batch_size = 4
     num_asvs = 10
     seq_len = 50
@@ -843,6 +845,7 @@ class TestGradientAccumulation:
         seq_len = 50
 
         from aam.data.tokenizer import SequenceTokenizer
+
         tokens1 = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len))
         tokens1[:, :, 0] = SequenceTokenizer.START_TOKEN
         tokens1 = tokens1.to(device)
