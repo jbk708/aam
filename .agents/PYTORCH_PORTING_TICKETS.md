@@ -162,15 +162,88 @@ Create validation prediction plots showing predicted vs actual values with linea
 
 ---
 
+### PYT-8.5: Support Shuffled Batches for UniFrac Distance Extraction
+**Priority:** MEDIUM | **Effort:** Medium | **Status:** ⏳ Not Started
+
+**Description:**
+Support shuffled batches for UniFrac distance extraction. Currently, UniFrac distances are computed assuming batches are in a specific order, but with shuffled batches, the distance matrix needs to be reordered to match the batch order.
+
+**Acceptance Criteria:**
+- [ ] Modify UniFrac distance extraction to handle shuffled batches
+- [ ] Ensure distance matrix rows/columns match batch sample order
+- [ ] Test with shuffled and non-shuffled batches
+- [ ] Verify loss computation works correctly with shuffled batches
+- [ ] Unit tests pass
+- [ ] Integration tests verify correct behavior
+
+**Implementation Notes:**
+- May need to reorder distance matrix based on sample IDs in batch
+- Consider caching reordered matrices for performance
+- Ensure backward compatibility with non-shuffled batches
+
+**Dependencies:** None
+
+**Estimated Time:** 3-4 hours
+
+---
+
+### PYT-8.6: Fix Base Loss Shape Mismatch for Variable Batch Sizes in Pretrain Mode
+**Priority:** HIGH | **Effort:** Medium | **Status:** ⏳ Not Started
+
+**Description:**
+Fix tensor shape mismatch error in `compute_base_loss` when training in pretrain mode with unweighted UniFrac. The error occurs because `base_output_dim` is set to the CLI `batch_size` argument, but actual batch sizes can vary (especially in the last batch). This causes `base_prediction` to have shape `[actual_batch_size, CLI_batch_size]` while `base_target` has shape `[actual_batch_size, actual_batch_size]` for pairwise UniFrac distances.
+
+**Acceptance Criteria:**
+- [ ] Fix `compute_base_loss` to handle shape mismatches for unweighted UniFrac
+- [ ] Ensure loss computation works when `base_prediction` shape doesn't match `base_target` shape
+- [ ] Handle case where actual batch size < CLI batch_size (last batch scenario)
+- [ ] Handle case where actual batch size == CLI batch_size (normal batches)
+- [ ] Preserve correct loss computation for Faith PD (should not be affected)
+- [ ] Add shape validation/warning or automatic reshaping/slicing
+- [ ] Test with different batch sizes (including last batch with fewer samples)
+- [ ] Test with both unweighted UniFrac and Faith PD metrics
+- [ ] Ensure backward compatibility with existing code
+- [ ] Unit tests pass (add tests for variable batch size scenarios)
+- [ ] Integration tests verify correct loss computation in pretrain mode
+
+**Implementation Notes:**
+- **CRITICAL LESSONS LEARNED FROM PREVIOUS ATTEMPT:**
+  1. **DO NOT use slicing operations (`base_pred[:, :base_true.shape[1]]`) in loss computation** - Even though slicing preserves gradients in PyTorch, it can cause numerical instability when combined with other losses (nucleotide loss) that flow through the same computation graph
+  2. **DO use `drop_last=True` in DataLoader** - This ensures all batches are exactly `batch_size`, eliminating shape mismatches entirely. This is the cleanest solution.
+  3. **DO add NaN checks BEFORE computing loss** - If model outputs contain NaN, skip loss computation and return zero loss to prevent NaN propagation
+  4. **DO NOT add complex conditional logic in loss computation** - Keep loss functions simple and straightforward. Complex conditionals can affect autograd behavior unexpectedly.
+  5. **Test thoroughly with different batch sizes** - Always test with remainder batches to catch shape mismatch issues early
+  6. **Monitor for NaN in embeddings** - NaN in embeddings propagates through entire forward pass. Check embeddings early in forward pass, not just in loss computation.
+
+- **Recommended Approach:**
+  - Use `drop_last=True` in DataLoader to ensure consistent batch sizes
+  - If shape mismatch still occurs (shouldn't with drop_last), use `torch.index_select` or padding instead of slicing
+  - Add early NaN detection in model forward pass (before loss computation)
+  - Keep loss computation simple - direct MSE without complex conditionals
+
+- **Previous Failed Attempt:**
+  - Commit 1a68364 added slicing logic that caused NaN propagation issues
+  - Issue was NOT the slicing itself, but how it interacted with other losses
+  - Reverted to commit 68597fc (pre-slicing) which works correctly
+  - Root cause: Numerical instability from combining sliced base_loss with nucleotide_loss in same backward pass
+
+**Dependencies:** None (can be implemented independently, but related to PYT-8.5)
+
+**Estimated Time:** 2-3 hours
+
+---
+
 ## Summary
 
-**Total Estimated Time:** 8-12 hours
+**Total Estimated Time:** 15-19 hours
 
 **Implementation Order:**
 1. ✅ PYT-8.3: Change Early Stopping Default to 10 Epochs (1 hour) - Completed
 2. ✅ PYT-8.2: Implement Single Best Model File Saving (2-3 hours) - Completed
 3. ✅ PYT-8.1: Implement TensorBoard Train/Val Overlay Verification (1-2 hours) - Completed
 4. ✅ PYT-8.4: Implement Validation Prediction Plots (4-6 hours) - Completed
+5. ⏳ PYT-8.5: Support Shuffled Batches for UniFrac Distance Extraction (3-4 hours) - Not Started
+6. ⏳ PYT-8.6: Fix Base Loss Shape Mismatch for Variable Batch Sizes in Pretrain Mode (2-3 hours) - Not Started
 
 **Notes:**
 - All tickets are independent and can be implemented in any order
@@ -178,4 +251,7 @@ Create validation prediction plots showing predicted vs actual values with linea
 - PYT-8.2 completed - single best model file saving implemented
 - PYT-8.1 completed - TensorBoard overlay verification documented
 - PYT-8.4 completed - validation prediction plots with matplotlib dependency added
+- PYT-8.5 not started - needed to fix UniFrac loss computation with shuffled batches
+- PYT-8.6 not started - HIGH priority bug fix for pretrain mode with variable batch sizes
+- **PYT-8.6 REVERTED**: Previous implementation (commit 1a68364) caused NaN propagation issues. Reverted to commit 68597fc. See implementation notes for critical lessons learned.
 - Follow the workflow in `.agents/workflow.md` for implementation
