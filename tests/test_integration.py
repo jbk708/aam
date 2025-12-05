@@ -258,7 +258,10 @@ class TestModelPipelineIntegration:
         num_asvs = 10
         seq_len = 50
 
-        tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len)).to(device)
+        from aam.data.tokenizer import SequenceTokenizer
+        tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
+        tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
+        tokens = tokens.to(device)
 
         with torch.no_grad():
             output = model(tokens)
@@ -281,7 +284,10 @@ class TestModelPipelineIntegration:
         num_asvs = 10
         seq_len = 50
 
-        tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len)).to(device)
+        from aam.data.tokenizer import SequenceTokenizer
+        tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
+        tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
+        tokens = tokens.to(device)
         counts = torch.rand(batch_size, num_asvs, 1).to(device)
 
         with torch.no_grad():
@@ -307,7 +313,10 @@ class TestModelPipelineIntegration:
         num_asvs = 10
         seq_len = 50
 
-        tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len)).to(device)
+        from aam.data.tokenizer import SequenceTokenizer
+        tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
+        tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
+        tokens = tokens.to(device)
         counts = torch.rand(batch_size, num_asvs, 1).to(device)
         target = torch.randn(batch_size, 1).to(device)
         base_target = torch.randn(batch_size, small_predictor_config["base_output_dim"]).to(device)
@@ -352,7 +361,10 @@ class TestTrainingPipelineIntegration:
         num_asvs = 10
         seq_len = 50
 
-        tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len)).to(device)
+        from aam.data.tokenizer import SequenceTokenizer
+        tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
+        tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
+        tokens = tokens.to(device)
         base_targets = torch.randn(batch_size, small_model_config["base_output_dim"]).to(device)
 
         model.train()
@@ -385,7 +397,10 @@ class TestTrainingPipelineIntegration:
         num_asvs = 10
         seq_len = 50
 
-        tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len)).to(device)
+        from aam.data.tokenizer import SequenceTokenizer
+        tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
+        tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
+        tokens = tokens.to(device)
         base_targets = torch.randn(batch_size, small_model_config["base_output_dim"]).to(device)
 
         model.eval()
@@ -416,7 +431,10 @@ class TestTrainingPipelineIntegration:
         num_asvs = 10
         seq_len = 50
 
-        tokens = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len)).to(device)
+        from aam.data.tokenizer import SequenceTokenizer
+        tokens = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len))
+        tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
+        tokens = tokens.to(device)
         base_targets = torch.randn(batch_size * 2, small_model_config["base_output_dim"]).to(device)
 
         from torch.utils.data import TensorDataset, DataLoader

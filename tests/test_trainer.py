@@ -89,8 +89,9 @@ def simple_dataloader(device):
     num_asvs = 10
     seq_len = 50
 
-    tokens = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len)).to(device)
+    tokens = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len))
     tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
+    tokens = tokens.to(device)
     counts = torch.rand(batch_size * 2, num_asvs, 1).to(device)
     targets = torch.randn(batch_size * 2, 1).to(device)
 
@@ -106,8 +107,9 @@ def simple_dataloader_encoder(device):
     num_asvs = 10
     seq_len = 50
 
-    tokens = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len)).to(device)
+    tokens = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len))
     tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
+    tokens = tokens.to(device)
     base_targets = torch.randn(batch_size * 2, 16).to(device)
 
     dataset = TensorDataset(tokens, base_targets)
@@ -841,14 +843,16 @@ class TestGradientAccumulation:
         seq_len = 50
 
         from aam.data.tokenizer import SequenceTokenizer
-        tokens1 = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len)).to(device)
+        tokens1 = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len))
         tokens1[:, :, 0] = SequenceTokenizer.START_TOKEN
+        tokens1 = tokens1.to(device)
         base_targets1 = torch.randn(batch_size * 2, 16).to(device)
         dataset1 = TensorDataset(tokens1, base_targets1)
         dataloader1 = DataLoader(dataset1, batch_size=batch_size, shuffle=False)
 
-        tokens2 = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len)).to(device)
+        tokens2 = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len))
         tokens2[:, :, 0] = SequenceTokenizer.START_TOKEN
+        tokens2 = tokens2.to(device)
         base_targets2 = torch.randn(batch_size * 2, 16).to(device)
         dataset2 = TensorDataset(tokens2, base_targets2)
         dataloader2 = DataLoader(dataset2, batch_size=batch_size, shuffle=False)
