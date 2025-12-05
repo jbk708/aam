@@ -173,8 +173,8 @@ def main():
     args = parser.parse_args()
     
     data_dir = Path(args.data_dir)
-    biom_file = data_dir / "table.biom"
-    tree_file = data_dir / "tree.nwk"
+    biom_file = data_dir / "fall_train_only_all_outdoor.biom"
+    tree_file = data_dir / "all-outdoors_sepp_tree.nwk"
     
     if not biom_file.exists():
         print(f"ERROR: BIOM file not found: {biom_file}")
