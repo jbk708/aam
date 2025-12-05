@@ -557,17 +557,17 @@ class Trainer:
 
                 # Format progress bar
                 postfix_dict = {
-                    "Total Loss": f"{running_avg_loss:.6f}" if running_avg_loss < 0.0001 else f"{running_avg_loss:.4f}",
+                    "TL": f"{running_avg_loss:.6f}" if running_avg_loss < 0.0001 else f"{running_avg_loss:.4f}",
                     "LR": f"{current_lr:.2e}",
                 }
                 if "unifrac_loss" in losses:
-                    postfix_dict["Unifrac Loss"] = (
+                    postfix_dict["UL"] = (
                         f"{running_avg_unifrac_loss:.6f}"
                         if running_avg_unifrac_loss < 0.0001
                         else f"{running_avg_unifrac_loss:.4f}"
                     )
                 if "nuc_loss" in losses:
-                    postfix_dict["Nuc Loss"] = (
+                    postfix_dict["NL"] = (
                         f"{running_avg_nuc_loss:.6f}" if running_avg_nuc_loss < 0.0001 else f"{running_avg_nuc_loss:.4f}"
                     )
 
@@ -692,16 +692,16 @@ class Trainer:
 
                     # Format validation progress bar
                     postfix_dict = {
-                        "Total Loss": f"{running_avg_loss:.6f}" if running_avg_loss < 0.0001 else f"{running_avg_loss:.4f}",
+                        "TL": f"{running_avg_loss:.6f}" if running_avg_loss < 0.0001 else f"{running_avg_loss:.4f}",
                     }
                     if "unifrac_loss" in losses:
-                        postfix_dict["Unifrac Loss"] = (
+                        postfix_dict["UL"] = (
                             f"{running_avg_unifrac_loss:.6f}"
                             if running_avg_unifrac_loss < 0.0001
                             else f"{running_avg_unifrac_loss:.4f}"
                         )
                     if "nuc_loss" in losses:
-                        postfix_dict["Nuc Loss"] = (
+                        postfix_dict["NL"] = (
                             f"{running_avg_nuc_loss:.6f}" if running_avg_nuc_loss < 0.0001 else f"{running_avg_nuc_loss:.4f}"
                         )
 
