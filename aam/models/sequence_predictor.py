@@ -20,7 +20,7 @@ class SequencePredictor(nn.Module):
         self,
         base_model: Optional[SequenceEncoder] = None,
         encoder_type: str = "unifrac",
-        vocab_size: int = 5,
+        vocab_size: int = 6,
         embedding_dim: int = 128,
         max_bp: int = 150,
         token_limit: int = 1024,
