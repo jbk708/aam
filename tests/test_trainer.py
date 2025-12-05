@@ -33,7 +33,7 @@ def device():
 def small_model():
     """Create a small SequenceEncoder for testing."""
     return SequenceEncoder(
-        vocab_size=5,
+        vocab_size=6,
         embedding_dim=32,
         max_bp=50,
         token_limit=64,
@@ -53,7 +53,7 @@ def small_model():
 def small_predictor():
     """Create a small SequencePredictor for testing."""
     return SequencePredictor(
-        vocab_size=5,
+        vocab_size=6,
         embedding_dim=32,
         max_bp=50,
         token_limit=64,
@@ -84,11 +84,15 @@ def loss_fn():
 @pytest.fixture
 def simple_dataloader(device):
     """Create a simple DataLoader for testing."""
+    from aam.data.tokenizer import SequenceTokenizer
+
     batch_size = 4
     num_asvs = 10
     seq_len = 50
 
-    tokens = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len)).to(device)
+    tokens = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len))
+    tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
+    tokens = tokens.to(device)
     counts = torch.rand(batch_size * 2, num_asvs, 1).to(device)
     targets = torch.randn(batch_size * 2, 1).to(device)
 
@@ -99,11 +103,15 @@ def simple_dataloader(device):
 @pytest.fixture
 def simple_dataloader_encoder(device):
     """Create a simple DataLoader for SequenceEncoder training."""
+    from aam.data.tokenizer import SequenceTokenizer
+
     batch_size = 4
     num_asvs = 10
     seq_len = 50
 
-    tokens = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len)).to(device)
+    tokens = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len))
+    tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
+    tokens = tokens.to(device)
     base_targets = torch.randn(batch_size * 2, 16).to(device)
 
     dataset = TensorDataset(tokens, base_targets)
@@ -536,7 +544,7 @@ class TestTrainingLoop:
         assert best_model_path.exists(), "best_model.pt should exist"
 
         new_model = SequenceEncoder(
-            vocab_size=5,
+            vocab_size=6,
             embedding_dim=32,
             max_bp=50,
             token_limit=64,
@@ -569,7 +577,7 @@ class TestLoadPretrainedEncoder:
     def test_load_pretrained_encoder(self, small_predictor, device, tmp_path):
         """Test loading pre-trained SequenceEncoder into SequencePredictor."""
         encoder = SequenceEncoder(
-            vocab_size=5,
+            vocab_size=6,
             embedding_dim=32,
             max_bp=50,
             token_limit=64,
@@ -836,12 +844,18 @@ class TestGradientAccumulation:
         num_asvs = 10
         seq_len = 50
 
-        tokens1 = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len)).to(device)
+        from aam.data.tokenizer import SequenceTokenizer
+
+        tokens1 = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len))
+        tokens1[:, :, 0] = SequenceTokenizer.START_TOKEN
+        tokens1 = tokens1.to(device)
         base_targets1 = torch.randn(batch_size * 2, 16).to(device)
         dataset1 = TensorDataset(tokens1, base_targets1)
         dataloader1 = DataLoader(dataset1, batch_size=batch_size, shuffle=False)
 
-        tokens2 = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len)).to(device)
+        tokens2 = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len))
+        tokens2[:, :, 0] = SequenceTokenizer.START_TOKEN
+        tokens2 = tokens2.to(device)
         base_targets2 = torch.randn(batch_size * 2, 16).to(device)
         dataset2 = TensorDataset(tokens2, base_targets2)
         dataloader2 = DataLoader(dataset2, batch_size=batch_size, shuffle=False)
@@ -993,7 +1007,7 @@ class TestPredictionPlots:
         from aam.models.sequence_predictor import SequencePredictor
 
         classifier_model = SequencePredictor(
-            vocab_size=5,
+            vocab_size=6,
             embedding_dim=32,
             max_bp=50,
             token_limit=64,
@@ -1090,7 +1104,7 @@ class TestPredictionPlots:
         from aam.models.sequence_predictor import SequencePredictor
 
         classifier_model = SequencePredictor(
-            vocab_size=5,
+            vocab_size=6,
             embedding_dim=32,
             max_bp=50,
             token_limit=64,

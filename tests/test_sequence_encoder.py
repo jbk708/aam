@@ -11,7 +11,7 @@ from aam.models.sequence_encoder import SequenceEncoder
 def sequence_encoder():
     """Create a SequenceEncoder instance without nucleotide prediction."""
     return SequenceEncoder(
-        vocab_size=5,
+        vocab_size=6,
         embedding_dim=64,
         max_bp=150,
         token_limit=1024,
@@ -31,7 +31,7 @@ def sequence_encoder():
 def sequence_encoder_with_nucleotides():
     """Create a SequenceEncoder instance with nucleotide prediction."""
     return SequenceEncoder(
-        vocab_size=5,
+        vocab_size=6,
         embedding_dim=64,
         max_bp=150,
         token_limit=1024,
@@ -51,7 +51,7 @@ def sequence_encoder_with_nucleotides():
 def sequence_encoder_combined():
     """Create a SequenceEncoder instance with combined encoder type."""
     return SequenceEncoder(
-        vocab_size=5,
+        vocab_size=6,
         embedding_dim=64,
         max_bp=150,
         token_limit=1024,
@@ -70,10 +70,13 @@ def sequence_encoder_combined():
 @pytest.fixture
 def sample_tokens():
     """Create sample tokens for testing [B, S, L]."""
+    from aam.data.tokenizer import SequenceTokenizer
+
     batch_size = 2
     num_asvs = 10
     seq_len = 50
     tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
+    tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
     tokens[:, :, 40:] = 0
     return tokens
 
@@ -97,7 +100,7 @@ class TestSequenceEncoder:
         assert isinstance(sequence_encoder_combined, nn.Module)
 
     def test_init_default_vocab_size(self):
-        """Test that vocab_size defaults to 5."""
+        """Test that vocab_size defaults to 6."""
         encoder = SequenceEncoder(
             embedding_dim=64,
             max_bp=150,
@@ -133,7 +136,7 @@ class TestSequenceEncoder:
         assert "nuc_predictions" in result
         assert result["base_prediction"].shape == (2, 32)
         assert result["sample_embeddings"].shape == (2, 10, 64)
-        assert result["nuc_predictions"].shape == (2, 10, 50, 5)
+        assert result["nuc_predictions"].shape == (2, 10, 50, 6)
 
     def test_forward_shape_no_base_output_dim(self, sample_tokens):
         """Test forward pass when base_output_dim is None."""
@@ -193,7 +196,7 @@ class TestSequenceEncoder:
         sequence_encoder_with_nucleotides.train()
         result = sequence_encoder_with_nucleotides(sample_tokens, return_nucleotides=True)
         assert "nuc_predictions" in result
-        assert result["nuc_predictions"].shape == (2, 10, 50, 5)
+        assert result["nuc_predictions"].shape == (2, 10, 50, 6)
 
     def test_forward_training_mode_without_nucleotides(self, sequence_encoder_with_nucleotides, sample_tokens):
         """Test forward pass in training mode without requesting nucleotide predictions."""
@@ -297,6 +300,6 @@ class TestSequenceEncoder:
         """Test that nucleotide predictions are side output, not used as input."""
         result = sequence_encoder_with_nucleotides(sample_tokens, return_nucleotides=True)
         assert "nuc_predictions" in result
-        assert result["nuc_predictions"].shape == (2, 10, 50, 5)
+        assert result["nuc_predictions"].shape == (2, 10, 50, 6)
         assert "base_prediction" in result
         assert "sample_embeddings" in result

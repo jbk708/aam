@@ -193,7 +193,7 @@ class TestNucleotideLoss:
         batch_size = 2
         num_asvs = 5
         seq_len = 10
-        vocab_size = 5
+        vocab_size = 6
 
         nuc_pred = torch.randn(batch_size, num_asvs, seq_len, vocab_size)
         nuc_true = torch.randint(0, vocab_size, (batch_size, num_asvs, seq_len))
@@ -221,7 +221,7 @@ class TestNucleotideLoss:
         batch_size = 2
         num_asvs = 5
         seq_len = 10
-        vocab_size = 5
+        vocab_size = 6
 
         nuc_pred = torch.randn(batch_size, num_asvs, seq_len, vocab_size)
         nuc_true = torch.randint(0, vocab_size, (batch_size, num_asvs, seq_len))
@@ -241,7 +241,7 @@ class TestNucleotideLoss:
         batch_size = 2
         num_asvs = 5
         seq_len = 10
-        vocab_size = 5
+        vocab_size = 6
 
         nuc_predictions = torch.randn(batch_size, num_asvs, seq_len, vocab_size)
         tokens = torch.randint(0, vocab_size, (batch_size, num_asvs, seq_len))
@@ -269,7 +269,7 @@ class TestTotalLoss:
         batch_size = 4
         num_asvs = 10
         seq_len = 20
-        vocab_size = 5
+        vocab_size = 6
 
         outputs = {
             "target_prediction": torch.randn(batch_size, 1),
@@ -310,7 +310,7 @@ class TestTotalLoss:
         batch_size = 4
         num_asvs = 10
         seq_len = 20
-        vocab_size = 5
+        vocab_size = 6
 
         outputs = {
             "target_prediction": torch.randn(batch_size, 1),

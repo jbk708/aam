@@ -14,7 +14,7 @@ class SampleSequenceEncoder(nn.Module):
 
     def __init__(
         self,
-        vocab_size: int = 5,
+        vocab_size: int = 6,
         embedding_dim: int = 128,
         max_bp: int = 150,
         token_limit: int = 1024,
@@ -34,7 +34,7 @@ class SampleSequenceEncoder(nn.Module):
         """Initialize SampleSequenceEncoder.
 
         Args:
-            vocab_size: Vocabulary size (default: 5 for pad, A, C, G, T)
+            vocab_size: Vocabulary size (default: 6 for pad, A, C, G, T, START)
             embedding_dim: Embedding dimension
             max_bp: Maximum sequence length (base pairs)
             token_limit: Maximum number of ASVs per sample

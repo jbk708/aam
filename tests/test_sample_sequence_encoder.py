@@ -11,7 +11,7 @@ from aam.models.sample_sequence_encoder import SampleSequenceEncoder
 def sample_encoder():
     """Create a SampleSequenceEncoder instance without nucleotide prediction."""
     return SampleSequenceEncoder(
-        vocab_size=5,
+        vocab_size=6,
         embedding_dim=64,
         max_bp=150,
         token_limit=1024,
@@ -29,7 +29,7 @@ def sample_encoder():
 def sample_encoder_with_nucleotides():
     """Create a SampleSequenceEncoder instance with nucleotide prediction."""
     return SampleSequenceEncoder(
-        vocab_size=5,
+        vocab_size=6,
         embedding_dim=64,
         max_bp=150,
         token_limit=1024,
@@ -46,10 +46,13 @@ def sample_encoder_with_nucleotides():
 @pytest.fixture
 def sample_tokens():
     """Create sample tokens for testing [B, S, L]."""
+    from aam.data.tokenizer import SequenceTokenizer
+
     batch_size = 2
     num_asvs = 10
     seq_len = 50
     tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
+    tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
     tokens[:, :, 40:] = 0
     return tokens
 
@@ -88,7 +91,7 @@ class TestSampleSequenceEncoder:
         assert isinstance(sample_encoder_with_nucleotides, nn.Module)
 
     def test_init_default_vocab_size(self):
-        """Test that vocab_size defaults to 5."""
+        """Test that vocab_size defaults to 6."""
         encoder = SampleSequenceEncoder(
             embedding_dim=64,
             max_bp=150,
@@ -114,7 +117,7 @@ class TestSampleSequenceEncoder:
         """Test forward pass output shape with nucleotide predictions."""
         embeddings, nucleotides = sample_encoder_with_nucleotides(sample_tokens, return_nucleotides=True)
         assert embeddings.shape == (2, 10, 64)
-        assert nucleotides.shape == (2, 10, 50, 5)
+        assert nucleotides.shape == (2, 10, 50, 6)
 
     def test_forward_different_batch_sizes(self, sample_encoder):
         """Test forward pass with different batch sizes."""
@@ -170,7 +173,7 @@ class TestSampleSequenceEncoder:
         sample_encoder_with_nucleotides.train()
         embeddings, nucleotides = sample_encoder_with_nucleotides(sample_tokens, return_nucleotides=True)
         assert embeddings.shape == (2, 10, 64)
-        assert nucleotides.shape == (2, 10, 50, 5)
+        assert nucleotides.shape == (2, 10, 50, 6)
 
     def test_forward_training_mode_without_nucleotides(self, sample_encoder_with_nucleotides, sample_tokens):
         """Test forward pass in training mode without requesting nucleotide predictions."""

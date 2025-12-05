@@ -11,7 +11,7 @@ from aam.models.asv_encoder import ASVEncoder
 def asv_encoder():
     """Create an ASVEncoder instance without nucleotide prediction."""
     return ASVEncoder(
-        vocab_size=5,
+        vocab_size=6,
         embedding_dim=64,
         max_bp=150,
         num_layers=2,
@@ -25,7 +25,7 @@ def asv_encoder():
 def asv_encoder_with_nucleotides():
     """Create an ASVEncoder instance with nucleotide prediction."""
     return ASVEncoder(
-        vocab_size=5,
+        vocab_size=6,
         embedding_dim=64,
         max_bp=150,
         num_layers=2,
@@ -38,10 +38,13 @@ def asv_encoder_with_nucleotides():
 @pytest.fixture
 def sample_tokens():
     """Create sample tokens for testing [B, S, L]."""
+    from aam.data.tokenizer import SequenceTokenizer
+
     batch_size = 2
     num_asvs = 10
     seq_len = 50
     tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
+    tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
     tokens[:, :, 40:] = 0
     return tokens
 
@@ -49,10 +52,14 @@ def sample_tokens():
 @pytest.fixture
 def sample_tokens_full_length():
     """Create sample tokens with full length sequences."""
+    from aam.data.tokenizer import SequenceTokenizer
+
     batch_size = 2
     num_asvs = 5
     seq_len = 50
-    return torch.randint(1, 5, (batch_size, num_asvs, seq_len))
+    tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
+    tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
+    return tokens
 
 
 class TestASVEncoder:
@@ -69,7 +76,7 @@ class TestASVEncoder:
         assert isinstance(asv_encoder_with_nucleotides, nn.Module)
 
     def test_init_default_vocab_size(self):
-        """Test that vocab_size defaults to 5."""
+        """Test that vocab_size defaults to 6."""
         encoder = ASVEncoder(
             embedding_dim=64,
             max_bp=150,
@@ -77,6 +84,7 @@ class TestASVEncoder:
             num_heads=4,
         )
         assert encoder is not None
+        assert encoder.vocab_size == 6
 
     def test_init_default_max_bp(self):
         """Test that max_bp defaults to 150."""
@@ -97,7 +105,7 @@ class TestASVEncoder:
         """Test forward pass output shape with nucleotide predictions."""
         embeddings, nucleotides = asv_encoder_with_nucleotides(sample_tokens, return_nucleotides=True)
         assert embeddings.shape == (2, 10, 64)
-        assert nucleotides.shape == (2, 10, 50, 5)
+        assert nucleotides.shape == (2, 10, 50, 6)
 
     def test_forward_different_batch_sizes(self, asv_encoder):
         """Test forward pass with different batch sizes."""
@@ -146,7 +154,7 @@ class TestASVEncoder:
         asv_encoder_with_nucleotides.train()
         embeddings, nucleotides = asv_encoder_with_nucleotides(sample_tokens, return_nucleotides=True)
         assert embeddings.shape == (2, 10, 64)
-        assert nucleotides.shape == (2, 10, 50, 5)
+        assert nucleotides.shape == (2, 10, 50, 6)
 
     def test_forward_training_mode_without_nucleotides(self, asv_encoder_with_nucleotides, sample_tokens):
         """Test forward pass in training mode without requesting nucleotide predictions."""

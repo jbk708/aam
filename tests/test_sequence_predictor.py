@@ -12,7 +12,7 @@ from aam.models.sequence_encoder import SequenceEncoder
 def base_encoder():
     """Create a SequenceEncoder instance for use as base model."""
     return SequenceEncoder(
-        vocab_size=5,
+        vocab_size=6,
         embedding_dim=64,
         max_bp=150,
         token_limit=1024,
@@ -32,7 +32,7 @@ def base_encoder():
 def base_encoder_with_nucleotides():
     """Create a SequenceEncoder instance with nucleotide prediction."""
     return SequenceEncoder(
-        vocab_size=5,
+        vocab_size=6,
         embedding_dim=64,
         max_bp=150,
         token_limit=1024,
@@ -110,10 +110,13 @@ def sequence_predictor_no_base():
 @pytest.fixture
 def sample_tokens():
     """Create sample tokens for testing [B, S, L]."""
+    from aam.data.tokenizer import SequenceTokenizer
+
     batch_size = 2
     num_asvs = 10
     seq_len = 50
     tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
+    tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
     tokens[:, :, 40:] = 0
     return tokens
 
@@ -175,10 +178,11 @@ class TestSequencePredictor:
         assert "base_prediction" in result
         assert "nuc_predictions" in result
         assert result["target_prediction"].shape == (2, 1)
+        assert result["nuc_predictions"].shape == (2, 10, 50, 6)
         assert result["count_prediction"].shape == (2, 10, 1)
         assert result["base_embeddings"].shape == (2, 10, 64)
         assert result["base_prediction"].shape == (2, 32)
-        assert result["nuc_predictions"].shape == (2, 10, 50, 5)
+        assert result["nuc_predictions"].shape == (2, 10, 50, 6)
 
     def test_forward_shape_classifier(self, sequence_predictor_classifier, sample_tokens):
         """Test forward pass output shape for classification."""
@@ -377,7 +381,7 @@ class TestSequencePredictor:
         result1 = regressor1(sample_tokens)
 
         new_base = SequenceEncoder(
-            vocab_size=5,
+            vocab_size=6,
             embedding_dim=64,
             max_bp=150,
             token_limit=1024,

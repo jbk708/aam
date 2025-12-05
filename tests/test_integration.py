@@ -45,6 +45,11 @@ def tree_file(data_dir):
 @pytest.fixture
 def device():
     """Get device for testing."""
+    # Clear any previous CUDA errors before each test
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        # Synchronize to ensure any pending operations complete
+        torch.cuda.synchronize()
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -52,7 +57,7 @@ def device():
 def small_model_config():
     """Small model configuration for faster testing."""
     return {
-        "vocab_size": 5,
+        "vocab_size": 6,
         "embedding_dim": 32,
         "max_bp": 50,
         "token_limit": 64,
@@ -149,7 +154,7 @@ class TestDataPipelineIntegration:
         sample = dataset[0]
 
         assert len(sample["tokens"].shape) == 2
-        assert sample["tokens"].shape[1] == 150
+        assert sample["tokens"].shape[1] == 151
         assert sample["tokens"].shape[0] <= 1024
 
         assert len(sample["counts"].shape) == 2
@@ -243,7 +248,7 @@ class TestDataPipelineIntegration:
         assert len(batch["tokens"].shape) == 3
         assert batch["tokens"].shape[0] == 4
         assert batch["tokens"].shape[1] <= 1024
-        assert batch["tokens"].shape[2] == 150
+        assert batch["tokens"].shape[2] == 151
 
 
 class TestModelPipelineIntegration:
@@ -258,7 +263,11 @@ class TestModelPipelineIntegration:
         num_asvs = 10
         seq_len = 50
 
-        tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len)).to(device)
+        from aam.data.tokenizer import SequenceTokenizer
+
+        tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
+        tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
+        tokens = tokens.to(device)
 
         with torch.no_grad():
             output = model(tokens)
@@ -281,7 +290,11 @@ class TestModelPipelineIntegration:
         num_asvs = 10
         seq_len = 50
 
-        tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len)).to(device)
+        from aam.data.tokenizer import SequenceTokenizer
+
+        tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
+        tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
+        tokens = tokens.to(device)
         counts = torch.rand(batch_size, num_asvs, 1).to(device)
 
         with torch.no_grad():
@@ -307,7 +320,11 @@ class TestModelPipelineIntegration:
         num_asvs = 10
         seq_len = 50
 
-        tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len)).to(device)
+        from aam.data.tokenizer import SequenceTokenizer
+
+        tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
+        tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
+        tokens = tokens.to(device)
         counts = torch.rand(batch_size, num_asvs, 1).to(device)
         target = torch.randn(batch_size, 1).to(device)
         base_target = torch.randn(batch_size, small_predictor_config["base_output_dim"]).to(device)
@@ -352,7 +369,11 @@ class TestTrainingPipelineIntegration:
         num_asvs = 10
         seq_len = 50
 
-        tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len)).to(device)
+        from aam.data.tokenizer import SequenceTokenizer
+
+        tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
+        tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
+        tokens = tokens.to(device)
         base_targets = torch.randn(batch_size, small_model_config["base_output_dim"]).to(device)
 
         model.train()
@@ -385,7 +406,11 @@ class TestTrainingPipelineIntegration:
         num_asvs = 10
         seq_len = 50
 
-        tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len)).to(device)
+        from aam.data.tokenizer import SequenceTokenizer
+
+        tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
+        tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
+        tokens = tokens.to(device)
         base_targets = torch.randn(batch_size, small_model_config["base_output_dim"]).to(device)
 
         model.eval()
@@ -416,7 +441,11 @@ class TestTrainingPipelineIntegration:
         num_asvs = 10
         seq_len = 50
 
-        tokens = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len)).to(device)
+        from aam.data.tokenizer import SequenceTokenizer
+
+        tokens = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len))
+        tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
+        tokens = tokens.to(device)
         base_targets = torch.randn(batch_size * 2, small_model_config["base_output_dim"]).to(device)
 
         from torch.utils.data import TensorDataset, DataLoader
