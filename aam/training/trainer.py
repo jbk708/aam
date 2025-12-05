@@ -385,6 +385,18 @@ class Trainer:
         for step, batch in enumerate(pbar, 1):
             try:
                 tokens, targets = self._prepare_batch(batch)
+                
+                # Check for invalid token values before model forward pass
+                import sys
+                if torch.any(tokens < 0) or torch.any(tokens >= 5):
+                    invalid_mask = (tokens < 0) | (tokens >= 5)
+                    invalid_count = invalid_mask.sum().item()
+                    print(f"ERROR: Invalid token values detected before model forward", file=sys.stderr, flush=True)
+                    print(f"tokens shape={tokens.shape}, min={tokens.min().item()}, max={tokens.max().item()}, invalid_count={invalid_count}", file=sys.stderr, flush=True)
+                    raise ValueError(f"Invalid token values: min={tokens.min().item()}, max={tokens.max().item()}, vocab_size=5")
+                if torch.any(torch.isnan(tokens)):
+                    print(f"ERROR: NaN in tokens before model forward", file=sys.stderr, flush=True)
+                    raise ValueError("NaN values found in tokens")
 
                 return_nucleotides = "nucleotides" in targets or self.loss_fn.nuc_penalty > 0
                 outputs = self.model(tokens, return_nucleotides=return_nucleotides)
