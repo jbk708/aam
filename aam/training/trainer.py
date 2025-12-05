@@ -460,7 +460,8 @@ class Trainer:
                         )
                         # Log gradient norm to TensorBoard if available
                         if self.writer is not None:
-                            self.writer.add_scalar("train/grad_norm", grad_norm.item(), step)
+                            global_step = epoch * len(dataloader) + step
+                            self.writer.add_scalar("train/grad_norm", grad_norm.item(), global_step)
                     
                     self.optimizer.step()
                     self.optimizer.zero_grad()
