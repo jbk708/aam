@@ -298,9 +298,72 @@ Fix NaN values appearing in model outputs during training. The model produces Na
 
 ---
 
+### PYT-8.8: Add Start Token to Prevent All-Padding Sequence NaN Issues
+**Priority:** HIGH | **Effort:** Medium | **Status:** ⏳ Not Started
+
+**Description:**
+Add a start token to all sequences to prevent all-padding sequences that cause NaN in transformer attention mechanisms during eval mode. When sequences consist entirely of padding tokens, PyTorch's TransformerEncoder produces NaN values in the attention mechanism's softmax operation, causing NaN to propagate through the entire model.
+
+**Root Cause:**
+- Sequences can consist entirely of padding tokens (all positions masked)
+- PyTorch's TransformerEncoder attention mechanism produces NaN when ALL positions are masked (all-True `src_key_padding_mask`)
+- This occurs specifically in eval mode (train mode with dropout masks some issues)
+- NaN appears in the first transformer layer output, propagating to all downstream layers
+- Affects both training and validation, but more visible in validation (eval mode)
+
+**Acceptance Criteria:**
+- [ ] Add start token to vocabulary (e.g., token ID 5, or repurpose existing token)
+- [ ] Modify tokenizer to prepend start token to each sequence
+- [ ] Update model to handle start token in embeddings and attention
+- [ ] Ensure start token is never masked (always valid)
+- [ ] Update sequence length handling to account for start token
+- [ ] Verify no all-padding sequences exist after start token addition
+- [ ] Test transformer forward pass in both train and eval mode
+- [ ] Verify NaN no longer appears in validation
+- [ ] Update tests to account for start token
+- [ ] Update documentation
+
+**Implementation Notes:**
+- **Approach:**
+  1. Add start token to vocabulary (increase `vocab_size` from 5 to 6, or repurpose token 0)
+  2. Modify `SequenceTokenizer` to prepend start token to each sequence
+  3. Ensure start token position is never masked in attention masks
+  4. Update `max_bp` handling if needed (start token adds 1 to sequence length)
+  5. Update model initialization to handle new vocabulary size
+
+- **Design Decisions:**
+  - Option 1: Add new token (vocab_size becomes 6, token ID 5 = START)
+  - Option 2: Repurpose padding token 0 as start token (requires careful handling)
+  - Option 3: Use special token embedding that's always present
+  - **Recommendation**: Option 1 (add new token) is cleanest and most explicit
+
+- **Files to Modify:**
+  - `aam/data/tokenizer.py` - Add start token prepending logic
+  - `aam/models/asv_encoder.py` - Update vocab_size handling
+  - `aam/models/sequence_encoder.py` - Update vocab_size if needed
+  - `aam/models/sample_sequence_encoder.py` - Update vocab_size if needed
+  - `aam/cli.py` - Update default vocab_size if needed
+  - `tests/test_tokenizer.py` - Add tests for start token
+  - `tests/test_asv_encoder.py` - Update tests for new vocab size
+  - `tests/test_sequence_encoder.py` - Update tests for new vocab size
+
+- **Testing:**
+  - Verify no sequences are all-padding after start token addition
+  - Test transformer forward pass in eval mode (should have no NaN)
+  - Test transformer forward pass in train mode (should still work)
+  - Test validation loop (should have no NaN warnings)
+  - Test training loop (should be stable)
+  - Verify start token is always present and never masked
+
+**Dependencies:** PYT-8.7 (related, but can be implemented independently)
+
+**Estimated Time:** 3-4 hours
+
+---
+
 ## Summary
 
-**Total Estimated Time:** 19-25 hours
+**Total Estimated Time:** 22-29 hours
 
 **Implementation Order:**
 1. ✅ PYT-8.3: Change Early Stopping Default to 10 Epochs (1 hour) - Completed
@@ -308,8 +371,9 @@ Fix NaN values appearing in model outputs during training. The model produces Na
 3. ✅ PYT-8.1: Implement TensorBoard Train/Val Overlay Verification (1-2 hours) - Completed
 4. ✅ PYT-8.4: Implement Validation Prediction Plots (4-6 hours) - Completed
 5. ✅ PYT-8.5: Support Shuffled Batches for UniFrac Distance Extraction (3-4 hours) - Completed
-6. ⏳ PYT-8.6: Fix Base Loss Shape Mismatch for Variable Batch Sizes in Pretrain Mode (2-3 hours) - Not Started
-7. ⏳ PYT-8.7: Fix Nucleotide Loss NaN Issue and Add Gradient Clipping (4-6 hours) - Not Started
+6. ⏳ **PYT-8.8: Add Start Token to Prevent All-Padding Sequence NaN Issues (3-4 hours) - HIGH PRIORITY** - Not Started
+7. ⏳ PYT-8.6: Fix Base Loss Shape Mismatch for Variable Batch Sizes in Pretrain Mode (2-3 hours) - Not Started
+8. ⏳ PYT-8.7: Fix Nucleotide Loss NaN Issue and Add Gradient Clipping (4-6 hours) - Not Started
 
 **Notes:**
 - All tickets are independent and can be implemented in any order
@@ -320,5 +384,6 @@ Fix NaN values appearing in model outputs during training. The model produces Na
 - PYT-8.5 completed - UniFrac distance extraction now supports shuffled batches with proper reordering
 - PYT-8.6 not started - HIGH priority bug fix for pretrain mode with variable batch sizes
 - PYT-8.7 partially completed - Gradient clipping implemented, root cause investigation needed for NaN in model outputs (both base_prediction and nuc_predictions)
+- **PYT-8.8 HIGH PRIORITY** - Add start token to prevent all-padding sequences that cause NaN in transformer attention (root cause identified: PyTorch TransformerEncoder produces NaN when all positions are masked in eval mode)
 - **PYT-8.6 REVERTED**: Previous implementation (commit 1a68364) caused NaN propagation issues. Reverted to commit 68597fc. See implementation notes for critical lessons learned.
 - Follow the workflow in `.agents/workflow.md` for implementation
