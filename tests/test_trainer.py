@@ -84,11 +84,13 @@ def loss_fn():
 @pytest.fixture
 def simple_dataloader(device):
     """Create a simple DataLoader for testing."""
+    from aam.data.tokenizer import SequenceTokenizer
     batch_size = 4
     num_asvs = 10
     seq_len = 50
 
     tokens = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len)).to(device)
+    tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
     counts = torch.rand(batch_size * 2, num_asvs, 1).to(device)
     targets = torch.randn(batch_size * 2, 1).to(device)
 
@@ -99,11 +101,13 @@ def simple_dataloader(device):
 @pytest.fixture
 def simple_dataloader_encoder(device):
     """Create a simple DataLoader for SequenceEncoder training."""
+    from aam.data.tokenizer import SequenceTokenizer
     batch_size = 4
     num_asvs = 10
     seq_len = 50
 
     tokens = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len)).to(device)
+    tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
     base_targets = torch.randn(batch_size * 2, 16).to(device)
 
     dataset = TensorDataset(tokens, base_targets)
@@ -836,12 +840,15 @@ class TestGradientAccumulation:
         num_asvs = 10
         seq_len = 50
 
+        from aam.data.tokenizer import SequenceTokenizer
         tokens1 = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len)).to(device)
+        tokens1[:, :, 0] = SequenceTokenizer.START_TOKEN
         base_targets1 = torch.randn(batch_size * 2, 16).to(device)
         dataset1 = TensorDataset(tokens1, base_targets1)
         dataloader1 = DataLoader(dataset1, batch_size=batch_size, shuffle=False)
 
         tokens2 = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len)).to(device)
+        tokens2[:, :, 0] = SequenceTokenizer.START_TOKEN
         base_targets2 = torch.randn(batch_size * 2, 16).to(device)
         dataset2 = TensorDataset(tokens2, base_targets2)
         dataloader2 = DataLoader(dataset2, batch_size=batch_size, shuffle=False)
