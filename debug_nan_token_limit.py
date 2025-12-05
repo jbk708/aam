@@ -310,7 +310,7 @@ def main():
     # Compute UniFrac distances
     print("Computing UniFrac distances...")
     computer = UniFracComputer()
-    unifrac_distances = computer.compute_unweighted_unifrac(table, str(tree_file))
+    unifrac_distances = computer.compute_unweighted(table, str(tree_file))
     
     # Create dataset
     print("Creating dataset...")
