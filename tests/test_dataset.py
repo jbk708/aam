@@ -458,7 +458,7 @@ class TestASVDatasetIntegration:
         )
 
         def custom_collate(batch):
-            return collate_fn(batch, token_limit=1024)
+            return collate_fn(batch, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted")
 
         dataloader = DataLoader(dataset, batch_size=2, collate_fn=custom_collate, shuffle=False)
 
@@ -481,7 +481,7 @@ class TestASVDatasetIntegration:
         )
 
         def custom_collate(batch):
-            return collate_fn(batch, token_limit=1024)
+            return collate_fn(batch, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted")
 
         dataloader = DataLoader(dataset, batch_size=2, collate_fn=custom_collate, shuffle=False)
 

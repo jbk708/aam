@@ -702,7 +702,12 @@ def predict(
             token_limit=model_config.get("token_limit", 1024),
         )
 
-        inference_collate = partial(collate_fn, token_limit=model_config.get("token_limit", 1024))
+        inference_collate = partial(
+            collate_fn,
+            token_limit=model_config.get("token_limit", 1024),
+            unifrac_distances=None,
+            unifrac_metric="unweighted",
+        )
         dataloader = DataLoader(
             dataset,
             batch_size=batch_size,

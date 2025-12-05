@@ -205,7 +205,7 @@ class TestDataPipelineIntegration:
             dataset,
             batch_size=4,
             shuffle=False,
-            collate_fn=lambda batch: collate_fn(batch, token_limit=1024),
+            collate_fn=lambda batch: collate_fn(batch, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted"),
         )
 
         batch = next(iter(dataloader))
@@ -446,7 +446,7 @@ class TestEndToEnd:
             dataset,
             batch_size=batch_size,
             shuffle=False,
-            collate_fn=lambda batch: collate_fn(batch, token_limit=1024),
+            collate_fn=lambda batch: collate_fn(batch, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted"),
         )
 
         model_config = small_model_config.copy()
@@ -525,7 +525,7 @@ class TestEndToEnd:
             dataset,
             batch_size=batch_size,
             shuffle=False,
-            collate_fn=lambda batch: collate_fn(batch, token_limit=1024),
+            collate_fn=lambda batch: collate_fn(batch, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted"),
         )
 
         model_config = small_model_config.copy()
@@ -603,7 +603,7 @@ class TestEndToEnd:
             dataset,
             batch_size=batch_size,
             shuffle=False,
-            collate_fn=lambda batch: collate_fn(batch, token_limit=1024),
+            collate_fn=lambda batch: collate_fn(batch, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted"),
         )
 
         model_config = small_model_config.copy()
