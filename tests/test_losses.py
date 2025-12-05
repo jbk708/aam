@@ -184,6 +184,77 @@ class TestBaseLoss:
         expected_loss = nn.functional.mse_loss(base_pred, base_true)
         assert torch.allclose(loss, expected_loss)
 
+    def test_base_loss_unifrac_shape_mismatch_raises_error(self, loss_fn):
+        """Test that shape mismatch in base loss raises ValueError."""
+        batch_size = 4
+        base_pred = torch.randn(batch_size, batch_size)
+        base_true = torch.randn(batch_size, batch_size + 1)
+
+        with pytest.raises(ValueError, match="Shape mismatch in base loss"):
+            loss_fn.compute_base_loss(base_pred, base_true, encoder_type="unifrac")
+
+    def test_base_loss_unifrac_different_batch_sizes_raises_error(self, loss_fn):
+        """Test that different batch sizes in unifrac base loss raises error."""
+        batch_size_pred = 4
+        batch_size_true = 6
+        base_pred = torch.randn(batch_size_pred, batch_size_pred)
+        base_true = torch.randn(batch_size_true, batch_size_true)
+
+        with pytest.raises(ValueError, match="Shape mismatch in base loss"):
+            loss_fn.compute_base_loss(base_pred, base_true, encoder_type="unifrac")
+
+    def test_base_loss_unifrac_base_output_dim_mismatch(self, loss_fn):
+        """Test that base_output_dim mismatch raises error (simulating variable batch size issue)."""
+        batch_size = 4
+        base_output_dim = 6
+        base_pred = torch.randn(batch_size, base_output_dim)
+        base_true = torch.randn(batch_size, batch_size)
+
+        with pytest.raises(ValueError, match="Shape mismatch in base loss"):
+            loss_fn.compute_base_loss(base_pred, base_true, encoder_type="unifrac")
+
+    def test_base_loss_unifrac_consistent_batch_sizes(self, loss_fn):
+        """Test that consistent batch sizes work correctly (simulating drop_last=True behavior)."""
+        for batch_size in [2, 4, 6, 8]:
+            base_pred = torch.randn(batch_size, batch_size)
+            base_true = torch.randn(batch_size, batch_size)
+
+            loss = loss_fn.compute_base_loss(base_pred, base_true, encoder_type="unifrac")
+
+            assert loss.dim() == 0
+            assert loss.item() >= 0
+            expected_loss = nn.functional.mse_loss(base_pred, base_true)
+            assert torch.allclose(loss, expected_loss)
+
+    def test_base_loss_faith_pd_shape_mismatch_raises_error(self, loss_fn):
+        """Test that shape mismatch in Faith PD base loss raises ValueError."""
+        batch_size = 4
+        base_pred = torch.randn(batch_size, 1)
+        base_true = torch.randn(batch_size, 2)
+
+        with pytest.raises(ValueError, match="Shape mismatch in base loss"):
+            loss_fn.compute_base_loss(base_pred, base_true, encoder_type="faith_pd")
+
+    def test_base_loss_nan_in_prediction_raises_error(self, loss_fn):
+        """Test that NaN in base_pred raises ValueError."""
+        batch_size = 4
+        base_pred = torch.randn(batch_size, batch_size)
+        base_pred[0, 0] = float('nan')
+        base_true = torch.randn(batch_size, batch_size)
+
+        with pytest.raises(ValueError, match="NaN values found in base_pred"):
+            loss_fn.compute_base_loss(base_pred, base_true, encoder_type="unifrac")
+
+    def test_base_loss_nan_in_target_raises_error(self, loss_fn):
+        """Test that NaN in base_true raises ValueError."""
+        batch_size = 4
+        base_pred = torch.randn(batch_size, batch_size)
+        base_true = torch.randn(batch_size, batch_size)
+        base_true[0, 0] = float('nan')
+
+        with pytest.raises(ValueError, match="NaN values found in base_true"):
+            loss_fn.compute_base_loss(base_pred, base_true, encoder_type="unifrac")
+
 
 class TestNucleotideLoss:
     """Test nucleotide loss computation."""
