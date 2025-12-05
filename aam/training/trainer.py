@@ -561,10 +561,16 @@ class Trainer:
                     "LR": f"{current_lr:.2e}",
                 }
                 if "unifrac_loss" in losses:
-                    postfix_dict["Unifrac Loss"] = f"{running_avg_unifrac_loss:.6f}" if running_avg_unifrac_loss < 0.0001 else f"{running_avg_unifrac_loss:.4f}"
+                    postfix_dict["Unifrac Loss"] = (
+                        f"{running_avg_unifrac_loss:.6f}"
+                        if running_avg_unifrac_loss < 0.0001
+                        else f"{running_avg_unifrac_loss:.4f}"
+                    )
                 if "nuc_loss" in losses:
-                    postfix_dict["Nuc Loss"] = f"{running_avg_nuc_loss:.6f}" if running_avg_nuc_loss < 0.0001 else f"{running_avg_nuc_loss:.4f}"
-                
+                    postfix_dict["Nuc Loss"] = (
+                        f"{running_avg_nuc_loss:.6f}" if running_avg_nuc_loss < 0.0001 else f"{running_avg_nuc_loss:.4f}"
+                    )
+
                 pbar.set_postfix(postfix_dict)
 
                 del losses, scaled_loss
@@ -673,7 +679,9 @@ class Trainer:
                                 unifrac_val = unifrac_val.detach().item()
                             else:
                                 unifrac_val = float(unifrac_val)
-                            running_avg_unifrac_loss = (running_avg_unifrac_loss * num_batches + unifrac_val) / (num_batches + 1)
+                            running_avg_unifrac_loss = (running_avg_unifrac_loss * num_batches + unifrac_val) / (
+                                num_batches + 1
+                            )
                         if "nuc_loss" in losses:
                             nuc_val = losses["nuc_loss"]
                             if isinstance(nuc_val, torch.Tensor):
@@ -687,10 +695,16 @@ class Trainer:
                         "Total Loss": f"{running_avg_loss:.6f}" if running_avg_loss < 0.0001 else f"{running_avg_loss:.4f}",
                     }
                     if "unifrac_loss" in losses:
-                        postfix_dict["Unifrac Loss"] = f"{running_avg_unifrac_loss:.6f}" if running_avg_unifrac_loss < 0.0001 else f"{running_avg_unifrac_loss:.4f}"
+                        postfix_dict["Unifrac Loss"] = (
+                            f"{running_avg_unifrac_loss:.6f}"
+                            if running_avg_unifrac_loss < 0.0001
+                            else f"{running_avg_unifrac_loss:.4f}"
+                        )
                     if "nuc_loss" in losses:
-                        postfix_dict["Nuc Loss"] = f"{running_avg_nuc_loss:.6f}" if running_avg_nuc_loss < 0.0001 else f"{running_avg_nuc_loss:.4f}"
-                    
+                        postfix_dict["Nuc Loss"] = (
+                            f"{running_avg_nuc_loss:.6f}" if running_avg_nuc_loss < 0.0001 else f"{running_avg_nuc_loss:.4f}"
+                        )
+
                     pbar.set_postfix(postfix_dict)
 
                     if compute_metrics:
