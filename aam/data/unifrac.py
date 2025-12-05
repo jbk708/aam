@@ -138,11 +138,18 @@ class UniFracComputer:
                 raise ValueError(f"Sample IDs not found in distance matrix: {sorted(missing_ids)}")
 
             try:
+                # Filter the distance matrix to only include samples in this batch
                 filtered_distances = distances.filter(sample_ids)
+                
+                # Reorder the filtered matrix to match the exact order of sample_ids in the batch
+                # DistanceMatrix.filter() may not preserve the order of sample_ids, so we need to reorder
+                id_to_idx = {id_: idx for idx, id_ in enumerate(filtered_distances.ids)}
+                reorder_indices = [id_to_idx[id_] for id_ in sample_ids]
+                reordered_data = filtered_distances.data[np.ix_(reorder_indices, reorder_indices)]
+                
+                return reordered_data
             except Exception as e:
                 raise ValueError(f"Error filtering distance matrix for sample IDs: {e}") from e
-
-            return filtered_distances.data
 
         else:
             if not isinstance(distances, pd.Series):
