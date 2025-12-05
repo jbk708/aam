@@ -29,6 +29,7 @@ The implementation plan is organized into 13 documents, each covering a specific
 16. **[15_save_best_model.md](15_save_best_model.md)** - Save single best model file ✅
 17. **[16_early_stopping_default.md](16_early_stopping_default.md)** - Early stopping default to 10 epochs ✅
 18. **[17_validation_prediction_plots.md](17_validation_prediction_plots.md)** - Validation prediction plots ✅
+19. **[18_fix_nan_nucleotide_predictions.md](18_fix_nan_nucleotide_predictions.md)** - Fix NaN in nucleotide predictions with token_limit ✅
 
 ## Training Strategy
 

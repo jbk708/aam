@@ -97,14 +97,17 @@ graph TB
 - **UniFracComputer**: Computes phylogenetic distances (unweighted UniFrac, Faith PD)
 - **SequenceTokenizer**: Converts nucleotide sequences (A/C/G/T) to tokens (1/2/3/4)
 - **ASVDataset**: PyTorch Dataset with custom collate function for variable ASV counts
+  - **Data Validation**: Ensures samples have at least one ASV with count > 0 after truncation
+  - **Truncation Safety**: Validates sample integrity when using `token_limit`
 
 ### Model Architecture
 
 **ASVEncoder**: Processes nucleotide sequences → ASV embeddings `[B, S, D]`
 - Token embeddings + Position embeddings
-- Transformer encoder
-- Attention pooling
+- Transformer encoder (with NaN masking for all-padding sequences)
+- Attention pooling (handles all-padding sequences to prevent NaN)
 - Optional nucleotide prediction head
+- **NaN Prevention**: Explicitly masks NaN from transformer output for all-padding sequences
 
 **SampleSequenceEncoder**: Processes ASV embeddings at sample level
 - Composes ASVEncoder
@@ -175,10 +178,10 @@ aam/
 │   └── dataset.py            # PyTorch Dataset and collate function
 ├── models/
 │   ├── __init__.py
-│   ├── attention_pooling.py  # Attention pooling layer
+│   ├── attention_pooling.py  # Attention pooling layer (handles all-padding sequences)
 │   ├── position_embedding.py # Position embedding layer
 │   ├── transformer.py        # Transformer encoder
-│   ├── asv_encoder.py        # ASV-level sequence encoder
+│   ├── asv_encoder.py        # ASV-level sequence encoder (NaN prevention for all-padding)
 │   ├── sample_sequence_encoder.py  # Sample-level encoder
 │   ├── sequence_encoder.py   # Base model with UniFrac prediction
 │   └── sequence_predictor.py # Main prediction model
