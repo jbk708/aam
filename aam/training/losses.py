@@ -91,6 +91,23 @@ class MultiTaskLoss(nn.Module):
         Returns:
             Base loss scalar tensor
         """
+        # Validate shapes match
+        if base_pred.shape != base_true.shape:
+            raise ValueError(
+                f"Shape mismatch in base loss: base_pred.shape={base_pred.shape}, "
+                f"base_true.shape={base_true.shape}, encoder_type={encoder_type}"
+            )
+        
+        # Check for NaN or Inf values
+        if torch.any(torch.isnan(base_pred)):
+            raise ValueError(f"NaN values found in base_pred with shape {base_pred.shape}")
+        if torch.any(torch.isnan(base_true)):
+            raise ValueError(f"NaN values found in base_true with shape {base_true.shape}")
+        if torch.any(torch.isinf(base_pred)):
+            raise ValueError(f"Inf values found in base_pred with shape {base_pred.shape}")
+        if torch.any(torch.isinf(base_true)):
+            raise ValueError(f"Inf values found in base_true with shape {base_true.shape}")
+        
         return nn.functional.mse_loss(base_pred, base_true)
 
     def compute_nucleotide_loss(
@@ -197,7 +214,7 @@ class MultiTaskLoss(nn.Module):
                 nuc_true = targets["tokens"]
             else:
                 nuc_true = None
-            
+
             if nuc_true is not None:
                 if "nuc_mask" in targets:
                     nuc_mask = targets["nuc_mask"]

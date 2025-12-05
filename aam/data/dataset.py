@@ -73,6 +73,13 @@ def collate_fn(
     if unifrac_distances is not None:
         computer = UniFracComputer()
         batch_distances = computer.extract_batch_distances(unifrac_distances, sample_ids, metric=unifrac_metric)
+        
+        # Validate extracted distances
+        if np.any(np.isnan(batch_distances)):
+            raise ValueError(f"NaN values found in extracted batch distances for sample_ids: {sample_ids}")
+        if np.any(np.isinf(batch_distances)):
+            raise ValueError(f"Inf values found in extracted batch distances for sample_ids: {sample_ids}")
+        
         result["unifrac_target"] = torch.FloatTensor(batch_distances)
 
     return result
