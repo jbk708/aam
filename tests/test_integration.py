@@ -45,6 +45,11 @@ def tree_file(data_dir):
 @pytest.fixture
 def device():
     """Get device for testing."""
+    # Clear any previous CUDA errors before each test
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        # Synchronize to ensure any pending operations complete
+        torch.cuda.synchronize()
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -52,7 +57,7 @@ def device():
 def small_model_config():
     """Small model configuration for faster testing."""
     return {
-        "vocab_size": 5,
+        "vocab_size": 6,
         "embedding_dim": 32,
         "max_bp": 50,
         "token_limit": 64,
