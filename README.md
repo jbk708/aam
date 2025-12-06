@@ -138,10 +138,16 @@ Then open your browser to `http://localhost:6006` (or the port you specified).
 - `train/total_loss`: Total training loss
 - `train/target_loss`: Target prediction loss (MSE/NLL)
 - `train/count_loss`: ASV count prediction loss (masked MSE)
-- `train/base_loss`: UniFrac/base prediction loss (MSE)
+- `train/unifrac_loss`: UniFrac prediction loss (MSE)
 - `train/nuc_loss`: Nucleotide prediction loss (CrossEntropy)
 - `val/total_loss`: Total validation loss
-- `val/target_loss`, `val/count_loss`, `val/base_loss`, `val/nuc_loss`: Validation component losses
+- `val/target_loss`, `val/count_loss`, `val/unifrac_loss`, `val/nuc_loss`: Validation component losses
+
+**Progress Bar Abbreviations:**
+- **TL**: Total Loss - Combined loss from all tasks
+- **UL**: UniFrac Loss - UniFrac distance prediction loss (only shown in pretrain mode)
+- **NL**: Nucleotide Loss - Nucleotide sequence prediction loss (only shown when nucleotide prediction is enabled)
+- **LR**: Learning Rate - Current learning rate (only shown during training, not validation)
 
 **Metrics (per epoch, validation only):**
 - **Regression metrics**: `val/mae`, `val/mse`, `val/r2`
@@ -160,14 +166,14 @@ Then open your browser to `http://localhost:6006` (or the port you specified).
 **For Pretraining (UniFrac + Nucleotides):**
 - **Epoch 1**: Total loss ~1.5-2.0 (near random baseline)
   - `nuc_loss` ~1.5-1.7 (random baseline: log(5) ≈ 1.609)
-  - `base_loss` ~0.1-0.5 (depends on distance scale)
+  - `unifrac_loss` ~0.1-0.5 (depends on distance scale)
 - **Well-trained**: Total loss ~0.1-0.5
   - `nuc_loss` ~0.1-0.5
-  - `base_loss` ~0.01-0.1
+  - `unifrac_loss` ~0.01-0.1
 
 **For Fine-tuning (with Target Prediction):**
 - Monitor `target_loss` decreasing over epochs
-- `base_loss` and `nuc_loss` should remain stable if `freeze_base=True`
+- `unifrac_loss` and `nuc_loss` should remain stable if `freeze_base=True`
 - Total loss should decrease steadily
 
 ### Tips
@@ -194,7 +200,7 @@ tensorboard --logdir runs/pretrain_exp1/tensorboard
 
 Then monitor:
 - `train/total_loss` decreasing from ~1.7 → ~0.3 over 100-200 epochs
-- `train/base_loss` and `train/nuc_loss` both decreasing
+- `train/unifrac_loss` and `train/nuc_loss` both decreasing
 - `val/total_loss` tracking `train/total_loss` (no overfitting)
 
 ## Testing

@@ -365,15 +365,15 @@ class TestTotalLoss:
 
         assert "target_loss" in losses
         assert "count_loss" in losses
-        assert "base_loss" in losses
+        assert "unifrac_loss" in losses
         assert "total_loss" in losses
 
         assert losses["target_loss"].dim() == 0
         assert losses["count_loss"].dim() == 0
-        assert losses["base_loss"].dim() == 0
+        assert losses["unifrac_loss"].dim() == 0
         assert losses["total_loss"].dim() == 0
 
-        expected_total = losses["target_loss"] + losses["count_loss"] + losses["base_loss"] * loss_fn.penalty
+        expected_total = losses["target_loss"] + losses["count_loss"] + losses["unifrac_loss"] * loss_fn.penalty
         assert torch.allclose(losses["total_loss"], expected_total)
 
     def test_total_loss_with_nucleotides(self, loss_fn):
@@ -409,14 +409,14 @@ class TestTotalLoss:
 
         assert "target_loss" in losses
         assert "count_loss" in losses
-        assert "base_loss" in losses
+        assert "unifrac_loss" in losses
         assert "nuc_loss" in losses
         assert "total_loss" in losses
 
         expected_total = (
             losses["target_loss"]
             + losses["count_loss"]
-            + losses["base_loss"] * loss_fn.penalty
+            + losses["unifrac_loss"] * loss_fn.penalty
             + losses["nuc_loss"] * loss_fn.nuc_penalty
         )
         assert torch.allclose(losses["total_loss"], expected_total)
@@ -453,7 +453,7 @@ class TestTotalLoss:
 
         assert "target_loss" in losses
         assert "count_loss" in losses
-        assert "base_loss" in losses
+        assert "unifrac_loss" in losses
         assert "total_loss" in losses
 
     def test_total_loss_weighted(self, loss_fn_weighted):
@@ -482,7 +482,7 @@ class TestTotalLoss:
             encoder_type="unifrac",
         )
 
-        expected_total = losses["target_loss"] + losses["count_loss"] + losses["base_loss"] * loss_fn_weighted.penalty
+        expected_total = losses["target_loss"] + losses["count_loss"] + losses["unifrac_loss"] * loss_fn_weighted.penalty
         assert torch.allclose(losses["total_loss"], expected_total)
 
     def test_total_loss_missing_outputs(self, loss_fn):
@@ -511,7 +511,7 @@ class TestTotalLoss:
 
         assert "target_loss" in losses
         assert "count_loss" in losses
-        assert "base_loss" not in losses or losses["base_loss"] == 0
+        assert "unifrac_loss" not in losses or losses["unifrac_loss"] == 0
         assert "nuc_loss" not in losses or losses["nuc_loss"] == 0
 
 
