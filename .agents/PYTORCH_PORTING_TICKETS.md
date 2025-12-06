@@ -465,7 +465,7 @@ ValueError: NaN values found in nuc_pred with shape torch.Size([6, 512, 151, 6])
 ---
 
 ### PYT-8.10: Update Training Progress Bar and Rename base_loss to unifrac_loss
-**Priority:** LOW | **Effort:** Low-Medium | **Status:** ✅ Completed
+**Priority:** LOW | **Effort:** Low-Medium | **Status:** Not Started
 
 **Description:**
 1. Update the training progress bar to remove the "Step" field (since step information is already shown in the tqdm loading bar) and display a breakdown of losses: total loss, unifrac loss, and nucleotide loss. This provides better visibility into individual loss components during training.
@@ -598,13 +598,80 @@ ValueError: NaN values found in nuc_pred with shape torch.Size([6, 512, 151, 6])
 **Dependencies:** None
 
 **Estimated Time:** 2-3 hours (increased due to rename and TensorBoard optimizations)
-**Actual Time:** ~2 hours
+
+---
+
+### PYT-8.11: Explore Learning Rate Optimizers and Schedulers
+**Priority:** MEDIUM | **Effort:** Medium | **Status:** Not Started
+
+**Description:**
+Explore and evaluate different learning rate optimizers and schedulers to improve training performance, convergence speed, and final model quality. Currently using AdamW optimizer with a custom WarmupCosineScheduler. This ticket involves researching, implementing, and benchmarking alternative optimizers and schedulers.
+
+**Current Implementation:**
+- **Optimizer**: AdamW (default lr=1e-4, weight_decay=0.01)
+- **Scheduler**: Custom `WarmupCosineScheduler` with warmup + cosine decay
+- **Warmup Steps**: Configurable via CLI (default: 10000)
+- **Training Steps**: Calculated from dataset size and epochs
+
+**Acceptance Criteria:**
+- [ ] Research common optimizers for transformer models (AdamW, Adam, SGD with momentum, etc.)
+- [ ] Research common schedulers (CosineAnnealingLR, ReduceLROnPlateau, OneCycleLR, etc.)
+- [ ] Implement alternative optimizers (at least 2-3 options)
+- [ ] Implement alternative schedulers (at least 2-3 options)
+- [ ] Add CLI options to select optimizer and scheduler
+- [ ] Benchmark different combinations on a standard dataset
+- [ ] Document performance characteristics and recommendations
+- [ ] Ensure backward compatibility (default to current AdamW + WarmupCosineScheduler)
+- [ ] Add unit tests for new optimizer/scheduler implementations
+- [ ] Update documentation with optimizer/scheduler options
+
+**Implementation Notes:**
+- **Optimizers to Explore:**
+  - AdamW (current) - baseline
+  - Adam - standard Adam without weight decay
+  - SGD with momentum - traditional optimizer
+  - Lion optimizer (if available) - newer optimizer with potential benefits
+  - Any other state-of-the-art optimizers for transformers
+
+- **Schedulers to Explore:**
+  - WarmupCosineScheduler (current) - baseline
+  - CosineAnnealingLR - PyTorch built-in cosine annealing
+  - ReduceLROnPlateau - Reduce LR when validation loss plateaus
+  - OneCycleLR - One cycle learning rate policy
+  - Linear warmup + constant - Simple alternative
+  - Polynomial decay - Alternative decay schedule
+
+- **Files to Modify:**
+  - `aam/training/trainer.py` - Add optimizer/scheduler creation functions
+  - `aam/cli.py` - Add CLI options for optimizer and scheduler selection
+  - `tests/test_trainer.py` - Add tests for different optimizer/scheduler combinations
+  - `README.md` - Document optimizer/scheduler options and recommendations
+
+- **CLI Options:**
+  - `--optimizer` - Select optimizer (adamw, adam, sgd, etc.)
+  - `--scheduler` - Select scheduler (warmup_cosine, cosine, plateau, onecycle, etc.)
+  - `--scheduler-params` - Optional JSON string for scheduler-specific parameters
+
+- **Benchmarking:**
+  - Run training with different optimizer/scheduler combinations
+  - Compare: final validation loss, convergence speed, training stability
+  - Document results in a comparison table
+  - Identify best combinations for different scenarios (pretraining vs fine-tuning)
+
+- **Backward Compatibility:**
+  - Default optimizer: AdamW (current)
+  - Default scheduler: WarmupCosineScheduler (current)
+  - Existing CLI commands should work without changes
+
+**Dependencies:** None
+
+**Estimated Time:** 4-6 hours
 
 ---
 
 ## Summary
 
-**Total Estimated Time:** 24-33 hours
+**Total Estimated Time:** 30-42 hours
 
 **Implementation Order:**
 1. ✅ PYT-8.3: Change Early Stopping Default to 10 Epochs (1 hour) - Completed
@@ -616,7 +683,8 @@ ValueError: NaN values found in nuc_pred with shape torch.Size([6, 512, 151, 6])
 7. ✅ **PYT-8.6: Fix Base Loss Shape Mismatch for Variable Batch Sizes in Pretrain Mode (2-3 hours) - HIGH PRIORITY** - Completed
 8. ✅ **PYT-8.9: Fix NaN in Nucleotide Predictions During Pretraining with Token Limit (3-4 hours) - HIGH PRIORITY** - Completed
 9. ✅ **PYT-8.7: Fix Model NaN Issue and Add Gradient Clipping (4-6 hours) - HIGH PRIORITY** - Completed
-10. ✅ PYT-8.10: Update Training Progress Bar and Rename base_loss to unifrac_loss (2-3 hours) - Completed
+10. PYT-8.10: Update Training Progress Bar and Rename base_loss to unifrac_loss (2-3 hours) - Not Started
+11. PYT-8.11: Explore Learning Rate Optimizers and Schedulers (4-6 hours) - Not Started
 
 **Notes:**
 - All tickets are independent and can be implemented in any order
@@ -630,4 +698,5 @@ ValueError: NaN values found in nuc_pred with shape torch.Size([6, 512, 151, 6])
 - **PYT-8.9 completed** - Fixed NaN in nucleotide predictions during pretraining with token_limit. Root cause was all-padding sequences causing NaN in transformer attention. Fixed by: (1) handling all-padding sequences in AttentionPooling, (2) masking NaN from transformer output in ASVEncoder, (3) adding data validation in dataset.py, (4) safe tensor stats formatting in losses.py. All fixes verified and training is stable.
 - **PYT-8.7 completed** - Gradient clipping implemented using `torch.nn.utils.clip_grad_norm_()`. Added `--max-grad-norm` CLI option. NaN issues resolved via PYT-8.8 (START_TOKEN) and PYT-8.9 (all-padding sequence handling). Training stability verified.
 - PYT-8.10 not started - Update training progress bar to remove redundant "Step" field and show loss breakdown (total, unifrac, nucleotide). Also rename `base_loss` to `unifrac_loss` throughout codebase and optimize TensorBoard reporting performance.
+- PYT-8.11 not started - Explore and benchmark different learning rate optimizers (AdamW, Adam, SGD) and schedulers (CosineAnnealingLR, ReduceLROnPlateau, OneCycleLR) to improve training performance and convergence speed.
 - Follow the workflow in `.agents/workflow.md` for implementation
