@@ -153,6 +153,11 @@ class Trainer:
             return self.model.is_classifier
         return False
 
+    def _is_pretraining(self) -> bool:
+        """Check if model is SequenceEncoder (pretraining mode)."""
+        # Use string comparison to avoid circular import
+        return self.model.__class__.__name__ == "SequenceEncoder"
+
     def _create_prediction_plot(
         self,
         predictions: torch.Tensor,
@@ -190,6 +195,62 @@ class Trainer:
         ax.set_xlabel("Actual", fontsize=12)
         ax.set_ylabel("Predicted", fontsize=12)
         ax.set_title(f"Predicted vs Actual (Epoch {epoch}, R² = {r2:.4f})", fontsize=14)
+        ax.legend(loc="upper left")
+        ax.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+        return fig
+
+    def _create_unifrac_prediction_plot(
+        self,
+        predictions: torch.Tensor,
+        targets: torch.Tensor,
+        epoch: int,
+        r2: float,
+    ) -> plt.Figure:
+        """Create prediction vs actual scatter plot for UniFrac predictions (pretraining).
+
+        Args:
+            predictions: Predicted UniFrac distances [B, B] (pairwise distance matrix)
+            targets: Actual UniFrac distances [B, B] (pairwise distance matrix)
+            epoch: Current epoch number
+            r2: R² score
+
+        Returns:
+            Matplotlib figure
+        """
+        # Flatten pairwise distance matrices to 1D arrays
+        pred_np = np.array(predictions.detach().cpu().tolist())
+        target_np = np.array(targets.detach().cpu().tolist())
+        
+        # Extract upper triangle (excluding diagonal) to avoid duplicate pairs
+        # For symmetric matrices, we only need upper triangle
+        if pred_np.shape[0] == pred_np.shape[1]:
+            # Extract upper triangle indices
+            triu_indices = np.triu_indices(pred_np.shape[0], k=1)
+            pred_flat = pred_np[triu_indices]
+            target_flat = target_np[triu_indices]
+        else:
+            # If not square, just flatten
+            pred_flat = pred_np.flatten()
+            target_flat = target_np.flatten()
+
+        fig, ax = plt.subplots(figsize=(8, 6), dpi=100)
+        ax.scatter(target_flat, pred_flat, alpha=0.6, s=20)
+
+        min_val = min(target_flat.min(), pred_flat.min())
+        max_val = max(target_flat.max(), pred_flat.max())
+
+        ax.plot([min_val, max_val], [min_val, max_val], "k--", linewidth=1, label="Perfect Prediction", alpha=0.5)
+
+        if len(target_flat) > 1:
+            z = np.polyfit(target_flat, pred_flat, 1)
+            p = np.poly1d(z)
+            ax.plot(target_flat, p(target_flat), "b-", linewidth=2, label=f"Linear Fit, R² = {r2:.4f}")
+
+        ax.set_xlabel("Actual UniFrac Distance", fontsize=12)
+        ax.set_ylabel("Predicted UniFrac Distance", fontsize=12)
+        ax.set_title(f"UniFrac Prediction vs Actual (Epoch {epoch}, R² = {r2:.4f})", fontsize=14)
         ax.legend(loc="upper left")
         ax.grid(True, alpha=0.3)
 
@@ -273,6 +334,7 @@ class Trainer:
         epoch: int,
         metrics: Dict[str, float],
         checkpoint_dir: Optional[str],
+        is_unifrac: bool = False,
     ) -> None:
         """Create and save prediction plots when validation improves.
 
@@ -282,6 +344,7 @@ class Trainer:
             epoch: Current epoch number
             metrics: Metrics dictionary
             checkpoint_dir: Directory to save plots
+            is_unifrac: Whether this is UniFrac prediction plot (pretraining)
         """
         if checkpoint_dir is None:
             return
@@ -300,6 +363,10 @@ class Trainer:
                 metrics["recall"],
                 metrics["f1"],
             )
+        elif is_unifrac:
+            if "r2" not in metrics:
+                return
+            fig = self._create_unifrac_prediction_plot(predictions, targets, epoch, metrics["r2"])
         else:
             if "r2" not in metrics:
                 return
@@ -315,7 +382,8 @@ class Trainer:
         fig.savefig(plot_file, dpi=100, bbox_inches="tight")
 
         if self.writer is not None:
-            self.writer.add_figure("validation/prediction_plot", fig, epoch)
+            plot_tag = "validation/unifrac_prediction_plot" if is_unifrac else "validation/prediction_plot"
+            self.writer.add_figure(plot_tag, fig, epoch)
 
         plt.close(fig)
 
@@ -624,6 +692,7 @@ class Trainer:
         all_targets = {}
         num_batches = 0
         total_steps = len(dataloader)
+        is_pretraining = self._is_pretraining()
 
         with torch.no_grad():
             pbar = tqdm(
@@ -708,12 +777,22 @@ class Trainer:
                     pbar.set_postfix(postfix_dict)
 
                     if compute_metrics:
-                        if "target_prediction" in outputs and "target" in targets:
-                            if "target_prediction" not in all_predictions:
-                                all_predictions["target_prediction"] = []
-                                all_targets["target"] = []
-                            all_predictions["target_prediction"].append(outputs["target_prediction"])
-                            all_targets["target"].append(targets["target"])
+                        if is_pretraining:
+                            # For pretraining, collect base_prediction (UniFrac) for plotting
+                            if "base_prediction" in outputs and "base_target" in targets:
+                                if "base_prediction" not in all_predictions:
+                                    all_predictions["base_prediction"] = []
+                                    all_targets["base_target"] = []
+                                all_predictions["base_prediction"].append(outputs["base_prediction"])
+                                all_targets["base_target"].append(targets["base_target"])
+                        else:
+                            # For regular training, collect target_prediction for plotting
+                            if "target_prediction" in outputs and "target" in targets:
+                                if "target_prediction" not in all_predictions:
+                                    all_predictions["target_prediction"] = []
+                                    all_targets["target"] = []
+                                all_predictions["target_prediction"].append(outputs["target_prediction"])
+                                all_targets["target"].append(targets["target"])
 
                         if "count_prediction" in outputs and "counts" in targets:
                             if "count_prediction" not in all_predictions:
@@ -744,9 +823,30 @@ class Trainer:
 
         target_pred_tensor = None
         target_true_tensor = None
+        base_pred_tensor = None
+        base_true_tensor = None
 
         if compute_metrics and all_predictions:
-            if "target_prediction" in all_predictions:
+            if is_pretraining and "base_prediction" in all_predictions:
+                # For pretraining, compute metrics for UniFrac predictions
+                base_pred_tensor = torch.cat(all_predictions["base_prediction"], dim=0)
+                base_true_tensor = torch.cat(all_targets["base_target"], dim=0)
+                
+                # Flatten pairwise distance matrices for metric computation
+                if base_pred_tensor.dim() == 2 and base_pred_tensor.shape[0] == base_pred_tensor.shape[1]:
+                    # Extract upper triangle (excluding diagonal) for symmetric matrices
+                    batch_size = base_pred_tensor.shape[0]
+                    triu_indices = torch.triu_indices(batch_size, batch_size, offset=1, device=base_pred_tensor.device)
+                    base_pred_flat = base_pred_tensor[triu_indices[0], triu_indices[1]]
+                    base_true_flat = base_true_tensor[triu_indices[0], triu_indices[1]]
+                else:
+                    # If not square, just flatten
+                    base_pred_flat = base_pred_tensor.flatten()
+                    base_true_flat = base_true_tensor.flatten()
+                
+                metrics = compute_regression_metrics(base_pred_flat, base_true_flat)
+                avg_losses.update(metrics)
+            elif "target_prediction" in all_predictions:
                 target_pred_tensor = torch.cat(all_predictions["target_prediction"], dim=0)
                 target_true_tensor = torch.cat(all_targets["target"], dim=0)
 
@@ -765,7 +865,10 @@ class Trainer:
                 avg_losses.update({f"count_{k}": v for k, v in metrics.items()})
 
         if return_predictions:
-            return avg_losses, target_pred_tensor, target_true_tensor
+            if is_pretraining:
+                return avg_losses, base_pred_tensor, base_true_tensor
+            else:
+                return avg_losses, target_pred_tensor, target_true_tensor
         return avg_losses
 
     def train(
@@ -861,12 +964,14 @@ class Trainer:
                             )
 
                         if save_plots and val_predictions is not None and val_targets is not None:
+                            is_pretraining = self._is_pretraining()
                             self._save_prediction_plots(
                                 val_predictions,
                                 val_targets,
                                 epoch,
                                 val_results,
                                 checkpoint_dir,
+                                is_unifrac=is_pretraining,
                             )
                     else:
                         patience_counter += 1
