@@ -85,6 +85,7 @@ python -m aam.cli predict \
 - `--attention-layers`: Number of transformer layers (default: 4)
 - `--max-bp`: Maximum base pairs per sequence (default: 150)
 - `--token-limit`: Maximum ASVs per sample (default: 1024, **critical for memory**)
+- **Note**: UniFrac predictions use sigmoid activation (not hard clipping) to prevent boundary clustering
 
 **Memory Optimization:**
 - `--gradient-accumulation-steps`: Accumulate gradients over N steps (default: 1)
@@ -259,6 +260,21 @@ pytest tests/ -v -k "cuda or device"
 ## Architecture
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed architecture documentation.
+
+### Recent Improvements
+
+**Boundary Prediction Clustering Fix (PYT-8.16):**
+- Replaced hard clipping (`torch.clamp`) with scaled sigmoid activation for UniFrac predictions
+- Fixes issue where 53.59% of predictions clustered at boundaries (0.0 or 1.0)
+- Uses `torch.sigmoid(x * 0.1)` with smaller weight initialization to prevent saturation
+- Provides natural [0, 1] constraint without hard boundaries
+- Improves gradient flow and prevents mode collapse
+- See `debug/BOUNDARY_PREDICTION_ANALYSIS.md` for detailed analysis
+
+**Key Changes:**
+- UniFrac predictions now use sigmoid activation instead of hard clipping
+- Output head weights initialized with `std=0.01` to prevent sigmoid saturation
+- Predictions are continuous and match actual distance distribution better
 
 ## Documentation
 

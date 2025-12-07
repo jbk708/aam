@@ -164,6 +164,8 @@ class MultiTaskLoss(nn.Module):
             raise ValueError(error_msg)
 
         # Clip predictions to [0, 1] range for UniFrac (bounded regression)
+        # Note: With sigmoid activation in forward pass, predictions are already in [0, 1]
+        # This clipping is kept as a safety measure for backward compatibility
         # UniFrac distances are constrained to [0, 1] range
         if encoder_type == "unifrac" and clip_predictions:
             base_pred = torch.clamp(base_pred, 0.0, 1.0)
