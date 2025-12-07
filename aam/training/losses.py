@@ -103,6 +103,7 @@ class MultiTaskLoss(nn.Module):
         base_pred: torch.Tensor,
         base_true: torch.Tensor,
         encoder_type: str = "unifrac",
+        clip_predictions: bool = True,
     ) -> torch.Tensor:
         """Compute MSE loss for base prediction (UniFrac/Faith PD).
 
@@ -110,6 +111,7 @@ class MultiTaskLoss(nn.Module):
             base_pred: Predicted base values [batch_size, base_output_dim] or [batch_size, batch_size] for unifrac
             base_true: True base values [batch_size, base_output_dim] or [batch_size, batch_size] for unifrac
             encoder_type: Type of encoder ('unifrac', 'faith_pd', 'taxonomy', 'combined')
+            clip_predictions: Whether to clip predictions to [0, 1] range (default: True for UniFrac)
 
         Returns:
             Base loss scalar tensor
@@ -160,6 +162,11 @@ class MultiTaskLoss(nn.Module):
             error_msg = f"Inf values found in base_true with shape {base_true.shape}"
             print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
             raise ValueError(error_msg)
+
+        # Clip predictions to [0, 1] range for UniFrac (bounded regression)
+        # UniFrac distances are constrained to [0, 1] range
+        if encoder_type == "unifrac" and clip_predictions:
+            base_pred = torch.clamp(base_pred, 0.0, 1.0)
 
         # For UniFrac pairwise distance matrices, mask diagonal elements
         # Diagonal elements are always 0.0 (distance from ASV to itself) and provide no training signal
