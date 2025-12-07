@@ -572,7 +572,10 @@ class Trainer:
                     self.optimizer.zero_grad()
 
                     if self.scheduler is not None:
-                        self.scheduler.step()
+                        if isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                            pass
+                        else:
+                            self.scheduler.step()
                         current_lr = (
                             self.scheduler.get_last_lr()[0]
                             if hasattr(self.scheduler, "get_last_lr")
@@ -659,7 +662,10 @@ class Trainer:
             self.optimizer.step()
             self.optimizer.zero_grad()
             if self.scheduler is not None:
-                self.scheduler.step()
+                if isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                    pass
+                else:
+                    self.scheduler.step()
 
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
@@ -1004,6 +1010,18 @@ class Trainer:
                 if self.writer is not None:
                     self._log_to_tensorboard(epoch, train_losses, val_results)
 
+                if self.scheduler is not None:
+                    if isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                        if val_loader is not None:
+                            val_loss = val_results["total_loss"] if val_results else train_losses["total_loss"]
+                        else:
+                            val_loss = train_losses["total_loss"]
+                        self.scheduler.step(val_loss)
+                    elif isinstance(self.scheduler, torch.optim.lr_scheduler.OneCycleLR):
+                        pass
+                    elif not isinstance(self.scheduler, WarmupCosineScheduler):
+                        self.scheduler.step()
+
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
 
@@ -1083,20 +1101,24 @@ class Trainer:
 
 def create_optimizer(
     model: nn.Module,
+    optimizer_type: str = "adamw",
     lr: float = 1e-4,
     weight_decay: float = 0.01,
     freeze_base: bool = False,
+    momentum: float = 0.9,
 ) -> torch.optim.Optimizer:
-    """Create AdamW optimizer, excluding frozen parameters if needed.
+    """Create optimizer, excluding frozen parameters if needed.
 
     Args:
         model: Model to create optimizer for
+        optimizer_type: Type of optimizer ('adamw', 'adam', 'sgd')
         lr: Learning rate
-        weight_decay: Weight decay
+        weight_decay: Weight decay (for AdamW/Adam)
         freeze_base: Whether base model parameters are frozen
+        momentum: Momentum for SGD
 
     Returns:
-        AdamW optimizer
+        Optimizer instance
     """
     if freeze_base and hasattr(model, "base_model"):
         trainable_params = []
@@ -1108,25 +1130,58 @@ def create_optimizer(
     else:
         trainable_params = [p for p in model.parameters() if p.requires_grad]
 
-    return torch.optim.AdamW(trainable_params, lr=lr, weight_decay=weight_decay)
+    optimizer_type = optimizer_type.lower()
+    if optimizer_type == "adamw":
+        return torch.optim.AdamW(trainable_params, lr=lr, weight_decay=weight_decay)
+    elif optimizer_type == "adam":
+        return torch.optim.Adam(trainable_params, lr=lr, weight_decay=weight_decay)
+    elif optimizer_type == "sgd":
+        return torch.optim.SGD(trainable_params, lr=lr, momentum=momentum, weight_decay=weight_decay)
+    else:
+        raise ValueError(f"Unknown optimizer type: {optimizer_type}. Must be one of: 'adamw', 'adam', 'sgd'")
 
 
 def create_scheduler(
     optimizer: torch.optim.Optimizer,
+    scheduler_type: str = "warmup_cosine",
     num_warmup_steps: int = 10000,
     num_training_steps: int = 100000,
-) -> WarmupCosineScheduler:
-    """Create learning rate scheduler with warmup + cosine decay.
+    **kwargs,
+) -> Union[WarmupCosineScheduler, torch.optim.lr_scheduler._LRScheduler]:
+    """Create learning rate scheduler.
 
     Args:
         optimizer: Optimizer to schedule
-        num_warmup_steps: Number of warmup steps
+        scheduler_type: Type of scheduler ('warmup_cosine', 'cosine', 'plateau', 'onecycle')
+        num_warmup_steps: Number of warmup steps (for warmup_cosine)
         num_training_steps: Total number of training steps
+        **kwargs: Additional scheduler-specific parameters
 
     Returns:
-        Learning rate scheduler
+        Learning rate scheduler instance
     """
-    return WarmupCosineScheduler(optimizer, num_warmup_steps, num_training_steps)
+    scheduler_type = scheduler_type.lower()
+    if scheduler_type == "warmup_cosine":
+        return WarmupCosineScheduler(optimizer, num_warmup_steps, num_training_steps)
+    elif scheduler_type == "cosine":
+        T_max = kwargs.get("T_max", num_training_steps)
+        eta_min = kwargs.get("eta_min", 0.0)
+        return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=T_max, eta_min=eta_min)
+    elif scheduler_type == "plateau":
+        mode = kwargs.get("mode", "min")
+        factor = kwargs.get("factor", 0.5)
+        patience = kwargs.get("patience", 10)
+        return torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode=mode, factor=factor, patience=patience)
+    elif scheduler_type == "onecycle":
+        max_lr = kwargs.get("max_lr", optimizer.param_groups[0]["lr"])
+        pct_start = kwargs.get("pct_start", 0.3)
+        return torch.optim.lr_scheduler.OneCycleLR(
+            optimizer, max_lr=max_lr, total_steps=num_training_steps, pct_start=pct_start
+        )
+    else:
+        raise ValueError(
+            f"Unknown scheduler type: {scheduler_type}. Must be one of: 'warmup_cosine', 'cosine', 'plateau', 'onecycle'"
+        )
 
 
 def load_pretrained_encoder(

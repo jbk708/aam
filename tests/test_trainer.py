@@ -123,11 +123,32 @@ class TestCreateOptimizer:
 
     def test_create_optimizer_default(self, small_model):
         """Test creating optimizer with default parameters."""
-        optimizer = create_optimizer(small_model, lr=1e-4, weight_decay=0.01)
+        optimizer = create_optimizer(small_model, optimizer_type="adamw", lr=1e-4, weight_decay=0.01)
 
         assert isinstance(optimizer, torch.optim.AdamW)
         assert optimizer.param_groups[0]["lr"] == 1e-4
         assert optimizer.param_groups[0]["weight_decay"] == 0.01
+
+    def test_create_optimizer_adam(self, small_model):
+        """Test creating Adam optimizer."""
+        optimizer = create_optimizer(small_model, optimizer_type="adam", lr=1e-4, weight_decay=0.01)
+
+        assert isinstance(optimizer, torch.optim.Adam)
+        assert optimizer.param_groups[0]["lr"] == 1e-4
+        assert optimizer.param_groups[0]["weight_decay"] == 0.01
+
+    def test_create_optimizer_sgd(self, small_model):
+        """Test creating SGD optimizer."""
+        optimizer = create_optimizer(small_model, optimizer_type="sgd", lr=1e-3, momentum=0.9)
+
+        assert isinstance(optimizer, torch.optim.SGD)
+        assert optimizer.param_groups[0]["lr"] == 1e-3
+        assert optimizer.param_groups[0]["momentum"] == 0.9
+
+    def test_create_optimizer_invalid_type(self, small_model):
+        """Test creating optimizer with invalid type raises error."""
+        with pytest.raises(ValueError, match="Unknown optimizer type"):
+            create_optimizer(small_model, optimizer_type="invalid")
 
     def test_create_optimizer_excludes_frozen(self, small_predictor):
         """Test that optimizer excludes frozen parameters."""
@@ -135,7 +156,7 @@ class TestCreateOptimizer:
         for param in small_predictor.base_model.parameters():
             param.requires_grad = False
 
-        optimizer = create_optimizer(small_predictor, freeze_base=True)
+        optimizer = create_optimizer(small_predictor, optimizer_type="adamw", freeze_base=True)
 
         param_ids = {id(p) for group in optimizer.param_groups for p in group["params"]}
         base_param_ids = {id(p) for p in small_predictor.base_model.parameters()}
@@ -146,13 +167,44 @@ class TestCreateOptimizer:
 class TestCreateScheduler:
     """Test scheduler creation."""
 
-    def test_create_scheduler(self, small_model):
-        """Test creating scheduler with warmup and cosine decay."""
-        optimizer = create_optimizer(small_model)
-        scheduler = create_scheduler(optimizer, num_warmup_steps=100, num_training_steps=1000)
+    def test_create_scheduler_warmup_cosine(self, small_model):
+        """Test creating warmup cosine scheduler."""
+        optimizer = create_optimizer(small_model, optimizer_type="adamw")
+        scheduler = create_scheduler(optimizer, scheduler_type="warmup_cosine", num_warmup_steps=100, num_training_steps=1000)
 
         assert scheduler is not None
         assert hasattr(scheduler, "step")
+        assert hasattr(scheduler, "get_last_lr")
+
+    def test_create_scheduler_cosine(self, small_model):
+        """Test creating cosine annealing scheduler."""
+        optimizer = create_optimizer(small_model, optimizer_type="adamw")
+        scheduler = create_scheduler(optimizer, scheduler_type="cosine", num_training_steps=1000, T_max=1000)
+
+        assert isinstance(scheduler, torch.optim.lr_scheduler.CosineAnnealingLR)
+        assert scheduler.T_max == 1000
+
+    def test_create_scheduler_plateau(self, small_model):
+        """Test creating ReduceLROnPlateau scheduler."""
+        optimizer = create_optimizer(small_model, optimizer_type="adamw")
+        scheduler = create_scheduler(optimizer, scheduler_type="plateau", num_training_steps=1000, patience=5)
+
+        assert isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau)
+        assert scheduler.patience == 5
+
+    def test_create_scheduler_onecycle(self, small_model):
+        """Test creating OneCycleLR scheduler."""
+        optimizer = create_optimizer(small_model, optimizer_type="adamw", lr=1e-4)
+        scheduler = create_scheduler(optimizer, scheduler_type="onecycle", num_training_steps=1000, max_lr=1e-3)
+
+        assert isinstance(scheduler, torch.optim.lr_scheduler.OneCycleLR)
+        assert scheduler.total_steps == 1000
+
+    def test_create_scheduler_invalid_type(self, small_model):
+        """Test creating scheduler with invalid type raises error."""
+        optimizer = create_optimizer(small_model, optimizer_type="adamw")
+        with pytest.raises(ValueError, match="Unknown scheduler type"):
+            create_scheduler(optimizer, scheduler_type="invalid")
 
 
 class TestTrainerInit:
@@ -172,7 +224,7 @@ class TestTrainerInit:
 
     def test_trainer_init_with_optimizer(self, small_model, loss_fn, device):
         """Test Trainer initialization with custom optimizer."""
-        optimizer = create_optimizer(small_model)
+        optimizer = create_optimizer(small_model, optimizer_type="adamw")
         trainer = Trainer(
             model=small_model,
             loss_fn=loss_fn,
@@ -184,8 +236,8 @@ class TestTrainerInit:
 
     def test_trainer_init_with_scheduler(self, small_model, loss_fn, device):
         """Test Trainer initialization with custom scheduler."""
-        optimizer = create_optimizer(small_model)
-        scheduler = create_scheduler(optimizer)
+        optimizer = create_optimizer(small_model, optimizer_type="adamw")
+        scheduler = create_scheduler(optimizer, scheduler_type="warmup_cosine")
         trainer = Trainer(
             model=small_model,
             loss_fn=loss_fn,
@@ -612,7 +664,7 @@ class TestTrainerEdgeCases:
     def test_scheduler_warmup_phase(self, small_model, device):
         """Test scheduler warmup phase."""
         optimizer = torch.optim.AdamW(small_model.parameters(), lr=1e-4)
-        scheduler = create_scheduler(optimizer, num_warmup_steps=5, num_training_steps=20)
+        scheduler = create_scheduler(optimizer, scheduler_type="warmup_cosine", num_warmup_steps=5, num_training_steps=20)
 
         initial_lr = scheduler.get_last_lr()[0]
         assert initial_lr > 0
@@ -633,7 +685,7 @@ class TestTrainerEdgeCases:
         for param in small_predictor.base_model.parameters():
             param.requires_grad = False
 
-        optimizer = create_optimizer(small_predictor, lr=1e-4, freeze_base=True)
+        optimizer = create_optimizer(small_predictor, optimizer_type="adamw", lr=1e-4, freeze_base=True)
 
         optimizer_param_ids = {id(p) for group in optimizer.param_groups for p in group["params"]}
         base_param_ids = {id(p) for p in small_predictor.base_model.parameters()}
@@ -643,8 +695,8 @@ class TestTrainerEdgeCases:
     def test_checkpoint_save_success(self, small_predictor, loss_fn, simple_dataloader, device, tmp_path):
         """Test checkpoint save functionality."""
         small_predictor = small_predictor.to(device)
-        optimizer = create_optimizer(small_predictor, lr=1e-4)
-        scheduler = create_scheduler(optimizer, num_warmup_steps=0, num_training_steps=10)
+        optimizer = create_optimizer(small_predictor, optimizer_type="adamw", lr=1e-4)
+        scheduler = create_scheduler(optimizer, scheduler_type="warmup_cosine", num_warmup_steps=0, num_training_steps=10)
 
         trainer = Trainer(
             model=small_predictor,
@@ -661,8 +713,8 @@ class TestTrainerEdgeCases:
     def test_checkpoint_load_error_handling(self, small_predictor, loss_fn, device, tmp_path):
         """Test checkpoint load error handling."""
         small_predictor = small_predictor.to(device)
-        optimizer = create_optimizer(small_predictor, lr=1e-4)
-        scheduler = create_scheduler(optimizer, num_warmup_steps=0, num_training_steps=10)
+        optimizer = create_optimizer(small_predictor, optimizer_type="adamw", lr=1e-4)
+        scheduler = create_scheduler(optimizer, scheduler_type="warmup_cosine", num_warmup_steps=0, num_training_steps=10)
 
         trainer = Trainer(
             model=small_predictor,
@@ -679,8 +731,8 @@ class TestTrainerEdgeCases:
     def test_early_stopping(self, small_predictor, loss_fn, simple_dataloader, device, tmp_path):
         """Test early stopping functionality."""
         small_predictor = small_predictor.to(device)
-        optimizer = create_optimizer(small_predictor, lr=1e-4)
-        scheduler = create_scheduler(optimizer, num_warmup_steps=0, num_training_steps=10)
+        optimizer = create_optimizer(small_predictor, optimizer_type="adamw", lr=1e-4)
+        scheduler = create_scheduler(optimizer, scheduler_type="warmup_cosine", num_warmup_steps=0, num_training_steps=10)
 
         trainer = Trainer(
             model=small_predictor,
@@ -707,8 +759,8 @@ class TestTrainerEdgeCases:
     def test_resume_training(self, small_predictor, loss_fn, simple_dataloader, device, tmp_path):
         """Test resume training from checkpoint."""
         small_predictor = small_predictor.to(device)
-        optimizer = create_optimizer(small_predictor, lr=1e-4)
-        scheduler = create_scheduler(optimizer, num_warmup_steps=0, num_training_steps=20)
+        optimizer = create_optimizer(small_predictor, optimizer_type="adamw", lr=1e-4)
+        scheduler = create_scheduler(optimizer, scheduler_type="warmup_cosine", num_warmup_steps=0, num_training_steps=20)
 
         trainer = Trainer(
             model=small_predictor,

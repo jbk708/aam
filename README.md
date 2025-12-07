@@ -73,6 +73,11 @@ python -m aam.cli predict \
 - `--freeze-base`: Freeze base model parameters (faster training)
 - `--classifier`: Use classification mode (requires `--out-dim > 1`)
 - `--batch-size`: Must be even for unweighted UniFrac
+- `--optimizer`: Optimizer type - 'adamw' (default), 'adam', or 'sgd'
+- `--scheduler`: Learning rate scheduler - 'warmup_cosine' (default), 'cosine', 'plateau', or 'onecycle'
+- `--lr`: Learning rate (default: 1e-4)
+- `--warmup-steps`: Warmup steps for warmup_cosine scheduler (default: 10000)
+- `--weight-decay`: Weight decay for optimizers (default: 0.01)
 
 **Model:**
 - `--embedding-dim`: Embedding dimension (default: 128)
@@ -93,6 +98,25 @@ python -m aam.cli predict \
 - `--test-size`: Validation split size (default: 0.2)
 
 See `python -m aam.cli <command> --help` for full options.
+
+### Optimizer and Scheduler Options
+
+**Optimizers:**
+- `adamw` (default): AdamW optimizer with weight decay - recommended for transformer models
+- `adam`: Standard Adam optimizer without weight decay
+- `sgd`: SGD optimizer with momentum - traditional optimizer, may require different learning rates
+
+**Schedulers:**
+- `warmup_cosine` (default): Custom warmup + cosine decay scheduler - good for pretraining
+- `cosine`: PyTorch CosineAnnealingLR - cosine annealing without warmup
+- `plateau`: ReduceLROnPlateau - reduces LR when validation loss plateaus (requires validation set)
+- `onecycle`: OneCycleLR - one cycle learning rate policy - can improve convergence speed
+
+**Recommendations:**
+- **Pretraining**: Use `adamw` + `warmup_cosine` (default) for stable training
+- **Fine-tuning**: Try `adamw` + `plateau` for adaptive learning rate reduction
+- **Fast experimentation**: Try `adamw` + `onecycle` for faster convergence
+- **Memory-constrained**: `sgd` may use less memory than Adam variants
 
 ### Memory Optimization
 
