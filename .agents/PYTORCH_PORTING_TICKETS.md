@@ -768,7 +768,7 @@ Fix UniFrac loss computation to exclude diagonal elements (self-comparisons) fro
 ---
 
 ### PYT-8.13: Investigate Zero-Distance Samples in UniFrac Data
-**Priority:** HIGH | **Effort:** Medium | **Status:** Not Started
+**Priority:** HIGH | **Effort:** Medium | **Status:** ✅ Completed
 
 **Description:**
 Investigate the distribution and origin of zero-distance UniFrac pairs in the training data. A substantial cluster of samples at actual UniFrac distance = 0.0 exists, creating a bimodal distribution that may be problematic for regression. This investigation will determine whether zero distances represent data quality issues or legitimate biological signal, and inform how to handle them in loss computation.
@@ -782,15 +782,15 @@ Investigate the distribution and origin of zero-distance UniFrac pairs in the tr
 - Current model fails to predict zero distances, suggesting handling issues
 
 **Acceptance Criteria:**
-- [ ] Create analysis script to investigate zero-distance distribution
-- [ ] Count and analyze samples with distance = 0.0
-- [ ] Check if zero distances cluster by sample metadata (time, location, etc.)
-- [ ] Verify if zero distances are due to rarefaction artifacts
-- [ ] Determine if identical samples are duplicates or truly identical communities
-- [ ] Analyze distribution characteristics (bimodal, skewed, etc.)
-- [ ] Document findings in analysis report
-- [ ] Recommend handling strategy (remove, down-weight, keep, or separate loss term)
-- [ ] Create visualization of zero-distance distribution
+- [x] Create analysis script to investigate zero-distance distribution
+- [x] Count and analyze samples with distance = 0.0
+- [x] Check if zero distances cluster by sample metadata (time, location, etc.)
+- [x] Verify if zero distances are due to rarefaction artifacts
+- [x] Determine if identical samples are duplicates or truly identical communities
+- [x] Analyze distribution characteristics (bimodal, skewed, etc.)
+- [x] Document findings in analysis report
+- [x] Recommend handling strategy (remove, down-weight, keep, or separate loss term)
+- [x] Create visualization of zero-distance distribution
 
 **Implementation Notes:**
 - **Analysis Script**: Create `debug/investigate_zero_distance_samples.py`
@@ -817,6 +817,27 @@ Investigate the distribution and origin of zero-distance UniFrac pairs in the tr
 **Dependencies:** None (can be done in parallel with PYT-8.12)
 
 **Estimated Time:** 2-3 hours
+**Actual Time:** ~2 hours
+
+**Implementation Notes:**
+- ✅ Created `debug/investigate_zero_distance_samples.py` analysis script
+- ✅ Analyzed zero-distance distribution in training data (678 samples, 229,503 pairwise comparisons)
+- ✅ **Key Finding**: Zero distances are extremely rare (0.00% of pairs)
+  - Only 1 zero-distance pair out of 229,503 comparisons
+  - Only 2 samples involved (0.29% of samples)
+  - Distribution is unimodal (not bimodal) centered around 0.72
+- ✅ Generated comprehensive visualizations (histograms, comparisons)
+- ✅ Documented findings in `debug/ZERO_DISTANCE_ANALYSIS.md`
+- ✅ Updated `_design_plan/19_unifrac_underfitting_analysis.md` with findings
+- ✅ **Recommendation**: DO NOT implement zero-distance weighting (PYT-8.15 can be cancelled)
+  - Zero distances are too rare to significantly impact training
+  - Focus should shift to other loss function improvements (bounded loss, learning rate tuning)
+- ✅ This investigation disproves the hypothesis that zero-distance clusters are causing bimodal distribution issues
+
+**Files Modified:**
+- `debug/investigate_zero_distance_samples.py` - Analysis script
+- `debug/ZERO_DISTANCE_ANALYSIS.md` - Analysis report
+- `_design_plan/19_unifrac_underfitting_analysis.md` - Updated with findings
 
 ---
 
@@ -1010,7 +1031,7 @@ Tune learning rate to improve UniFrac model training performance. Current defaul
 
 ### Phase 9: UniFrac Underfitting Fixes (NEW - HIGH PRIORITY)
 12. ✅ **PYT-8.12: Mask Diagonal in UniFrac Loss Computation (1-2 hours) - HIGH PRIORITY** - Completed
-13. **PYT-8.13: Investigate Zero-Distance Samples in UniFrac Data (2-3 hours) - HIGH PRIORITY** - Not Started
+13. ✅ **PYT-8.13: Investigate Zero-Distance Samples in UniFrac Data (2-3 hours) - HIGH PRIORITY** - Completed
 14. **PYT-8.14: Implement Bounded Regression Loss for UniFrac Distances (3-4 hours) - MEDIUM PRIORITY** - Not Started
 15. **PYT-8.15: Implement Weighted Loss for Zero-Distance UniFrac Pairs (1-2 hours) - MEDIUM PRIORITY** - Not Started
 16. **PYT-8.16: Tune Learning Rate for UniFrac Model Training (2-3 hours) - MEDIUM PRIORITY** - Not Started
@@ -1038,7 +1059,7 @@ Tune learning rate to improve UniFrac model training performance. Current defaul
 - PYT-8.10 not started - Update training progress bar to remove redundant "Step" field and show loss breakdown (total, unifrac, nucleotide). Also rename `base_loss` to `unifrac_loss` throughout codebase and optimize TensorBoard reporting performance.
 - PYT-8.11 not started - Explore and benchmark different learning rate optimizers (AdamW, Adam, SGD) and schedulers (CosineAnnealingLR, ReduceLROnPlateau, OneCycleLR) to improve training performance and convergence speed.
 - ✅ **PYT-8.12 completed** - Fixed UniFrac loss computation to exclude diagonal elements (self-comparisons). Diagonal masking implemented using upper triangle extraction. Loss values now correctly exclude 0.0 diagonal elements, providing stronger training signal. **CRITICAL foundation fix for addressing underfitting.**
-- **PYT-8.13 not started** - Investigate zero-distance samples in UniFrac data to determine if they represent data quality issues or legitimate signal. Will inform handling strategy (remove, down-weight, or keep). **CRITICAL for understanding data distribution.**
+- ✅ **PYT-8.13 completed** - Investigated zero-distance samples in UniFrac data. **Key finding**: Zero distances are extremely rare (0.00% of pairs, only 1 pair out of 229,503). Distribution is unimodal (not bimodal) centered around 0.72. **Recommendation**: DO NOT implement zero-distance weighting (PYT-8.15 can be cancelled). Focus should shift to other loss function improvements.
 - **PYT-8.14 not started** - Implement bounded regression loss (clipped MSE) to enforce [0, 1] constraint on UniFrac distances. Prevents invalid predictions outside valid range. **IMPORTANT for model correctness.**
 - **PYT-8.15 not started** - Implement weighted loss to down-weight zero-distance pairs based on PYT-8.13 findings. Allows model to focus on meaningful distance relationships. **IMPORTANT for handling bimodal distribution.**
 - **PYT-8.16 not started** - Tune learning rate for UniFrac model training. Current default (1e-4) may be suboptimal. Learning rate finder and experimentation needed. **IMPORTANT for training optimization.**
