@@ -146,6 +146,9 @@ class MultiTaskLoss(nn.Module):
         if encoder_type == "unifrac" and embeddings is not None:
             # Compute pairwise distances from embeddings
             base_pred = compute_pairwise_distances(embeddings)
+        elif encoder_type == "unifrac" and embeddings is None:
+            # Legacy mode: use base_pred directly (for backward compatibility)
+            pass
         
         # Validate shapes match
         if base_pred.shape != base_true.shape:
@@ -358,7 +361,7 @@ class MultiTaskLoss(nn.Module):
             if encoder_type == "unifrac" and "embeddings" in outputs:
                 # New approach: compute distances from embeddings
                 embeddings = outputs["embeddings"]
-                # Pass dummy base_pred (will be replaced by computed distances)
+                # Pass dummy base_pred (will be replaced by computed distances in compute_base_loss)
                 base_pred = torch.zeros(1, device=embeddings.device)
                 losses["unifrac_loss"] = self.compute_base_loss(
                     base_pred,
@@ -367,7 +370,7 @@ class MultiTaskLoss(nn.Module):
                     embeddings=embeddings,
                 )
             elif "base_prediction" in outputs:
-                # Old approach: use base_prediction directly
+                # Legacy approach: use base_prediction directly
                 losses["unifrac_loss"] = self.compute_base_loss(
                     outputs["base_prediction"],
                     targets["base_target"],
