@@ -223,16 +223,16 @@ class Trainer:
         # Convert to numpy arrays
         pred_np = predictions.detach().cpu()
         target_np = targets.detach().cpu()
-        
+
         # Convert to numpy (handle both tensor and numpy)
         try:
-            pred_flat = pred_np.numpy() if hasattr(pred_np, 'numpy') else np.array(pred_np)
-            target_flat = target_np.numpy() if hasattr(target_np, 'numpy') else np.array(target_np)
+            pred_flat = pred_np.numpy() if hasattr(pred_np, "numpy") else np.array(pred_np)
+            target_flat = target_np.numpy() if hasattr(target_np, "numpy") else np.array(target_np)
         except RuntimeError:
             # Fallback: convert to list then numpy
             pred_flat = np.array(pred_np.tolist())
             target_flat = np.array(target_np.tolist())
-        
+
         # Ensure 1D arrays
         if pred_flat.ndim > 1:
             pred_flat = pred_flat.flatten()
@@ -799,7 +799,9 @@ class Trainer:
                                 base_true_batch = targets["base_target"]
                                 if base_pred_batch.dim() == 2 and base_pred_batch.shape[0] == base_pred_batch.shape[1]:
                                     batch_size = base_pred_batch.shape[0]
-                                    triu_indices = torch.triu_indices(batch_size, batch_size, offset=1, device=base_pred_batch.device)
+                                    triu_indices = torch.triu_indices(
+                                        batch_size, batch_size, offset=1, device=base_pred_batch.device
+                                    )
                                     base_pred_flat = base_pred_batch[triu_indices[0], triu_indices[1]]
                                     base_true_flat = base_true_batch[triu_indices[0], triu_indices[1]]
                                     all_predictions["base_prediction"].append(base_pred_flat)
@@ -858,7 +860,7 @@ class Trainer:
 
                 metrics = compute_regression_metrics(base_pred_flat, base_true_flat)
                 avg_losses.update(metrics)
-                
+
                 # For return_predictions, we need to return the flattened tensors
                 # (they're already flattened, so we can use them directly)
                 base_pred_tensor = base_pred_flat
