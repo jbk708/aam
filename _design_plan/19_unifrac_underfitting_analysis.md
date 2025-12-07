@@ -65,17 +65,21 @@ loss = nn.functional.mse_loss(base_pred, base_true)  # Full matrix including dia
 
 ### 3. Data Distribution Issues
 
-#### Zero-Distance Cluster
-- Large number of samples with actual UniFrac distance = 0.0
-- May represent:
-  - **Data Quality Issues**: Identical samples due to preprocessing/rarefaction artifacts
-  - **Legitimate Signal**: Truly identical or near-identical microbial communities
-- **Impact**: Creates bimodal distribution that MSE struggles with
+#### Zero-Distance Cluster (UPDATED - PYT-8.13 Analysis)
+- **Finding**: Zero distances are extremely rare (0.00% of pairwise comparisons)
+- **Analysis Results** (see `debug/ZERO_DISTANCE_ANALYSIS.md`):
+  - Total pairwise comparisons: 229,503
+  - Zero-distance pairs: 1 (0.00%)
+  - Samples involved: 2 / 678 (0.29%)
+- **Conclusion**: Zero-distance cluster hypothesis is **disproven**. The distribution is unimodal, not bimodal.
+- **Impact**: Zero distances are too rare to significantly impact training. Focus should shift to other issues.
 
-#### Distribution Characteristics
+#### Distribution Characteristics (UPDATED - PYT-8.13 Analysis)
 - **Bounded Range**: [0, 1] constraint not enforced
-- **Non-Normal**: Bimodal distribution with zero cluster
-- **Skewed**: Many low distances, fewer high distances
+- **Unimodal Distribution**: Centered around 0.72-0.75 (mean: 0.723, median: 0.751)
+- **High Mean Distance**: 0.72 indicates samples are generally dissimilar
+- **Wide Range**: Distances span from 0.008 to 0.985, covering nearly full [0, 1] range
+- **No Bimodal Pattern**: No evidence of zero-distance cluster causing distribution issues
 
 ### 4. Training Configuration Issues
 
@@ -111,25 +115,24 @@ if encoder_type == "unifrac" and base_pred.dim() == 2 and base_pred.shape[0] == 
 - Stronger training signal (only meaningful pairwise comparisons)
 - Better distance relationship learning
 
-#### 1.2 Investigate Zero-Distance Samples
-**Priority:** HIGH | **Effort:** Medium (2-3 hours)
+#### 1.2 Investigate Zero-Distance Samples ✅ COMPLETED (PYT-8.13)
+**Priority:** HIGH | **Effort:** Medium (2-3 hours) | **Status:** ✅ Completed
 
 **Actions**:
-1. Analyze distribution of zero-distance samples
-2. Determine if they represent data quality issues or legitimate signal
-3. Consider separate handling (removal, weighting, or separate loss term)
+1. ✅ Analyze distribution of zero-distance samples
+2. ✅ Determine if they represent data quality issues or legitimate signal
+3. ✅ Consider separate handling (removal, weighting, or separate loss term)
 
-**Investigation Steps**:
-- Count samples with distance = 0.0
-- Check if zero distances cluster by sample metadata (time, location, etc.)
-- Verify if zero distances are due to rarefaction artifacts
-- Determine if identical samples are duplicates or truly identical communities
+**Investigation Results** (see `debug/ZERO_DISTANCE_ANALYSIS.md`):
+- **Zero distances are extremely rare**: Only 1 pair out of 229,503 (0.00%)
+- **No bimodal distribution**: Distribution is unimodal, centered around 0.72
+- **No cluster**: Only 2 samples involved in zero-distance pairs
+- **Conclusion**: Zero distances are too rare to significantly impact training
 
-**Potential Solutions**:
-- **Option A**: Remove zero-distance pairs if they're data artifacts
-- **Option B**: Down-weight zero-distance pairs in loss (e.g., `weight = 0.1` for zero distances)
-- **Option C**: Separate loss term for zero vs non-zero distances
-- **Option D**: Keep zero distances but use different loss function (see Phase 2)
+**Recommendation**: 
+- **DO NOT implement zero-distance weighting or removal** (PYT-8.15 can be cancelled)
+- Focus on other loss function improvements (bounded loss, diagonal masking)
+- Zero-distance handling is not needed - too rare to matter
 
 ### Phase 2: Loss Function Improvements (Medium-Term)
 
@@ -158,20 +161,18 @@ loss = nn.functional.mse_loss(base_pred_clipped, base_true)
 
 **Recommendation**: Start with Option A (clipped MSE) for simplicity, consider Option B if needed.
 
-#### 2.2 Weighted Loss for Zero-Distance Pairs
-**Priority:** MEDIUM | **Effort:** Low (1-2 hours)
+#### 2.2 Weighted Loss for Zero-Distance Pairs ❌ CANCELLED
+**Priority:** MEDIUM | **Effort:** Low (1-2 hours) | **Status:** ❌ Cancelled (PYT-8.13 findings)
 
-**Action**: Down-weight zero-distance pairs in loss computation.
+**Action**: ~~Down-weight zero-distance pairs in loss computation.~~ **NOT NEEDED**
 
-**Implementation**:
-```python
-# Create weights: lower weight for zero distances
-weights = torch.where(base_true == 0.0, 0.1, 1.0)
-loss = nn.functional.mse_loss(base_pred_masked, base_true_masked, reduction='none')
-weighted_loss = (loss * weights).mean()
-```
+**Rationale for Cancellation**:
+- Zero distances are extremely rare (0.00% of pairwise comparisons)
+- Only 1 zero-distance pair out of 229,503 comparisons
+- Down-weighting or removing this single pair will have negligible effect on training
+- Focus should shift to other loss function improvements (bounded loss, diagonal masking)
 
-**Rationale**: Zero distances may be less informative or represent data artifacts.
+**Recommendation**: Skip this improvement. Implement bounded regression loss (PYT-8.14) and learning rate tuning (PYT-8.16) instead.
 
 #### 2.3 Focal Loss for Distance Regression
 **Priority:** LOW | **Effort:** Medium (2-3 hours)
@@ -268,13 +269,13 @@ pairwise_distances = compute_pairwise_distances(sample_embeddings)  # [batch_siz
 ## Implementation Priority
 
 ### Immediate (This Sprint)
-1. ✅ **PYT-8.12**: Mask diagonal in UniFrac loss computation
-2. 🔄 **Investigate zero-distance samples**: Analyze distribution and determine handling strategy
+1. ✅ **PYT-8.12**: Mask diagonal in UniFrac loss computation - **COMPLETED**
+2. ✅ **PYT-8.13**: Investigate zero-distance samples - **COMPLETED** (zero distances are extremely rare, no handling needed)
 
 ### Short-Term (Next Sprint)
-3. **Bounded regression loss**: Implement clipped MSE or beta regression
-4. **Weighted loss for zero distances**: Down-weight zero-distance pairs
-5. **Learning rate tuning**: Find optimal learning rate
+3. **Bounded regression loss (PYT-8.14)**: Implement clipped MSE or beta regression
+4. ~~**Weighted loss for zero distances (PYT-8.15)**: Down-weight zero-distance pairs~~ - **CANCELLED** (not needed)
+5. **Learning rate tuning (PYT-8.16)**: Find optimal learning rate
 
 ### Medium-Term (Future Sprints)
 6. **Architectural alignment**: Consider TensorFlow-like pairwise distance computation
