@@ -669,9 +669,84 @@ Explore and evaluate different learning rate optimizers and schedulers to improv
 
 ---
 
+### PYT-8.12: Mask Diagonal in UniFrac Loss Computation
+**Priority:** HIGH | **Effort:** Low | **Status:** Not Started
+
+**Description:**
+Fix UniFrac loss computation to exclude diagonal elements (self-comparisons) from the loss calculation. Currently, the loss includes diagonal elements which are always 0.0 (distance from an ASV to itself), artificially lowering the loss and providing no useful training signal. The diagonal should be masked out when computing MSE loss for pairwise UniFrac distance matrices.
+
+**Problem:**
+- During training, many 0.0 UniFrac distances are observed
+- Diagonal elements in pairwise distance matrices are always 0.0 (ASV compared to itself)
+- These diagonal elements are currently included in loss computation
+- This artificially reduces the loss value and doesn't contribute to learning meaningful distance relationships
+- Plotting code already masks diagonal (uses `triu_indices` with `k=1`), but loss computation does not
+
+**Current Implementation:**
+- `compute_base_loss()` in `aam/training/losses.py` computes MSE loss directly on full matrices: `nn.functional.mse_loss(base_pred, base_true)`
+- No diagonal masking applied for UniFrac pairwise distance matrices
+- Plotting code correctly masks diagonal using `torch.triu_indices(..., k=1)` or `np.triu_indices(..., k=1)`
+
+**Acceptance Criteria:**
+- [ ] Identify where diagonal masking should be applied (in `compute_base_loss()` for `encoder_type='unifrac'`)
+- [ ] Implement diagonal masking for UniFrac pairwise distance matrices
+- [ ] Extract upper triangle (excluding diagonal) similar to plotting code
+- [ ] Ensure masking only applies to UniFrac (square pairwise matrices), not Faith PD or other encoder types
+- [ ] Verify loss computation excludes diagonal elements
+- [ ] Test that loss values increase appropriately (no longer artificially lowered by 0.0 diagonal)
+- [ ] Ensure backward compatibility (non-UniFrac encoders unaffected)
+- [ ] Add unit tests for diagonal masking in loss computation
+- [ ] Verify training still works correctly with masked diagonal
+- [ ] Document the change in implementation notes
+
+**Implementation Notes:**
+- **Location**: `aam/training/losses.py` - `compute_base_loss()` method
+- **Approach**: 
+  1. Check if `encoder_type == 'unifrac'` and matrices are square (`base_pred.shape[0] == base_pred.shape[1]`)
+  2. Extract upper triangle excluding diagonal using `torch.triu_indices(batch_size, batch_size, offset=1)`
+  3. Compute MSE loss only on upper triangle elements
+  4. For non-UniFrac or non-square matrices, use existing logic (no masking)
+
+- **Code Pattern** (similar to plotting code):
+  ```python
+  if encoder_type == "unifrac" and base_pred.dim() == 2 and base_pred.shape[0] == base_pred.shape[1]:
+      # Extract upper triangle (excluding diagonal)
+      batch_size = base_pred.shape[0]
+      triu_indices = torch.triu_indices(batch_size, batch_size, offset=1, device=base_pred.device)
+      base_pred_masked = base_pred[triu_indices[0], triu_indices[1]]
+      base_true_masked = base_true[triu_indices[0], triu_indices[1]]
+      return nn.functional.mse_loss(base_pred_masked, base_true_masked)
+  else:
+      # Existing logic for non-UniFrac or non-square matrices
+      return nn.functional.mse_loss(base_pred, base_true)
+  ```
+
+- **Files to Modify:**
+  - `aam/training/losses.py` - Add diagonal masking logic to `compute_base_loss()`
+  - `tests/test_losses.py` - Add tests for diagonal masking
+
+- **Tests Needed:**
+  - Test that UniFrac loss excludes diagonal elements
+  - Test that non-UniFrac encoders (Faith PD, taxonomy) are unaffected
+  - Test that loss values are higher without diagonal (expected behavior)
+  - Test with different batch sizes
+  - Test edge cases (batch_size=1, batch_size=2)
+
+- **Expected Impact:**
+  - Loss values will increase (no longer artificially lowered by 0.0 diagonal)
+  - Training signal will be stronger (only meaningful pairwise comparisons)
+  - Model should learn better distance relationships
+  - Training may require slight learning rate adjustment (loss scale changes)
+
+**Dependencies:** None
+
+**Estimated Time:** 1-2 hours
+
+---
+
 ## Summary
 
-**Total Estimated Time:** 30-42 hours
+**Total Estimated Time:** 31-44 hours
 
 **Implementation Order:**
 1. ✅ PYT-8.3: Change Early Stopping Default to 10 Epochs (1 hour) - Completed
@@ -685,6 +760,7 @@ Explore and evaluate different learning rate optimizers and schedulers to improv
 9. ✅ **PYT-8.7: Fix Model NaN Issue and Add Gradient Clipping (4-6 hours) - HIGH PRIORITY** - Completed
 10. PYT-8.10: Update Training Progress Bar and Rename base_loss to unifrac_loss (2-3 hours) - Not Started
 11. PYT-8.11: Explore Learning Rate Optimizers and Schedulers (4-6 hours) - Not Started
+12. **PYT-8.12: Mask Diagonal in UniFrac Loss Computation (1-2 hours) - HIGH PRIORITY** - Not Started
 
 **Notes:**
 - All tickets are independent and can be implemented in any order
@@ -699,4 +775,5 @@ Explore and evaluate different learning rate optimizers and schedulers to improv
 - **PYT-8.7 completed** - Gradient clipping implemented using `torch.nn.utils.clip_grad_norm_()`. Added `--max-grad-norm` CLI option. NaN issues resolved via PYT-8.8 (START_TOKEN) and PYT-8.9 (all-padding sequence handling). Training stability verified.
 - PYT-8.10 not started - Update training progress bar to remove redundant "Step" field and show loss breakdown (total, unifrac, nucleotide). Also rename `base_loss` to `unifrac_loss` throughout codebase and optimize TensorBoard reporting performance.
 - PYT-8.11 not started - Explore and benchmark different learning rate optimizers (AdamW, Adam, SGD) and schedulers (CosineAnnealingLR, ReduceLROnPlateau, OneCycleLR) to improve training performance and convergence speed.
+- **PYT-8.12 not started** - Fix UniFrac loss computation to exclude diagonal elements (self-comparisons). Currently diagonal 0.0 values artificially lower loss. Need to mask diagonal using upper triangle extraction similar to plotting code.
 - Follow the workflow in `.agents/workflow.md` for implementation
