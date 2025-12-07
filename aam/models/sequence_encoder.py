@@ -145,6 +145,8 @@ class SequenceEncoder(nn.Module):
         
         if self.encoder_type == "combined":
             unifrac_pred = self.uni_ff(pooled_embeddings)
+            # Clip UniFrac predictions to [0, 1] range (bounded regression)
+            unifrac_pred = torch.clamp(unifrac_pred, 0.0, 1.0)
             faith_pred = self.faith_ff(pooled_embeddings)
             tax_pred = self.tax_ff(pooled_embeddings)
             
@@ -161,6 +163,11 @@ class SequenceEncoder(nn.Module):
             return result
         else:
             base_prediction = self.output_head(pooled_embeddings)
+            
+            # Clip UniFrac predictions to [0, 1] range (bounded regression)
+            # UniFrac distances are constrained to [0, 1] range
+            if self.encoder_type == "unifrac":
+                base_prediction = torch.clamp(base_prediction, 0.0, 1.0)
             
             result = {
                 "base_prediction": base_prediction,
