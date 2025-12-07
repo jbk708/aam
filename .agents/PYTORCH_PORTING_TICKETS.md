@@ -744,11 +744,233 @@ Fix UniFrac loss computation to exclude diagonal elements (self-comparisons) fro
 
 ---
 
+### PYT-8.13: Investigate Zero-Distance Samples in UniFrac Data
+**Priority:** HIGH | **Effort:** Medium | **Status:** Not Started
+
+**Description:**
+Investigate the distribution and origin of zero-distance UniFrac pairs in the training data. A substantial cluster of samples at actual UniFrac distance = 0.0 exists, creating a bimodal distribution that may be problematic for regression. This investigation will determine whether zero distances represent data quality issues or legitimate biological signal, and inform how to handle them in loss computation.
+
+**Problem:**
+- Large number of samples with actual UniFrac distance = 0.0 observed during training
+- Creates bimodal distribution that MSE loss struggles with
+- May represent:
+  - Data quality issues (identical samples due to preprocessing/rarefaction artifacts)
+  - Legitimate signal (truly identical or near-identical microbial communities)
+- Current model fails to predict zero distances, suggesting handling issues
+
+**Acceptance Criteria:**
+- [ ] Create analysis script to investigate zero-distance distribution
+- [ ] Count and analyze samples with distance = 0.0
+- [ ] Check if zero distances cluster by sample metadata (time, location, etc.)
+- [ ] Verify if zero distances are due to rarefaction artifacts
+- [ ] Determine if identical samples are duplicates or truly identical communities
+- [ ] Analyze distribution characteristics (bimodal, skewed, etc.)
+- [ ] Document findings in analysis report
+- [ ] Recommend handling strategy (remove, down-weight, keep, or separate loss term)
+- [ ] Create visualization of zero-distance distribution
+
+**Implementation Notes:**
+- **Analysis Script**: Create `debug/investigate_zero_distance_samples.py`
+- **Key Metrics to Analyze**:
+  - Total count of zero-distance pairs
+  - Percentage of zero-distance pairs in dataset
+  - Distribution of zero vs non-zero distances
+  - Correlation with sample metadata
+  - Relationship to rarefaction depth
+- **Visualizations**:
+  - Histogram of UniFrac distances (highlight zero cluster)
+  - Scatter plot of zero-distance pairs vs metadata
+  - Distribution comparison: zero vs non-zero samples
+- **Potential Handling Strategies** (to be determined by analysis):
+  - **Option A**: Remove zero-distance pairs if they're data artifacts
+  - **Option B**: Down-weight zero-distance pairs in loss (e.g., `weight = 0.1`)
+  - **Option C**: Separate loss term for zero vs non-zero distances
+  - **Option D**: Keep zero distances but use different loss function (bounded regression)
+- **Files to Create/Modify**:
+  - `debug/investigate_zero_distance_samples.py` - Analysis script
+  - `debug/ZERO_DISTANCE_ANALYSIS.md` - Analysis report
+  - Update planning document `_design_plan/19_unifrac_underfitting_analysis.md` with findings
+
+**Dependencies:** None (can be done in parallel with PYT-8.12)
+
+**Estimated Time:** 2-3 hours
+
+---
+
+### PYT-8.14: Implement Bounded Regression Loss for UniFrac Distances
+**Priority:** MEDIUM | **Effort:** Medium | **Status:** Not Started
+
+**Description:**
+Implement bounded regression loss to account for the [0, 1] constraint on UniFrac distances. Currently, MSE loss doesn't enforce this constraint, allowing predictions outside the valid range. This ticket implements clipped MSE loss as a first step, with option to upgrade to beta regression if needed.
+
+**Problem:**
+- UniFrac distances are constrained to [0, 1] range
+- Current MSE loss doesn't enforce this constraint
+- Model can predict values outside [0, 1], which are invalid
+- No penalty for predictions outside valid range
+
+**Acceptance Criteria:**
+- [ ] Implement clipped MSE loss (clip predictions to [0, 1] before computing loss)
+- [ ] Add `clip_predictions` parameter to `compute_base_loss()` (default: True for UniFrac)
+- [ ] Ensure clipping only applies to UniFrac encoder type, not Faith PD or others
+- [ ] Verify predictions are clipped during training
+- [ ] Test that loss computation works correctly with clipped predictions
+- [ ] Add unit tests for clipped MSE loss
+- [ ] Document clipping behavior in code comments
+- [ ] Consider beta regression as future enhancement (research/document, don't implement yet)
+- [ ] Verify training stability with clipped loss
+
+**Implementation Notes:**
+- **Approach**: Start with clipped MSE (simplest), consider beta regression later if needed
+- **Location**: `aam/training/losses.py` - `compute_base_loss()` method
+- **Code Pattern**:
+  ```python
+  if encoder_type == "unifrac" and clip_predictions:
+      # Clip predictions to [0, 1] range
+      base_pred = torch.clamp(base_pred, 0.0, 1.0)
+  # Then compute MSE loss as usual
+  ```
+- **Default Behavior**: 
+  - `clip_predictions=True` for UniFrac (bounded [0, 1])
+  - `clip_predictions=False` for Faith PD and other encoders (unbounded)
+- **Files to Modify:**
+  - `aam/training/losses.py` - Add clipping logic to `compute_base_loss()`
+  - `tests/test_losses.py` - Add tests for clipped MSE loss
+- **Tests Needed:**
+  - Test that predictions are clipped to [0, 1] for UniFrac
+  - Test that non-UniFrac encoders are unaffected
+  - Test with predictions outside [0, 1] range
+  - Test that gradients flow correctly through clipping
+- **Future Enhancement** (not in this ticket):
+  - Beta regression loss for theoretically sound bounded regression
+  - Requires reparameterization: `y = (x - a) / (b - a)` where a=0, b=1
+  - More complex but may provide better performance
+
+**Dependencies:** PYT-8.12 (should complete diagonal masking first)
+
+**Estimated Time:** 3-4 hours
+
+---
+
+### PYT-8.15: Implement Weighted Loss for Zero-Distance UniFrac Pairs
+**Priority:** MEDIUM | **Effort:** Low | **Status:** Not Started
+
+**Description:**
+Implement weighted loss to down-weight zero-distance pairs in UniFrac loss computation. Based on findings from PYT-8.13, zero-distance pairs may be less informative or represent data artifacts. This ticket adds configurable weighting to reduce their influence on training.
+
+**Problem:**
+- Zero-distance pairs may be less informative for learning distance relationships
+- Large cluster of zero distances creates bimodal distribution
+- MSE loss treats all pairs equally, including potentially problematic zero pairs
+- May need to down-weight zero distances to improve model learning
+
+**Acceptance Criteria:**
+- [ ] Add `zero_distance_weight` parameter to `MultiTaskLoss.__init__()` (default: 0.1)
+- [ ] Implement weighted loss computation in `compute_base_loss()`
+- [ ] Create weights tensor: `weights = torch.where(base_true == 0.0, zero_distance_weight, 1.0)`
+- [ ] Apply weights to loss: `loss = nn.functional.mse_loss(..., reduction='none')` then `weighted_loss = (loss * weights).mean()`
+- [ ] Ensure weighting only applies to UniFrac encoder type
+- [ ] Add CLI option `--zero-distance-weight` for pretrain command (default: 0.1)
+- [ ] Test with different zero_distance_weight values (0.0, 0.1, 0.5, 1.0)
+- [ ] Add unit tests for weighted loss computation
+- [ ] Document weighting behavior and rationale
+- [ ] Verify training stability with weighted loss
+
+**Implementation Notes:**
+- **Location**: `aam/training/losses.py` - `MultiTaskLoss` class
+- **Weighting Strategy**: 
+  - Zero distances: `weight = zero_distance_weight` (default: 0.1)
+  - Non-zero distances: `weight = 1.0`
+- **Code Pattern**:
+  ```python
+  if encoder_type == "unifrac":
+      # Create weights for zero vs non-zero distances
+      weights = torch.where(base_true == 0.0, self.zero_distance_weight, 1.0)
+      loss = nn.functional.mse_loss(base_pred, base_true, reduction='none')
+      weighted_loss = (loss * weights).mean()
+      return weighted_loss
+  ```
+- **Files to Modify:**
+  - `aam/training/losses.py` - Add `zero_distance_weight` parameter and weighted loss logic
+  - `aam/cli.py` - Add `--zero-distance-weight` option to `pretrain` command
+  - `tests/test_losses.py` - Add tests for weighted loss
+- **Tests Needed:**
+  - Test that zero distances are down-weighted correctly
+  - Test that non-zero distances have weight 1.0
+  - Test with different zero_distance_weight values
+  - Test that non-UniFrac encoders are unaffected
+  - Test edge cases (all zeros, no zeros)
+- **Rationale**: Zero distances may be less informative or represent data artifacts, so reducing their weight allows model to focus on meaningful distance relationships
+
+**Dependencies:** PYT-8.13 (should complete investigation first to inform weight value)
+
+**Estimated Time:** 1-2 hours
+
+---
+
+### PYT-8.16: Tune Learning Rate for UniFrac Model Training
+**Priority:** MEDIUM | **Effort:** Low-Medium | **Status:** Not Started
+
+**Description:**
+Tune learning rate to improve UniFrac model training performance. Current default learning rate (1e-4) may not be optimal for pairwise distance prediction task. This ticket implements learning rate finder and tunes learning rate for better convergence and final model quality.
+
+**Problem:**
+- Current learning rate (1e-4) may be suboptimal for UniFrac pairwise distance prediction
+- Model underfitting (R² = 0.0455) may be partially due to learning rate issues
+- No systematic approach to learning rate selection
+- May need different learning rates for pretraining vs fine-tuning
+
+**Acceptance Criteria:**
+- [ ] Implement learning rate finder utility (or use existing PyTorch tools)
+- [ ] Run learning rate range test on UniFrac pretraining task
+- [ ] Identify optimal learning rate range
+- [ ] Test with lower learning rates (1e-5, 5e-5)
+- [ ] Test with higher learning rates (5e-4, 1e-3) if needed
+- [ ] Compare training curves (loss, R²) with different learning rates
+- [ ] Update default learning rate if improvement found
+- [ ] Add `--lr` option documentation with recommended values
+- [ ] Consider learning rate scheduling (ReduceLROnPlateau) if beneficial
+- [ ] Document findings and recommendations
+
+**Implementation Notes:**
+- **Learning Rate Finder Options**:
+  - Option A: Use `torch-lr-finder` library (if available)
+  - Option B: Implement simple LR range test (train for few epochs with different LRs)
+  - Option C: Manual experimentation with different LR values
+- **Learning Rates to Test**:
+  - Current: 1e-4 (baseline)
+  - Lower: 1e-5, 5e-5
+  - Higher: 5e-4, 1e-3 (if needed)
+- **Evaluation Metrics**:
+  - Training loss convergence
+  - Validation R² score
+  - Prediction range coverage
+  - Training stability (no NaN, no divergence)
+- **Files to Create/Modify**:
+  - `debug/lr_finder.py` - Learning rate finder script (optional)
+  - `aam/cli.py` - Update `--lr` default if improvement found
+  - `_design_plan/19_unifrac_underfitting_analysis.md` - Document findings
+- **Learning Rate Scheduling** (optional enhancement):
+  - Consider `ReduceLROnPlateau` if validation loss plateaus
+  - May help with fine-tuning after pretraining
+- **Expected Impact**:
+  - Better convergence speed
+  - Improved final model quality (higher R²)
+  - More stable training
+
+**Dependencies:** PYT-8.12, PYT-8.14 (should complete loss improvements first)
+
+**Estimated Time:** 2-3 hours (including experimentation time)
+
+---
+
 ## Summary
 
-**Total Estimated Time:** 31-44 hours
+**Total Estimated Time:** 40-55 hours (including new UniFrac underfitting tickets)
 
 **Implementation Order:**
+
+### Phase 8: Feature Enhancements (Completed)
 1. ✅ PYT-8.3: Change Early Stopping Default to 10 Epochs (1 hour) - Completed
 2. ✅ PYT-8.2: Implement Single Best Model File Saving (2-3 hours) - Completed
 3. ✅ PYT-8.1: Implement TensorBoard Train/Val Overlay Verification (1-2 hours) - Completed
@@ -758,12 +980,29 @@ Fix UniFrac loss computation to exclude diagonal elements (self-comparisons) fro
 7. ✅ **PYT-8.6: Fix Base Loss Shape Mismatch for Variable Batch Sizes in Pretrain Mode (2-3 hours) - HIGH PRIORITY** - Completed
 8. ✅ **PYT-8.9: Fix NaN in Nucleotide Predictions During Pretraining with Token Limit (3-4 hours) - HIGH PRIORITY** - Completed
 9. ✅ **PYT-8.7: Fix Model NaN Issue and Add Gradient Clipping (4-6 hours) - HIGH PRIORITY** - Completed
+
+### Phase 8: Feature Enhancements (In Progress)
 10. PYT-8.10: Update Training Progress Bar and Rename base_loss to unifrac_loss (2-3 hours) - Not Started
 11. PYT-8.11: Explore Learning Rate Optimizers and Schedulers (4-6 hours) - Not Started
+
+### Phase 9: UniFrac Underfitting Fixes (NEW - HIGH PRIORITY)
 12. **PYT-8.12: Mask Diagonal in UniFrac Loss Computation (1-2 hours) - HIGH PRIORITY** - Not Started
+13. **PYT-8.13: Investigate Zero-Distance Samples in UniFrac Data (2-3 hours) - HIGH PRIORITY** - Not Started
+14. **PYT-8.14: Implement Bounded Regression Loss for UniFrac Distances (3-4 hours) - MEDIUM PRIORITY** - Not Started
+15. **PYT-8.15: Implement Weighted Loss for Zero-Distance UniFrac Pairs (1-2 hours) - MEDIUM PRIORITY** - Not Started
+16. **PYT-8.16: Tune Learning Rate for UniFrac Model Training (2-3 hours) - MEDIUM PRIORITY** - Not Started
+
+**Recommended Implementation Order for UniFrac Fixes:**
+1. **PYT-8.12** (diagonal masking) - Foundation fix, should be done first
+2. **PYT-8.13** (zero-distance investigation) - Can be done in parallel with PYT-8.12
+3. **PYT-8.14** (bounded loss) - Depends on PYT-8.12
+4. **PYT-8.15** (weighted loss) - Depends on PYT-8.13 findings
+5. **PYT-8.16** (learning rate tuning) - Depends on PYT-8.12 and PYT-8.14
 
 **Notes:**
-- All tickets are independent and can be implemented in any order
+- All tickets are independent and can be implemented in any order (except where dependencies noted)
+- **Phase 9 tickets address critical underfitting issue** (R² = 0.0455) identified in model performance analysis
+- See `_design_plan/19_unifrac_underfitting_analysis.md` for detailed analysis and rationale
 - PYT-8.3 completed - early stopping defaults now consistent at 10 epochs
 - PYT-8.2 completed - single best model file saving implemented
 - PYT-8.1 completed - TensorBoard overlay verification documented
@@ -775,5 +1014,9 @@ Fix UniFrac loss computation to exclude diagonal elements (self-comparisons) fro
 - **PYT-8.7 completed** - Gradient clipping implemented using `torch.nn.utils.clip_grad_norm_()`. Added `--max-grad-norm` CLI option. NaN issues resolved via PYT-8.8 (START_TOKEN) and PYT-8.9 (all-padding sequence handling). Training stability verified.
 - PYT-8.10 not started - Update training progress bar to remove redundant "Step" field and show loss breakdown (total, unifrac, nucleotide). Also rename `base_loss` to `unifrac_loss` throughout codebase and optimize TensorBoard reporting performance.
 - PYT-8.11 not started - Explore and benchmark different learning rate optimizers (AdamW, Adam, SGD) and schedulers (CosineAnnealingLR, ReduceLROnPlateau, OneCycleLR) to improve training performance and convergence speed.
-- **PYT-8.12 not started** - Fix UniFrac loss computation to exclude diagonal elements (self-comparisons). Currently diagonal 0.0 values artificially lower loss. Need to mask diagonal using upper triangle extraction similar to plotting code.
+- **PYT-8.12 not started** - Fix UniFrac loss computation to exclude diagonal elements (self-comparisons). Currently diagonal 0.0 values artificially lower loss. Need to mask diagonal using upper triangle extraction similar to plotting code. **CRITICAL for addressing underfitting.**
+- **PYT-8.13 not started** - Investigate zero-distance samples in UniFrac data to determine if they represent data quality issues or legitimate signal. Will inform handling strategy (remove, down-weight, or keep). **CRITICAL for understanding data distribution.**
+- **PYT-8.14 not started** - Implement bounded regression loss (clipped MSE) to enforce [0, 1] constraint on UniFrac distances. Prevents invalid predictions outside valid range. **IMPORTANT for model correctness.**
+- **PYT-8.15 not started** - Implement weighted loss to down-weight zero-distance pairs based on PYT-8.13 findings. Allows model to focus on meaningful distance relationships. **IMPORTANT for handling bimodal distribution.**
+- **PYT-8.16 not started** - Tune learning rate for UniFrac model training. Current default (1e-4) may be suboptimal. Learning rate finder and experimentation needed. **IMPORTANT for training optimization.**
 - Follow the workflow in `.agents/workflow.md` for implementation
