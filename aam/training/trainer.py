@@ -516,6 +516,10 @@ class Trainer:
                             file=sys.stderr,
                             flush=True,
                         )
+                        # Check sample_embeddings too for debugging
+                        if "sample_embeddings" in outputs:
+                            print(f"sample_embeddings has NaN: {torch.any(torch.isnan(outputs['sample_embeddings']))}", file=sys.stderr, flush=True)
+                        raise ValueError("NaN values found in embeddings before loss computation")
                 elif "base_prediction" in outputs:
                     if torch.any(torch.isnan(outputs["base_prediction"])):
                         print(f"ERROR: NaN in base_prediction before loss computation", file=sys.stderr, flush=True)

@@ -130,9 +130,12 @@ def simple_dataloader_encoder(device):
             end_idx = start_idx + self.batch_size
             batch_tokens = self.tokens[start_idx:end_idx]
             # Create pairwise distance matrix for this batch [batch_size, batch_size]
-            dist_matrix = torch.randn(self.batch_size, self.batch_size)
+            # Ensure values are in [0, 1] range for UniFrac distances
+            dist_matrix = torch.rand(self.batch_size, self.batch_size)
             dist_matrix = (dist_matrix + dist_matrix.T) / 2  # Make symmetric
             dist_matrix.fill_diagonal_(0.0)  # Zero diagonal
+            # Move to same device as tokens
+            dist_matrix = dist_matrix.to(batch_tokens.device)
             return batch_tokens, dist_matrix
     
     dataset = UniFracDataset(tokens, batch_size)
@@ -935,9 +938,11 @@ class TestGradientAccumulation:
                 start_idx = idx * self.batch_size
                 end_idx = start_idx + self.batch_size
                 batch_tokens = self.tokens[start_idx:end_idx]
-                dist_matrix = torch.randn(self.batch_size, self.batch_size)
+                # Ensure values are in [0, 1] range for UniFrac distances
+                dist_matrix = torch.rand(self.batch_size, self.batch_size)
                 dist_matrix = (dist_matrix + dist_matrix.T) / 2
                 dist_matrix.fill_diagonal_(0.0)
+                dist_matrix = dist_matrix.to(batch_tokens.device)
                 return batch_tokens, dist_matrix
         
         dataset1 = UniFracDataset(tokens1, batch_size)
