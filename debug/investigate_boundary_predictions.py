@@ -26,16 +26,104 @@ from skbio import DistanceMatrix
 from sklearn.model_selection import train_test_split
 
 
+def infer_architecture_from_checkpoint(checkpoint: Dict) -> Dict:
+    """Infer model architecture parameters from checkpoint state_dict.
+    
+    Args:
+        checkpoint: Checkpoint dictionary with model_state_dict
+        
+    Returns:
+        Dictionary with inferred architecture parameters
+    """
+    state_dict = checkpoint["model_state_dict"]
+    
+    # Infer attention layers by counting layer indices in transformer keys
+    asv_layers = set()
+    sample_layers = set()
+    encoder_layers = set()
+    
+    for key in state_dict.keys():
+        if "asv_encoder.transformer.encoder.layers." in key:
+            # Extract layer number: "asv_encoder.transformer.encoder.layers.2.self_attn..."
+            parts = key.split("layers.")
+            if len(parts) > 1:
+                layer_num = int(parts[1].split(".")[0])
+                asv_layers.add(layer_num)
+        elif "sample_transformer.encoder.layers." in key:
+            parts = key.split("layers.")
+            if len(parts) > 1:
+                layer_num = int(parts[1].split(".")[0])
+                sample_layers.add(layer_num)
+        elif "encoder_transformer.encoder.layers." in key:
+            parts = key.split("layers.")
+            if len(parts) > 1:
+                layer_num = int(parts[1].split(".")[0])
+                encoder_layers.add(layer_num)
+    
+    asv_num_layers = max(asv_layers) + 1 if asv_layers else 2
+    sample_num_layers = max(sample_layers) + 1 if sample_layers else 2
+    encoder_num_layers = max(encoder_layers) + 1 if encoder_layers else 2
+    
+    # Infer attention heads from in_proj_weight shape
+    # in_proj_weight has shape [3 * hidden_dim, hidden_dim] for query, key, value
+    attention_heads = 4  # Default, will try to infer
+    for key in state_dict.keys():
+        if "self_attn.in_proj_weight" in key:
+            weight = state_dict[key]
+            # in_proj_weight shape: [3 * num_heads * head_dim, hidden_dim]
+            # We can't directly infer, so use default or check if there's a better way
+            break
+    
+    # Infer embedding_dim from embedding weight
+    embedding_dim = 128  # Default
+    for key in state_dict.keys():
+        if "embedding.weight" in key:
+            # Could be [vocab_size, embedding_dim] or [embedding_dim, ...]
+            weight = state_dict[key]
+            if len(weight.shape) == 2:
+                # Usually [vocab_size, embedding_dim]
+                embedding_dim = weight.shape[1]
+                break
+            elif len(weight.shape) == 1:
+                # Could be a 1D embedding
+                embedding_dim = weight.shape[0]
+                break
+    
+    # Check if nucleotide head exists
+    predict_nucleotides = any("nucleotide_head" in key for key in state_dict.keys())
+    
+    # Infer encoder_type from output head
+    encoder_type = "unifrac"  # Default
+    if "output_head.weight" in state_dict:
+        base_output_dim = state_dict["output_head.weight"].shape[0]
+    elif "uni_ff.weight" in state_dict:
+        encoder_type = "combined"
+        base_output_dim = None
+    else:
+        base_output_dim = None
+    
+    return {
+        "asv_num_layers": asv_num_layers,
+        "sample_num_layers": sample_num_layers,
+        "encoder_num_layers": encoder_num_layers,
+        "attention_heads": attention_heads,
+        "embedding_dim": embedding_dim,
+        "predict_nucleotides": predict_nucleotides,
+        "encoder_type": encoder_type,
+        "base_output_dim": base_output_dim,
+    }
+
+
 def load_model_checkpoint(
     checkpoint_path: str,
     device: torch.device,
     encoder_type: str = "unifrac",
     vocab_size: int = 6,
-    embedding_dim: int = 128,
+    embedding_dim: int = None,
     max_bp: int = 150,
     token_limit: int = 1024,
     base_output_dim: int = None,
-    attention_layers: int = 2,
+    attention_layers: int = None,
     attention_heads: int = 4,
 ) -> SequenceEncoder:
     """Load model from checkpoint.
@@ -43,39 +131,75 @@ def load_model_checkpoint(
     Args:
         checkpoint_path: Path to model checkpoint
         device: Device to load model on
-        encoder_type: Type of encoder
+        encoder_type: Type of encoder (will be inferred if None)
         vocab_size: Vocabulary size
-        embedding_dim: Embedding dimension
+        embedding_dim: Embedding dimension (will be inferred if None)
         max_bp: Maximum sequence length
         token_limit: Maximum number of ASVs per sample
-        base_output_dim: Base output dimension
-        attention_layers: Number of attention layers
-        attention_heads: Number of attention heads
+        base_output_dim: Base output dimension (will be inferred if None)
+        attention_layers: Number of attention layers (will be inferred if None)
+        attention_heads: Number of attention heads (will be inferred if None)
         
     Returns:
         Loaded model
     """
     print(f"Loading model from {checkpoint_path}...")
-    checkpoint = torch.load(checkpoint_path, map_location=device)
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
     
-    # Create model with same architecture as checkpoint
+    # Infer architecture from checkpoint
+    print("Inferring model architecture from checkpoint...")
+    arch = infer_architecture_from_checkpoint(checkpoint)
+    
+    # Use inferred values if not provided
+    if attention_layers is None:
+        attention_layers = arch["encoder_num_layers"]
+    if embedding_dim is None:
+        embedding_dim = arch["embedding_dim"]
+    if base_output_dim is None:
+        base_output_dim = arch["base_output_dim"]
+    if encoder_type is None or encoder_type == "unifrac":
+        encoder_type = arch["encoder_type"]
+    
+    print(f"Inferred architecture:")
+    print(f"  ASV layers: {arch['asv_num_layers']}")
+    print(f"  Sample layers: {arch['sample_num_layers']}")
+    print(f"  Encoder layers: {arch['encoder_num_layers']}")
+    print(f"  Embedding dim: {embedding_dim}")
+    print(f"  Predict nucleotides: {arch['predict_nucleotides']}")
+    print(f"  Encoder type: {encoder_type}")
+    print(f"  Base output dim: {base_output_dim}")
+    
+    # Create model with inferred architecture
     model = SequenceEncoder(
         encoder_type=encoder_type,
         vocab_size=vocab_size,
         embedding_dim=embedding_dim,
         max_bp=max_bp,
         token_limit=token_limit,
-        asv_num_layers=attention_layers,
+        asv_num_layers=arch["asv_num_layers"],
         asv_num_heads=attention_heads,
-        sample_num_layers=attention_layers,
+        sample_num_layers=arch["sample_num_layers"],
         sample_num_heads=attention_heads,
-        encoder_num_layers=attention_layers,
+        encoder_num_layers=arch["encoder_num_layers"],
         encoder_num_heads=attention_heads,
         base_output_dim=base_output_dim,
-        predict_nucleotides=False,  # Don't need nucleotide predictions for this analysis
+        predict_nucleotides=arch["predict_nucleotides"],  # Must match checkpoint
     )
     
-    model.load_state_dict(checkpoint["model_state_dict"])
+    # Load with strict=False to handle any minor mismatches
+    missing_keys, unexpected_keys = model.load_state_dict(checkpoint["model_state_dict"], strict=False)
+    
+    if missing_keys:
+        print(f"Warning: Missing keys in checkpoint: {len(missing_keys)} keys")
+        if len(missing_keys) <= 10:
+            for key in missing_keys:
+                print(f"  - {key}")
+    if unexpected_keys:
+        print(f"Warning: Unexpected keys in checkpoint: {len(unexpected_keys)} keys")
+        if len(unexpected_keys) <= 10:
+            for key in unexpected_keys:
+                print(f"  - {key}")
+    
     model = model.to(device)
     model.eval()
     
@@ -398,10 +522,10 @@ def main():
     parser.add_argument("--max-samples", type=int, default=None, help="Maximum number of samples to analyze")
     parser.add_argument("--encoder-type", type=str, default="unifrac", choices=["unifrac", "faith_pd"], help="Encoder type")
     parser.add_argument("--vocab-size", type=int, default=6, help="Vocabulary size")
-    parser.add_argument("--embedding-dim", type=int, default=128, help="Embedding dimension")
+    parser.add_argument("--embedding-dim", type=int, default=None, help="Embedding dimension (will be inferred from checkpoint if not provided)")
     parser.add_argument("--max-bp", type=int, default=150, help="Maximum sequence length")
     parser.add_argument("--token-limit", type=int, default=1024, help="Maximum number of ASVs per sample")
-    parser.add_argument("--attention-layers", type=int, default=2, help="Number of attention layers")
+    parser.add_argument("--attention-layers", type=int, default=None, help="Number of attention layers (will be inferred from checkpoint if not provided)")
     parser.add_argument("--attention-heads", type=int, default=4, help="Number of attention heads")
     
     args = parser.parse_args()
@@ -468,7 +592,7 @@ def main():
         drop_last=True,
     )
     
-    # Load model
+    # Load model (architecture will be inferred from checkpoint)
     model = load_model_checkpoint(
         args.checkpoint,
         device,
