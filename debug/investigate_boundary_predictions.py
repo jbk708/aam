@@ -278,27 +278,45 @@ def run_inference_analysis(
             # For UniFrac, predictions are pairwise distance matrices
             if model.encoder_type == "unifrac":
                 # Extract upper triangle (excluding diagonal) for analysis
-                # Raw predictions
+                # Raw predictions: shape is [batch_size, batch_size] (single pairwise matrix per batch)
                 raw_pred_np = raw_pred.cpu().numpy()
-                for i in range(batch_size):
+                if raw_pred_np.ndim == 2 and raw_pred_np.shape[0] == raw_pred_np.shape[1]:
+                    # Single pairwise matrix [batch_size, batch_size]
                     triu_indices = np.triu_indices(batch_size, k=1)
-                    raw_vals = raw_pred_np[i, triu_indices[0], triu_indices[1]]
+                    raw_vals = raw_pred_np[triu_indices[0], triu_indices[1]]
                     raw_predictions.extend(raw_vals)
+                elif raw_pred_np.ndim == 2:
+                    # Could be [batch_size, base_output_dim] where base_output_dim != batch_size
+                    # Flatten and take all values
+                    raw_predictions.extend(raw_pred_np.flatten())
+                else:
+                    # Unexpected shape, flatten
+                    raw_predictions.extend(raw_pred_np.flatten())
                 
-                # Clipped predictions
+                # Clipped predictions: shape is [batch_size, batch_size]
                 clipped_pred_np = clipped_pred.cpu().numpy()
-                for i in range(batch_size):
+                if clipped_pred_np.ndim == 2 and clipped_pred_np.shape[0] == clipped_pred_np.shape[1]:
+                    # Single pairwise matrix [batch_size, batch_size]
                     triu_indices = np.triu_indices(batch_size, k=1)
-                    clipped_vals = clipped_pred_np[i, triu_indices[0], triu_indices[1]]
+                    clipped_vals = clipped_pred_np[triu_indices[0], triu_indices[1]]
                     clipped_predictions.extend(clipped_vals)
+                elif clipped_pred_np.ndim == 2:
+                    clipped_predictions.extend(clipped_pred_np.flatten())
+                else:
+                    clipped_predictions.extend(clipped_pred_np.flatten())
                 
-                # Actual distances
+                # Actual distances: shape is [batch_size, batch_size]
                 if actual is not None:
                     actual_np = actual.cpu().numpy()
-                    for i in range(batch_size):
+                    if actual_np.ndim == 2 and actual_np.shape[0] == actual_np.shape[1]:
+                        # Single pairwise matrix [batch_size, batch_size]
                         triu_indices = np.triu_indices(batch_size, k=1)
-                        actual_vals = actual_np[i, triu_indices[0], triu_indices[1]]
+                        actual_vals = actual_np[triu_indices[0], triu_indices[1]]
                         actual_distances.extend(actual_vals)
+                    elif actual_np.ndim == 2:
+                        actual_distances.extend(actual_np.flatten())
+                    else:
+                        actual_distances.extend(actual_np.flatten())
             else:
                 # For non-UniFrac (e.g., Faith PD), predictions are vectors
                 raw_predictions.extend(raw_pred.cpu().numpy().flatten())
