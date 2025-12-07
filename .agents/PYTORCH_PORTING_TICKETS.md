@@ -1,7 +1,7 @@
 # PyTorch Porting Tickets
 
 **Priority**: MEDIUM - Feature Enhancements  
-**Status**: Not Started
+**Status**: In Progress
 
 This document contains tickets for implementing feature enhancements for the PyTorch port of AAM.
 
@@ -972,85 +972,123 @@ Based on PYT-8.13 findings, zero distances are extremely rare (0.00% of pairs, o
 
 ---
 
-### PYT-8.16: Investigate Prediction Clustering at 0.0 and 1.0 During Inference
-**Priority:** HIGH | **Effort:** Medium | **Status:** Not Started
+### PYT-8.16b: Refactor UniFrac Distance Prediction to Match TensorFlow Approach
+**Priority:** HIGH | **Effort:** High | **Status:** Not Started
 
 **Description:**
-Investigate why during inference a large number of UniFrac distance predictions are clustering at the boundaries (0.0 or 1.0), causing a large amount of loss. This suggests the model is predicting extreme values rather than the continuous distribution of distances in the training data. This investigation will identify root causes (e.g., clipping behavior, loss function issues, model architecture, or training dynamics) and propose fixes.
+Refactor UniFrac distance prediction to match TensorFlow implementation by computing pairwise distances from embeddings (Euclidean distance) instead of predicting distances directly. This architectural change will eliminate sigmoid saturation issues, mode collapse, and boundary clustering problems identified in the investigation.
 
 **Problem:**
-- During inference, many predictions cluster at 0.0 or 1.0 (boundary values)
-- This causes large loss values as predictions don't match the actual continuous distribution
-- Actual UniFrac distances are distributed around 0.72 (unimodal, not bimodal at boundaries)
-- Model may be:
-  - Over-clipping predictions to boundaries
-  - Not learning the continuous distribution properly
-  - Suffering from training instability
-  - Using inappropriate loss function for bounded regression
-- This is a critical issue affecting model quality and inference performance
+- **Investigation completed (PYT-8.16a)**: Found that hard clipping caused 53.59% boundary clustering (40% at 0.0, 13.59% at 1.0)
+- **Sigmoid fix attempted**: Replaced clipping with sigmoid, but caused mode collapse to 0.5 predictions
+- **Root cause identified**: PyTorch uses fundamentally different architecture than TensorFlow:
+  - **TensorFlow**: Embeddings → Euclidean distance computation (natural, unbounded)
+  - **PyTorch**: Embeddings → Linear head → Direct predictions → Sigmoid constraint (artificial, bounded)
+- **Architectural mismatch**: Direct prediction approach requires sigmoid/clipping, causing training issues
+- **Solution**: Match TensorFlow approach by computing distances from embeddings instead of predicting directly
 
 **Acceptance Criteria:**
-- [ ] Create analysis script to investigate prediction distribution during inference
-- [ ] Count and analyze predictions at 0.0 and 1.0 boundaries
-- [ ] Compare prediction distribution to actual UniFrac distance distribution
-- [ ] Investigate clipping behavior in model forward pass and loss computation
-- [ ] Check if predictions are being forced to boundaries by clipping operations
-- [ ] Analyze model outputs before clipping (raw predictions)
-- [ ] Investigate loss function behavior with boundary predictions
-- [ ] Check training dynamics (gradients, learning rate, optimizer behavior)
-- [ ] Identify root cause(s) of boundary clustering
-- [ ] Propose and implement fixes (e.g., remove premature clipping, adjust loss function, modify architecture)
-- [ ] Test fixes to verify predictions are more continuous
-- [ ] Document findings and solutions in analysis report
-- [ ] Create visualizations of prediction vs actual distributions
+
+**Investigation Phase (PYT-8.16a) - ✅ Completed:**
+- [x] Create analysis script to investigate prediction distribution during inference
+- [x] Count and analyze predictions at 0.0 and 1.0 boundaries
+- [x] Compare prediction distribution to actual UniFrac distance distribution
+- [x] Investigate clipping behavior in model forward pass and loss computation
+- [x] Check if predictions are being forced to boundaries by clipping operations
+- [x] Analyze model outputs before clipping (raw predictions)
+- [x] Identify root cause: Hard clipping forced 53.59% to boundaries
+- [x] Document findings in analysis report
+- [x] Create visualizations of prediction vs actual distributions
+- [x] Compare TensorFlow vs PyTorch implementations
+
+**Implementation Phase (PYT-8.16b) - Not Started:**
+- [ ] Remove direct distance prediction head (`output_head` for UniFrac)
+- [ ] Modify `SequenceEncoder` to return embeddings directly (no sigmoid/clipping)
+- [ ] Implement pairwise distance computation from embeddings (Euclidean distance)
+- [ ] Update loss function to compute distances from embeddings
+- [ ] Update CLI to handle new architecture (remove `base_output_dim` for UniFrac)
+- [ ] Update dataset/collate to work with embedding-based approach
+- [ ] Update trainer to compute distances from embeddings
+- [ ] Remove sigmoid activation and clipping from forward pass
+- [ ] Update tests to reflect new architecture
+- [ ] Verify training works correctly with new approach
+- [ ] Test that predictions are continuous (no boundary clustering)
+- [ ] Verify no mode collapse (predictions not all 0.5)
+- [ ] Document architectural changes
 
 **Implementation Notes:**
-- **Investigation Areas**:
-  1. **Clipping Analysis**: Check where and when predictions are clipped to [0, 1]
-     - Model forward pass clipping in `SequenceEncoder`
-     - Loss computation clipping in `compute_base_loss()`
-     - Verify if clipping is too aggressive or applied too early
-  2. **Raw Prediction Analysis**: Examine model outputs before any clipping
-     - Are raw predictions already at boundaries?
-     - Or are they being forced to boundaries by clipping?
-  3. **Loss Function Analysis**: Check if MSE loss with clipping causes boundary attraction
-     - Clipped MSE may create flat gradients at boundaries
-     - May need smoother loss function (e.g., smooth L1, Huber loss)
-  4. **Training Dynamics**: Analyze training behavior
-     - Gradient flow through clipping operations
-     - Learning rate effects on boundary predictions
-     - Optimizer behavior with clipped predictions
-  5. **Model Architecture**: Check if architecture encourages boundary predictions
-     - Final layer activation (sigmoid vs linear + clip)
-     - Embedding space structure
-- **Potential Root Causes**:
-  - **Over-clipping**: Predictions clipped too early or too aggressively
-  - **Loss function**: MSE with hard clipping creates boundary attraction
-  - **Training instability**: Model not learning continuous distribution
-  - **Architecture**: Final layer not suitable for bounded regression
-  - **Learning rate**: Too high/low causing boundary convergence
-- **Potential Solutions**:
-  - Remove clipping from forward pass, only clip in loss if needed
-  - Use sigmoid activation instead of linear + clip
-  - Replace clipped MSE with smooth loss function (Huber, smooth L1)
-  - Adjust learning rate or optimizer settings
-  - Use beta regression loss for bounded regression
-- **Files to Create/Modify**:
-  - `debug/investigate_boundary_predictions.py` - Analysis script
-  - `debug/BOUNDARY_PREDICTION_ANALYSIS.md` - Analysis report
-  - `aam/models/sequence_encoder.py` - Potentially remove/modify clipping
-  - `aam/training/losses.py` - Potentially modify loss function
-  - `_design_plan/19_unifrac_underfitting_analysis.md` - Document findings
-- **Visualizations Needed**:
-  - Histogram of predicted distances (highlight 0.0 and 1.0 clusters)
-  - Histogram of actual distances (for comparison)
-  - Scatter plot: predicted vs actual (highlight boundary predictions)
-  - Distribution comparison: predictions vs actuals
-  - Raw predictions vs clipped predictions comparison
 
-**Dependencies:** PYT-8.12, PYT-8.14 (completed - clipping was added in these tickets)
+**Investigation Findings (PYT-8.16a - ✅ Completed):**
+- Root cause: Hard clipping (`torch.clamp`) forced 53.59% of predictions to boundaries (40% at 0.0, 13.59% at 1.0)
+- Raw predictions were continuous (0% at boundaries), but clipping created artificial clustering
+- Sigmoid fix attempted but caused mode collapse to 0.5 predictions
+- **Key discovery**: TensorFlow uses different architecture - computes distances from embeddings, not direct predictions
+- See `debug/BOUNDARY_PREDICTION_ANALYSIS.md` and `debug/TENSORFLOW_VS_PYTORCH_COMPARISON.md` for details
 
-**Estimated Time:** 4-6 hours (investigation + fix implementation)
+**Architectural Change Required:**
+1. **Remove direct prediction head** for UniFrac:
+   - Remove `output_head` when `encoder_type == "unifrac"`
+   - Return embeddings directly from `SequenceEncoder.forward()`
+   
+2. **Implement pairwise distance computation**:
+   - Add function to compute Euclidean distances from embeddings: `sqrt(||a - b||^2)`
+   - Compute pairwise distance matrix: `[batch_size, batch_size]`
+   - Similar to TensorFlow's `_pairwise_distances()` function
+   
+3. **Update loss computation**:
+   - Modify `compute_base_loss()` to compute distances from embeddings when `encoder_type == "unifrac"`
+   - Remove sigmoid/clipping (distances naturally ≥ 0)
+   - Keep diagonal masking (already implemented)
+   
+4. **Update CLI and dataset**:
+   - Remove `base_output_dim = batch_size` for UniFrac (not needed)
+   - Update model initialization to not create `output_head` for UniFrac
+   - Ensure embeddings are returned and distances computed in loss
+
+**Files to Modify:**
+- `aam/models/sequence_encoder.py` - Remove output_head for UniFrac, return embeddings directly
+- `aam/training/losses.py` - Add pairwise distance computation, update `compute_base_loss()`
+- `aam/cli.py` - Update model initialization (remove base_output_dim for UniFrac)
+- `aam/data/dataset.py` - Verify compatibility with embedding-based approach
+- `tests/test_sequence_encoder.py` - Update tests for new architecture
+- `tests/test_losses.py` - Add tests for pairwise distance computation
+- `tests/test_trainer.py` - Update tests if needed
+
+**Benefits:**
+- Matches TensorFlow implementation exactly
+- Eliminates sigmoid saturation issues
+- No mode collapse (no sigmoid needed)
+- No boundary clustering (no clipping needed)
+- Natural distance computation (Euclidean from embeddings)
+- Better gradient flow (no sigmoid/clipping operations)
+
+**Dependencies:** PYT-8.12, PYT-8.14 (completed), PYT-8.16a (investigation completed)
+
+**Estimated Time:** 6-8 hours (architectural refactoring)
+
+---
+
+### PYT-8.16a: Investigate Prediction Clustering at 0.0 and 1.0 During Inference
+**Priority:** HIGH | **Effort:** Medium | **Status:** ✅ Completed
+
+**Description:**
+Investigated why during inference a large number of UniFrac distance predictions were clustering at the boundaries (0.0 or 1.0), causing a large amount of loss. Analysis identified root cause and architectural mismatch with TensorFlow implementation.
+
+**Findings:**
+- Hard clipping (`torch.clamp`) forced 53.59% of predictions to boundaries (40% at 0.0, 13.59% at 1.0)
+- Raw predictions were continuous (0% at boundaries), but clipping created artificial clustering
+- Sigmoid fix attempted but caused mode collapse to 0.5 predictions
+- **Key discovery**: TensorFlow uses different architecture - computes distances from embeddings, not direct predictions
+
+**Files Created:**
+- `debug/investigate_boundary_predictions.py` - Analysis script
+- `debug/BOUNDARY_PREDICTION_ANALYSIS.md` - Complete analysis report
+- `debug/TENSORFLOW_VS_PYTORCH_COMPARISON.md` - Architecture comparison
+
+**Dependencies:** PYT-8.12, PYT-8.14 (completed)
+
+**Estimated Time:** 4-6 hours
+**Actual Time:** ~4 hours
 
 ---
 
@@ -1080,14 +1118,16 @@ Investigate why during inference a large number of UniFrac distance predictions 
 13. ✅ **PYT-8.13: Investigate Zero-Distance Samples in UniFrac Data (2-3 hours) - HIGH PRIORITY** - Completed
 14. ✅ **PYT-8.14: Implement Bounded Regression Loss for UniFrac Distances (3-4 hours) - MEDIUM PRIORITY** - Completed
 15. ❌ **PYT-8.15: Implement Weighted Loss for Zero-Distance UniFrac Pairs (1-2 hours) - MEDIUM PRIORITY** - Cancelled (zero distances too rare per PYT-8.13 findings)
-16. **PYT-8.16: Investigate Prediction Clustering at 0.0 and 1.0 During Inference (4-6 hours) - HIGH PRIORITY** - Not Started
+16. ✅ **PYT-8.16a: Investigate Prediction Clustering at 0.0 and 1.0 During Inference (4-6 hours) - HIGH PRIORITY** - Completed
+17. **PYT-8.16b: Refactor UniFrac Distance Prediction to Match TensorFlow Approach (6-8 hours) - HIGH PRIORITY** - Not Started
 
 **Recommended Implementation Order for UniFrac Fixes:**
 1. ✅ **PYT-8.12** (diagonal masking) - Foundation fix, completed
 2. ✅ **PYT-8.13** (zero-distance investigation) - Completed, found zero distances are extremely rare
 3. ✅ **PYT-8.14** (bounded loss) - Completed, added clipping to [0, 1]
 4. ❌ **PYT-8.15** (weighted loss) - Cancelled per PYT-8.13 findings
-5. **PYT-8.16** (investigate boundary prediction clustering) - Next priority, addresses critical inference issue
+5. ✅ **PYT-8.16a** (investigate boundary prediction clustering) - Completed, identified root cause and architectural mismatch
+6. **PYT-8.16b** (refactor to TensorFlow approach) - Next priority, architectural change to match TensorFlow implementation
 
 **Notes:**
 - All tickets are independent and can be implemented in any order (except where dependencies noted)
@@ -1108,5 +1148,6 @@ Investigate why during inference a large number of UniFrac distance predictions 
 - ✅ **PYT-8.13 completed** - Investigated zero-distance samples in UniFrac data. **Key finding**: Zero distances are extremely rare (0.00% of pairs, only 1 pair out of 229,503). Distribution is unimodal (not bimodal) centered around 0.72. **Recommendation**: DO NOT implement zero-distance weighting (PYT-8.15 can be cancelled). Focus should shift to other loss function improvements.
 - ✅ **PYT-8.14 completed** - Implemented bounded regression loss (clipped MSE) to enforce [0, 1] constraint on UniFrac distances. Added clipping in both loss computation and model forward pass to ensure predictions are constrained to valid range. Prevents invalid predictions outside [0, 1] range. **IMPORTANT for model correctness.**
 - ❌ **PYT-8.15 cancelled** - Cancelled per PYT-8.13 findings. Zero distances are too rare (0.00%) to warrant weighted loss implementation.
-- **PYT-8.16 not started** - Investigate why predictions cluster at 0.0 and 1.0 during inference, causing large loss. This is a critical issue affecting model quality. Need to analyze clipping behavior, loss function, and training dynamics. **HIGH PRIORITY for fixing inference performance.**
+- ✅ **PYT-8.16a completed** - Investigated boundary prediction clustering. Found hard clipping caused 53.59% boundary clustering. Attempted sigmoid fix but caused mode collapse. Identified architectural mismatch: TensorFlow computes distances from embeddings, PyTorch predicts directly. See `debug/BOUNDARY_PREDICTION_ANALYSIS.md` for details.
+- **PYT-8.16b not started** - Refactor UniFrac distance prediction to match TensorFlow approach: compute pairwise distances from embeddings (Euclidean) instead of predicting directly. This will eliminate sigmoid saturation, mode collapse, and boundary clustering issues. **HIGH PRIORITY architectural change.**
 - Follow the workflow in `.agents/workflow.md` for implementation
