@@ -280,11 +280,22 @@ class TestTrainEpoch:
     def test_train_epoch_encoder(self, small_model, loss_fn, simple_dataloader_encoder, device):
         """Test training epoch for SequenceEncoder."""
         small_model = small_model.to(device)
+        small_model.train()  # Ensure model is in training mode
         trainer = Trainer(
             model=small_model,
             loss_fn=loss_fn,
             device=device,
         )
+
+        # Verify model produces valid embeddings before training
+        for batch in simple_dataloader_encoder:
+            tokens, targets = trainer._prepare_batch(batch)
+            with torch.no_grad():
+                outputs = small_model(tokens, return_nucleotides=False)
+                if "embeddings" in outputs:
+                    assert not torch.any(torch.isnan(outputs["embeddings"])), "Model should produce valid embeddings"
+                    assert not torch.any(torch.isinf(outputs["embeddings"])), "Model should produce finite embeddings"
+            break  # Just check first batch
 
         losses = trainer.train_epoch(simple_dataloader_encoder)
 
