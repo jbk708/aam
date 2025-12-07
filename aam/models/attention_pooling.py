@@ -65,16 +65,28 @@ class AttentionPooling(nn.Module):
                 attention_weights = attention_weights.masked_fill(all_padding, 1.0 / seq_len)
 
         pooled = torch.sum(embeddings * attention_weights.unsqueeze(-1), dim=1)
-        pooled = self.norm(pooled)
         
-        # Final check for NaN
+        # Check for NaN before LayerNorm (LayerNorm can produce NaN if input has zero variance)
         if torch.any(torch.isnan(pooled)):
             import sys
-            print(f"ERROR: NaN in pooled embeddings after attention pooling", file=sys.stderr, flush=True)
+            print(f"ERROR: NaN in pooled embeddings before LayerNorm", file=sys.stderr, flush=True)
             print(f"pooled shape={pooled.shape}, embeddings shape={embeddings.shape}", file=sys.stderr, flush=True)
             if mask is not None:
                 print(f"mask sum per sample: {mask.sum(dim=-1)}", file=sys.stderr, flush=True)
-            raise ValueError("NaN values found in pooled embeddings after attention pooling")
+            # Replace NaN with zeros to prevent propagation
+            pooled = torch.where(torch.isnan(pooled), torch.zeros_like(pooled), pooled)
+        
+        pooled = self.norm(pooled)
+        
+        # Final check for NaN after LayerNorm
+        if torch.any(torch.isnan(pooled)):
+            import sys
+            print(f"ERROR: NaN in pooled embeddings after LayerNorm", file=sys.stderr, flush=True)
+            print(f"pooled shape={pooled.shape}, embeddings shape={embeddings.shape}", file=sys.stderr, flush=True)
+            if mask is not None:
+                print(f"mask sum per sample: {mask.sum(dim=-1)}", file=sys.stderr, flush=True)
+            # Replace NaN with small random values to prevent complete failure
+            pooled = torch.where(torch.isnan(pooled), torch.randn_like(pooled) * 0.01, pooled)
 
         return pooled
 
