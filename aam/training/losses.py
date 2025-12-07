@@ -167,12 +167,12 @@ class MultiTaskLoss(nn.Module):
             # Extract upper triangle (excluding diagonal) using offset=1
             batch_size = base_pred.shape[0]
             triu_indices = torch.triu_indices(batch_size, batch_size, offset=1, device=base_pred.device)
-            
+
             # Handle edge case: batch_size=1 has no off-diagonal elements
             if triu_indices.shape[1] == 0:
                 # Return zero loss when there are no off-diagonal elements
                 return torch.zeros(1, device=base_pred.device, requires_grad=True)
-            
+
             base_pred_masked = base_pred[triu_indices[0], triu_indices[1]]
             base_true_masked = base_true[triu_indices[0], triu_indices[1]]
             return nn.functional.mse_loss(base_pred_masked, base_true_masked)

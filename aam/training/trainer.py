@@ -222,7 +222,7 @@ class Trainer:
         # Flatten pairwise distance matrices to 1D arrays
         pred_np = np.array(predictions.detach().cpu().tolist())
         target_np = np.array(targets.detach().cpu().tolist())
-        
+
         # Extract upper triangle (excluding diagonal) to avoid duplicate pairs
         # For symmetric matrices, we only need upper triangle
         if pred_np.shape[0] == pred_np.shape[1]:
@@ -837,7 +837,7 @@ class Trainer:
                 # For pretraining, compute metrics for UniFrac predictions
                 base_pred_tensor = torch.cat(all_predictions["base_prediction"], dim=0)
                 base_true_tensor = torch.cat(all_targets["base_target"], dim=0)
-                
+
                 # Flatten pairwise distance matrices for metric computation
                 if base_pred_tensor.dim() == 2 and base_pred_tensor.shape[0] == base_pred_tensor.shape[1]:
                     # Extract upper triangle (excluding diagonal) for symmetric matrices
@@ -849,7 +849,7 @@ class Trainer:
                     # If not square, just flatten
                     base_pred_flat = base_pred_tensor.flatten()
                     base_true_flat = base_true_tensor.flatten()
-                
+
                 metrics = compute_regression_metrics(base_pred_flat, base_true_flat)
                 avg_losses.update(metrics)
             elif "target_prediction" in all_predictions:
