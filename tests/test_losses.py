@@ -288,8 +288,9 @@ class TestBaseLoss:
     def test_base_loss_unifrac_loss_higher_without_diagonal(self, loss_fn):
         """Test that UniFrac loss values are higher when diagonal is excluded."""
         batch_size = 4
-        base_pred = torch.randn(batch_size, batch_size)
-        base_true = torch.randn(batch_size, batch_size)
+        # Create matrices with non-zero off-diagonal errors to ensure meaningful loss
+        base_pred = torch.ones(batch_size, batch_size) * 0.5
+        base_true = torch.ones(batch_size, batch_size) * 0.3
 
         # Set diagonal to 0.0 (typical for distance matrices)
         base_pred.fill_diagonal_(0.0)
@@ -301,8 +302,14 @@ class TestBaseLoss:
         # Loss without diagonal masking (old behavior - for comparison)
         loss_unmasked = nn.functional.mse_loss(base_pred, base_true)
 
-        # Masked loss should be higher (no longer artificially lowered by 0.0 diagonal)
-        assert loss_masked.item() > loss_unmasked.item()
+        # Masked loss should be higher because:
+        # - Unmasked: includes diagonal (0.0 - 0.0 = 0) + off-diagonal errors, divided by all elements
+        # - Masked: only off-diagonal errors, divided by fewer elements (no diagonal)
+        # Since we're dividing by fewer elements in masked case, loss should be higher
+        assert loss_masked.item() > loss_unmasked.item(), (
+            f"Masked loss ({loss_masked.item():.6f}) should be higher than unmasked loss ({loss_unmasked.item():.6f}) "
+            f"when diagonal is 0.0 and off-diagonal has errors"
+        )
 
     def test_base_loss_unifrac_diagonal_masking_only_for_unifrac(self, loss_fn):
         """Test that diagonal masking only applies to UniFrac, not other encoder types."""
