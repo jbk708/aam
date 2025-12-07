@@ -465,7 +465,7 @@ ValueError: NaN values found in nuc_pred with shape torch.Size([6, 512, 151, 6])
 ---
 
 ### PYT-8.10: Update Training Progress Bar and Rename base_loss to unifrac_loss
-**Priority:** LOW | **Effort:** Low-Medium | **Status:** Not Started
+**Priority:** LOW | **Effort:** Low-Medium | **Status:** ✅ Completed
 
 **Description:**
 1. Update the training progress bar to remove the "Step" field (since step information is already shown in the tqdm loading bar) and display a breakdown of losses: total loss, unifrac loss, and nucleotide loss. This provides better visibility into individual loss components during training.

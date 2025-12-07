@@ -184,6 +184,8 @@ def cli():
 @click.option("--gradient-accumulation-steps", default=1, type=int, help="Number of gradient accumulation steps")
 @click.option("--use-expandable-segments", is_flag=True, help="Enable PyTorch CUDA expandable segments for memory optimization")
 @click.option("--max-grad-norm", default=None, type=float, help="Maximum gradient norm for clipping (None to disable)")
+@click.option("--optimizer", default="adamw", type=click.Choice(["adamw", "adam", "sgd"]), help="Optimizer type")
+@click.option("--scheduler", default="warmup_cosine", type=click.Choice(["warmup_cosine", "cosine", "plateau", "onecycle"]), help="Learning rate scheduler type")
 def train(
     table: str,
     tree: str,
@@ -218,6 +220,8 @@ def train(
     gradient_accumulation_steps: int,
     use_expandable_segments: bool,
     max_grad_norm: Optional[float],
+    optimizer: str,
+    scheduler: str,
 ):
     """Train AAM model on microbial sequencing data."""
     try:
@@ -381,14 +385,14 @@ def train(
 
         effective_batches_per_epoch = len(train_loader) // gradient_accumulation_steps
         num_training_steps = effective_batches_per_epoch * epochs
-        optimizer = create_optimizer(model, lr=lr, weight_decay=weight_decay, freeze_base=freeze_base)
-        scheduler = create_scheduler(optimizer, num_warmup_steps=warmup_steps, num_training_steps=num_training_steps)
+        optimizer_obj = create_optimizer(model, optimizer_type=optimizer, lr=lr, weight_decay=weight_decay, freeze_base=freeze_base)
+        scheduler_obj = create_scheduler(optimizer_obj, scheduler_type=scheduler, num_warmup_steps=warmup_steps, num_training_steps=num_training_steps)
 
         trainer = Trainer(
             model=model,
             loss_fn=loss_fn,
-            optimizer=optimizer,
-            scheduler=scheduler,
+            optimizer=optimizer_obj,
+            scheduler=scheduler_obj,
             device=device_obj,
             freeze_base=freeze_base,
             tensorboard_dir=str(output_path),
@@ -452,6 +456,8 @@ def train(
 @click.option("--gradient-accumulation-steps", default=1, type=int, help="Number of gradient accumulation steps")
 @click.option("--use-expandable-segments", is_flag=True, help="Enable PyTorch CUDA expandable segments for memory optimization")
 @click.option("--max-grad-norm", default=None, type=float, help="Maximum gradient norm for clipping (None to disable)")
+@click.option("--optimizer", default="adamw", type=click.Choice(["adamw", "adam", "sgd"]), help="Optimizer type")
+@click.option("--scheduler", default="warmup_cosine", type=click.Choice(["warmup_cosine", "cosine", "plateau", "onecycle"]), help="Learning rate scheduler type")
 @click.option(
     "--asv-chunk-size", default=None, type=int, help="Process ASVs in chunks of this size to reduce memory (None = process all)"
 )
@@ -482,6 +488,8 @@ def pretrain(
     gradient_accumulation_steps: int,
     use_expandable_segments: bool,
     max_grad_norm: Optional[float],
+    optimizer: str,
+    scheduler: str,
     asv_chunk_size: Optional[int],
 ):
     """Pre-train SequenceEncoder on UniFrac and nucleotide prediction (self-supervised)."""
@@ -620,14 +628,14 @@ def pretrain(
         loss_fn = MultiTaskLoss(penalty=penalty, nuc_penalty=nuc_penalty, class_weights=None)
 
         num_training_steps = len(train_loader) * epochs
-        optimizer = create_optimizer(model, lr=lr, weight_decay=weight_decay, freeze_base=False)
-        scheduler = create_scheduler(optimizer, num_warmup_steps=warmup_steps, num_training_steps=num_training_steps)
+        optimizer_obj = create_optimizer(model, optimizer_type=optimizer, lr=lr, weight_decay=weight_decay, freeze_base=False)
+        scheduler_obj = create_scheduler(optimizer_obj, scheduler_type=scheduler, num_warmup_steps=warmup_steps, num_training_steps=num_training_steps)
 
         trainer = Trainer(
             model=model,
             loss_fn=loss_fn,
-            optimizer=optimizer,
-            scheduler=scheduler,
+            optimizer=optimizer_obj,
+            scheduler=scheduler_obj,
             device=device_obj,
             freeze_base=False,
             tensorboard_dir=str(output_path),
