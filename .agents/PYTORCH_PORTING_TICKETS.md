@@ -670,7 +670,7 @@ Explore and evaluate different learning rate optimizers and schedulers to improv
 ---
 
 ### PYT-8.12: Mask Diagonal in UniFrac Loss Computation
-**Priority:** HIGH | **Effort:** Low | **Status:** Not Started
+**Priority:** HIGH | **Effort:** Low | **Status:** ✅ Completed
 
 **Description:**
 Fix UniFrac loss computation to exclude diagonal elements (self-comparisons) from the loss calculation. Currently, the loss includes diagonal elements which are always 0.0 (distance from an ASV to itself), artificially lowering the loss and providing no useful training signal. The diagonal should be masked out when computing MSE loss for pairwise UniFrac distance matrices.
@@ -688,16 +688,16 @@ Fix UniFrac loss computation to exclude diagonal elements (self-comparisons) fro
 - Plotting code correctly masks diagonal using `torch.triu_indices(..., k=1)` or `np.triu_indices(..., k=1)`
 
 **Acceptance Criteria:**
-- [ ] Identify where diagonal masking should be applied (in `compute_base_loss()` for `encoder_type='unifrac'`)
-- [ ] Implement diagonal masking for UniFrac pairwise distance matrices
-- [ ] Extract upper triangle (excluding diagonal) similar to plotting code
-- [ ] Ensure masking only applies to UniFrac (square pairwise matrices), not Faith PD or other encoder types
-- [ ] Verify loss computation excludes diagonal elements
-- [ ] Test that loss values increase appropriately (no longer artificially lowered by 0.0 diagonal)
-- [ ] Ensure backward compatibility (non-UniFrac encoders unaffected)
-- [ ] Add unit tests for diagonal masking in loss computation
-- [ ] Verify training still works correctly with masked diagonal
-- [ ] Document the change in implementation notes
+- [x] Identify where diagonal masking should be applied (in `compute_base_loss()` for `encoder_type='unifrac'`)
+- [x] Implement diagonal masking for UniFrac pairwise distance matrices
+- [x] Extract upper triangle (excluding diagonal) similar to plotting code
+- [x] Ensure masking only applies to UniFrac (square pairwise matrices), not Faith PD or other encoder types
+- [x] Verify loss computation excludes diagonal elements
+- [x] Test that loss values increase appropriately (no longer artificially lowered by 0.0 diagonal)
+- [x] Ensure backward compatibility (non-UniFrac encoders unaffected)
+- [x] Add unit tests for diagonal masking in loss computation
+- [x] Verify training still works correctly with masked diagonal
+- [x] Document the change in implementation notes
 
 **Implementation Notes:**
 - **Location**: `aam/training/losses.py` - `compute_base_loss()` method
@@ -741,6 +741,29 @@ Fix UniFrac loss computation to exclude diagonal elements (self-comparisons) fro
 **Dependencies:** None
 
 **Estimated Time:** 1-2 hours
+**Actual Time:** ~2 hours
+
+**Implementation Notes:**
+- ✅ Modified `compute_base_loss()` in `aam/training/losses.py` to mask diagonal for UniFrac pairwise matrices
+- ✅ Uses `torch.triu_indices(batch_size, batch_size, offset=1)` to extract upper triangle excluding diagonal
+- ✅ Only applies to UniFrac encoder type with square matrices (`encoder_type == "unifrac"` and `base_pred.shape[0] == base_pred.shape[1]`)
+- ✅ Handles edge case: `batch_size=1` returns zero loss (no off-diagonal elements)
+- ✅ Backward compatible: non-UniFrac encoders (Faith PD, taxonomy, combined) use standard MSE (unchanged)
+- ✅ Added 6 comprehensive tests in `tests/test_losses.py`:
+  - `test_base_loss_unifrac_masks_diagonal` - Verifies diagonal is excluded
+  - `test_base_loss_unifrac_loss_higher_without_diagonal` - Confirms loss increases (with controlled values)
+  - `test_base_loss_unifrac_diagonal_masking_only_for_unifrac` - Ensures other encoders unaffected
+  - `test_base_loss_unifrac_non_square_matrix_no_masking` - Non-square matrices use standard MSE
+  - `test_base_loss_unifrac_edge_case_batch_size_2` - Small batch size works correctly
+  - `test_base_loss_unifrac_edge_case_batch_size_1` - Edge case handled correctly
+- ✅ Updated existing tests (`test_base_loss_unifrac`, `test_base_loss_unifrac_consistent_batch_sizes`) to expect masked loss behavior
+- ✅ All 31 loss tests pass (1 skipped for CUDA)
+- ✅ Loss values increase as expected (no longer artificially lowered by 0.0 diagonal)
+- ✅ Expected impact: Stronger training signal, better distance relationship learning, addresses underfitting (R² = 0.0455)
+
+**Files Modified:**
+- `aam/training/losses.py` - Added diagonal masking logic to `compute_base_loss()`
+- `tests/test_losses.py` - Added 6 new tests and updated 2 existing tests
 
 ---
 
@@ -986,7 +1009,7 @@ Tune learning rate to improve UniFrac model training performance. Current defaul
 11. PYT-8.11: Explore Learning Rate Optimizers and Schedulers (4-6 hours) - Not Started
 
 ### Phase 9: UniFrac Underfitting Fixes (NEW - HIGH PRIORITY)
-12. **PYT-8.12: Mask Diagonal in UniFrac Loss Computation (1-2 hours) - HIGH PRIORITY** - Not Started
+12. ✅ **PYT-8.12: Mask Diagonal in UniFrac Loss Computation (1-2 hours) - HIGH PRIORITY** - Completed
 13. **PYT-8.13: Investigate Zero-Distance Samples in UniFrac Data (2-3 hours) - HIGH PRIORITY** - Not Started
 14. **PYT-8.14: Implement Bounded Regression Loss for UniFrac Distances (3-4 hours) - MEDIUM PRIORITY** - Not Started
 15. **PYT-8.15: Implement Weighted Loss for Zero-Distance UniFrac Pairs (1-2 hours) - MEDIUM PRIORITY** - Not Started
@@ -1014,7 +1037,7 @@ Tune learning rate to improve UniFrac model training performance. Current defaul
 - **PYT-8.7 completed** - Gradient clipping implemented using `torch.nn.utils.clip_grad_norm_()`. Added `--max-grad-norm` CLI option. NaN issues resolved via PYT-8.8 (START_TOKEN) and PYT-8.9 (all-padding sequence handling). Training stability verified.
 - PYT-8.10 not started - Update training progress bar to remove redundant "Step" field and show loss breakdown (total, unifrac, nucleotide). Also rename `base_loss` to `unifrac_loss` throughout codebase and optimize TensorBoard reporting performance.
 - PYT-8.11 not started - Explore and benchmark different learning rate optimizers (AdamW, Adam, SGD) and schedulers (CosineAnnealingLR, ReduceLROnPlateau, OneCycleLR) to improve training performance and convergence speed.
-- **PYT-8.12 not started** - Fix UniFrac loss computation to exclude diagonal elements (self-comparisons). Currently diagonal 0.0 values artificially lower loss. Need to mask diagonal using upper triangle extraction similar to plotting code. **CRITICAL for addressing underfitting.**
+- ✅ **PYT-8.12 completed** - Fixed UniFrac loss computation to exclude diagonal elements (self-comparisons). Diagonal masking implemented using upper triangle extraction. Loss values now correctly exclude 0.0 diagonal elements, providing stronger training signal. **CRITICAL foundation fix for addressing underfitting.**
 - **PYT-8.13 not started** - Investigate zero-distance samples in UniFrac data to determine if they represent data quality issues or legitimate signal. Will inform handling strategy (remove, down-weight, or keep). **CRITICAL for understanding data distribution.**
 - **PYT-8.14 not started** - Implement bounded regression loss (clipped MSE) to enforce [0, 1] constraint on UniFrac distances. Prevents invalid predictions outside valid range. **IMPORTANT for model correctness.**
 - **PYT-8.15 not started** - Implement weighted loss to down-weight zero-distance pairs based on PYT-8.13 findings. Allows model to focus on meaningful distance relationships. **IMPORTANT for handling bimodal distribution.**

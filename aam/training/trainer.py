@@ -211,29 +211,33 @@ class Trainer:
         """Create prediction vs actual scatter plot for UniFrac predictions (pretraining).
 
         Args:
-            predictions: Predicted UniFrac distances [B, B] (pairwise distance matrix)
-            targets: Actual UniFrac distances [B, B] (pairwise distance matrix)
+            predictions: Predicted UniFrac distances (1D array, already flattened upper triangle)
+            targets: Actual UniFrac distances (1D array, already flattened upper triangle)
             epoch: Current epoch number
             r2: R² score
 
         Returns:
             Matplotlib figure
         """
-        # Flatten pairwise distance matrices to 1D arrays
-        pred_np = np.array(predictions.detach().cpu().tolist())
-        target_np = np.array(targets.detach().cpu().tolist())
-        
-        # Extract upper triangle (excluding diagonal) to avoid duplicate pairs
-        # For symmetric matrices, we only need upper triangle
-        if pred_np.shape[0] == pred_np.shape[1]:
-            # Extract upper triangle indices
-            triu_indices = np.triu_indices(pred_np.shape[0], k=1)
-            pred_flat = pred_np[triu_indices]
-            target_flat = target_np[triu_indices]
-        else:
-            # If not square, just flatten
-            pred_flat = pred_np.flatten()
-            target_flat = target_np.flatten()
+        # Predictions and targets are already flattened (upper triangle only, diagonal excluded)
+        # Convert to numpy arrays
+        pred_np = predictions.detach().cpu()
+        target_np = targets.detach().cpu()
+
+        # Convert to numpy (handle both tensor and numpy)
+        try:
+            pred_flat = pred_np.numpy() if hasattr(pred_np, "numpy") else np.array(pred_np)
+            target_flat = target_np.numpy() if hasattr(target_np, "numpy") else np.array(target_np)
+        except RuntimeError:
+            # Fallback: convert to list then numpy
+            pred_flat = np.array(pred_np.tolist())
+            target_flat = np.array(target_np.tolist())
+
+        # Ensure 1D arrays
+        if pred_flat.ndim > 1:
+            pred_flat = pred_flat.flatten()
+        if target_flat.ndim > 1:
+            target_flat = target_flat.flatten()
 
         fig, ax = plt.subplots(figsize=(8, 6), dpi=100)
         ax.scatter(target_flat, pred_flat, alpha=0.6, s=20)
@@ -789,8 +793,23 @@ class Trainer:
                                 if "base_prediction" not in all_predictions:
                                     all_predictions["base_prediction"] = []
                                     all_targets["base_target"] = []
-                                all_predictions["base_prediction"].append(outputs["base_prediction"])
-                                all_targets["base_target"].append(targets["base_target"])
+                                # Extract upper triangle (excluding diagonal) from each batch matrix
+                                # to avoid including diagonal 0.0 values in validation plots
+                                base_pred_batch = outputs["base_prediction"]
+                                base_true_batch = targets["base_target"]
+                                if base_pred_batch.dim() == 2 and base_pred_batch.shape[0] == base_pred_batch.shape[1]:
+                                    batch_size = base_pred_batch.shape[0]
+                                    triu_indices = torch.triu_indices(
+                                        batch_size, batch_size, offset=1, device=base_pred_batch.device
+                                    )
+                                    base_pred_flat = base_pred_batch[triu_indices[0], triu_indices[1]]
+                                    base_true_flat = base_true_batch[triu_indices[0], triu_indices[1]]
+                                    all_predictions["base_prediction"].append(base_pred_flat)
+                                    all_targets["base_target"].append(base_true_flat)
+                                else:
+                                    # If not square, just flatten (shouldn't happen for UniFrac)
+                                    all_predictions["base_prediction"].append(base_pred_batch.flatten())
+                                    all_targets["base_target"].append(base_true_batch.flatten())
                         else:
                             # For regular training, collect target_prediction for plotting
                             if "target_prediction" in outputs and "target" in targets:
@@ -835,23 +854,17 @@ class Trainer:
         if compute_metrics and all_predictions:
             if is_pretraining and "base_prediction" in all_predictions:
                 # For pretraining, compute metrics for UniFrac predictions
-                base_pred_tensor = torch.cat(all_predictions["base_prediction"], dim=0)
-                base_true_tensor = torch.cat(all_targets["base_target"], dim=0)
-                
-                # Flatten pairwise distance matrices for metric computation
-                if base_pred_tensor.dim() == 2 and base_pred_tensor.shape[0] == base_pred_tensor.shape[1]:
-                    # Extract upper triangle (excluding diagonal) for symmetric matrices
-                    batch_size = base_pred_tensor.shape[0]
-                    triu_indices = torch.triu_indices(batch_size, batch_size, offset=1, device=base_pred_tensor.device)
-                    base_pred_flat = base_pred_tensor[triu_indices[0], triu_indices[1]]
-                    base_true_flat = base_true_tensor[triu_indices[0], triu_indices[1]]
-                else:
-                    # If not square, just flatten
-                    base_pred_flat = base_pred_tensor.flatten()
-                    base_true_flat = base_true_tensor.flatten()
-                
+                # Predictions are already flattened (upper triangle only) from collection step
+                base_pred_flat = torch.cat(all_predictions["base_prediction"], dim=0)
+                base_true_flat = torch.cat(all_targets["base_target"], dim=0)
+
                 metrics = compute_regression_metrics(base_pred_flat, base_true_flat)
                 avg_losses.update(metrics)
+
+                # For return_predictions, we need to return the flattened tensors
+                # (they're already flattened, so we can use them directly)
+                base_pred_tensor = base_pred_flat
+                base_true_tensor = base_true_flat
             elif "target_prediction" in all_predictions:
                 target_pred_tensor = torch.cat(all_predictions["target_prediction"], dim=0)
                 target_true_tensor = torch.cat(all_targets["target"], dim=0)
@@ -872,6 +885,7 @@ class Trainer:
 
         if return_predictions:
             if is_pretraining:
+                # base_pred_tensor and base_true_tensor are already flattened (upper triangle only)
                 return avg_losses, base_pred_tensor, base_true_tensor
             else:
                 return avg_losses, target_pred_tensor, target_true_tensor

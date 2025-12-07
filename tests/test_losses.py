@@ -131,7 +131,7 @@ class TestBaseLoss:
     """Test base loss computation."""
 
     def test_base_loss_unifrac(self, loss_fn):
-        """Test MSE loss for unweighted UniFrac (pairwise matrix)."""
+        """Test MSE loss for unweighted UniFrac (pairwise matrix with diagonal masking)."""
         batch_size = 4
         base_pred = torch.randn(batch_size, batch_size)
         base_true = torch.randn(batch_size, batch_size)
@@ -140,7 +140,11 @@ class TestBaseLoss:
 
         assert loss.dim() == 0
         assert loss.item() >= 0
-        expected_loss = nn.functional.mse_loss(base_pred, base_true)
+        # Loss should be computed on upper triangle (excluding diagonal)
+        triu_indices = torch.triu_indices(batch_size, batch_size, offset=1, device=base_pred.device)
+        base_pred_masked = base_pred[triu_indices[0], triu_indices[1]]
+        base_true_masked = base_true[triu_indices[0], triu_indices[1]]
+        expected_loss = nn.functional.mse_loss(base_pred_masked, base_true_masked)
         assert torch.allclose(loss, expected_loss)
 
     def test_base_loss_faith_pd(self, loss_fn):
@@ -223,7 +227,11 @@ class TestBaseLoss:
 
             assert loss.dim() == 0
             assert loss.item() >= 0
-            expected_loss = nn.functional.mse_loss(base_pred, base_true)
+            # Loss should be computed on upper triangle (excluding diagonal)
+            triu_indices = torch.triu_indices(batch_size, batch_size, offset=1, device=base_pred.device)
+            base_pred_masked = base_pred[triu_indices[0], triu_indices[1]]
+            base_true_masked = base_true[triu_indices[0], triu_indices[1]]
+            expected_loss = nn.functional.mse_loss(base_pred_masked, base_true_masked)
             assert torch.allclose(loss, expected_loss)
 
     def test_base_loss_faith_pd_shape_mismatch_raises_error(self, loss_fn):
@@ -254,6 +262,129 @@ class TestBaseLoss:
 
         with pytest.raises(ValueError, match="NaN values found in base_true"):
             loss_fn.compute_base_loss(base_pred, base_true, encoder_type="unifrac")
+
+    def test_base_loss_unifrac_masks_diagonal(self, loss_fn):
+        """Test that UniFrac loss excludes diagonal elements (self-comparisons)."""
+        batch_size = 4
+        base_pred = torch.randn(batch_size, batch_size)
+        base_true = torch.randn(batch_size, batch_size)
+
+        # Set diagonal to very large values to verify they're excluded
+        base_pred.fill_diagonal_(100.0)
+        base_true.fill_diagonal_(200.0)
+
+        loss = loss_fn.compute_base_loss(base_pred, base_true, encoder_type="unifrac")
+
+        # Loss should be computed only on upper triangle (excluding diagonal)
+        triu_indices = torch.triu_indices(batch_size, batch_size, offset=1, device=base_pred.device)
+        base_pred_masked = base_pred[triu_indices[0], triu_indices[1]]
+        base_true_masked = base_true[triu_indices[0], triu_indices[1]]
+        expected_loss = nn.functional.mse_loss(base_pred_masked, base_true_masked)
+
+        assert torch.allclose(loss, expected_loss)
+        # Loss should be reasonable (not affected by large diagonal values)
+        assert loss.item() < 100.0
+
+    def test_base_loss_unifrac_loss_higher_without_diagonal(self, loss_fn):
+        """Test that UniFrac loss values are higher when diagonal is excluded."""
+        batch_size = 4
+        # Create matrices with non-zero off-diagonal errors to ensure meaningful loss
+        base_pred = torch.ones(batch_size, batch_size) * 0.5
+        base_true = torch.ones(batch_size, batch_size) * 0.3
+
+        # Set diagonal to 0.0 (typical for distance matrices)
+        base_pred.fill_diagonal_(0.0)
+        base_true.fill_diagonal_(0.0)
+
+        # Loss with diagonal masking (current implementation)
+        loss_masked = loss_fn.compute_base_loss(base_pred, base_true, encoder_type="unifrac")
+
+        # Loss without diagonal masking (old behavior - for comparison)
+        loss_unmasked = nn.functional.mse_loss(base_pred, base_true)
+
+        # Masked loss should be higher because:
+        # - Unmasked: includes diagonal (0.0 - 0.0 = 0) + off-diagonal errors, divided by all elements
+        # - Masked: only off-diagonal errors, divided by fewer elements (no diagonal)
+        # Since we're dividing by fewer elements in masked case, loss should be higher
+        assert loss_masked.item() > loss_unmasked.item(), (
+            f"Masked loss ({loss_masked.item():.6f}) should be higher than unmasked loss ({loss_unmasked.item():.6f}) "
+            f"when diagonal is 0.0 and off-diagonal has errors"
+        )
+
+    def test_base_loss_unifrac_diagonal_masking_only_for_unifrac(self, loss_fn):
+        """Test that diagonal masking only applies to UniFrac, not other encoder types."""
+        batch_size = 4
+        base_pred = torch.randn(batch_size, batch_size)
+        base_true = torch.randn(batch_size, batch_size)
+
+        # Set diagonal to large values
+        base_pred.fill_diagonal_(100.0)
+        base_true.fill_diagonal_(200.0)
+
+        # Faith PD should NOT mask diagonal (even if square matrix)
+        loss_faith_pd = loss_fn.compute_base_loss(base_pred, base_true, encoder_type="faith_pd")
+        expected_loss_faith_pd = nn.functional.mse_loss(base_pred, base_true)
+        assert torch.allclose(loss_faith_pd, expected_loss_faith_pd)
+
+        # Taxonomy should NOT mask diagonal
+        loss_taxonomy = loss_fn.compute_base_loss(base_pred, base_true, encoder_type="taxonomy")
+        expected_loss_taxonomy = nn.functional.mse_loss(base_pred, base_true)
+        assert torch.allclose(loss_taxonomy, expected_loss_taxonomy)
+
+        # Combined should NOT mask diagonal
+        loss_combined = loss_fn.compute_base_loss(base_pred, base_true, encoder_type="combined")
+        expected_loss_combined = nn.functional.mse_loss(base_pred, base_true)
+        assert torch.allclose(loss_combined, expected_loss_combined)
+
+    def test_base_loss_unifrac_non_square_matrix_no_masking(self, loss_fn):
+        """Test that non-square matrices don't use diagonal masking."""
+        batch_size = 4
+        base_output_dim = 6
+        base_pred = torch.randn(batch_size, base_output_dim)
+        base_true = torch.randn(batch_size, base_output_dim)
+
+        loss = loss_fn.compute_base_loss(base_pred, base_true, encoder_type="unifrac")
+
+        # Should use standard MSE (no masking for non-square matrices)
+        expected_loss = nn.functional.mse_loss(base_pred, base_true)
+        assert torch.allclose(loss, expected_loss)
+
+    def test_base_loss_unifrac_edge_case_batch_size_2(self, loss_fn):
+        """Test diagonal masking with batch_size=2 (smallest valid pairwise matrix)."""
+        batch_size = 2
+        base_pred = torch.randn(batch_size, batch_size)
+        base_true = torch.randn(batch_size, batch_size)
+
+        # Set diagonal to large values
+        base_pred.fill_diagonal_(100.0)
+        base_true.fill_diagonal_(200.0)
+
+        loss = loss_fn.compute_base_loss(base_pred, base_true, encoder_type="unifrac")
+
+        # With batch_size=2, upper triangle (excluding diagonal) has only 1 element: (0, 1)
+        triu_indices = torch.triu_indices(batch_size, batch_size, offset=1, device=base_pred.device)
+        assert triu_indices.shape[1] == 1  # Only one off-diagonal element
+        base_pred_masked = base_pred[triu_indices[0], triu_indices[1]]
+        base_true_masked = base_true[triu_indices[0], triu_indices[1]]
+        expected_loss = nn.functional.mse_loss(base_pred_masked, base_true_masked)
+
+        assert torch.allclose(loss, expected_loss)
+
+    def test_base_loss_unifrac_edge_case_batch_size_1(self, loss_fn):
+        """Test that batch_size=1 works (no off-diagonal elements, should return zero loss)."""
+        batch_size = 1
+        base_pred = torch.randn(batch_size, batch_size)
+        base_true = torch.randn(batch_size, batch_size)
+
+        loss = loss_fn.compute_base_loss(base_pred, base_true, encoder_type="unifrac")
+
+        # With batch_size=1, there are no off-diagonal elements, so loss should be zero
+        # (upper triangle with offset=1 is empty)
+        triu_indices = torch.triu_indices(batch_size, batch_size, offset=1, device=base_pred.device)
+        assert triu_indices.shape[1] == 0  # No off-diagonal elements
+
+        # When there are no elements, MSE on empty tensors returns 0.0
+        assert loss.item() == 0.0
 
 
 class TestNucleotideLoss:

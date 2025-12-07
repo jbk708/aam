@@ -161,7 +161,24 @@ class MultiTaskLoss(nn.Module):
             print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
             raise ValueError(error_msg)
 
-        return nn.functional.mse_loss(base_pred, base_true)
+        # For UniFrac pairwise distance matrices, mask diagonal elements
+        # Diagonal elements are always 0.0 (distance from ASV to itself) and provide no training signal
+        if encoder_type == "unifrac" and base_pred.dim() == 2 and base_pred.shape[0] == base_pred.shape[1]:
+            # Extract upper triangle (excluding diagonal) using offset=1
+            batch_size = base_pred.shape[0]
+            triu_indices = torch.triu_indices(batch_size, batch_size, offset=1, device=base_pred.device)
+
+            # Handle edge case: batch_size=1 has no off-diagonal elements
+            if triu_indices.shape[1] == 0:
+                # Return zero loss when there are no off-diagonal elements
+                return torch.zeros(1, device=base_pred.device, requires_grad=True)
+
+            base_pred_masked = base_pred[triu_indices[0], triu_indices[1]]
+            base_true_masked = base_true[triu_indices[0], triu_indices[1]]
+            return nn.functional.mse_loss(base_pred_masked, base_true_masked)
+        else:
+            # For non-UniFrac encoders or non-square matrices, use existing logic
+            return nn.functional.mse_loss(base_pred, base_true)
 
     def compute_nucleotide_loss(
         self,

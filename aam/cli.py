@@ -185,7 +185,12 @@ def cli():
 @click.option("--use-expandable-segments", is_flag=True, help="Enable PyTorch CUDA expandable segments for memory optimization")
 @click.option("--max-grad-norm", default=None, type=float, help="Maximum gradient norm for clipping (None to disable)")
 @click.option("--optimizer", default="adamw", type=click.Choice(["adamw", "adam", "sgd"]), help="Optimizer type")
-@click.option("--scheduler", default="warmup_cosine", type=click.Choice(["warmup_cosine", "cosine", "plateau", "onecycle"]), help="Learning rate scheduler type")
+@click.option(
+    "--scheduler",
+    default="warmup_cosine",
+    type=click.Choice(["warmup_cosine", "cosine", "plateau", "onecycle"]),
+    help="Learning rate scheduler type",
+)
 def train(
     table: str,
     tree: str,
@@ -385,8 +390,12 @@ def train(
 
         effective_batches_per_epoch = len(train_loader) // gradient_accumulation_steps
         num_training_steps = effective_batches_per_epoch * epochs
-        optimizer_obj = create_optimizer(model, optimizer_type=optimizer, lr=lr, weight_decay=weight_decay, freeze_base=freeze_base)
-        scheduler_obj = create_scheduler(optimizer_obj, scheduler_type=scheduler, num_warmup_steps=warmup_steps, num_training_steps=num_training_steps)
+        optimizer_obj = create_optimizer(
+            model, optimizer_type=optimizer, lr=lr, weight_decay=weight_decay, freeze_base=freeze_base
+        )
+        scheduler_obj = create_scheduler(
+            optimizer_obj, scheduler_type=scheduler, num_warmup_steps=warmup_steps, num_training_steps=num_training_steps
+        )
 
         trainer = Trainer(
             model=model,
@@ -457,7 +466,12 @@ def train(
 @click.option("--use-expandable-segments", is_flag=True, help="Enable PyTorch CUDA expandable segments for memory optimization")
 @click.option("--max-grad-norm", default=None, type=float, help="Maximum gradient norm for clipping (None to disable)")
 @click.option("--optimizer", default="adamw", type=click.Choice(["adamw", "adam", "sgd"]), help="Optimizer type")
-@click.option("--scheduler", default="warmup_cosine", type=click.Choice(["warmup_cosine", "cosine", "plateau", "onecycle"]), help="Learning rate scheduler type")
+@click.option(
+    "--scheduler",
+    default="warmup_cosine",
+    type=click.Choice(["warmup_cosine", "cosine", "plateau", "onecycle"]),
+    help="Learning rate scheduler type",
+)
 @click.option(
     "--asv-chunk-size", default=None, type=int, help="Process ASVs in chunks of this size to reduce memory (None = process all)"
 )
@@ -629,7 +643,9 @@ def pretrain(
 
         num_training_steps = len(train_loader) * epochs
         optimizer_obj = create_optimizer(model, optimizer_type=optimizer, lr=lr, weight_decay=weight_decay, freeze_base=False)
-        scheduler_obj = create_scheduler(optimizer_obj, scheduler_type=scheduler, num_warmup_steps=warmup_steps, num_training_steps=num_training_steps)
+        scheduler_obj = create_scheduler(
+            optimizer_obj, scheduler_type=scheduler, num_warmup_steps=warmup_steps, num_training_steps=num_training_steps
+        )
 
         trainer = Trainer(
             model=model,
