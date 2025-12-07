@@ -187,7 +187,10 @@ class SequencePredictor(nn.Module):
         base_outputs = self.base_model(tokens, return_nucleotides=return_nucleotides)
         
         base_embeddings = base_outputs["sample_embeddings"]
+        # For UniFrac, embeddings are returned directly (no base_prediction)
+        # For other encoder types, base_prediction may exist
         base_prediction = base_outputs.get("base_prediction")
+        embeddings = base_outputs.get("embeddings")  # For UniFrac
         nuc_predictions = base_outputs.get("nuc_predictions")
         
         count_embeddings = self.count_encoder(base_embeddings, mask=asv_mask)
@@ -205,6 +208,10 @@ class SequencePredictor(nn.Module):
             "count_prediction": count_prediction,
             "base_embeddings": base_embeddings,
         }
+        
+        # For UniFrac, pass embeddings through for distance computation
+        if embeddings is not None:
+            result["embeddings"] = embeddings
         
         if return_nucleotides and base_prediction is not None:
             result["base_prediction"] = base_prediction

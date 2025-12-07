@@ -116,15 +116,13 @@ class SequenceEncoder(nn.Module):
             self.faith_ff = nn.Linear(embedding_dim, 1)
             self.tax_ff = nn.Linear(embedding_dim, 7)
         else:
-            self.output_head = nn.Linear(embedding_dim, self.base_output_dim)
-            # Initialize output head for sigmoid activation
-            # Use Xavier/Glorot initialization scaled for sigmoid
-            # Bias initialized to shift sigmoid output toward expected range (0.7 for UniFrac)
-            if encoder_type == "unifrac":
-                nn.init.xavier_uniform_(self.output_head.weight, gain=1.0)
-                # Initialize bias to shift sigmoid output: sigmoid(bias) ≈ 0.7 (typical UniFrac distance)
-                # sigmoid(0.85) ≈ 0.7, so initialize bias to ~0.85
-                nn.init.constant_(self.output_head.bias, 0.85)
+            # For UniFrac, we return embeddings directly and compute distances from them
+            # For other encoder types, we still use output_head
+            if encoder_type != "unifrac":
+                self.output_head = nn.Linear(embedding_dim, self.base_output_dim)
+            else:
+                # UniFrac: no output_head, return embeddings directly
+                self.output_head = None
 
     def forward(
         self,
@@ -178,19 +176,21 @@ class SequenceEncoder(nn.Module):
             
             return result
         else:
-            base_prediction = self.output_head(pooled_embeddings)
-            
-            # Use sigmoid activation for UniFrac predictions (bounded regression)
-            # Sigmoid provides natural [0, 1] constraint without hard clipping boundaries
-            # Bias is initialized to shift output toward expected range (0.7 for UniFrac)
-            # This prevents boundary clustering (53.59% → ~0%) caused by hard clipping
+            # For UniFrac, return embeddings directly (distances computed in loss function)
+            # For other encoder types, use output_head
             if self.encoder_type == "unifrac":
-                base_prediction = torch.sigmoid(base_prediction)
-            
-            result = {
-                "base_prediction": base_prediction,
-                "sample_embeddings": sample_embeddings,
-            }
+                # Return embeddings directly - distances will be computed from embeddings
+                result = {
+                    "embeddings": pooled_embeddings,
+                    "sample_embeddings": sample_embeddings,
+                }
+            else:
+                # Non-UniFrac encoders: use output_head
+                base_prediction = self.output_head(pooled_embeddings)
+                result = {
+                    "base_prediction": base_prediction,
+                    "sample_embeddings": sample_embeddings,
+                }
             
             if return_nucleotides and nuc_predictions is not None:
                 result["nuc_predictions"] = nuc_predictions

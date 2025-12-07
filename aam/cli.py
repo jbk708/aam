@@ -544,7 +544,8 @@ def pretrain(
             unifrac_distances = unifrac_computer.compute_unweighted(table_obj, tree)
             unifrac_metric_name = "unweighted"
             encoder_type = "unifrac"
-            base_output_dim = batch_size
+            # UniFrac: no base_output_dim needed (distances computed from embeddings)
+            base_output_dim = None
         else:
             unifrac_distances = unifrac_computer.compute_faith_pd(table_obj, tree)
             unifrac_metric_name = "faith_pd"

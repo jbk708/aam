@@ -505,7 +505,18 @@ class Trainer:
                 # Check for NaN in model outputs before loss computation
                 import sys
 
-                if "base_prediction" in outputs:
+                # For UniFrac, check embeddings instead of base_prediction
+                encoder_type = self._get_encoder_type()
+                if encoder_type == "unifrac" and "embeddings" in outputs:
+                    if torch.any(torch.isnan(outputs["embeddings"])):
+                        print(f"ERROR: NaN in embeddings before loss computation", file=sys.stderr, flush=True)
+                        print(f"embeddings shape={outputs['embeddings'].shape}", file=sys.stderr, flush=True)
+                        print(
+                            f"embeddings min={outputs['embeddings'].min().item()}, max={outputs['embeddings'].max().item()}",
+                            file=sys.stderr,
+                            flush=True,
+                        )
+                elif "base_prediction" in outputs:
                     if torch.any(torch.isnan(outputs["base_prediction"])):
                         print(f"ERROR: NaN in base_prediction before loss computation", file=sys.stderr, flush=True)
                         print(f"base_prediction shape={outputs['base_prediction'].shape}", file=sys.stderr, flush=True)
@@ -789,27 +800,40 @@ class Trainer:
                     if compute_metrics:
                         if is_pretraining:
                             # For pretraining, collect base_prediction (UniFrac) for plotting
-                            if "base_prediction" in outputs and "base_target" in targets:
-                                if "base_prediction" not in all_predictions:
-                                    all_predictions["base_prediction"] = []
-                                    all_targets["base_target"] = []
-                                # Extract upper triangle (excluding diagonal) from each batch matrix
-                                # to avoid including diagonal 0.0 values in validation plots
-                                base_pred_batch = outputs["base_prediction"]
-                                base_true_batch = targets["base_target"]
-                                if base_pred_batch.dim() == 2 and base_pred_batch.shape[0] == base_pred_batch.shape[1]:
-                                    batch_size = base_pred_batch.shape[0]
-                                    triu_indices = torch.triu_indices(
-                                        batch_size, batch_size, offset=1, device=base_pred_batch.device
-                                    )
-                                    base_pred_flat = base_pred_batch[triu_indices[0], triu_indices[1]]
-                                    base_true_flat = base_true_batch[triu_indices[0], triu_indices[1]]
-                                    all_predictions["base_prediction"].append(base_pred_flat)
-                                    all_targets["base_target"].append(base_true_flat)
+                            # For UniFrac, compute distances from embeddings if available
+                            from aam.training.losses import compute_pairwise_distances
+                            
+                            if "base_target" in targets:
+                                encoder_type = self._get_encoder_type()
+                                if encoder_type == "unifrac" and "embeddings" in outputs:
+                                    # Compute distances from embeddings
+                                    embeddings = outputs["embeddings"]
+                                    base_pred_batch = compute_pairwise_distances(embeddings)
+                                elif "base_prediction" in outputs:
+                                    base_pred_batch = outputs["base_prediction"]
                                 else:
-                                    # If not square, just flatten (shouldn't happen for UniFrac)
-                                    all_predictions["base_prediction"].append(base_pred_batch.flatten())
-                                    all_targets["base_target"].append(base_true_batch.flatten())
+                                    base_pred_batch = None
+                                
+                                if base_pred_batch is not None:
+                                    if "base_prediction" not in all_predictions:
+                                        all_predictions["base_prediction"] = []
+                                        all_targets["base_target"] = []
+                                    # Extract upper triangle (excluding diagonal) from each batch matrix
+                                    # to avoid including diagonal 0.0 values in validation plots
+                                    base_true_batch = targets["base_target"]
+                                    if base_pred_batch.dim() == 2 and base_pred_batch.shape[0] == base_pred_batch.shape[1]:
+                                        batch_size = base_pred_batch.shape[0]
+                                        triu_indices = torch.triu_indices(
+                                            batch_size, batch_size, offset=1, device=base_pred_batch.device
+                                        )
+                                        base_pred_flat = base_pred_batch[triu_indices[0], triu_indices[1]]
+                                        base_true_flat = base_true_batch[triu_indices[0], triu_indices[1]]
+                                        all_predictions["base_prediction"].append(base_pred_flat)
+                                        all_targets["base_target"].append(base_true_flat)
+                                    else:
+                                        # If not square, just flatten (shouldn't happen for UniFrac)
+                                        all_predictions["base_prediction"].append(base_pred_batch.flatten())
+                                        all_targets["base_target"].append(base_true_batch.flatten())
                         else:
                             # For regular training, collect target_prediction for plotting
                             if "target_prediction" in outputs and "target" in targets:
