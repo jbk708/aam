@@ -303,3 +303,36 @@ class TestSequenceEncoder:
         assert result["nuc_predictions"].shape == (2, 10, 50, 6)
         assert "base_prediction" in result
         assert "sample_embeddings" in result
+
+    def test_forward_unifrac_sigmoid_activation(self, sequence_encoder, sample_tokens):
+        """Test that UniFrac predictions use sigmoid activation (not hard clipping)."""
+        output = sequence_encoder(sample_tokens)
+        base_pred = output["base_prediction"]
+
+        # Verify predictions are in [0, 1] range (sigmoid ensures this)
+        assert torch.all(base_pred >= 0.0), "Predictions should be >= 0.0"
+        assert torch.all(base_pred <= 1.0), "Predictions should be <= 1.0"
+
+        # Verify predictions are not all at boundaries (sigmoid provides smooth distribution)
+        # With sigmoid, we should have continuous values, not all 0.0 or 1.0
+        assert not torch.all(base_pred == 0.0), "Predictions should not all be 0.0"
+        assert not torch.all(base_pred == 1.0), "Predictions should not all be 1.0"
+
+        # Verify sigmoid behavior: values should be continuous, not hard-clipped
+        # If we had hard clipping, we'd see many exact 0.0 or 1.0 values
+        # With sigmoid, values should be smoothly distributed
+        unique_values = torch.unique(base_pred)
+        assert len(unique_values) > 2, "Sigmoid should produce continuous values, not just boundaries"
+
+    def test_forward_combined_unifrac_sigmoid_activation(self, sequence_encoder_combined, sample_tokens):
+        """Test that combined encoder type uses sigmoid for UniFrac predictions."""
+        output = sequence_encoder_combined(sample_tokens)
+        unifrac_pred = output["unifrac_pred"]
+
+        # Verify UniFrac predictions are in [0, 1] range
+        assert torch.all(unifrac_pred >= 0.0), "UniFrac predictions should be >= 0.0"
+        assert torch.all(unifrac_pred <= 1.0), "UniFrac predictions should be <= 1.0"
+
+        # Verify sigmoid behavior (continuous values, not hard-clipped)
+        unique_values = torch.unique(unifrac_pred)
+        assert len(unique_values) > 2, "Sigmoid should produce continuous values"
