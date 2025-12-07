@@ -107,10 +107,18 @@ class SequenceEncoder(nn.Module):
         
         if encoder_type == "combined":
             self.uni_ff = nn.Linear(embedding_dim, 2)
+            # Initialize UniFrac head with smaller weights to prevent sigmoid saturation
+            nn.init.normal_(self.uni_ff.weight, mean=0.0, std=0.01)
+            nn.init.constant_(self.uni_ff.bias, 0.0)
             self.faith_ff = nn.Linear(embedding_dim, 1)
             self.tax_ff = nn.Linear(embedding_dim, 7)
         else:
             self.output_head = nn.Linear(embedding_dim, self.base_output_dim)
+            # Initialize output head with smaller weights to prevent sigmoid saturation
+            # This helps prevent mode collapse when using sigmoid activation
+            if encoder_type == "unifrac":
+                nn.init.normal_(self.output_head.weight, mean=0.0, std=0.01)
+                nn.init.constant_(self.output_head.bias, 0.0)
 
     def forward(
         self,
@@ -145,9 +153,10 @@ class SequenceEncoder(nn.Module):
         
         if self.encoder_type == "combined":
             unifrac_pred = self.uni_ff(pooled_embeddings)
-            # Use sigmoid activation for UniFrac predictions (bounded regression)
-            # Sigmoid provides natural [0, 1] constraint without hard clipping boundaries
-            unifrac_pred = torch.sigmoid(unifrac_pred)
+            # Use scaled sigmoid activation for UniFrac predictions (bounded regression)
+            # Scale input by 0.1 to prevent saturation and improve gradient flow
+            # This helps prevent mode collapse while maintaining [0, 1] constraint
+            unifrac_pred = torch.sigmoid(unifrac_pred * 0.1)  # Scale input to prevent saturation
             faith_pred = self.faith_ff(pooled_embeddings)
             tax_pred = self.tax_ff(pooled_embeddings)
             
@@ -165,11 +174,12 @@ class SequenceEncoder(nn.Module):
         else:
             base_prediction = self.output_head(pooled_embeddings)
             
-            # Use sigmoid activation for UniFrac predictions (bounded regression)
-            # Sigmoid provides natural [0, 1] constraint without hard clipping boundaries
-            # This prevents boundary clustering (53.59% → ~0%) caused by hard clipping
+            # Use scaled sigmoid activation for UniFrac predictions (bounded regression)
+            # Scale input by 0.1 to prevent saturation and improve gradient flow
+            # This prevents mode collapse while maintaining [0, 1] constraint
+            # Without scaling, large linear outputs cause sigmoid saturation (vanishing gradients)
             if self.encoder_type == "unifrac":
-                base_prediction = torch.sigmoid(base_prediction)
+                base_prediction = torch.sigmoid(base_prediction * 0.1)
             
             result = {
                 "base_prediction": base_prediction,
