@@ -557,12 +557,15 @@ def main():
     # Compute UniFrac distances
     print("Computing UniFrac distances...")
     unifrac_computer = UniFracComputer()
+    # Map encoder_type to unifrac_metric for dataset/collate
     if args.encoder_type == "unifrac":
         unifrac_distances = unifrac_computer.compute_unweighted(table_obj, args.tree)
         base_output_dim = args.batch_size
+        unifrac_metric = "unweighted"  # Dataset expects "unweighted", not "unifrac"
     else:
         unifrac_distances = unifrac_computer.compute_faith_pd(table_obj, args.tree)
         base_output_dim = 1
+        unifrac_metric = "faith_pd"
     
     # Create dataset
     print("Creating dataset...")
@@ -573,14 +576,14 @@ def main():
         max_bp=args.max_bp,
         token_limit=args.token_limit,
         target_column=None,
-        unifrac_metric=args.encoder_type,
+        unifrac_metric=unifrac_metric,
     )
     
     collate = partial(
         collate_fn,
         token_limit=args.token_limit,
         unifrac_distances=unifrac_distances,
-        unifrac_metric=args.encoder_type,
+        unifrac_metric=unifrac_metric,
     )
     
     dataloader = DataLoader(
