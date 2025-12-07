@@ -228,6 +228,12 @@ class MultiTaskLoss(nn.Module):
                 file=sys.stderr,
                 flush=True,
             )
+            # If embeddings were used, provide additional context
+            if encoder_type == "unifrac" and embeddings is not None:
+                print(f"ERROR: Computed from embeddings with shape {embeddings.shape}", file=sys.stderr, flush=True)
+                print(f"embeddings {_format_tensor_stats(embeddings)}", file=sys.stderr, flush=True)
+                if torch.any(torch.isnan(embeddings)):
+                    print(f"ERROR: Embeddings themselves contain NaN!", file=sys.stderr, flush=True)
             raise ValueError(error_msg)
         if torch.any(torch.isnan(base_true)):
             import sys
