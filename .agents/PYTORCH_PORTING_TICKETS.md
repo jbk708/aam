@@ -842,7 +842,7 @@ Investigate the distribution and origin of zero-distance UniFrac pairs in the tr
 ---
 
 ### PYT-8.14: Implement Bounded Regression Loss for UniFrac Distances
-**Priority:** MEDIUM | **Effort:** Medium | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** Medium | **Status:** ✅ Completed
 
 **Description:**
 Implement bounded regression loss to account for the [0, 1] constraint on UniFrac distances. Currently, MSE loss doesn't enforce this constraint, allowing predictions outside the valid range. This ticket implements clipped MSE loss as a first step, with option to upgrade to beta regression if needed.
@@ -854,15 +854,15 @@ Implement bounded regression loss to account for the [0, 1] constraint on UniFra
 - No penalty for predictions outside valid range
 
 **Acceptance Criteria:**
-- [ ] Implement clipped MSE loss (clip predictions to [0, 1] before computing loss)
-- [ ] Add `clip_predictions` parameter to `compute_base_loss()` (default: True for UniFrac)
-- [ ] Ensure clipping only applies to UniFrac encoder type, not Faith PD or others
-- [ ] Verify predictions are clipped during training
-- [ ] Test that loss computation works correctly with clipped predictions
-- [ ] Add unit tests for clipped MSE loss
-- [ ] Document clipping behavior in code comments
-- [ ] Consider beta regression as future enhancement (research/document, don't implement yet)
-- [ ] Verify training stability with clipped loss
+- [x] Implement clipped MSE loss (clip predictions to [0, 1] before computing loss)
+- [x] Add `clip_predictions` parameter to `compute_base_loss()` (default: True for UniFrac)
+- [x] Ensure clipping only applies to UniFrac encoder type, not Faith PD or others
+- [x] Verify predictions are clipped during training
+- [x] Test that loss computation works correctly with clipped predictions
+- [x] Add unit tests for clipped MSE loss
+- [x] Document clipping behavior in code comments
+- [x] Consider beta regression as future enhancement (research/document, don't implement yet)
+- [x] Verify training stability with clipped loss
 
 **Implementation Notes:**
 - **Approach**: Start with clipped MSE (simplest), consider beta regression later if needed
@@ -893,6 +893,23 @@ Implement bounded regression loss to account for the [0, 1] constraint on UniFra
 **Dependencies:** PYT-8.12 (should complete diagonal masking first)
 
 **Estimated Time:** 3-4 hours
+**Actual Time:** ~3 hours
+
+**Implementation Notes:**
+- ✅ Added `clip_predictions` parameter to `compute_base_loss()` in `aam/training/losses.py` (default: True)
+- ✅ Implemented clipping logic: predictions are clamped to [0, 1] before loss computation for UniFrac
+- ✅ Added clipping in model forward pass (`SequenceEncoder`) to constrain predictions at source
+- ✅ Clipping only applies to UniFrac encoder type (not Faith PD, taxonomy, or combined)
+- ✅ Added 6 comprehensive tests for clipped MSE loss in `tests/test_losses.py`
+- ✅ Updated 5 existing tests to account for clipping behavior
+- ✅ All 37 loss tests pass (1 skipped for CUDA)
+- ✅ Verified predictions are constrained to [0, 1] range in model outputs
+- ✅ Gradients flow correctly through clipping operation
+
+**Files Modified:**
+- `aam/training/losses.py` - Added clipping logic to `compute_base_loss()` method
+- `aam/models/sequence_encoder.py` - Added clipping in forward pass for UniFrac predictions
+- `tests/test_losses.py` - Added 6 new tests and updated 5 existing tests
 
 ---
 
@@ -1032,7 +1049,7 @@ Tune learning rate to improve UniFrac model training performance. Current defaul
 ### Phase 9: UniFrac Underfitting Fixes (NEW - HIGH PRIORITY)
 12. ✅ **PYT-8.12: Mask Diagonal in UniFrac Loss Computation (1-2 hours) - HIGH PRIORITY** - Completed
 13. ✅ **PYT-8.13: Investigate Zero-Distance Samples in UniFrac Data (2-3 hours) - HIGH PRIORITY** - Completed
-14. **PYT-8.14: Implement Bounded Regression Loss for UniFrac Distances (3-4 hours) - MEDIUM PRIORITY** - Not Started
+14. ✅ **PYT-8.14: Implement Bounded Regression Loss for UniFrac Distances (3-4 hours) - MEDIUM PRIORITY** - Completed
 15. **PYT-8.15: Implement Weighted Loss for Zero-Distance UniFrac Pairs (1-2 hours) - MEDIUM PRIORITY** - Not Started
 16. **PYT-8.16: Tune Learning Rate for UniFrac Model Training (2-3 hours) - MEDIUM PRIORITY** - Not Started
 
@@ -1060,7 +1077,7 @@ Tune learning rate to improve UniFrac model training performance. Current defaul
 - PYT-8.11 not started - Explore and benchmark different learning rate optimizers (AdamW, Adam, SGD) and schedulers (CosineAnnealingLR, ReduceLROnPlateau, OneCycleLR) to improve training performance and convergence speed.
 - ✅ **PYT-8.12 completed** - Fixed UniFrac loss computation to exclude diagonal elements (self-comparisons). Diagonal masking implemented using upper triangle extraction. Loss values now correctly exclude 0.0 diagonal elements, providing stronger training signal. **CRITICAL foundation fix for addressing underfitting.**
 - ✅ **PYT-8.13 completed** - Investigated zero-distance samples in UniFrac data. **Key finding**: Zero distances are extremely rare (0.00% of pairs, only 1 pair out of 229,503). Distribution is unimodal (not bimodal) centered around 0.72. **Recommendation**: DO NOT implement zero-distance weighting (PYT-8.15 can be cancelled). Focus should shift to other loss function improvements.
-- **PYT-8.14 not started** - Implement bounded regression loss (clipped MSE) to enforce [0, 1] constraint on UniFrac distances. Prevents invalid predictions outside valid range. **IMPORTANT for model correctness.**
+- ✅ **PYT-8.14 completed** - Implemented bounded regression loss (clipped MSE) to enforce [0, 1] constraint on UniFrac distances. Added clipping in both loss computation and model forward pass to ensure predictions are constrained to valid range. Prevents invalid predictions outside [0, 1] range. **IMPORTANT for model correctness.**
 - **PYT-8.15 not started** - Implement weighted loss to down-weight zero-distance pairs based on PYT-8.13 findings. Allows model to focus on meaningful distance relationships. **IMPORTANT for handling bimodal distribution.**
 - **PYT-8.16 not started** - Tune learning rate for UniFrac model training. Current default (1e-4) may be suboptimal. Learning rate finder and experimentation needed. **IMPORTANT for training optimization.**
 - Follow the workflow in `.agents/workflow.md` for implementation
