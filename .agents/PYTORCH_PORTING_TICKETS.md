@@ -914,10 +914,13 @@ Implement bounded regression loss to account for the [0, 1] constraint on UniFra
 ---
 
 ### PYT-8.15: Implement Weighted Loss for Zero-Distance UniFrac Pairs
-**Priority:** MEDIUM | **Effort:** Low | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** Low | **Status:** ❌ Cancelled
 
 **Description:**
 Implement weighted loss to down-weight zero-distance pairs in UniFrac loss computation. Based on findings from PYT-8.13, zero-distance pairs may be less informative or represent data artifacts. This ticket adds configurable weighting to reduce their influence on training.
+
+**Cancellation Reason:**
+Based on PYT-8.13 findings, zero distances are extremely rare (0.00% of pairs, only 1 pair out of 229,503). The distribution is unimodal (not bimodal) centered around 0.72. Zero-distance weighting is not needed as zero distances are too rare to significantly impact training. Focus should shift to other loss function improvements and learning rate tuning.
 
 **Problem:**
 - Zero-distance pairs may be less informative for learning distance relationships
@@ -969,59 +972,85 @@ Implement weighted loss to down-weight zero-distance pairs in UniFrac loss compu
 
 ---
 
-### PYT-8.16: Tune Learning Rate for UniFrac Model Training
-**Priority:** MEDIUM | **Effort:** Low-Medium | **Status:** Not Started
+### PYT-8.16: Investigate Prediction Clustering at 0.0 and 1.0 During Inference
+**Priority:** HIGH | **Effort:** Medium | **Status:** Not Started
 
 **Description:**
-Tune learning rate to improve UniFrac model training performance. Current default learning rate (1e-4) may not be optimal for pairwise distance prediction task. This ticket implements learning rate finder and tunes learning rate for better convergence and final model quality.
+Investigate why during inference a large number of UniFrac distance predictions are clustering at the boundaries (0.0 or 1.0), causing a large amount of loss. This suggests the model is predicting extreme values rather than the continuous distribution of distances in the training data. This investigation will identify root causes (e.g., clipping behavior, loss function issues, model architecture, or training dynamics) and propose fixes.
 
 **Problem:**
-- Current learning rate (1e-4) may be suboptimal for UniFrac pairwise distance prediction
-- Model underfitting (R² = 0.0455) may be partially due to learning rate issues
-- No systematic approach to learning rate selection
-- May need different learning rates for pretraining vs fine-tuning
+- During inference, many predictions cluster at 0.0 or 1.0 (boundary values)
+- This causes large loss values as predictions don't match the actual continuous distribution
+- Actual UniFrac distances are distributed around 0.72 (unimodal, not bimodal at boundaries)
+- Model may be:
+  - Over-clipping predictions to boundaries
+  - Not learning the continuous distribution properly
+  - Suffering from training instability
+  - Using inappropriate loss function for bounded regression
+- This is a critical issue affecting model quality and inference performance
 
 **Acceptance Criteria:**
-- [ ] Implement learning rate finder utility (or use existing PyTorch tools)
-- [ ] Run learning rate range test on UniFrac pretraining task
-- [ ] Identify optimal learning rate range
-- [ ] Test with lower learning rates (1e-5, 5e-5)
-- [ ] Test with higher learning rates (5e-4, 1e-3) if needed
-- [ ] Compare training curves (loss, R²) with different learning rates
-- [ ] Update default learning rate if improvement found
-- [ ] Add `--lr` option documentation with recommended values
-- [ ] Consider learning rate scheduling (ReduceLROnPlateau) if beneficial
-- [ ] Document findings and recommendations
+- [ ] Create analysis script to investigate prediction distribution during inference
+- [ ] Count and analyze predictions at 0.0 and 1.0 boundaries
+- [ ] Compare prediction distribution to actual UniFrac distance distribution
+- [ ] Investigate clipping behavior in model forward pass and loss computation
+- [ ] Check if predictions are being forced to boundaries by clipping operations
+- [ ] Analyze model outputs before clipping (raw predictions)
+- [ ] Investigate loss function behavior with boundary predictions
+- [ ] Check training dynamics (gradients, learning rate, optimizer behavior)
+- [ ] Identify root cause(s) of boundary clustering
+- [ ] Propose and implement fixes (e.g., remove premature clipping, adjust loss function, modify architecture)
+- [ ] Test fixes to verify predictions are more continuous
+- [ ] Document findings and solutions in analysis report
+- [ ] Create visualizations of prediction vs actual distributions
 
 **Implementation Notes:**
-- **Learning Rate Finder Options**:
-  - Option A: Use `torch-lr-finder` library (if available)
-  - Option B: Implement simple LR range test (train for few epochs with different LRs)
-  - Option C: Manual experimentation with different LR values
-- **Learning Rates to Test**:
-  - Current: 1e-4 (baseline)
-  - Lower: 1e-5, 5e-5
-  - Higher: 5e-4, 1e-3 (if needed)
-- **Evaluation Metrics**:
-  - Training loss convergence
-  - Validation R² score
-  - Prediction range coverage
-  - Training stability (no NaN, no divergence)
+- **Investigation Areas**:
+  1. **Clipping Analysis**: Check where and when predictions are clipped to [0, 1]
+     - Model forward pass clipping in `SequenceEncoder`
+     - Loss computation clipping in `compute_base_loss()`
+     - Verify if clipping is too aggressive or applied too early
+  2. **Raw Prediction Analysis**: Examine model outputs before any clipping
+     - Are raw predictions already at boundaries?
+     - Or are they being forced to boundaries by clipping?
+  3. **Loss Function Analysis**: Check if MSE loss with clipping causes boundary attraction
+     - Clipped MSE may create flat gradients at boundaries
+     - May need smoother loss function (e.g., smooth L1, Huber loss)
+  4. **Training Dynamics**: Analyze training behavior
+     - Gradient flow through clipping operations
+     - Learning rate effects on boundary predictions
+     - Optimizer behavior with clipped predictions
+  5. **Model Architecture**: Check if architecture encourages boundary predictions
+     - Final layer activation (sigmoid vs linear + clip)
+     - Embedding space structure
+- **Potential Root Causes**:
+  - **Over-clipping**: Predictions clipped too early or too aggressively
+  - **Loss function**: MSE with hard clipping creates boundary attraction
+  - **Training instability**: Model not learning continuous distribution
+  - **Architecture**: Final layer not suitable for bounded regression
+  - **Learning rate**: Too high/low causing boundary convergence
+- **Potential Solutions**:
+  - Remove clipping from forward pass, only clip in loss if needed
+  - Use sigmoid activation instead of linear + clip
+  - Replace clipped MSE with smooth loss function (Huber, smooth L1)
+  - Adjust learning rate or optimizer settings
+  - Use beta regression loss for bounded regression
 - **Files to Create/Modify**:
-  - `debug/lr_finder.py` - Learning rate finder script (optional)
-  - `aam/cli.py` - Update `--lr` default if improvement found
+  - `debug/investigate_boundary_predictions.py` - Analysis script
+  - `debug/BOUNDARY_PREDICTION_ANALYSIS.md` - Analysis report
+  - `aam/models/sequence_encoder.py` - Potentially remove/modify clipping
+  - `aam/training/losses.py` - Potentially modify loss function
   - `_design_plan/19_unifrac_underfitting_analysis.md` - Document findings
-- **Learning Rate Scheduling** (optional enhancement):
-  - Consider `ReduceLROnPlateau` if validation loss plateaus
-  - May help with fine-tuning after pretraining
-- **Expected Impact**:
-  - Better convergence speed
-  - Improved final model quality (higher R²)
-  - More stable training
+- **Visualizations Needed**:
+  - Histogram of predicted distances (highlight 0.0 and 1.0 clusters)
+  - Histogram of actual distances (for comparison)
+  - Scatter plot: predicted vs actual (highlight boundary predictions)
+  - Distribution comparison: predictions vs actuals
+  - Raw predictions vs clipped predictions comparison
 
-**Dependencies:** PYT-8.12, PYT-8.14 (should complete loss improvements first)
+**Dependencies:** PYT-8.12, PYT-8.14 (completed - clipping was added in these tickets)
 
-**Estimated Time:** 2-3 hours (including experimentation time)
+**Estimated Time:** 4-6 hours (investigation + fix implementation)
 
 ---
 
@@ -1042,23 +1071,23 @@ Tune learning rate to improve UniFrac model training performance. Current defaul
 8. ✅ **PYT-8.9: Fix NaN in Nucleotide Predictions During Pretraining with Token Limit (3-4 hours) - HIGH PRIORITY** - Completed
 9. ✅ **PYT-8.7: Fix Model NaN Issue and Add Gradient Clipping (4-6 hours) - HIGH PRIORITY** - Completed
 
-### Phase 8: Feature Enhancements (In Progress)
-10. PYT-8.10: Update Training Progress Bar and Rename base_loss to unifrac_loss (2-3 hours) - Not Started
-11. PYT-8.11: Explore Learning Rate Optimizers and Schedulers (4-6 hours) - Not Started
+### Phase 8: Feature Enhancements (Completed)
+10. ✅ PYT-8.10: Update Training Progress Bar and Rename base_loss to unifrac_loss (2-3 hours) - Completed
+11. ✅ PYT-8.11: Explore Learning Rate Optimizers and Schedulers (4-6 hours) - Completed
 
 ### Phase 9: UniFrac Underfitting Fixes (NEW - HIGH PRIORITY)
 12. ✅ **PYT-8.12: Mask Diagonal in UniFrac Loss Computation (1-2 hours) - HIGH PRIORITY** - Completed
 13. ✅ **PYT-8.13: Investigate Zero-Distance Samples in UniFrac Data (2-3 hours) - HIGH PRIORITY** - Completed
 14. ✅ **PYT-8.14: Implement Bounded Regression Loss for UniFrac Distances (3-4 hours) - MEDIUM PRIORITY** - Completed
-15. **PYT-8.15: Implement Weighted Loss for Zero-Distance UniFrac Pairs (1-2 hours) - MEDIUM PRIORITY** - Not Started
-16. **PYT-8.16: Tune Learning Rate for UniFrac Model Training (2-3 hours) - MEDIUM PRIORITY** - Not Started
+15. ❌ **PYT-8.15: Implement Weighted Loss for Zero-Distance UniFrac Pairs (1-2 hours) - MEDIUM PRIORITY** - Cancelled (zero distances too rare per PYT-8.13 findings)
+16. **PYT-8.16: Investigate Prediction Clustering at 0.0 and 1.0 During Inference (4-6 hours) - HIGH PRIORITY** - Not Started
 
 **Recommended Implementation Order for UniFrac Fixes:**
-1. **PYT-8.12** (diagonal masking) - Foundation fix, should be done first
-2. **PYT-8.13** (zero-distance investigation) - Can be done in parallel with PYT-8.12
-3. **PYT-8.14** (bounded loss) - Depends on PYT-8.12
-4. **PYT-8.15** (weighted loss) - Depends on PYT-8.13 findings
-5. **PYT-8.16** (learning rate tuning) - Depends on PYT-8.12 and PYT-8.14
+1. ✅ **PYT-8.12** (diagonal masking) - Foundation fix, completed
+2. ✅ **PYT-8.13** (zero-distance investigation) - Completed, found zero distances are extremely rare
+3. ✅ **PYT-8.14** (bounded loss) - Completed, added clipping to [0, 1]
+4. ❌ **PYT-8.15** (weighted loss) - Cancelled per PYT-8.13 findings
+5. **PYT-8.16** (investigate boundary prediction clustering) - Next priority, addresses critical inference issue
 
 **Notes:**
 - All tickets are independent and can be implemented in any order (except where dependencies noted)
@@ -1073,11 +1102,11 @@ Tune learning rate to improve UniFrac model training performance. Current defaul
 - **PYT-8.6 completed** - Verified `drop_last=True` is set in all DataLoaders (train, pretrain, validation), preventing shape mismatches. Added 7 comprehensive tests for shape mismatch scenarios. All tests passing. Solution uses `drop_last=True` to ensure consistent batch sizes, eliminating shape mismatches at the source.
 - **PYT-8.9 completed** - Fixed NaN in nucleotide predictions during pretraining with token_limit. Root cause was all-padding sequences causing NaN in transformer attention. Fixed by: (1) handling all-padding sequences in AttentionPooling, (2) masking NaN from transformer output in ASVEncoder, (3) adding data validation in dataset.py, (4) safe tensor stats formatting in losses.py. All fixes verified and training is stable.
 - **PYT-8.7 completed** - Gradient clipping implemented using `torch.nn.utils.clip_grad_norm_()`. Added `--max-grad-norm` CLI option. NaN issues resolved via PYT-8.8 (START_TOKEN) and PYT-8.9 (all-padding sequence handling). Training stability verified.
-- PYT-8.10 not started - Update training progress bar to remove redundant "Step" field and show loss breakdown (total, unifrac, nucleotide). Also rename `base_loss` to `unifrac_loss` throughout codebase and optimize TensorBoard reporting performance.
-- PYT-8.11 not started - Explore and benchmark different learning rate optimizers (AdamW, Adam, SGD) and schedulers (CosineAnnealingLR, ReduceLROnPlateau, OneCycleLR) to improve training performance and convergence speed.
+- ✅ PYT-8.10 completed - Updated training progress bar to remove redundant "Step" field and show loss breakdown (total, unifrac, nucleotide). Renamed `base_loss` to `unifrac_loss` throughout codebase. Optimized TensorBoard reporting performance (reduced histogram frequency, added log_histograms flag).
+- ✅ PYT-8.11 completed - Explored and implemented different learning rate optimizers (AdamW, Adam, SGD) and schedulers (WarmupCosine, CosineAnnealingLR, ReduceLROnPlateau, OneCycleLR). Added CLI options for optimizer and scheduler selection. Comprehensive tests added.
 - ✅ **PYT-8.12 completed** - Fixed UniFrac loss computation to exclude diagonal elements (self-comparisons). Diagonal masking implemented using upper triangle extraction. Loss values now correctly exclude 0.0 diagonal elements, providing stronger training signal. **CRITICAL foundation fix for addressing underfitting.**
 - ✅ **PYT-8.13 completed** - Investigated zero-distance samples in UniFrac data. **Key finding**: Zero distances are extremely rare (0.00% of pairs, only 1 pair out of 229,503). Distribution is unimodal (not bimodal) centered around 0.72. **Recommendation**: DO NOT implement zero-distance weighting (PYT-8.15 can be cancelled). Focus should shift to other loss function improvements.
 - ✅ **PYT-8.14 completed** - Implemented bounded regression loss (clipped MSE) to enforce [0, 1] constraint on UniFrac distances. Added clipping in both loss computation and model forward pass to ensure predictions are constrained to valid range. Prevents invalid predictions outside [0, 1] range. **IMPORTANT for model correctness.**
-- **PYT-8.15 not started** - Implement weighted loss to down-weight zero-distance pairs based on PYT-8.13 findings. Allows model to focus on meaningful distance relationships. **IMPORTANT for handling bimodal distribution.**
-- **PYT-8.16 not started** - Tune learning rate for UniFrac model training. Current default (1e-4) may be suboptimal. Learning rate finder and experimentation needed. **IMPORTANT for training optimization.**
+- ❌ **PYT-8.15 cancelled** - Cancelled per PYT-8.13 findings. Zero distances are too rare (0.00%) to warrant weighted loss implementation.
+- **PYT-8.16 not started** - Investigate why predictions cluster at 0.0 and 1.0 during inference, causing large loss. This is a critical issue affecting model quality. Need to analyze clipping behavior, loss function, and training dynamics. **HIGH PRIORITY for fixing inference performance.**
 - Follow the workflow in `.agents/workflow.md` for implementation
