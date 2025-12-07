@@ -180,29 +180,29 @@ class TestSequenceEncoder:
             assert "embeddings" not in result
             assert result["base_prediction"].shape == (2, 32)
 
-    def test_forward_different_batch_sizes(self, sequence_encoder):
+    @pytest.mark.parametrize("batch_size", [1, 4, 8])
+    def test_forward_different_batch_sizes(self, sequence_encoder, batch_size):
         """Test forward pass with different batch sizes."""
-        for batch_size in [1, 4, 8]:
-            tokens = torch.randint(1, 5, (batch_size, 10, 50))
-            result = sequence_encoder(tokens)
-            assert result["base_prediction"].shape == (batch_size, 32)
-            assert result["sample_embeddings"].shape == (batch_size, 10, 64)
+        tokens = torch.randint(1, 5, (batch_size, 10, 50))
+        result = sequence_encoder(tokens)
+        assert result["base_prediction"].shape == (batch_size, 32)
+        assert result["sample_embeddings"].shape == (batch_size, 10, 64)
 
-    def test_forward_different_num_asvs(self, sequence_encoder):
+    @pytest.mark.parametrize("num_asvs", [5, 10, 20, 50])
+    def test_forward_different_num_asvs(self, sequence_encoder, num_asvs):
         """Test forward pass with different numbers of ASVs."""
-        for num_asvs in [5, 10, 20, 50]:
-            tokens = torch.randint(1, 5, (2, num_asvs, 50))
-            result = sequence_encoder(tokens)
-            assert result["base_prediction"].shape == (2, 32)
-            assert result["sample_embeddings"].shape == (2, num_asvs, 64)
+        tokens = torch.randint(1, 5, (2, num_asvs, 50))
+        result = sequence_encoder(tokens)
+        assert result["base_prediction"].shape == (2, 32)
+        assert result["sample_embeddings"].shape == (2, num_asvs, 64)
 
-    def test_forward_different_seq_lengths(self, sequence_encoder):
+    @pytest.mark.parametrize("seq_len", [10, 50, 100, 150])
+    def test_forward_different_seq_lengths(self, sequence_encoder, seq_len):
         """Test forward pass with different sequence lengths."""
-        for seq_len in [10, 50, 100, 150]:
-            tokens = torch.randint(1, 5, (2, 10, seq_len))
-            result = sequence_encoder(tokens)
-            assert result["base_prediction"].shape == (2, 32)
-            assert result["sample_embeddings"].shape == (2, 10, 64)
+        tokens = torch.randint(1, 5, (2, 10, seq_len))
+        result = sequence_encoder(tokens)
+        assert result["base_prediction"].shape == (2, 32)
+        assert result["sample_embeddings"].shape == (2, 10, 64)
 
     def test_forward_with_padding(self, sequence_encoder, sample_tokens):
         """Test forward pass with padded sequences."""
