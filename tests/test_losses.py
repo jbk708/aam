@@ -437,7 +437,7 @@ class TestBaseLoss:
 
         # With clip_predictions=False, predictions should NOT be clipped
         loss_no_clip = loss_fn.compute_base_loss(base_pred, base_true, encoder_type="unifrac", clip_predictions=False)
-        
+
         # Loss should be computed on unclipped predictions
         triu_indices = torch.triu_indices(batch_size, batch_size, offset=1, device=base_pred.device)
         base_pred_masked = base_pred[triu_indices[0], triu_indices[1]]
@@ -456,7 +456,9 @@ class TestBaseLoss:
         """Test that clipping preserves gradients for backpropagation."""
         batch_size = 4
         # Create predictions outside [0, 1] range that require gradients
-        base_pred = torch.tensor([[-0.5, 0.3, 0.7, 1.5], [0.2, -0.1, 1.2, 0.8], [0.9, 0.4, 0.6, 2.0], [0.1, 0.5, 0.3, -0.3]], requires_grad=True)
+        base_pred = torch.tensor(
+            [[-0.5, 0.3, 0.7, 1.5], [0.2, -0.1, 1.2, 0.8], [0.9, 0.4, 0.6, 2.0], [0.1, 0.5, 0.3, -0.3]], requires_grad=True
+        )
         base_true = torch.ones(batch_size, batch_size) * 0.5
 
         loss = loss_fn.compute_base_loss(base_pred, base_true, encoder_type="unifrac", clip_predictions=True)
