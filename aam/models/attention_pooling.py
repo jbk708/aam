@@ -34,6 +34,8 @@ class AttentionPooling(nn.Module):
         scores = scores.squeeze(-1)
         scores = scores / (hidden_dim ** 0.5)
 
+        # Initialize all_padding outside the if block to ensure it's available later
+        all_padding = None
         if mask is not None:
             # Handle all-padding sequences (all positions masked)
             # softmax(all -inf) = NaN, so we need special handling
@@ -59,11 +61,20 @@ class AttentionPooling(nn.Module):
             
             # For all-padding sequences, use uniform attention weights
             # (since mask is all zeros, the above normalization would give 0/0 = NaN)
-            if all_padding.any():
+            if all_padding is not None and all_padding.any():
                 attention_weights = attention_weights.masked_fill(all_padding, 1.0 / seq_len)
 
         pooled = torch.sum(embeddings * attention_weights.unsqueeze(-1), dim=1)
         pooled = self.norm(pooled)
+        
+        # Final check for NaN
+        if torch.any(torch.isnan(pooled)):
+            import sys
+            print(f"ERROR: NaN in pooled embeddings after attention pooling", file=sys.stderr, flush=True)
+            print(f"pooled shape={pooled.shape}, embeddings shape={embeddings.shape}", file=sys.stderr, flush=True)
+            if mask is not None:
+                print(f"mask sum per sample: {mask.sum(dim=-1)}", file=sys.stderr, flush=True)
+            raise ValueError("NaN values found in pooled embeddings after attention pooling")
 
         return pooled
 
