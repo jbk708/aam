@@ -72,7 +72,9 @@ def compute_pairwise_distances(embeddings: torch.Tensor) -> torch.Tensor:
     # For diagonal elements, we want exactly 0.0, so handle separately
     distances = torch.sqrt(torch.clamp(squared_distances, min=eps))
     # Set diagonal to exactly 0.0 (distance from sample to itself)
-    distances.fill_diagonal_(0.0)
+    # Use non-inplace operation to preserve gradient computation
+    eye_mask = torch.eye(distances.shape[0], device=distances.device, dtype=distances.dtype)
+    distances = distances * (1.0 - eye_mask)
     
     # Final check for NaN in distances
     if torch.any(torch.isnan(distances)):
