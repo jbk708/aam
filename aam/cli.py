@@ -191,6 +191,12 @@ def cli():
     type=click.Choice(["warmup_cosine", "cosine", "plateau", "onecycle"]),
     help="Learning rate scheduler type",
 )
+@click.option(
+    "--mixed-precision",
+    default=None,
+    type=click.Choice(["fp16", "bf16", "none"]),
+    help="Mixed precision training mode (fp16, bf16, or none)",
+)
 def train(
     table: str,
     tree: str,
@@ -227,6 +233,7 @@ def train(
     max_grad_norm: Optional[float],
     optimizer: str,
     scheduler: str,
+    mixed_precision: Optional[str],
 ):
     """Train AAM model on microbial sequencing data."""
     try:
@@ -397,6 +404,9 @@ def train(
             optimizer_obj, scheduler_type=scheduler, num_warmup_steps=warmup_steps, num_training_steps=num_training_steps
         )
 
+        # Normalize mixed_precision: "none" -> None
+        mixed_precision_normalized = None if mixed_precision == "none" else mixed_precision
+
         trainer = Trainer(
             model=model,
             loss_fn=loss_fn,
@@ -406,6 +416,7 @@ def train(
             freeze_base=freeze_base,
             tensorboard_dir=str(output_path),
             max_grad_norm=max_grad_norm,
+            mixed_precision=mixed_precision_normalized,
         )
 
         if resume_from is not None:
@@ -473,6 +484,12 @@ def train(
     help="Learning rate scheduler type",
 )
 @click.option(
+    "--mixed-precision",
+    default=None,
+    type=click.Choice(["fp16", "bf16", "none"]),
+    help="Mixed precision training mode (fp16, bf16, or none)",
+)
+@click.option(
     "--asv-chunk-size", default=None, type=int, help="Process ASVs in chunks of this size to reduce memory (None = process all)"
 )
 def pretrain(
@@ -504,6 +521,7 @@ def pretrain(
     max_grad_norm: Optional[float],
     optimizer: str,
     scheduler: str,
+    mixed_precision: Optional[str],
     asv_chunk_size: Optional[int],
 ):
     """Pre-train SequenceEncoder on UniFrac and nucleotide prediction (self-supervised)."""
@@ -648,6 +666,9 @@ def pretrain(
             optimizer_obj, scheduler_type=scheduler, num_warmup_steps=warmup_steps, num_training_steps=num_training_steps
         )
 
+        # Normalize mixed_precision: "none" -> None
+        mixed_precision_normalized = None if mixed_precision == "none" else mixed_precision
+
         trainer = Trainer(
             model=model,
             loss_fn=loss_fn,
@@ -657,6 +678,7 @@ def pretrain(
             freeze_base=False,
             tensorboard_dir=str(output_path),
             max_grad_norm=max_grad_norm,
+            mixed_precision=mixed_precision_normalized,
         )
 
         if resume_from is not None:
