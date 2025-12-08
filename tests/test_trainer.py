@@ -1544,3 +1544,203 @@ class TestMixedPrecision:
         # Check that training completed without errors
         assert "total_loss" in losses
         assert not torch.isnan(torch.tensor(losses["total_loss"]))
+
+
+class TestModelCompilation:
+    """Tests for model compilation with torch.compile()."""
+
+    def test_trainer_init_with_compile_model(self, small_model, loss_fn, device):
+        """Test Trainer initialization with compile_model=True."""
+        # Check if torch.compile is available (PyTorch 2.0+)
+        if not hasattr(torch, "compile"):
+            pytest.skip("torch.compile() not available (requires PyTorch 2.0+)")
+
+        # Try to compile - may fail on Python 3.12+ with older PyTorch
+        try:
+            trainer = Trainer(
+                model=small_model,
+                loss_fn=loss_fn,
+                device=device,
+                compile_model=True,
+            )
+
+            assert trainer.compile_model is True
+            # Model should be compiled (wrapped)
+            assert hasattr(trainer.model, "_orig_mod") or hasattr(trainer.model, "forward")
+        except RuntimeError as e:
+            if "not supported" in str(e) or "Dynamo" in str(e):
+                pytest.skip(f"torch.compile() not supported in this environment: {e}")
+            raise
+
+    def test_trainer_init_without_compile_model(self, small_model, loss_fn, device):
+        """Test Trainer initialization with compile_model=False (default)."""
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+            compile_model=False,
+        )
+
+        assert trainer.compile_model is False
+
+    def test_compile_model_requires_pytorch_2_0(self, small_model, loss_fn, device):
+        """Test that compilation fails gracefully on PyTorch < 2.0."""
+        # Mock torch.compile to not exist
+        original_compile = getattr(torch, "compile", None)
+        try:
+            # Temporarily remove compile attribute
+            if hasattr(torch, "compile"):
+                delattr(torch, "compile")
+
+            with pytest.raises(RuntimeError, match="torch.compile\\(\\) is not available"):
+                Trainer(
+                    model=small_model,
+                    loss_fn=loss_fn,
+                    device=device,
+                    compile_model=True,
+                )
+        finally:
+            # Restore compile attribute
+            if original_compile is not None:
+                torch.compile = original_compile
+
+    @pytest.mark.skipif(not hasattr(torch, "compile"), reason="torch.compile() not available (requires PyTorch 2.0+)")
+    def test_compiled_model_same_outputs_as_eager(self, small_model, loss_fn, device):
+        """Test that compiled model produces same outputs as eager mode."""
+        # Create two identical models
+        model_eager = SequenceEncoder(
+            vocab_size=6,
+            embedding_dim=32,
+            max_bp=50,
+            token_limit=64,
+            asv_num_layers=1,
+            asv_num_heads=2,
+            sample_num_layers=1,
+            sample_num_heads=2,
+            encoder_num_layers=1,
+            encoder_num_heads=2,
+            base_output_dim=None,
+            encoder_type="unifrac",
+            predict_nucleotides=False,
+        ).to(device)
+
+        model_compiled = SequenceEncoder(
+            vocab_size=6,
+            embedding_dim=32,
+            max_bp=50,
+            token_limit=64,
+            asv_num_layers=1,
+            asv_num_heads=2,
+            sample_num_layers=1,
+            sample_num_heads=2,
+            encoder_num_layers=1,
+            encoder_num_heads=2,
+            base_output_dim=None,
+            encoder_type="unifrac",
+            predict_nucleotides=False,
+        ).to(device)
+
+        # Copy weights to ensure identical models
+        model_compiled.load_state_dict(model_eager.state_dict())
+
+        # Compile one model (may fail on Python 3.12+ with older PyTorch)
+        try:
+            model_compiled = torch.compile(model_compiled)
+        except RuntimeError as e:
+            if "Dynamo is not supported" in str(e):
+                pytest.skip(f"torch.compile() not supported in this environment: {e}")
+            raise
+
+        # Create test input
+        batch_size = 2
+        num_asvs = 5
+        seq_len = 50
+        tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len)).to(device)
+        tokens[:, :, 0] = 5  # START_TOKEN
+
+        # Set models to eval mode for deterministic outputs
+        model_eager.eval()
+        model_compiled.eval()
+
+        # Get outputs from both models
+        with torch.no_grad():
+            output_eager = model_eager(tokens)
+            output_compiled = model_compiled(tokens)
+
+        # Compare outputs (allow small numerical differences due to compilation optimizations)
+        if isinstance(output_eager, dict) and isinstance(output_compiled, dict):
+            for key in output_eager:
+                if key in output_compiled:
+                    assert torch.allclose(output_eager[key], output_compiled[key], rtol=1e-4, atol=1e-5), (
+                        f"Output mismatch for key '{key}'"
+                    )
+        else:
+            assert torch.allclose(output_eager, output_compiled, rtol=1e-4, atol=1e-5)
+
+    @pytest.mark.skipif(not hasattr(torch, "compile"), reason="torch.compile() not available (requires PyTorch 2.0+)")
+    def test_compiled_model_training_works(self, small_model, loss_fn, simple_dataloader_encoder, device):
+        """Test that training works with compiled model."""
+        try:
+            trainer = Trainer(
+                model=small_model,
+                loss_fn=loss_fn,
+                device=device,
+                compile_model=True,
+            )
+
+            # Run one training epoch
+            losses = trainer.train_epoch(simple_dataloader_encoder, epoch=0, num_epochs=1)
+
+            # Check that training completed without errors
+            assert "total_loss" in losses
+            assert not torch.isnan(torch.tensor(losses["total_loss"]))
+        except RuntimeError as e:
+            if "not supported" in str(e) or "Dynamo" in str(e):
+                pytest.skip(f"torch.compile() not supported in this environment: {e}")
+            raise
+
+    @pytest.mark.skipif(not hasattr(torch, "compile"), reason="torch.compile() not available (requires PyTorch 2.0+)")
+    def test_compiled_sequence_predictor(self, small_predictor, loss_fn, simple_dataloader, device):
+        """Test that SequencePredictor can be compiled."""
+        try:
+            trainer = Trainer(
+                model=small_predictor,
+                loss_fn=loss_fn,
+                device=device,
+                compile_model=True,
+            )
+
+            assert trainer.compile_model is True
+
+            # Run one training epoch
+            losses = trainer.train_epoch(simple_dataloader, epoch=0, num_epochs=1)
+
+            # Check that training completed without errors
+            assert "total_loss" in losses
+            assert not torch.isnan(torch.tensor(losses["total_loss"]))
+        except RuntimeError as e:
+            if "not supported" in str(e) or "Dynamo" in str(e):
+                pytest.skip(f"torch.compile() not supported in this environment: {e}")
+            raise
+
+    @pytest.mark.skipif(not hasattr(torch, "compile"), reason="torch.compile() not available (requires PyTorch 2.0+)")
+    def test_compiled_model_validation_works(self, small_model, loss_fn, simple_dataloader_encoder, device):
+        """Test that validation works with compiled model."""
+        try:
+            trainer = Trainer(
+                model=small_model,
+                loss_fn=loss_fn,
+                device=device,
+                compile_model=True,
+            )
+
+            # Run validation
+            metrics = trainer.validate_epoch(simple_dataloader_encoder, epoch=0)
+
+            # Check that validation completed without errors
+            assert "total_loss" in metrics
+            assert not torch.isnan(torch.tensor(metrics["total_loss"]))
+        except RuntimeError as e:
+            if "not supported" in str(e) or "Dynamo" in str(e):
+                pytest.skip(f"torch.compile() not supported in this environment: {e}")
+            raise

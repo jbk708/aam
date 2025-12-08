@@ -2,7 +2,7 @@
 
 import torch
 import torch.nn as nn
-from torch.cuda.amp import autocast, GradScaler
+from torch.cuda.amp import GradScaler
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from typing import Dict, Optional, Union, Tuple, List
@@ -73,6 +73,7 @@ class Trainer:
         tensorboard_dir: Optional[str] = None,
         max_grad_norm: Optional[float] = None,
         mixed_precision: Optional[str] = None,
+        compile_model: bool = False,
     ):
         """Initialize Trainer.
 
@@ -86,14 +87,32 @@ class Trainer:
             tensorboard_dir: Directory for TensorBoard logs (if None, TensorBoard disabled)
             max_grad_norm: Maximum gradient norm for clipping (None to disable)
             mixed_precision: Mixed precision mode ('fp16', 'bf16', or None)
+            compile_model: Whether to compile model with torch.compile() for optimization
         """
         self.model = model.to(device)
+
+        # Compile model if requested (PyTorch 2.0+)
+        if compile_model:
+            try:
+                self.model = torch.compile(self.model)
+            except AttributeError:
+                raise RuntimeError("torch.compile() is not available. Requires PyTorch 2.0+")
+            except RuntimeError as e:
+                # Catch Python 3.12+ limitation or other runtime errors
+                if "Dynamo is not supported" in str(e) or "not supported" in str(e):
+                    raise RuntimeError(
+                        f"torch.compile() is not supported in this environment: {e}. "
+                        "Model compilation requires PyTorch 2.0+ and Python < 3.12, or PyTorch 2.1+ with Python 3.12+."
+                    ) from e
+                raise
+
         self.loss_fn = loss_fn
         self.device = torch.device(device) if isinstance(device, str) else device
         self.freeze_base = freeze_base
         self.tensorboard_dir = tensorboard_dir
         self.max_grad_norm = max_grad_norm
         self.mixed_precision = mixed_precision
+        self.compile_model = compile_model
         self.writer: Optional[SummaryWriter] = None
         self.log_histograms: bool = True
         self.histogram_frequency: int = 50
@@ -518,7 +537,7 @@ class Trainer:
                     autocast_dtype = torch.bfloat16
 
                 if autocast_dtype is not None and self.device.type == "cuda":
-                    with autocast(dtype=autocast_dtype):
+                    with torch.amp.autocast(device_type="cuda", dtype=autocast_dtype):
                         outputs = self.model(tokens, return_nucleotides=return_nucleotides)
                 else:
                     outputs = self.model(tokens, return_nucleotides=return_nucleotides)
@@ -784,7 +803,7 @@ class Trainer:
                         autocast_dtype = torch.bfloat16
 
                     if autocast_dtype is not None and self.device.type == "cuda":
-                        with autocast(dtype=autocast_dtype):
+                        with torch.amp.autocast(device_type="cuda", dtype=autocast_dtype):
                             outputs = self.model(tokens, return_nucleotides=return_nucleotides)
                     else:
                         outputs = self.model(tokens, return_nucleotides=return_nucleotides)

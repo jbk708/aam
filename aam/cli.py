@@ -197,6 +197,7 @@ def cli():
     type=click.Choice(["fp16", "bf16", "none"]),
     help="Mixed precision training mode (fp16, bf16, or none)",
 )
+@click.option("--compile-model", is_flag=True, help="Compile model with torch.compile() for optimization (PyTorch 2.0+)")
 def train(
     table: str,
     tree: str,
@@ -234,6 +235,7 @@ def train(
     optimizer: str,
     scheduler: str,
     mixed_precision: Optional[str],
+    compile_model: bool,
 ):
     """Train AAM model on microbial sequencing data."""
     try:
@@ -417,6 +419,7 @@ def train(
             tensorboard_dir=str(output_path),
             max_grad_norm=max_grad_norm,
             mixed_precision=mixed_precision_normalized,
+            compile_model=compile_model,
         )
 
         if resume_from is not None:
@@ -489,6 +492,7 @@ def train(
     type=click.Choice(["fp16", "bf16", "none"]),
     help="Mixed precision training mode (fp16, bf16, or none)",
 )
+@click.option("--compile-model", is_flag=True, help="Compile model with torch.compile() for optimization (PyTorch 2.0+)")
 @click.option(
     "--asv-chunk-size", default=None, type=int, help="Process ASVs in chunks of this size to reduce memory (None = process all)"
 )
@@ -522,6 +526,7 @@ def pretrain(
     optimizer: str,
     scheduler: str,
     mixed_precision: Optional[str],
+    compile_model: bool,
     asv_chunk_size: Optional[int],
 ):
     """Pre-train SequenceEncoder on UniFrac and nucleotide prediction (self-supervised)."""
@@ -679,6 +684,7 @@ def pretrain(
             tensorboard_dir=str(output_path),
             max_grad_norm=max_grad_norm,
             mixed_precision=mixed_precision_normalized,
+            compile_model=compile_model,
         )
 
         if resume_from is not None:
