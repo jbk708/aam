@@ -2,7 +2,7 @@
 
 import torch
 import torch.nn as nn
-from torch.cuda.amp import autocast, GradScaler
+from torch.cuda.amp import GradScaler
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from typing import Dict, Optional, Union, Tuple, List
@@ -537,7 +537,7 @@ class Trainer:
                     autocast_dtype = torch.bfloat16
 
                 if autocast_dtype is not None and self.device.type == "cuda":
-                    with autocast(dtype=autocast_dtype):
+                    with torch.amp.autocast(device_type="cuda", dtype=autocast_dtype):
                         outputs = self.model(tokens, return_nucleotides=return_nucleotides)
                 else:
                     outputs = self.model(tokens, return_nucleotides=return_nucleotides)
@@ -803,7 +803,7 @@ class Trainer:
                         autocast_dtype = torch.bfloat16
 
                     if autocast_dtype is not None and self.device.type == "cuda":
-                        with autocast(dtype=autocast_dtype):
+                        with torch.amp.autocast(device_type="cuda", dtype=autocast_dtype):
                             outputs = self.model(tokens, return_nucleotides=return_nucleotides)
                     else:
                         outputs = self.model(tokens, return_nucleotides=return_nucleotides)
