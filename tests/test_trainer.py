@@ -1349,3 +1349,198 @@ class TestPredictionPlots:
         plots_dir = checkpoint_dir / "plots"
         plot_file = plots_dir / "pred_vs_actual_best.png"
         assert plot_file.exists()
+
+
+class TestMixedPrecision:
+    """Test mixed precision training functionality."""
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+    def test_trainer_init_with_fp16(self, small_model, loss_fn):
+        """Test Trainer initialization with FP16 mixed precision."""
+        device = torch.device("cuda")
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+            mixed_precision="fp16",
+        )
+
+        assert trainer.mixed_precision == "fp16"
+        assert trainer.scaler is not None
+        assert isinstance(trainer.scaler, torch.cuda.amp.GradScaler)
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+    def test_trainer_init_with_bf16(self, small_model, loss_fn):
+        """Test Trainer initialization with BF16 mixed precision."""
+        device = torch.device("cuda")
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+            mixed_precision="bf16",
+        )
+
+        assert trainer.mixed_precision == "bf16"
+        assert trainer.scaler is not None
+        assert isinstance(trainer.scaler, torch.cuda.amp.GradScaler)
+
+    def test_trainer_init_with_none_mixed_precision(self, small_model, loss_fn, device):
+        """Test Trainer initialization with no mixed precision."""
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+            mixed_precision=None,
+        )
+
+        assert trainer.mixed_precision is None
+        assert trainer.scaler is None
+
+    def test_trainer_init_mixed_precision_on_cpu(self, small_model, loss_fn):
+        """Test that mixed precision scaler is not created on CPU."""
+        device = torch.device("cpu")
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+            mixed_precision="fp16",
+        )
+
+        assert trainer.mixed_precision == "fp16"
+        # Scaler should not be created on CPU
+        assert trainer.scaler is None
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+    def test_train_epoch_with_fp16(self, small_model, loss_fn, simple_dataloader_encoder):
+        """Test training epoch with FP16 mixed precision."""
+        device = torch.device("cuda")
+        small_model = small_model.to(device)
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+            mixed_precision="fp16",
+        )
+
+        # Run one training epoch
+        losses = trainer.train_epoch(simple_dataloader_encoder, epoch=0, num_epochs=1)
+
+        # Check that training completed without errors
+        assert "total_loss" in losses
+        assert not torch.isnan(torch.tensor(losses["total_loss"]))
+        assert not torch.isinf(torch.tensor(losses["total_loss"]))
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+    def test_train_epoch_with_bf16(self, small_model, loss_fn, simple_dataloader_encoder):
+        """Test training epoch with BF16 mixed precision."""
+        device = torch.device("cuda")
+        small_model = small_model.to(device)
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+            mixed_precision="bf16",
+        )
+
+        # Run one training epoch
+        losses = trainer.train_epoch(simple_dataloader_encoder, epoch=0, num_epochs=1)
+
+        # Check that training completed without errors
+        assert "total_loss" in losses
+        assert not torch.isnan(torch.tensor(losses["total_loss"]))
+        assert not torch.isinf(torch.tensor(losses["total_loss"]))
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+    def test_validate_epoch_with_fp16(self, small_model, loss_fn, simple_dataloader_encoder):
+        """Test validation epoch with FP16 mixed precision."""
+        device = torch.device("cuda")
+        small_model = small_model.to(device)
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+            mixed_precision="fp16",
+        )
+
+        # Run one validation epoch
+        results = trainer.validate_epoch(simple_dataloader_encoder, epoch=0, num_epochs=1)
+
+        # Check that validation completed without errors
+        assert "total_loss" in results
+        assert not torch.isnan(torch.tensor(results["total_loss"]))
+        assert not torch.isinf(torch.tensor(results["total_loss"]))
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+    def test_mixed_precision_numerical_stability(self, small_model, loss_fn, simple_dataloader_encoder):
+        """Test that mixed precision training maintains numerical stability."""
+        device = torch.device("cuda")
+        small_model = small_model.to(device)
+        
+        # Train with FP16
+        trainer_fp16 = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+            mixed_precision="fp16",
+        )
+        
+        # Train with no mixed precision
+        small_model_fp32 = SequenceEncoder(
+            vocab_size=6,
+            embedding_dim=32,
+            max_bp=50,
+            token_limit=64,
+            asv_num_layers=1,
+            asv_num_heads=2,
+            sample_num_layers=1,
+            sample_num_heads=2,
+            encoder_num_layers=1,
+            encoder_num_heads=2,
+            base_output_dim=None,
+            encoder_type="unifrac",
+            predict_nucleotides=False,
+        ).to(device)
+        
+        trainer_fp32 = Trainer(
+            model=small_model_fp32,
+            loss_fn=loss_fn,
+            device=device,
+            mixed_precision=None,
+        )
+        
+        # Run one epoch with each
+        losses_fp16 = trainer_fp16.train_epoch(simple_dataloader_encoder, epoch=0, num_epochs=1)
+        losses_fp32 = trainer_fp32.train_epoch(simple_dataloader_encoder, epoch=0, num_epochs=1)
+        
+        # Both should produce valid losses (no NaN/Inf)
+        assert not torch.isnan(torch.tensor(losses_fp16["total_loss"]))
+        assert not torch.isinf(torch.tensor(losses_fp16["total_loss"]))
+        assert not torch.isnan(torch.tensor(losses_fp32["total_loss"]))
+        assert not torch.isinf(torch.tensor(losses_fp32["total_loss"]))
+        
+        # Losses should be reasonable (not extremely different)
+        # Note: FP16 and FP32 losses may differ slightly, but should be in same order of magnitude
+        fp16_loss = losses_fp16["total_loss"]
+        fp32_loss = losses_fp32["total_loss"]
+        ratio = max(fp16_loss, fp32_loss) / min(fp16_loss, fp32_loss) if min(fp16_loss, fp32_loss) > 0 else 1.0
+        assert ratio < 10.0, f"FP16 and FP32 losses differ too much: {fp16_loss} vs {fp32_loss}"
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+    def test_mixed_precision_gradient_clipping(self, small_model, loss_fn, simple_dataloader_encoder):
+        """Test that gradient clipping works with mixed precision."""
+        device = torch.device("cuda")
+        small_model = small_model.to(device)
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+            mixed_precision="fp16",
+            max_grad_norm=1.0,
+        )
+
+        # Run one training epoch
+        losses = trainer.train_epoch(simple_dataloader_encoder, epoch=0, num_epochs=1)
+
+        # Check that training completed without errors
+        assert "total_loss" in losses
+        assert not torch.isnan(torch.tensor(losses["total_loss"]))
