@@ -2,6 +2,7 @@
 
 import torch
 import torch.nn as nn
+from torch.cuda.amp import autocast, GradScaler
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from typing import Dict, Optional, Union, Tuple, List
@@ -71,6 +72,7 @@ class Trainer:
         freeze_base: bool = False,
         tensorboard_dir: Optional[str] = None,
         max_grad_norm: Optional[float] = None,
+        mixed_precision: Optional[str] = None,
     ):
         """Initialize Trainer.
 
@@ -83,6 +85,7 @@ class Trainer:
             freeze_base: Whether base model parameters are frozen
             tensorboard_dir: Directory for TensorBoard logs (if None, TensorBoard disabled)
             max_grad_norm: Maximum gradient norm for clipping (None to disable)
+            mixed_precision: Mixed precision mode ('fp16', 'bf16', or None)
         """
         self.model = model.to(device)
         self.loss_fn = loss_fn
@@ -90,6 +93,7 @@ class Trainer:
         self.freeze_base = freeze_base
         self.tensorboard_dir = tensorboard_dir
         self.max_grad_norm = max_grad_norm
+        self.mixed_precision = mixed_precision
         self.writer: Optional[SummaryWriter] = None
         self.log_histograms: bool = True
         self.histogram_frequency: int = 50
@@ -100,6 +104,11 @@ class Trainer:
             self.optimizer = optimizer
 
         self.scheduler = scheduler
+
+        # Initialize mixed precision scaler if needed
+        self.scaler: Optional[GradScaler] = None
+        if mixed_precision in ("fp16", "bf16") and self.device.type == "cuda":
+            self.scaler = GradScaler()
 
     def _prepare_batch(self, batch: Union[Dict, Tuple]) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         """Prepare batch for model forward pass.
@@ -500,7 +509,19 @@ class Trainer:
                     raise ValueError("NaN values found in tokens")
 
                 return_nucleotides = "nucleotides" in targets or self.loss_fn.nuc_penalty > 0
-                outputs = self.model(tokens, return_nucleotides=return_nucleotides)
+
+                # Mixed precision autocast for forward pass
+                autocast_dtype = None
+                if self.mixed_precision == "fp16":
+                    autocast_dtype = torch.float16
+                elif self.mixed_precision == "bf16":
+                    autocast_dtype = torch.bfloat16
+
+                if autocast_dtype is not None and self.device.type == "cuda":
+                    with autocast(dtype=autocast_dtype):
+                        outputs = self.model(tokens, return_nucleotides=return_nucleotides)
+                else:
+                    outputs = self.model(tokens, return_nucleotides=return_nucleotides)
 
                 # Check for NaN in model outputs before loss computation
                 import sys
@@ -574,7 +595,12 @@ class Trainer:
                     current_loss_val = float(current_loss_val)
 
                 scaled_loss = losses["total_loss"] / gradient_accumulation_steps
-                scaled_loss.backward()
+
+                # Mixed precision backward pass
+                if self.scaler is not None:
+                    self.scaler.scale(scaled_loss).backward()
+                else:
+                    scaled_loss.backward()
 
                 del outputs, tokens, targets
                 if torch.cuda.is_available():
@@ -585,13 +611,23 @@ class Trainer:
                 if accumulated_steps % gradient_accumulation_steps == 0:
                     # Apply gradient clipping if enabled
                     if self.max_grad_norm is not None:
-                        grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
+                        if self.scaler is not None:
+                            # Unscale gradients before clipping
+                            self.scaler.unscale_(self.optimizer)
+                            grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
+                        else:
+                            grad_norm = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
                         # Log gradient norm to TensorBoard if available
                         if self.writer is not None:
                             global_step = epoch * len(dataloader) + step
                             self.writer.add_scalar("train/grad_norm", grad_norm.item(), global_step)
 
-                    self.optimizer.step()
+                    # Optimizer step with mixed precision
+                    if self.scaler is not None:
+                        self.scaler.step(self.optimizer)
+                        self.scaler.update()
+                    else:
+                        self.optimizer.step()
                     self.optimizer.zero_grad()
 
                     if self.scheduler is not None:
@@ -682,7 +718,11 @@ class Trainer:
                 raise RuntimeError(error_msg) from e
 
         if accumulated_steps % gradient_accumulation_steps != 0:
-            self.optimizer.step()
+            if self.scaler is not None:
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
+            else:
+                self.optimizer.step()
             self.optimizer.zero_grad()
             if self.scheduler is not None:
                 if isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
@@ -735,7 +775,19 @@ class Trainer:
                     tokens, targets = self._prepare_batch(batch)
 
                     return_nucleotides = "nucleotides" in targets or self.loss_fn.nuc_penalty > 0
-                    outputs = self.model(tokens, return_nucleotides=return_nucleotides)
+
+                    # Mixed precision autocast for validation forward pass
+                    autocast_dtype = None
+                    if self.mixed_precision == "fp16":
+                        autocast_dtype = torch.float16
+                    elif self.mixed_precision == "bf16":
+                        autocast_dtype = torch.bfloat16
+
+                    if autocast_dtype is not None and self.device.type == "cuda":
+                        with autocast(dtype=autocast_dtype):
+                            outputs = self.model(tokens, return_nucleotides=return_nucleotides)
+                    else:
+                        outputs = self.model(tokens, return_nucleotides=return_nucleotides)
 
                     encoder_type = self._get_encoder_type()
                     is_classifier = self._get_is_classifier()
