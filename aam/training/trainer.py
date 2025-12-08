@@ -509,14 +509,14 @@ class Trainer:
                     raise ValueError("NaN values found in tokens")
 
                 return_nucleotides = "nucleotides" in targets or self.loss_fn.nuc_penalty > 0
-                
+
                 # Mixed precision autocast for forward pass
                 autocast_dtype = None
                 if self.mixed_precision == "fp16":
                     autocast_dtype = torch.float16
                 elif self.mixed_precision == "bf16":
                     autocast_dtype = torch.bfloat16
-                
+
                 if autocast_dtype is not None and self.device.type == "cuda":
                     with autocast(dtype=autocast_dtype):
                         outputs = self.model(tokens, return_nucleotides=return_nucleotides)
@@ -595,7 +595,7 @@ class Trainer:
                     current_loss_val = float(current_loss_val)
 
                 scaled_loss = losses["total_loss"] / gradient_accumulation_steps
-                
+
                 # Mixed precision backward pass
                 if self.scaler is not None:
                     self.scaler.scale(scaled_loss).backward()
@@ -775,14 +775,14 @@ class Trainer:
                     tokens, targets = self._prepare_batch(batch)
 
                     return_nucleotides = "nucleotides" in targets or self.loss_fn.nuc_penalty > 0
-                    
+
                     # Mixed precision autocast for validation forward pass
                     autocast_dtype = None
                     if self.mixed_precision == "fp16":
                         autocast_dtype = torch.float16
                     elif self.mixed_precision == "bf16":
                         autocast_dtype = torch.bfloat16
-                    
+
                     if autocast_dtype is not None and self.device.type == "cuda":
                         with autocast(dtype=autocast_dtype):
                             outputs = self.model(tokens, return_nucleotides=return_nucleotides)

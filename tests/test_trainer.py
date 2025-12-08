@@ -1475,7 +1475,7 @@ class TestMixedPrecision:
         """Test that mixed precision training maintains numerical stability."""
         device = torch.device("cuda")
         small_model = small_model.to(device)
-        
+
         # Train with FP16
         trainer_fp16 = Trainer(
             model=small_model,
@@ -1483,7 +1483,7 @@ class TestMixedPrecision:
             device=device,
             mixed_precision="fp16",
         )
-        
+
         # Train with no mixed precision
         small_model_fp32 = SequenceEncoder(
             vocab_size=6,
@@ -1500,24 +1500,24 @@ class TestMixedPrecision:
             encoder_type="unifrac",
             predict_nucleotides=False,
         ).to(device)
-        
+
         trainer_fp32 = Trainer(
             model=small_model_fp32,
             loss_fn=loss_fn,
             device=device,
             mixed_precision=None,
         )
-        
+
         # Run one epoch with each
         losses_fp16 = trainer_fp16.train_epoch(simple_dataloader_encoder, epoch=0, num_epochs=1)
         losses_fp32 = trainer_fp32.train_epoch(simple_dataloader_encoder, epoch=0, num_epochs=1)
-        
+
         # Both should produce valid losses (no NaN/Inf)
         assert not torch.isnan(torch.tensor(losses_fp16["total_loss"]))
         assert not torch.isinf(torch.tensor(losses_fp16["total_loss"]))
         assert not torch.isnan(torch.tensor(losses_fp32["total_loss"]))
         assert not torch.isinf(torch.tensor(losses_fp32["total_loss"]))
-        
+
         # Losses should be reasonable (not extremely different)
         # Note: FP16 and FP32 losses may differ slightly, but should be in same order of magnitude
         fp16_loss = losses_fp16["total_loss"]
