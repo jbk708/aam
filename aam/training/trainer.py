@@ -73,6 +73,7 @@ class Trainer:
         tensorboard_dir: Optional[str] = None,
         max_grad_norm: Optional[float] = None,
         mixed_precision: Optional[str] = None,
+        compile_model: bool = False,
     ):
         """Initialize Trainer.
 
@@ -86,14 +87,24 @@ class Trainer:
             tensorboard_dir: Directory for TensorBoard logs (if None, TensorBoard disabled)
             max_grad_norm: Maximum gradient norm for clipping (None to disable)
             mixed_precision: Mixed precision mode ('fp16', 'bf16', or None)
+            compile_model: Whether to compile model with torch.compile() for optimization
         """
         self.model = model.to(device)
+        
+        # Compile model if requested (PyTorch 2.0+)
+        if compile_model:
+            try:
+                self.model = torch.compile(self.model)
+            except AttributeError:
+                raise RuntimeError("torch.compile() is not available. Requires PyTorch 2.0+")
+        
         self.loss_fn = loss_fn
         self.device = torch.device(device) if isinstance(device, str) else device
         self.freeze_base = freeze_base
         self.tensorboard_dir = tensorboard_dir
         self.max_grad_norm = max_grad_norm
         self.mixed_precision = mixed_precision
+        self.compile_model = compile_model
         self.writer: Optional[SummaryWriter] = None
         self.log_histograms: bool = True
         self.histogram_frequency: int = 50
