@@ -90,7 +90,7 @@ class Trainer:
             compile_model: Whether to compile model with torch.compile() for optimization
         """
         self.model = model.to(device)
-        
+
         # Compile model if requested (PyTorch 2.0+)
         if compile_model:
             try:
@@ -105,7 +105,7 @@ class Trainer:
                         "Model compilation requires PyTorch 2.0+ and Python < 3.12, or PyTorch 2.1+ with Python 3.12+."
                     ) from e
                 raise
-        
+
         self.loss_fn = loss_fn
         self.device = torch.device(device) if isinstance(device, str) else device
         self.freeze_base = freeze_base

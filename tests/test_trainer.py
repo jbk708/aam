@@ -1671,9 +1671,9 @@ class TestModelCompilation:
         if isinstance(output_eager, dict) and isinstance(output_compiled, dict):
             for key in output_eager:
                 if key in output_compiled:
-                    assert torch.allclose(
-                        output_eager[key], output_compiled[key], rtol=1e-4, atol=1e-5
-                    ), f"Output mismatch for key '{key}'"
+                    assert torch.allclose(output_eager[key], output_compiled[key], rtol=1e-4, atol=1e-5), (
+                        f"Output mismatch for key '{key}'"
+                    )
         else:
             assert torch.allclose(output_eager, output_compiled, rtol=1e-4, atol=1e-5)
 
