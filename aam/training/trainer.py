@@ -905,32 +905,32 @@ class Trainer:
                                         triu_indices = torch.triu_indices(
                                             batch_size, batch_size, offset=1, device=base_pred_batch.device
                                         )
-                                        base_pred_flat = base_pred_batch[triu_indices[0], triu_indices[1]]
-                                        base_true_flat = base_true_batch[triu_indices[0], triu_indices[1]]
+                                        base_pred_flat = base_pred_batch[triu_indices[0], triu_indices[1]].detach()
+                                        base_true_flat = base_true_batch[triu_indices[0], triu_indices[1]].detach()
                                         all_predictions["base_prediction"].append(base_pred_flat)
                                         all_targets["base_target"].append(base_true_flat)
                                     else:
                                         # If not square, just flatten (shouldn't happen for UniFrac)
-                                        all_predictions["base_prediction"].append(base_pred_batch.flatten())
-                                        all_targets["base_target"].append(base_true_batch.flatten())
+                                        all_predictions["base_prediction"].append(base_pred_batch.flatten().detach())
+                                        all_targets["base_target"].append(base_true_batch.flatten().detach())
                         else:
                             # For regular training, collect target_prediction for plotting
                             if "target_prediction" in outputs and "target" in targets:
                                 if "target_prediction" not in all_predictions:
                                     all_predictions["target_prediction"] = []
                                     all_targets["target"] = []
-                                all_predictions["target_prediction"].append(outputs["target_prediction"])
-                                all_targets["target"].append(targets["target"])
+                                all_predictions["target_prediction"].append(outputs["target_prediction"].detach())
+                                all_targets["target"].append(targets["target"].detach())
 
                         if "count_prediction" in outputs and "counts" in targets:
                             if "count_prediction" not in all_predictions:
                                 all_predictions["count_prediction"] = []
                                 all_targets["counts"] = []
                                 all_targets["mask"] = []
-                            all_predictions["count_prediction"].append(outputs["count_prediction"])
-                            all_targets["counts"].append(targets["counts"])
+                            all_predictions["count_prediction"].append(outputs["count_prediction"].detach())
+                            all_targets["counts"].append(targets["counts"].detach())
                             mask = targets.get("mask", (tokens.sum(dim=-1) > 0).long())
-                            all_targets["mask"].append(mask)
+                            all_targets["mask"].append(mask.detach())
 
                     num_batches += 1
 
