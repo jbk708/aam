@@ -9,7 +9,7 @@ from aam.models.sequence_encoder import SequenceEncoder
 
 @pytest.fixture
 def sequence_encoder():
-    """Create a SequenceEncoder instance without nucleotide prediction."""
+    """Create a SequenceEncoder instance without nucleotide prediction (non-UniFrac for legacy tests)."""
     return SequenceEncoder(
         vocab_size=6,
         embedding_dim=64,
@@ -22,14 +22,14 @@ def sequence_encoder():
         encoder_num_layers=2,
         encoder_num_heads=4,
         base_output_dim=32,
-        encoder_type="unifrac",
+        encoder_type="faith_pd",  # Use non-UniFrac for legacy tests
         predict_nucleotides=False,
     )
 
 
 @pytest.fixture
 def sequence_encoder_with_nucleotides():
-    """Create a SequenceEncoder instance with nucleotide prediction."""
+    """Create a SequenceEncoder instance with nucleotide prediction (non-UniFrac for legacy tests)."""
     return SequenceEncoder(
         vocab_size=6,
         embedding_dim=64,
@@ -42,7 +42,7 @@ def sequence_encoder_with_nucleotides():
         encoder_num_layers=2,
         encoder_num_heads=4,
         base_output_dim=32,
-        encoder_type="unifrac",
+        encoder_type="faith_pd",  # Use non-UniFrac for legacy tests
         predict_nucleotides=True,
     )
 
@@ -138,8 +138,8 @@ class TestSequenceEncoder:
         assert result["sample_embeddings"].shape == (2, 10, 64)
         assert result["nuc_predictions"].shape == (2, 10, 50, 6)
 
-    def test_forward_shape_no_base_output_dim(self, sample_tokens):
-        """Test forward pass when base_output_dim is None."""
+    def test_forward_unifrac_returns_embeddings(self, sample_tokens):
+        """Test that UniFrac encoder returns embeddings instead of base_prediction."""
         encoder = SequenceEncoder(
             embedding_dim=64,
             max_bp=150,
@@ -148,31 +148,61 @@ class TestSequenceEncoder:
             encoder_type="unifrac",
         )
         result = encoder(sample_tokens)
-        assert result["base_prediction"].shape == (2, 64)
+        # For UniFrac, should return embeddings, not base_prediction
+        assert "embeddings" in result
+        assert "base_prediction" not in result
+        assert result["embeddings"].shape == (2, 64)  # [batch_size, embedding_dim]
+        assert result["sample_embeddings"].shape == (2, 10, 64)
 
-    def test_forward_different_batch_sizes(self, sequence_encoder):
+    def test_forward_unifrac_no_output_head(self, sample_tokens):
+        """Test that UniFrac encoder has no output_head."""
+        encoder = SequenceEncoder(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            base_output_dim=None,
+            encoder_type="unifrac",
+        )
+        assert encoder.output_head is None
+
+    def test_forward_non_unifrac_returns_base_prediction(self, sample_tokens):
+        """Test that non-UniFrac encoders still return base_prediction."""
+        for encoder_type in ["faith_pd", "taxonomy"]:
+            encoder = SequenceEncoder(
+                embedding_dim=64,
+                max_bp=150,
+                token_limit=1024,
+                base_output_dim=32,
+                encoder_type=encoder_type,
+            )
+            result = encoder(sample_tokens)
+            assert "base_prediction" in result
+            assert "embeddings" not in result
+            assert result["base_prediction"].shape == (2, 32)
+
+    @pytest.mark.parametrize("batch_size", [1, 4, 8])
+    def test_forward_different_batch_sizes(self, sequence_encoder, batch_size):
         """Test forward pass with different batch sizes."""
-        for batch_size in [1, 4, 8]:
-            tokens = torch.randint(1, 5, (batch_size, 10, 50))
-            result = sequence_encoder(tokens)
-            assert result["base_prediction"].shape == (batch_size, 32)
-            assert result["sample_embeddings"].shape == (batch_size, 10, 64)
+        tokens = torch.randint(1, 5, (batch_size, 10, 50))
+        result = sequence_encoder(tokens)
+        assert result["base_prediction"].shape == (batch_size, 32)
+        assert result["sample_embeddings"].shape == (batch_size, 10, 64)
 
-    def test_forward_different_num_asvs(self, sequence_encoder):
+    @pytest.mark.parametrize("num_asvs", [5, 10, 20, 50])
+    def test_forward_different_num_asvs(self, sequence_encoder, num_asvs):
         """Test forward pass with different numbers of ASVs."""
-        for num_asvs in [5, 10, 20, 50]:
-            tokens = torch.randint(1, 5, (2, num_asvs, 50))
-            result = sequence_encoder(tokens)
-            assert result["base_prediction"].shape == (2, 32)
-            assert result["sample_embeddings"].shape == (2, num_asvs, 64)
+        tokens = torch.randint(1, 5, (2, num_asvs, 50))
+        result = sequence_encoder(tokens)
+        assert result["base_prediction"].shape == (2, 32)
+        assert result["sample_embeddings"].shape == (2, num_asvs, 64)
 
-    def test_forward_different_seq_lengths(self, sequence_encoder):
+    @pytest.mark.parametrize("seq_len", [10, 50, 100, 150])
+    def test_forward_different_seq_lengths(self, sequence_encoder, seq_len):
         """Test forward pass with different sequence lengths."""
-        for seq_len in [10, 50, 100, 150]:
-            tokens = torch.randint(1, 5, (2, 10, seq_len))
-            result = sequence_encoder(tokens)
-            assert result["base_prediction"].shape == (2, 32)
-            assert result["sample_embeddings"].shape == (2, 10, 64)
+        tokens = torch.randint(1, 5, (2, 10, seq_len))
+        result = sequence_encoder(tokens)
+        assert result["base_prediction"].shape == (2, 32)
+        assert result["sample_embeddings"].shape == (2, 10, 64)
 
     def test_forward_with_padding(self, sequence_encoder, sample_tokens):
         """Test forward pass with padded sequences."""
@@ -245,7 +275,7 @@ class TestSequenceEncoder:
 
     def test_forward_different_encoder_types(self, sample_tokens):
         """Test forward pass with different encoder types."""
-        for encoder_type in ["unifrac", "faith_pd", "taxonomy"]:
+        for encoder_type in ["faith_pd", "taxonomy"]:
             encoder = SequenceEncoder(
                 embedding_dim=64,
                 max_bp=150,
@@ -257,6 +287,20 @@ class TestSequenceEncoder:
             assert isinstance(result, dict)
             assert "base_prediction" in result
             assert result["base_prediction"].shape == (2, 32)
+
+        # Test UniFrac separately (new architecture)
+        encoder = SequenceEncoder(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            base_output_dim=None,
+            encoder_type="unifrac",
+        )
+        result = encoder(sample_tokens)
+        assert isinstance(result, dict)
+        assert "embeddings" in result
+        assert "base_prediction" not in result
+        assert result["embeddings"].shape == (2, 64)
 
     def test_forward_combined_encoder_type(self, sequence_encoder_combined, sample_tokens):
         """Test forward pass with combined encoder type."""
@@ -272,14 +316,14 @@ class TestSequenceEncoder:
         assert result["sample_embeddings"].shape == (2, 10, 64)
 
     def test_forward_different_base_output_dims(self, sample_tokens):
-        """Test forward pass with different base_output_dim values."""
+        """Test forward pass with different base_output_dim values (non-UniFrac)."""
         for base_output_dim in [16, 32, 64, 128]:
             encoder = SequenceEncoder(
                 embedding_dim=64,
                 max_bp=150,
                 token_limit=1024,
                 base_output_dim=base_output_dim,
-                encoder_type="unifrac",
+                encoder_type="faith_pd",  # Use non-UniFrac
             )
             result = encoder(sample_tokens)
             assert result["base_prediction"].shape == (2, base_output_dim)
@@ -290,8 +334,18 @@ class TestSequenceEncoder:
         assert "sample_embeddings" in result
         assert result["sample_embeddings"].shape == (2, 10, 64)
 
-    def test_base_prediction_always_returned(self, sequence_encoder, sample_tokens):
-        """Test that base prediction is always returned."""
+    def test_base_prediction_returned_for_non_unifrac(self, sequence_encoder, sample_tokens):
+        """Test that base prediction is returned for non-UniFrac encoders."""
+        for encoder_type in ["faith_pd", "taxonomy"]:
+            encoder = SequenceEncoder(
+                embedding_dim=64,
+                max_bp=150,
+                token_limit=1024,
+                base_output_dim=32,
+                encoder_type=encoder_type,
+            )
+            result = encoder(sample_tokens)
+            assert "base_prediction" in result
         result = sequence_encoder(sample_tokens)
         assert "base_prediction" in result
         assert result["base_prediction"].shape == (2, 32)
@@ -304,25 +358,28 @@ class TestSequenceEncoder:
         assert "base_prediction" in result
         assert "sample_embeddings" in result
 
-    def test_forward_unifrac_sigmoid_activation(self, sequence_encoder, sample_tokens):
-        """Test that UniFrac predictions use sigmoid activation (not hard clipping)."""
-        output = sequence_encoder(sample_tokens)
-        base_pred = output["base_prediction"]
+    def test_forward_unifrac_embeddings_not_clipped(self, sample_tokens):
+        """Test that UniFrac embeddings are not clipped (distances computed from embeddings)."""
+        encoder = SequenceEncoder(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            base_output_dim=None,
+            encoder_type="unifrac",
+        )
+        output = encoder(sample_tokens)
+        embeddings = output["embeddings"]
 
-        # Verify predictions are in [0, 1] range (sigmoid ensures this)
-        assert torch.all(base_pred >= 0.0), "Predictions should be >= 0.0"
-        assert torch.all(base_pred <= 1.0), "Predictions should be <= 1.0"
+        # Embeddings should not be constrained to [0, 1] (they can be any value)
+        # They are used to compute distances, which are naturally >= 0
+        assert embeddings.shape == (2, 64)
 
-        # Verify predictions are not all at boundaries (sigmoid provides smooth distribution)
-        # With sigmoid, we should have continuous values, not all 0.0 or 1.0
-        assert not torch.all(base_pred == 0.0), "Predictions should not all be 0.0"
-        assert not torch.all(base_pred == 1.0), "Predictions should not all be 1.0"
+        # Test that distances computed from embeddings are non-negative
+        from aam.training.losses import compute_pairwise_distances
 
-        # Verify sigmoid behavior: values should be continuous, not hard-clipped
-        # If we had hard clipping, we'd see many exact 0.0 or 1.0 values
-        # With sigmoid, values should be smoothly distributed
-        unique_values = torch.unique(base_pred)
-        assert len(unique_values) > 2, "Sigmoid should produce continuous values, not just boundaries"
+        distances = compute_pairwise_distances(embeddings)
+        assert torch.all(distances >= 0.0), "Distances should be >= 0.0"
+        assert torch.allclose(torch.diag(distances), torch.zeros(2)), "Diagonal should be 0.0"
 
     def test_forward_combined_unifrac_sigmoid_activation(self, sequence_encoder_combined, sample_tokens):
         """Test that combined encoder type uses sigmoid for UniFrac predictions."""

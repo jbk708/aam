@@ -273,10 +273,12 @@ class TestModelPipelineIntegration:
             output = model(tokens)
 
         assert isinstance(output, dict)
-        assert "base_prediction" in output
+        # For UniFrac, embeddings are returned instead of base_prediction
+        assert "embeddings" in output
         assert "sample_embeddings" in output
 
-        assert output["base_prediction"].shape[0] == batch_size
+        assert output["embeddings"].shape[0] == batch_size
+        assert output["embeddings"].shape[1] == small_model_config["embedding_dim"]
         assert output["sample_embeddings"].shape[0] == batch_size
         assert output["sample_embeddings"].shape[1] == num_asvs
         assert output["sample_embeddings"].shape[2] == small_model_config["embedding_dim"]
@@ -327,7 +329,10 @@ class TestModelPipelineIntegration:
         tokens = tokens.to(device)
         counts = torch.rand(batch_size, num_asvs, 1).to(device)
         target = torch.randn(batch_size, 1).to(device)
-        base_target = torch.randn(batch_size, small_predictor_config["base_output_dim"]).to(device)
+        # For UniFrac, base_target should be pairwise distance matrix [batch_size, batch_size]
+        base_target = torch.randn(batch_size, batch_size).to(device)
+        base_target = (base_target + base_target.T) / 2  # Make symmetric
+        base_target.fill_diagonal_(0.0)  # Zero diagonal
 
         model.train()
         outputs = model(tokens)
@@ -374,7 +379,10 @@ class TestTrainingPipelineIntegration:
         tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
         tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
         tokens = tokens.to(device)
-        base_targets = torch.randn(batch_size, small_model_config["base_output_dim"]).to(device)
+        # For UniFrac, base_target should be pairwise distance matrix [batch_size, batch_size]
+        base_targets = torch.randn(batch_size, batch_size).to(device)
+        base_targets = (base_targets + base_targets.T) / 2  # Make symmetric
+        base_targets.fill_diagonal_(0.0)  # Zero diagonal
 
         model.train()
         optimizer.zero_grad()
@@ -446,12 +454,33 @@ class TestTrainingPipelineIntegration:
         tokens = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len))
         tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
         tokens = tokens.to(device)
-        base_targets = torch.randn(batch_size * 2, small_model_config["base_output_dim"]).to(device)
+        # For UniFrac, base_target should be pairwise distance matrix per batch
+        # Since we're using TensorDataset, we'll create a custom dataset that generates
+        # distance matrices per batch
+        from aam.data.tokenizer import SequenceTokenizer
 
-        from torch.utils.data import TensorDataset, DataLoader
+        class UniFracDataset:
+            def __init__(self, tokens, batch_size):
+                self.tokens = tokens
+                self.batch_size = batch_size
+                self.num_batches = len(tokens) // batch_size
 
-        dataset = TensorDataset(tokens, base_targets)
-        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+            def __len__(self):
+                return self.num_batches
+
+            def __getitem__(self, idx):
+                start_idx = idx * self.batch_size
+                end_idx = start_idx + self.batch_size
+                batch_tokens = self.tokens[start_idx:end_idx]
+                # Create pairwise distance matrix for this batch [batch_size, batch_size]
+                dist_matrix = torch.rand(self.batch_size, self.batch_size)
+                dist_matrix = (dist_matrix + dist_matrix.T) / 2  # Make symmetric
+                dist_matrix.fill_diagonal_(0.0)  # Zero diagonal
+                dist_matrix = dist_matrix.to(batch_tokens.device)
+                return batch_tokens, dist_matrix
+
+        dataset = UniFracDataset(tokens, batch_size)
+        dataloader = DataLoader(dataset, batch_size=1, shuffle=False, collate_fn=lambda x: x[0])
 
         trainer = Trainer(
             model=model,
@@ -507,7 +536,7 @@ class TestEndToEnd:
         model_config["max_bp"] = 150
         model_config["token_limit"] = 1024
         model_config["encoder_type"] = "unifrac"
-        model_config["base_output_dim"] = batch_size
+        model_config["base_output_dim"] = None  # UniFrac uses embeddings, not base_output_dim
         model = SequenceEncoder(**model_config).to(device)
         loss_fn = MultiTaskLoss(penalty=1.0, nuc_penalty=1.0)
         optimizer = create_optimizer(model, lr=1e-4)
@@ -586,7 +615,7 @@ class TestEndToEnd:
         model_config["max_bp"] = 150
         model_config["token_limit"] = 1024
         model_config["encoder_type"] = "unifrac"
-        model_config["base_output_dim"] = batch_size
+        model_config["base_output_dim"] = None  # UniFrac uses embeddings, not base_output_dim
         model = SequenceEncoder(**model_config).to(device)
         loss_fn = MultiTaskLoss(penalty=1.0, nuc_penalty=1.0)
         optimizer = create_optimizer(model, lr=1e-3)
@@ -664,7 +693,7 @@ class TestEndToEnd:
         model_config["max_bp"] = 150
         model_config["token_limit"] = 1024
         model_config["encoder_type"] = "unifrac"
-        model_config["base_output_dim"] = batch_size
+        model_config["base_output_dim"] = None  # UniFrac uses embeddings, not base_output_dim
         model = SequenceEncoder(**model_config).to(device)
         loss_fn = MultiTaskLoss(penalty=1.0, nuc_penalty=1.0)
         optimizer = create_optimizer(model, lr=1e-4)

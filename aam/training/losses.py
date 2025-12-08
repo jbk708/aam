@@ -28,6 +28,78 @@ def _format_tensor_stats(tensor: torch.Tensor) -> str:
         return f"min={min_val:.6f}, max={max_val:.6f}, mean={mean_val:.6f}"
 
 
+def compute_pairwise_distances(embeddings: torch.Tensor) -> torch.Tensor:
+    """Compute pairwise Euclidean distances from embeddings.
+
+    Args:
+        embeddings: Sample embeddings [batch_size, embedding_dim]
+
+    Returns:
+        Pairwise distance matrix [batch_size, batch_size]
+    """
+    # Check for NaN or Inf in embeddings
+    if torch.any(torch.isnan(embeddings)):
+        import sys
+
+        error_msg = f"NaN values found in embeddings before distance computation, shape={embeddings.shape}"
+        print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
+        raise ValueError(error_msg)
+    if torch.any(torch.isinf(embeddings)):
+        import sys
+
+        error_msg = f"Inf values found in embeddings before distance computation, shape={embeddings.shape}"
+        print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
+        raise ValueError(error_msg)
+
+    # Compute squared differences: (a - b)^2 for all pairs
+    # Using broadcasting: [batch_size, 1, embedding_dim] - [1, batch_size, embedding_dim]
+    # Result: [batch_size, batch_size, embedding_dim]
+    diff = embeddings.unsqueeze(1) - embeddings.unsqueeze(0)
+    squared_diff = diff**2
+
+    # Sum over embedding dimension: [batch_size, batch_size]
+    squared_distances = squared_diff.sum(dim=-1)
+
+    # Check for NaN in squared distances (shouldn't happen, but safety check)
+    if torch.any(torch.isnan(squared_distances)):
+        import sys
+
+        error_msg = f"NaN values found in squared_distances, shape={squared_distances.shape}"
+        print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
+        raise ValueError(error_msg)
+
+    # Take square root to get Euclidean distances
+    # Clamp to prevent numerical issues (sqrt of very small negative values)
+    # Use eps to prevent sqrt(0) numerical issues, but allow zero distances (diagonal)
+    eps = 1e-8
+    # For diagonal elements, we want exactly 0.0, so handle separately
+    distances = torch.sqrt(torch.clamp(squared_distances, min=eps))
+    # Set diagonal to exactly 0.0 (distance from sample to itself)
+    # Use non-inplace operation to preserve gradient computation
+    eye_mask = torch.eye(distances.shape[0], device=distances.device, dtype=distances.dtype)
+    distances = distances * (1.0 - eye_mask)
+
+    # Final check for NaN in distances
+    if torch.any(torch.isnan(distances)):
+        import sys
+
+        error_msg = f"NaN values found in computed distances, shape={distances.shape}"
+        print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
+        print(
+            f"embeddings stats: min={embeddings.min().item():.6f}, max={embeddings.max().item():.6f}, mean={embeddings.mean().item():.6f}",
+            file=sys.stderr,
+            flush=True,
+        )
+        print(
+            f"squared_distances stats: min={squared_distances.min().item():.6f}, max={squared_distances.max().item():.6f}, mean={squared_distances.mean().item():.6f}",
+            file=sys.stderr,
+            flush=True,
+        )
+        raise ValueError(error_msg)
+
+    return distances
+
+
 class MultiTaskLoss(nn.Module):
     """Multi-task loss computation for AAM model."""
 
@@ -103,19 +175,54 @@ class MultiTaskLoss(nn.Module):
         base_pred: torch.Tensor,
         base_true: torch.Tensor,
         encoder_type: str = "unifrac",
-        clip_predictions: bool = True,
+        embeddings: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Compute MSE loss for base prediction (UniFrac/Faith PD).
 
         Args:
             base_pred: Predicted base values [batch_size, base_output_dim] or [batch_size, batch_size] for unifrac
+                      For UniFrac with embeddings, this is ignored (use embeddings instead)
             base_true: True base values [batch_size, base_output_dim] or [batch_size, batch_size] for unifrac
             encoder_type: Type of encoder ('unifrac', 'faith_pd', 'taxonomy', 'combined')
-            clip_predictions: Whether to clip predictions to [0, 1] range (default: True for UniFrac)
+            embeddings: Optional embeddings [batch_size, embedding_dim] for UniFrac distance computation
 
         Returns:
             Base loss scalar tensor
         """
+        # For UniFrac, compute distances from embeddings if provided
+        if encoder_type == "unifrac" and embeddings is not None:
+            # Check for NaN in embeddings before computing distances
+            if torch.any(torch.isnan(embeddings)):
+                import sys
+
+                error_msg = f"NaN values found in embeddings with shape {embeddings.shape}"
+                print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
+                print(
+                    f"embeddings {_format_tensor_stats(embeddings)}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                raise ValueError(error_msg)
+            if torch.any(torch.isinf(embeddings)):
+                import sys
+
+                error_msg = f"Inf values found in embeddings with shape {embeddings.shape}"
+                print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
+                raise ValueError(error_msg)
+            # Compute pairwise distances from embeddings
+            try:
+                base_pred = compute_pairwise_distances(embeddings)
+            except ValueError as e:
+                # Re-raise with more context
+                import sys
+
+                print(f"ERROR: Failed to compute pairwise distances from embeddings", file=sys.stderr, flush=True)
+                print(f"embeddings shape={embeddings.shape}, {_format_tensor_stats(embeddings)}", file=sys.stderr, flush=True)
+                raise
+        elif encoder_type == "unifrac" and embeddings is None:
+            # Legacy mode: use base_pred directly (for backward compatibility)
+            pass
+
         # Validate shapes match
         if base_pred.shape != base_true.shape:
             import sys
@@ -138,6 +245,12 @@ class MultiTaskLoss(nn.Module):
                 file=sys.stderr,
                 flush=True,
             )
+            # If embeddings were used, provide additional context
+            if encoder_type == "unifrac" and embeddings is not None:
+                print(f"ERROR: Computed from embeddings with shape {embeddings.shape}", file=sys.stderr, flush=True)
+                print(f"embeddings {_format_tensor_stats(embeddings)}", file=sys.stderr, flush=True)
+                if torch.any(torch.isnan(embeddings)):
+                    print(f"ERROR: Embeddings themselves contain NaN!", file=sys.stderr, flush=True)
             raise ValueError(error_msg)
         if torch.any(torch.isnan(base_true)):
             import sys
@@ -163,15 +276,8 @@ class MultiTaskLoss(nn.Module):
             print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
             raise ValueError(error_msg)
 
-        # Clip predictions to [0, 1] range for UniFrac (bounded regression)
-        # Note: With sigmoid activation in forward pass, predictions are already in [0, 1]
-        # This clipping is kept as a safety measure for backward compatibility
-        # UniFrac distances are constrained to [0, 1] range
-        if encoder_type == "unifrac" and clip_predictions:
-            base_pred = torch.clamp(base_pred, 0.0, 1.0)
-
         # For UniFrac pairwise distance matrices, mask diagonal elements
-        # Diagonal elements are always 0.0 (distance from ASV to itself) and provide no training signal
+        # Diagonal elements are always 0.0 (distance from sample to itself) and provide no training signal
         if encoder_type == "unifrac" and base_pred.dim() == 2 and base_pred.shape[0] == base_pred.shape[1]:
             # Extract upper triangle (excluding diagonal) using offset=1
             batch_size = base_pred.shape[0]
@@ -328,12 +434,35 @@ class MultiTaskLoss(nn.Module):
             else:
                 losses["count_loss"] = torch.tensor(0.0, device=device if device else torch.device("cpu"), requires_grad=True)
 
-        if "base_prediction" in outputs and "base_target" in targets:
-            losses["unifrac_loss"] = self.compute_base_loss(
-                outputs["base_prediction"],
-                targets["base_target"],
-                encoder_type=encoder_type,
-            )
+        if "base_target" in targets:
+            # For UniFrac, use embeddings if available (new approach)
+            # Otherwise fall back to base_prediction (for backward compatibility)
+            if encoder_type == "unifrac" and "embeddings" in outputs:
+                # New approach: compute distances from embeddings
+                embeddings = outputs["embeddings"]
+                # Pass dummy base_pred (will be replaced by computed distances in compute_base_loss)
+                base_pred = torch.zeros(1, device=embeddings.device)
+                losses["unifrac_loss"] = self.compute_base_loss(
+                    base_pred,
+                    targets["base_target"],
+                    encoder_type=encoder_type,
+                    embeddings=embeddings,
+                )
+            elif "base_prediction" in outputs:
+                # Legacy approach: use base_prediction directly
+                losses["unifrac_loss"] = self.compute_base_loss(
+                    outputs["base_prediction"],
+                    targets["base_target"],
+                    encoder_type=encoder_type,
+                )
+            else:
+                # No base prediction available
+                if reference_tensor is not None:
+                    losses["unifrac_loss"] = torch.zeros_like(reference_tensor.sum(), requires_grad=True)
+                else:
+                    losses["unifrac_loss"] = torch.tensor(
+                        0.0, device=device if device else torch.device("cpu"), requires_grad=True
+                    )
         else:
             if reference_tensor is not None:
                 losses["unifrac_loss"] = torch.zeros_like(reference_tensor.sum(), requires_grad=True)

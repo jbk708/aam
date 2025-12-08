@@ -175,13 +175,14 @@ class TestSequencePredictor:
         assert "target_prediction" in result
         assert "count_prediction" in result
         assert "base_embeddings" in result
-        assert "base_prediction" in result
+        # For UniFrac, embeddings are returned instead of base_prediction
+        assert "embeddings" in result
         assert "nuc_predictions" in result
         assert result["target_prediction"].shape == (2, 1)
         assert result["nuc_predictions"].shape == (2, 10, 50, 6)
         assert result["count_prediction"].shape == (2, 10, 1)
         assert result["base_embeddings"].shape == (2, 10, 64)
-        assert result["base_prediction"].shape == (2, 32)
+        assert result["embeddings"].shape == (2, 64)  # Sample-level embeddings for UniFrac
         assert result["nuc_predictions"].shape == (2, 10, 50, 6)
 
     def test_forward_shape_classifier(self, sequence_predictor_classifier, sample_tokens):
@@ -189,32 +190,32 @@ class TestSequencePredictor:
         result = sequence_predictor_classifier(sample_tokens)
         assert result["target_prediction"].shape == (2, 7)
 
-    def test_forward_different_batch_sizes(self, sequence_predictor):
+    @pytest.mark.parametrize("batch_size", [1, 4, 8])
+    def test_forward_different_batch_sizes(self, sequence_predictor, batch_size):
         """Test forward pass with different batch sizes."""
-        for batch_size in [1, 4, 8]:
-            tokens = torch.randint(1, 5, (batch_size, 10, 50))
-            result = sequence_predictor(tokens)
-            assert result["target_prediction"].shape == (batch_size, 1)
-            assert result["count_prediction"].shape == (batch_size, 10, 1)
-            assert result["base_embeddings"].shape == (batch_size, 10, 64)
+        tokens = torch.randint(1, 5, (batch_size, 10, 50))
+        result = sequence_predictor(tokens)
+        assert result["target_prediction"].shape == (batch_size, 1)
+        assert result["count_prediction"].shape == (batch_size, 10, 1)
+        assert result["base_embeddings"].shape == (batch_size, 10, 64)
 
-    def test_forward_different_num_asvs(self, sequence_predictor):
+    @pytest.mark.parametrize("num_asvs", [5, 10, 20, 50])
+    def test_forward_different_num_asvs(self, sequence_predictor, num_asvs):
         """Test forward pass with different numbers of ASVs."""
-        for num_asvs in [5, 10, 20, 50]:
-            tokens = torch.randint(1, 5, (2, num_asvs, 50))
-            result = sequence_predictor(tokens)
-            assert result["target_prediction"].shape == (2, 1)
-            assert result["count_prediction"].shape == (2, num_asvs, 1)
-            assert result["base_embeddings"].shape == (2, num_asvs, 64)
+        tokens = torch.randint(1, 5, (2, num_asvs, 50))
+        result = sequence_predictor(tokens)
+        assert result["target_prediction"].shape == (2, 1)
+        assert result["count_prediction"].shape == (2, num_asvs, 1)
+        assert result["base_embeddings"].shape == (2, num_asvs, 64)
 
-    def test_forward_different_seq_lengths(self, sequence_predictor):
+    @pytest.mark.parametrize("seq_len", [10, 50, 100, 150])
+    def test_forward_different_seq_lengths(self, sequence_predictor, seq_len):
         """Test forward pass with different sequence lengths."""
-        for seq_len in [10, 50, 100, 150]:
-            tokens = torch.randint(1, 5, (2, 10, seq_len))
-            result = sequence_predictor(tokens)
-            assert result["target_prediction"].shape == (2, 1)
-            assert result["count_prediction"].shape == (2, 10, 1)
-            assert result["base_embeddings"].shape == (2, 10, 64)
+        tokens = torch.randint(1, 5, (2, 10, seq_len))
+        result = sequence_predictor(tokens)
+        assert result["target_prediction"].shape == (2, 1)
+        assert result["count_prediction"].shape == (2, 10, 1)
+        assert result["base_embeddings"].shape == (2, 10, 64)
 
     def test_forward_with_padding(self, sequence_predictor, sample_tokens):
         """Test forward pass with padded sequences."""
@@ -236,7 +237,8 @@ class TestSequencePredictor:
         sequence_predictor_with_nucleotides.train()
         result = sequence_predictor_with_nucleotides(sample_tokens, return_nucleotides=True)
         assert "nuc_predictions" in result
-        assert "base_prediction" in result
+        # For UniFrac, embeddings are returned instead of base_prediction
+        assert "embeddings" in result
 
     def test_forward_training_mode_without_nucleotides(self, sequence_predictor_with_nucleotides, sample_tokens):
         """Test forward pass in training mode without requesting nucleotide predictions."""
@@ -318,13 +320,14 @@ class TestSequencePredictor:
     def test_base_predictions_not_used_as_input(self, sequence_predictor_with_nucleotides, sample_tokens):
         """Test that base predictions are not used as input to heads."""
         result = sequence_predictor_with_nucleotides(sample_tokens, return_nucleotides=True)
-        assert "base_prediction" in result
+        # For UniFrac, embeddings are returned instead of base_prediction
+        assert "embeddings" in result
         assert "base_embeddings" in result
         base_emb_shape = result["base_embeddings"].shape
-        base_pred_shape = result["base_prediction"].shape
-        assert base_emb_shape != base_pred_shape
-        assert base_emb_shape == (2, 10, 64)
-        assert base_pred_shape == (2, 32)
+        embeddings_shape = result["embeddings"].shape
+        assert base_emb_shape != embeddings_shape
+        assert base_emb_shape == (2, 10, 64)  # Per-ASV embeddings
+        assert embeddings_shape == (2, 64)  # Sample-level pooled embeddings for UniFrac
 
     def test_different_encoder_types(self, sample_tokens):
         """Test forward pass with different encoder types."""
@@ -359,15 +362,15 @@ class TestSequencePredictor:
         assert "base_embeddings" in result
         assert "unifrac_pred" in result or "base_prediction" in result
 
-    def test_different_out_dims(self, base_encoder, sample_tokens):
+    @pytest.mark.parametrize("out_dim", [1, 5, 10])
+    def test_different_out_dims(self, base_encoder, sample_tokens, out_dim):
         """Test forward pass with different out_dim values."""
-        for out_dim in [1, 5, 10]:
-            regressor = SequencePredictor(
-                base_model=base_encoder,
-                out_dim=out_dim,
-            )
-            result = regressor(sample_tokens)
-            assert result["target_prediction"].shape == (2, out_dim)
+        regressor = SequencePredictor(
+            base_model=base_encoder,
+            out_dim=out_dim,
+        )
+        result = regressor(sample_tokens)
+        assert result["target_prediction"].shape == (2, out_dim)
 
     def test_composition_pattern(self, base_encoder):
         """Test that SequencePredictor composes SequenceEncoder."""

@@ -43,7 +43,7 @@ def small_model():
         sample_num_heads=2,
         encoder_num_layers=1,
         encoder_num_heads=2,
-        base_output_dim=16,
+        base_output_dim=None,  # UniFrac: no output_head, returns embeddings
         encoder_type="unifrac",
         predict_nucleotides=False,
     )
@@ -71,7 +71,7 @@ def small_predictor():
         is_classifier=False,
         freeze_base=False,
         predict_nucleotides=False,
-        base_output_dim=32,
+        base_output_dim=None,  # UniFrac: no output_head, returns embeddings
     )
 
 
@@ -112,10 +112,35 @@ def simple_dataloader_encoder(device):
     tokens = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len))
     tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
     tokens = tokens.to(device)
-    base_targets = torch.randn(batch_size * 2, 16).to(device)
 
-    dataset = TensorDataset(tokens, base_targets)
-    return DataLoader(dataset, batch_size=batch_size, shuffle=False)
+    # For UniFrac, base_targets should be pairwise distance matrices [batch_size, batch_size]
+    # Since TensorDataset requires same shape, we'll create a custom dataset that generates
+    # distance matrices per batch
+    class UniFracDataset:
+        def __init__(self, tokens, batch_size):
+            self.tokens = tokens
+            self.batch_size = batch_size
+            self.num_batches = len(tokens) // batch_size
+
+        def __len__(self):
+            return self.num_batches
+
+        def __getitem__(self, idx):
+            start_idx = idx * self.batch_size
+            end_idx = start_idx + self.batch_size
+            batch_tokens = self.tokens[start_idx:end_idx]
+            # Create pairwise distance matrix for this batch [batch_size, batch_size]
+            # Ensure values are in [0, 1] range for UniFrac distances
+            dist_matrix = torch.rand(self.batch_size, self.batch_size)
+            dist_matrix = (dist_matrix + dist_matrix.T) / 2  # Make symmetric
+            dist_matrix.fill_diagonal_(0.0)  # Zero diagonal
+            # Move to same device as tokens
+            dist_matrix = dist_matrix.to(batch_tokens.device)
+            return batch_tokens, dist_matrix
+
+    dataset = UniFracDataset(tokens, batch_size)
+    # Use collate_fn to handle the batching (each item is already a batch)
+    return DataLoader(dataset, batch_size=1, shuffle=False, collate_fn=lambda x: x[0])
 
 
 class TestCreateOptimizer:
@@ -255,11 +280,22 @@ class TestTrainEpoch:
     def test_train_epoch_encoder(self, small_model, loss_fn, simple_dataloader_encoder, device):
         """Test training epoch for SequenceEncoder."""
         small_model = small_model.to(device)
+        small_model.train()  # Ensure model is in training mode
         trainer = Trainer(
             model=small_model,
             loss_fn=loss_fn,
             device=device,
         )
+
+        # Verify model produces valid embeddings before training
+        for batch in simple_dataloader_encoder:
+            tokens, targets = trainer._prepare_batch(batch)
+            with torch.no_grad():
+                outputs = small_model(tokens, return_nucleotides=False)
+                if "embeddings" in outputs:
+                    assert not torch.any(torch.isnan(outputs["embeddings"])), "Model should produce valid embeddings"
+                    assert not torch.any(torch.isinf(outputs["embeddings"])), "Model should produce finite embeddings"
+            break  # Just check first batch
 
         losses = trainer.train_epoch(simple_dataloader_encoder)
 
@@ -606,7 +642,7 @@ class TestTrainingLoop:
             sample_num_heads=2,
             encoder_num_layers=1,
             encoder_num_heads=2,
-            base_output_dim=16,
+            base_output_dim=None,  # UniFrac: no output_head, returns embeddings
             encoder_type="unifrac",
             predict_nucleotides=False,
         ).to(device)
@@ -639,7 +675,7 @@ class TestLoadPretrainedEncoder:
             sample_num_heads=2,
             encoder_num_layers=1,
             encoder_num_heads=2,
-            base_output_dim=32,
+            base_output_dim=None,  # UniFrac: no output_head, returns embeddings
             encoder_type="unifrac",
             predict_nucleotides=False,
         ).to(device)
@@ -901,16 +937,36 @@ class TestGradientAccumulation:
         tokens1 = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len))
         tokens1[:, :, 0] = SequenceTokenizer.START_TOKEN
         tokens1 = tokens1.to(device)
-        base_targets1 = torch.randn(batch_size * 2, 16).to(device)
-        dataset1 = TensorDataset(tokens1, base_targets1)
-        dataloader1 = DataLoader(dataset1, batch_size=batch_size, shuffle=False)
+
+        # For UniFrac, create pairwise distance matrices per batch
+        class UniFracDataset:
+            def __init__(self, tokens, batch_size):
+                self.tokens = tokens
+                self.batch_size = batch_size
+                self.num_batches = len(tokens) // batch_size
+
+            def __len__(self):
+                return self.num_batches
+
+            def __getitem__(self, idx):
+                start_idx = idx * self.batch_size
+                end_idx = start_idx + self.batch_size
+                batch_tokens = self.tokens[start_idx:end_idx]
+                # Ensure values are in [0, 1] range for UniFrac distances
+                dist_matrix = torch.rand(self.batch_size, self.batch_size)
+                dist_matrix = (dist_matrix + dist_matrix.T) / 2
+                dist_matrix.fill_diagonal_(0.0)
+                dist_matrix = dist_matrix.to(batch_tokens.device)
+                return batch_tokens, dist_matrix
+
+        dataset1 = UniFracDataset(tokens1, batch_size)
+        dataloader1 = DataLoader(dataset1, batch_size=1, shuffle=False, collate_fn=lambda x: x[0])
 
         tokens2 = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len))
         tokens2[:, :, 0] = SequenceTokenizer.START_TOKEN
         tokens2 = tokens2.to(device)
-        base_targets2 = torch.randn(batch_size * 2, 16).to(device)
-        dataset2 = TensorDataset(tokens2, base_targets2)
-        dataloader2 = DataLoader(dataset2, batch_size=batch_size, shuffle=False)
+        dataset2 = UniFracDataset(tokens2, batch_size)
+        dataloader2 = DataLoader(dataset2, batch_size=1, shuffle=False, collate_fn=lambda x: x[0])
 
         model1 = small_model.to(device)
         model2 = small_model.to(device)
@@ -1077,7 +1133,7 @@ class TestPredictionPlots:
             is_classifier=True,
             freeze_base=False,
             predict_nucleotides=False,
-            base_output_dim=32,
+            base_output_dim=None,  # UniFrac: no output_head, returns embeddings
         )
 
         trainer = Trainer(
@@ -1174,7 +1230,7 @@ class TestPredictionPlots:
             is_classifier=True,
             freeze_base=False,
             predict_nucleotides=False,
-            base_output_dim=32,
+            base_output_dim=None,  # UniFrac: no output_head, returns embeddings
         )
 
         checkpoint_dir = tmp_path / "checkpoints"
