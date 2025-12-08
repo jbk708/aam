@@ -334,7 +334,7 @@ class TestSequenceEncoder:
         assert "sample_embeddings" in result
         assert result["sample_embeddings"].shape == (2, 10, 64)
 
-    def test_base_prediction_returned_for_non_unifrac(self, sample_tokens):
+    def test_base_prediction_returned_for_non_unifrac(self, sequence_encoder, sample_tokens):
         """Test that base prediction is returned for non-UniFrac encoders."""
         for encoder_type in ["faith_pd", "taxonomy"]:
             encoder = SequenceEncoder(
