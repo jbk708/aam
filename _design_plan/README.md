@@ -6,7 +6,7 @@ This directory contains the design plan for the AAM (Attention All Microbes) pro
 
 ## Overview
 
-The implementation plan is organized into 13 documents, each covering a specific component. All components are **completed**:
+The implementation plan is organized into core component documents (00-13) and additional analysis/planning documents (14-20). All core components are **completed**:
 
 1. **[00_overview.md](00_overview.md)** - Architecture diagram, design principles, training strategy ✅
 2. **[01_biom_loader.md](01_biom_loader.md)** - BIOM table loading and rarefaction ✅
@@ -23,13 +23,12 @@ The implementation plan is organized into 13 documents, each covering a specific
 13. **[12_cli_interface.md](12_cli_interface.md)** - Command-line interface ✅
 14. **[13_testing.md](13_testing.md)** - Testing strategy ✅
 
-## New Features
+## Additional Documents
 
-15. **[14_tensorboard_overlay.md](14_tensorboard_overlay.md)** - TensorBoard train/val overlay ✅
-16. **[15_save_best_model.md](15_save_best_model.md)** - Save single best model file ✅
-17. **[16_early_stopping_default.md](16_early_stopping_default.md)** - Early stopping default to 10 epochs ✅
-18. **[17_validation_prediction_plots.md](17_validation_prediction_plots.md)** - Validation prediction plots ✅
-19. **[18_fix_nan_nucleotide_predictions.md](18_fix_nan_nucleotide_predictions.md)** - Fix NaN in nucleotide predictions with token_limit ✅
+15. **[14_training_features.md](14_training_features.md)** - Training features and enhancements (Phase 8) ✅
+16. **[19_unifrac_underfitting_analysis.md](19_unifrac_underfitting_analysis.md)** - UniFrac underfitting analysis and fixes ✅
+17. **[20_optimization_plan.md](20_optimization_plan.md)** - Performance optimization plan 📋
+18. **[FUTURE_WORK.md](FUTURE_WORK.md)** - Future enhancements and next steps 📋
 
 ## Training Strategy
 
@@ -148,10 +147,18 @@ aam/
 The implementation is complete. To use the project:
 
 1. Read **[00_overview.md](00_overview.md)** for architecture and training strategy
-2. Install dependencies: `pip install -e .` or `conda env create -f environment.yml`
-3. Run tests: `pytest tests/ -v`
-4. Train a model: `python -m aam.cli train --help` for usage
-5. See individual component docs for implementation details
+2. See **[INDEX.md](INDEX.md)** for quick navigation
+3. Install dependencies: `pip install -e .` or `conda env create -f environment.yml`
+4. Run tests: `pytest tests/ -v`
+5. Train a model: `python -m aam.cli train --help` for usage
+6. See individual component docs for implementation details
+
+## Document Organization
+
+- **Core Components (00-13)**: Implementation details for each component
+- **Features (14)**: Training features and enhancements
+- **Analysis (19)**: UniFrac underfitting analysis and fixes
+- **Planning (20, FUTURE_WORK)**: Optimization plan and future work
 
 ## Test Data
 

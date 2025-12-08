@@ -364,25 +364,19 @@ pairwise_distances = compute_pairwise_distances(sample_embeddings)  # [batch_siz
 - Focal loss for regression: Lin et al. (2017) - adapt for regression
 - Pairwise distance learning: Hoffer & Ailon (2015)
 
-## Next Steps
+## Implementation Summary
 
-1. **Review this document** with team
-2. **Create tickets** for prioritized improvements
-3. **Start with PYT-8.12** (diagonal masking) - already planned
-4. **Investigate zero-distance samples** - create analysis script
-5. **Implement bounded loss** - clipped MSE as first step
-6. **Tune learning rate** - use learning rate finder
-7. **Evaluate improvements** - compare R² and prediction range
+All planned improvements have been completed:
+- ✅ PYT-8.12: Diagonal masking implemented
+- ✅ PYT-8.13: Zero-distance investigation completed (found to be extremely rare)
+- ✅ PYT-8.14: Bounded regression loss implemented
+- ❌ PYT-8.15: Weighted loss cancelled (zero distances too rare)
+- ✅ PYT-8.16a: Boundary prediction clustering investigation completed
+- ✅ PYT-8.16b: Architectural alignment with TensorFlow completed
 
-## Questions for Discussion
-
-1. **Zero-Distance Handling**: Should we remove, down-weight, or keep zero-distance pairs?
-2. **Architectural Alignment**: Should we align with TensorFlow (pairwise from embeddings) or keep direct prediction?
-3. **Loss Function**: Clipped MSE, beta regression, or weighted MSE?
-4. **Model Capacity**: Is current capacity sufficient, or should we increase?
-5. **Training Strategy**: Should we use staged training (pretrain → finetune) or end-to-end?
+**Key Achievement**: Refactored UniFrac distance prediction to match TensorFlow approach by computing pairwise distances from embeddings, eliminating sigmoid saturation, mode collapse, and boundary clustering issues.
 
 ---
 
-**Document Status**: Ready for review  
-**Next Action**: Review with team, create implementation tickets
+**Document Status**: ✅ Implementation Completed  
+**Related Documents**: See `_design_plan/08_sequence_encoder.md` and `_design_plan/10_training_losses.md` for implementation details

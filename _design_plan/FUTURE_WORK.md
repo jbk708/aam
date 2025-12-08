@@ -9,7 +9,8 @@ This document outlines potential future enhancements and improvements to the AAM
 - Model architecture (hierarchical transformer-based model)
 - Training infrastructure (losses, metrics, trainer, CLI)
 - Comprehensive test suite (94% coverage)
-- **PYT-7.3**: Fixed loss display showing 0.0000 in progress bar (removed duplicate `pbar.set_postfix()` calls)
+- All Phase 8 feature enhancements (see `14_training_features.md`)
+- All Phase 9 UniFrac underfitting fixes (see `19_unifrac_underfitting_analysis.md`)
 
 ## Potential Enhancements
 
@@ -65,14 +66,24 @@ This document outlines potential future enhancements and improvements to the AAM
 
 ## Next Steps
 
-1. **Performance Benchmarking**: Run comprehensive benchmarks on real-world datasets
-2. **Hyperparameter Tuning**: Systematic hyperparameter search for optimal performance
-3. **Model Evaluation**: Evaluate on multiple datasets and compare with baselines
-4. **Documentation**: Create comprehensive user documentation and tutorials
-5. **Deployment**: Set up model serving infrastructure for production use
+### Immediate (Phase 10)
+1. **Performance Optimizations**: See `20_optimization_plan.md` for detailed plan
+   - Mixed precision training (PYT-10.1)
+   - Model compilation (PYT-10.2)
+   - Data loading optimization (PYT-10.3)
+
+### Short-Term
+2. **Performance Benchmarking**: Run comprehensive benchmarks on real-world datasets
+3. **Hyperparameter Tuning**: Systematic hyperparameter search for optimal performance
+4. **Model Evaluation**: Evaluate on multiple datasets and compare with baselines
+
+### Long-Term
+5. **Documentation**: Create comprehensive user documentation and tutorials
+6. **Deployment**: Set up model serving infrastructure for production use
 
 ## Notes
 
+- See `20_optimization_plan.md` for detailed performance optimization roadmap
 - Focus on areas that provide the most value for users
 - Prioritize performance optimizations that enable larger-scale training
 - Consider community feedback and feature requests

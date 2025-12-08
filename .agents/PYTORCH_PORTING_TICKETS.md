@@ -1,7 +1,7 @@
 # PyTorch Porting Tickets
 
 **Priority**: MEDIUM - Feature Enhancements  
-**Status**: In Progress
+**Status**: Phase 8-9 Complete, Phase 10 In Progress
 
 This document contains tickets for implementing feature enhancements for the PyTorch port of AAM.
 
@@ -119,9 +119,160 @@ Refactor UniFrac distance prediction to match TensorFlow implementation by compu
 
 ---
 
+## Phase 10: Performance Optimizations
+
+### PYT-10.1: Implement Mixed Precision Training (FP16/BF16)
+**Priority:** HIGH | **Effort:** Low (2-3 hours) | **Status:** Not Started
+
+**Description:**
+Implement mixed precision training using FP16 or BF16 to reduce memory usage and increase training speed. This is a low-effort, high-impact optimization that can provide ~2x memory reduction and ~1.5-2x speedup on modern GPUs.
+
+**Acceptance Criteria:**
+- [ ] Add `--mixed-precision` CLI option (choices: fp16, bf16, none)
+- [ ] Implement `torch.cuda.amp.autocast()` for forward pass
+- [ ] Implement `GradScaler` for gradient scaling
+- [ ] Verify numerical stability (no NaN/Inf issues)
+- [ ] Compare training metrics with/without mixed precision
+- [ ] Update documentation
+
+**Files to Modify:**
+- `aam/training/trainer.py` - Add autocast context managers
+- `aam/cli.py` - Add mixed precision option
+
+**Dependencies:** None
+
+**Estimated Time:** 2-3 hours
+
+---
+
+### PYT-10.2: Implement Model Compilation (`torch.compile()`)
+**Priority:** MEDIUM | **Effort:** Low (1-2 hours) | **Status:** Not Started
+
+**Description:**
+Add support for PyTorch 2.0+ model compilation using `torch.compile()` to achieve 10-30% speedup through automatic kernel fusion and optimization.
+
+**Acceptance Criteria:**
+- [ ] Add `--compile-model` CLI flag
+- [ ] Wrap model with `torch.compile()` after initialization
+- [ ] Support both eager and compiled modes
+- [ ] Verify compiled model produces same outputs
+- [ ] Benchmark speedup on different hardware
+- [ ] Update documentation
+
+**Files to Modify:**
+- `aam/training/trainer.py` - Compile model if flag set
+- `aam/cli.py` - Add compile option
+
+**Dependencies:** PyTorch 2.0+
+
+**Estimated Time:** 1-2 hours
+
+---
+
+### PYT-10.3: Optimize Data Loading
+**Priority:** MEDIUM | **Effort:** Medium (3-4 hours) | **Status:** Not Started
+
+**Description:**
+Optimize data loading pipeline to reduce I/O bottlenecks and improve training throughput. Increase default `num_workers`, add prefetching, and optimize data access patterns.
+
+**Acceptance Criteria:**
+- [ ] Increase default `num_workers` (from 0 to 4-8)
+- [ ] Add `prefetch_factor` for DataLoader
+- [ ] Pin memory for faster GPU transfer
+- [ ] Profile data loading time
+- [ ] Benchmark data loading throughput
+- [ ] Verify no data corruption with multiple workers
+- [ ] Update documentation
+
+**Files to Modify:**
+- `aam/cli.py` - Update default `num_workers`
+- `aam/data/dataset.py` - Optimize data access patterns
+
+**Dependencies:** None
+
+**Estimated Time:** 3-4 hours
+
+---
+
+### PYT-10.4: Implement Gradient Checkpointing
+**Priority:** MEDIUM | **Effort:** Medium (3-4 hours) | **Status:** Not Started
+
+**Description:**
+Implement gradient checkpointing to reduce memory usage by 30-50%, enabling larger models and batch sizes. Trade compute for memory.
+
+**Acceptance Criteria:**
+- [ ] Add `--gradient-checkpointing` flag
+- [ ] Use `torch.utils.checkpoint.checkpoint()` for transformer layers
+- [ ] Apply to ASVEncoder and transformer layers
+- [ ] Verify memory reduction
+- [ ] Compare training speed (should be slower)
+- [ ] Test gradient correctness
+- [ ] Update documentation
+
+**Files to Modify:**
+- `aam/models/transformer.py` - Add checkpointing
+- `aam/models/asv_encoder.py` - Add checkpointing option
+- `aam/cli.py` - Add flag
+
+**Dependencies:** None
+
+**Estimated Time:** 3-4 hours
+
+---
+
+### PYT-10.5: Optimize Attention Computation
+**Priority:** MEDIUM | **Effort:** Medium-High (4-6 hours) | **Status:** Not Started
+
+**Description:**
+Optimize attention computation using PyTorch 2.0+ `scaled_dot_product_attention` for better performance and potentially Flash Attention support.
+
+**Acceptance Criteria:**
+- [ ] Use `torch.nn.functional.scaled_dot_product_attention`
+- [ ] Optimize attention mask handling
+- [ ] Benchmark attention computation time
+- [ ] Verify numerical equivalence
+- [ ] Test on different sequence lengths
+- [ ] Update documentation
+
+**Files to Modify:**
+- `aam/models/transformer.py` - Optimize attention
+
+**Dependencies:** PyTorch 2.0+
+
+**Estimated Time:** 4-6 hours
+
+---
+
+### PYT-10.6: Implement Multi-GPU Training (DDP)
+**Priority:** LOW | **Effort:** High (8-12 hours) | **Status:** Not Started
+
+**Description:**
+Add support for distributed training using PyTorch's DistributedDataParallel (DDP) to enable linear scaling with number of GPUs.
+
+**Acceptance Criteria:**
+- [ ] Implement DDP setup and initialization
+- [ ] Handle data splitting across GPUs
+- [ ] Sync metrics across processes
+- [ ] Add distributed training CLI options
+- [ ] Test on 2+ GPUs
+- [ ] Verify same results as single GPU
+- [ ] Benchmark scaling efficiency
+- [ ] Update documentation
+
+**Files to Modify:**
+- `aam/training/trainer.py` - Add DDP support
+- `aam/cli.py` - Add distributed training options
+- Create distributed training script
+
+**Dependencies:** Multi-GPU hardware
+
+**Estimated Time:** 8-12 hours
+
+---
+
 ## Summary
 
-**Total Estimated Time Remaining:** 0 hours (All Phase 9 tickets completed)
+**Total Estimated Time Remaining:** 21-31 hours (Phase 10 optimizations)
 
 **Implementation Order:**
 
@@ -157,6 +308,15 @@ Refactor UniFrac distance prediction to match TensorFlow implementation by compu
 **Notes:**
 - All Phase 8 tickets completed
 - Phase 9 tickets address critical underfitting issue (R² = 0.0455) identified in model performance analysis
+- Phase 10 tickets focus on performance optimizations (see `_design_plan/20_optimization_plan.md` for detailed plan)
 - See `_design_plan/19_unifrac_underfitting_analysis.md` for detailed analysis and rationale
 - See `debug/BOUNDARY_PREDICTION_ANALYSIS.md` and `debug/TENSORFLOW_VS_PYTORCH_COMPARISON.md` for investigation findings
 - Follow the workflow in `.agents/workflow.md` for implementation
+
+**Recommended Implementation Order for Phase 10 (Optimizations):**
+1. **PYT-10.1** (mixed precision) - High impact, low effort, quick win
+2. **PYT-10.2** (model compilation) - Medium impact, low effort, quick win
+3. **PYT-10.3** (data loading) - Medium impact, medium effort
+4. **PYT-10.4** (gradient checkpointing) - High impact, medium effort
+5. **PYT-10.5** (attention optimization) - Medium impact, medium-high effort
+6. **PYT-10.6** (multi-GPU) - Very high impact, high effort (requires hardware)

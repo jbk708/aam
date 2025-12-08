@@ -26,7 +26,7 @@
 
 7. **After completion** (when ticket is merged):
    - Update `.agents/PYTORCH_PORTING_TICKETS.md`: Mark ticket as ✅ Completed, check all acceptance criteria, add implementation notes
-   - Update corresponding plan document in `pytorch_porting_plan/`: Mark checklist items complete
+   - Update corresponding design plan document in `_design_plan/`: Mark status as completed
    - Commit: `"Update PYT-{ticket} ticket status to completed"`
 
 ## Key Principles
