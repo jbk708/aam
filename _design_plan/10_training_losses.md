@@ -8,9 +8,18 @@ Multi-task loss functions and metrics. Implemented in `aam/training/losses.py` a
 ## Loss Functions
 - **Target Loss**: MSE (regression) or NLL (classification) with optional class weights
 - **Count Loss**: Masked MSE for ASV counts
-- **Base Loss**: MSE for UniFrac distances (weighted by `penalty`)
+- **Base Loss**: 
+  - **UniFrac (PYT-8.16b)**: MSE for pairwise distances computed from embeddings (Euclidean distance), diagonal masked
+  - **Other types**: MSE for direct predictions (weighted by `penalty`)
 - **Nucleotide Loss**: Masked CrossEntropy (weighted by `nuc_penalty`)
 - **Total Loss**: Weighted sum of all losses
+
+## UniFrac Distance Computation (PYT-8.16b)
+- **Pairwise Distance Function**: `compute_pairwise_distances()` computes Euclidean distances from embeddings
+- **Architecture**: Embeddings → Pairwise distances → Loss (matches TensorFlow approach)
+- **Diagonal Masking**: Upper triangle only (excludes diagonal) for loss computation
+- **No Clipping**: Distances are naturally ≥ 0, no sigmoid/clipping needed
+- **Benefits**: Eliminates sigmoid saturation, mode collapse, and boundary clustering issues
 
 ## Metrics
 - **Regression**: MAE, MSE, R-squared

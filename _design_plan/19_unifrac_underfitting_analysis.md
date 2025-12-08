@@ -1,6 +1,6 @@
 # UniFrac Model Underfitting Analysis and Improvement Plan
 
-**Status:** 📋 Planning  
+**Status:** ✅ Implementation Completed (PYT-8.16b)  
 **Priority:** HIGH  
 **Created:** 2024  
 **Related Tickets:** PYT-8.12 (Mask Diagonal in UniFrac Loss Computation)
@@ -183,34 +183,46 @@ loss = nn.functional.mse_loss(base_pred_clipped, base_true)
 
 ### Phase 3: Architectural Improvements (Long-Term)
 
-#### 3.1 Align with TensorFlow Architecture
-**Priority:** MEDIUM | **Effort:** High (6-8 hours)
+#### 3.1 Align with TensorFlow Architecture ✅ COMPLETED (PYT-8.16b)
+**Priority:** MEDIUM | **Effort:** High (6-8 hours) | **Status:** ✅ Completed
 
-**Action**: Consider computing pairwise distances from embeddings (like TensorFlow) instead of directly predicting distance matrix.
+**Action**: ✅ Compute pairwise distances from embeddings (like TensorFlow) instead of directly predicting distance matrix.
 
-**Current (PyTorch)**:
+**Previous (PyTorch - Before PYT-8.16b)**:
 ```python
 # Direct prediction
 base_prediction = self.output_head(pooled_embeddings)  # [batch_size, batch_size]
 ```
 
-**Proposed (TensorFlow-like)**:
+**Current (PyTorch - After PYT-8.16b)**: ✅ IMPLEMENTED
 ```python
-# Compute distances from embeddings
+# Compute distances from embeddings (matches TensorFlow)
 sample_embeddings = pooled_embeddings  # [batch_size, embedding_dim]
 # Compute pairwise Euclidean distances
 pairwise_distances = compute_pairwise_distances(sample_embeddings)  # [batch_size, batch_size]
 ```
 
-**Benefits**:
-- More interpretable (embeddings → distances)
-- Enforces distance metric properties (symmetry, triangle inequality)
-- May improve generalization
+**Implementation Details:**
+- ✅ Removed `output_head` for UniFrac encoder type
+- ✅ `SequenceEncoder` returns embeddings directly for UniFrac
+- ✅ `compute_pairwise_distances()` function computes Euclidean distances from embeddings
+- ✅ Loss function computes distances from embeddings when `encoder_type == "unifrac"`
+- ✅ Diagonal masking applied (upper triangle only)
+- ✅ No sigmoid/clipping needed (distances naturally ≥ 0)
 
-**Trade-offs**:
-- Requires architectural changes
-- May need to normalize distances to [0, 1] range
-- More complex implementation
+**Benefits Achieved:**
+- ✅ More interpretable (embeddings → distances)
+- ✅ Enforces distance metric properties (symmetry, triangle inequality)
+- ✅ Eliminates sigmoid saturation issues
+- ✅ Eliminates mode collapse (no sigmoid needed)
+- ✅ Eliminates boundary clustering (no clipping needed)
+- ✅ Better gradient flow (no sigmoid/clipping operations)
+- ✅ Matches TensorFlow implementation exactly
+
+**Additional Fixes:**
+- ✅ Fixed NaN issue in attention pooling by handling all-padding sequences before transformer
+- ✅ Updated all tests to reflect new architecture
+- ✅ All integration tests passing
 
 #### 3.2 Model Capacity Increase
 **Priority:** MEDIUM | **Effort:** Medium (2-3 hours)
@@ -278,7 +290,7 @@ pairwise_distances = compute_pairwise_distances(sample_embeddings)  # [batch_siz
 5. **Learning rate tuning (PYT-8.16)**: Find optimal learning rate
 
 ### Medium-Term (Future Sprints)
-6. **Architectural alignment**: Consider TensorFlow-like pairwise distance computation
+6. ✅ **Architectural alignment**: TensorFlow-like pairwise distance computation - **COMPLETED (PYT-8.16b)**
 7. **Model capacity**: Increase if needed based on investigation
 8. **Advanced loss functions**: Focal loss, beta regression if needed
 

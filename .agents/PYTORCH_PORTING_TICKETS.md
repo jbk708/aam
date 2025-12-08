@@ -10,7 +10,7 @@ This document contains tickets for implementing feature enhancements for the PyT
 ## Phase 9: UniFrac Underfitting Fixes
 
 ### PYT-8.16b: Refactor UniFrac Distance Prediction to Match TensorFlow Approach
-**Priority:** HIGH | **Effort:** High | **Status:** Not Started
+**Priority:** HIGH | **Effort:** High | **Status:** ✅ Completed
 
 **Description:**
 Refactor UniFrac distance prediction to match TensorFlow implementation by computing pairwise distances from embeddings (Euclidean distance) instead of predicting distances directly. This architectural change will eliminate sigmoid saturation issues, mode collapse, and boundary clustering problems identified in the investigation.
@@ -38,20 +38,21 @@ Refactor UniFrac distance prediction to match TensorFlow implementation by compu
 - [x] Create visualizations of prediction vs actual distributions
 - [x] Compare TensorFlow vs PyTorch implementations
 
-**Implementation Phase (PYT-8.16b) - Not Started:**
-- [ ] Remove direct distance prediction head (`output_head` for UniFrac)
-- [ ] Modify `SequenceEncoder` to return embeddings directly (no sigmoid/clipping)
-- [ ] Implement pairwise distance computation from embeddings (Euclidean distance)
-- [ ] Update loss function to compute distances from embeddings
-- [ ] Update CLI to handle new architecture (remove `base_output_dim` for UniFrac)
-- [ ] Update dataset/collate to work with embedding-based approach
-- [ ] Update trainer to compute distances from embeddings
-- [ ] Remove sigmoid activation and clipping from forward pass
-- [ ] Update tests to reflect new architecture
-- [ ] Verify training works correctly with new approach
-- [ ] Test that predictions are continuous (no boundary clustering)
-- [ ] Verify no mode collapse (predictions not all 0.5)
-- [ ] Document architectural changes
+**Implementation Phase (PYT-8.16b) - ✅ Completed:**
+- [x] Remove direct distance prediction head (`output_head` for UniFrac)
+- [x] Modify `SequenceEncoder` to return embeddings directly (no sigmoid/clipping)
+- [x] Implement pairwise distance computation from embeddings (Euclidean distance)
+- [x] Update loss function to compute distances from embeddings
+- [x] Update CLI to handle new architecture (remove `base_output_dim` for UniFrac)
+- [x] Update dataset/collate to work with embedding-based approach
+- [x] Update trainer to compute distances from embeddings
+- [x] Remove sigmoid activation and clipping from forward pass
+- [x] Update tests to reflect new architecture
+- [x] Verify training works correctly with new approach
+- [x] Test that predictions are continuous (no boundary clustering)
+- [x] Verify no mode collapse (predictions not all 0.5)
+- [x] Document architectural changes
+- [x] Fix NaN issue in attention pooling by handling all-padding sequences before transformer
 
 **Implementation Notes:**
 
@@ -61,6 +62,19 @@ Refactor UniFrac distance prediction to match TensorFlow implementation by compu
 - Sigmoid fix attempted but caused mode collapse to 0.5 predictions
 - **Key discovery**: TensorFlow uses different architecture - computes distances from embeddings, not direct predictions
 - See `debug/BOUNDARY_PREDICTION_ANALYSIS.md` and `debug/TENSORFLOW_VS_PYTORCH_COMPARISON.md` for details
+
+**Implementation Results (PYT-8.16b - ✅ Completed):**
+- ✅ Removed `output_head` for UniFrac encoder type in `SequenceEncoder`
+- ✅ Modified `SequenceEncoder` to return embeddings directly for UniFrac (no sigmoid/clipping)
+- ✅ Implemented `compute_pairwise_distances()` function in `losses.py` to compute Euclidean distances from embeddings
+- ✅ Updated `compute_base_loss()` to compute distances from embeddings when `encoder_type == "unifrac"`
+- ✅ Updated CLI to handle new architecture (removed `base_output_dim` requirement for UniFrac)
+- ✅ Updated all tests to reflect new architecture (all passing)
+- ✅ Fixed NaN issue in attention pooling by handling all-padding sequences before transformer in `ASVEncoder`
+- ✅ All integration tests passing (13/13)
+- ✅ All attention pooling tests passing (17/17)
+- ✅ Created debug script `debug/investigate_attention_pooling_nan.py` for future debugging
+- **Key Fix**: Handled all-padding sequences (mask sum = 0) in `ASVEncoder` by skipping transformer and setting embeddings to zero, preventing NaN propagation
 
 **Architectural Change Required:**
 1. **Remove direct prediction head** for UniFrac:
@@ -107,7 +121,7 @@ Refactor UniFrac distance prediction to match TensorFlow implementation by compu
 
 ## Summary
 
-**Total Estimated Time Remaining:** 6-8 hours
+**Total Estimated Time Remaining:** 0 hours (All Phase 9 tickets completed)
 
 **Implementation Order:**
 
@@ -130,7 +144,7 @@ Refactor UniFrac distance prediction to match TensorFlow implementation by compu
 14. ✅ PYT-8.14: Implement Bounded Regression Loss for UniFrac Distances (3-4 hours) - Completed
 15. ❌ PYT-8.15: Implement Weighted Loss for Zero-Distance UniFrac Pairs (1-2 hours) - Cancelled (zero distances too rare per PYT-8.13 findings)
 16. ✅ PYT-8.16a: Investigate Prediction Clustering at 0.0 and 1.0 During Inference (4-6 hours) - Completed
-17. **PYT-8.16b: Refactor UniFrac Distance Prediction to Match TensorFlow Approach (6-8 hours) - Not Started**
+17. ✅ **PYT-8.16b: Refactor UniFrac Distance Prediction to Match TensorFlow Approach (6-8 hours) - Completed**
 
 **Recommended Implementation Order for UniFrac Fixes:**
 1. ✅ **PYT-8.12** (diagonal masking) - Foundation fix, completed
@@ -138,7 +152,7 @@ Refactor UniFrac distance prediction to match TensorFlow implementation by compu
 3. ✅ **PYT-8.14** (bounded loss) - Completed, added clipping to [0, 1]
 4. ❌ **PYT-8.15** (weighted loss) - Cancelled per PYT-8.13 findings
 5. ✅ **PYT-8.16a** (investigate boundary prediction clustering) - Completed, identified root cause and architectural mismatch
-6. **PYT-8.16b** (refactor to TensorFlow approach) - Next priority, architectural change to match TensorFlow implementation
+6. ✅ **PYT-8.16b** (refactor to TensorFlow approach) - Completed, architectural change to match TensorFlow implementation
 
 **Notes:**
 - All Phase 8 tickets completed
