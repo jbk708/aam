@@ -97,6 +97,14 @@ class Trainer:
                 self.model = torch.compile(self.model)
             except AttributeError:
                 raise RuntimeError("torch.compile() is not available. Requires PyTorch 2.0+")
+            except RuntimeError as e:
+                # Catch Python 3.12+ limitation or other runtime errors
+                if "Dynamo is not supported" in str(e) or "not supported" in str(e):
+                    raise RuntimeError(
+                        f"torch.compile() is not supported in this environment: {e}. "
+                        "Model compilation requires PyTorch 2.0+ and Python < 3.12, or PyTorch 2.1+ with Python 3.12+."
+                    ) from e
+                raise
         
         self.loss_fn = loss_fn
         self.device = torch.device(device) if isinstance(device, str) else device
