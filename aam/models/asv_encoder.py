@@ -101,18 +101,32 @@ class ASVEncoder(nn.Module):
                 
                 embeddings = self.token_embedding(tokens_flat)
                 embeddings = self.position_embedding(embeddings)
-                embeddings = self.transformer(embeddings, mask=mask)
                 
-                # Mask out NaN values for all-padding sequences
-                # Transformer may produce NaN for all-padding sequences
+                # Handle all-padding sequences: skip transformer and set embeddings to zero
+                # This prevents NaN from being produced by the transformer
                 if all_padding.any():
-                    # Set embeddings to zero for all-padding sequences
-                    all_padding_expanded = all_padding.unsqueeze(-1).unsqueeze(-1)  # [batch_size * chunk_num_asvs, 1, 1]
-                    embeddings = torch.where(
-                        all_padding_expanded,
-                        torch.zeros_like(embeddings),
-                        embeddings
-                    )
+                    # For sequences with valid positions, run transformer normally
+                    # For all-padding sequences, set embeddings to zero (skip transformer)
+                    valid_mask = ~all_padding  # [batch_size * chunk_num_asvs]
+                    
+                    if valid_mask.any():
+                        # Process valid sequences through transformer
+                        valid_indices = torch.where(valid_mask)[0]
+                        valid_embeddings = embeddings[valid_indices]
+                        valid_mask_tensor = mask[valid_indices]
+                        
+                        valid_transformed = self.transformer(valid_embeddings, mask=valid_mask_tensor)
+                        
+                        # Combine: valid sequences get transformer output, all-padding get zeros
+                        all_embeddings = torch.zeros_like(embeddings)
+                        all_embeddings[valid_indices] = valid_transformed
+                        embeddings = all_embeddings
+                    else:
+                        # All sequences are all-padding, set all to zero
+                        embeddings = torch.zeros_like(embeddings)
+                else:
+                    # No all-padding sequences, normal transformer processing
+                    embeddings = self.transformer(embeddings, mask=mask)
                 
                 if self.predict_nucleotides and return_nucleotides:
                     nucleotide_logits = self.nucleotide_head(embeddings)
@@ -144,18 +158,32 @@ class ASVEncoder(nn.Module):
             
             embeddings = self.token_embedding(tokens_flat)
             embeddings = self.position_embedding(embeddings)
-            embeddings = self.transformer(embeddings, mask=mask)
             
-            # Mask out NaN values for all-padding sequences
-            # Transformer may produce NaN for all-padding sequences
+            # Handle all-padding sequences: skip transformer and set embeddings to zero
+            # This prevents NaN from being produced by the transformer
             if all_padding.any():
-                # Set embeddings to zero for all-padding sequences
-                all_padding_expanded = all_padding.unsqueeze(-1).unsqueeze(-1)  # [batch_size * num_asvs, 1, 1]
-                embeddings = torch.where(
-                    all_padding_expanded,
-                    torch.zeros_like(embeddings),
-                    embeddings
-                )
+                # For sequences with valid positions, run transformer normally
+                # For all-padding sequences, set embeddings to zero (skip transformer)
+                valid_mask = ~all_padding  # [batch_size * num_asvs]
+                
+                if valid_mask.any():
+                    # Process valid sequences through transformer
+                    valid_indices = torch.where(valid_mask)[0]
+                    valid_embeddings = embeddings[valid_indices]
+                    valid_mask_tensor = mask[valid_indices]
+                    
+                    valid_transformed = self.transformer(valid_embeddings, mask=valid_mask_tensor)
+                    
+                    # Combine: valid sequences get transformer output, all-padding get zeros
+                    all_embeddings = torch.zeros_like(embeddings)
+                    all_embeddings[valid_indices] = valid_transformed
+                    embeddings = all_embeddings
+                else:
+                    # All sequences are all-padding, set all to zero
+                    embeddings = torch.zeros_like(embeddings)
+            else:
+                # No all-padding sequences, normal transformer processing
+                embeddings = self.transformer(embeddings, mask=mask)
             
             nucleotide_predictions = None
             if self.predict_nucleotides and return_nucleotides:
