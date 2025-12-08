@@ -40,31 +40,34 @@ def compute_pairwise_distances(embeddings: torch.Tensor) -> torch.Tensor:
     # Check for NaN or Inf in embeddings
     if torch.any(torch.isnan(embeddings)):
         import sys
+
         error_msg = f"NaN values found in embeddings before distance computation, shape={embeddings.shape}"
         print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
         raise ValueError(error_msg)
     if torch.any(torch.isinf(embeddings)):
         import sys
+
         error_msg = f"Inf values found in embeddings before distance computation, shape={embeddings.shape}"
         print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
         raise ValueError(error_msg)
-    
+
     # Compute squared differences: (a - b)^2 for all pairs
     # Using broadcasting: [batch_size, 1, embedding_dim] - [1, batch_size, embedding_dim]
     # Result: [batch_size, batch_size, embedding_dim]
     diff = embeddings.unsqueeze(1) - embeddings.unsqueeze(0)
-    squared_diff = diff ** 2
-    
+    squared_diff = diff**2
+
     # Sum over embedding dimension: [batch_size, batch_size]
     squared_distances = squared_diff.sum(dim=-1)
-    
+
     # Check for NaN in squared distances (shouldn't happen, but safety check)
     if torch.any(torch.isnan(squared_distances)):
         import sys
+
         error_msg = f"NaN values found in squared_distances, shape={squared_distances.shape}"
         print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
         raise ValueError(error_msg)
-    
+
     # Take square root to get Euclidean distances
     # Clamp to prevent numerical issues (sqrt of very small negative values)
     # Use eps to prevent sqrt(0) numerical issues, but allow zero distances (diagonal)
@@ -75,16 +78,25 @@ def compute_pairwise_distances(embeddings: torch.Tensor) -> torch.Tensor:
     # Use non-inplace operation to preserve gradient computation
     eye_mask = torch.eye(distances.shape[0], device=distances.device, dtype=distances.dtype)
     distances = distances * (1.0 - eye_mask)
-    
+
     # Final check for NaN in distances
     if torch.any(torch.isnan(distances)):
         import sys
+
         error_msg = f"NaN values found in computed distances, shape={distances.shape}"
         print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
-        print(f"embeddings stats: min={embeddings.min().item():.6f}, max={embeddings.max().item():.6f}, mean={embeddings.mean().item():.6f}", file=sys.stderr, flush=True)
-        print(f"squared_distances stats: min={squared_distances.min().item():.6f}, max={squared_distances.max().item():.6f}, mean={squared_distances.mean().item():.6f}", file=sys.stderr, flush=True)
+        print(
+            f"embeddings stats: min={embeddings.min().item():.6f}, max={embeddings.max().item():.6f}, mean={embeddings.mean().item():.6f}",
+            file=sys.stderr,
+            flush=True,
+        )
+        print(
+            f"squared_distances stats: min={squared_distances.min().item():.6f}, max={squared_distances.max().item():.6f}, mean={squared_distances.mean().item():.6f}",
+            file=sys.stderr,
+            flush=True,
+        )
         raise ValueError(error_msg)
-    
+
     return distances
 
 
@@ -182,6 +194,7 @@ class MultiTaskLoss(nn.Module):
             # Check for NaN in embeddings before computing distances
             if torch.any(torch.isnan(embeddings)):
                 import sys
+
                 error_msg = f"NaN values found in embeddings with shape {embeddings.shape}"
                 print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
                 print(
@@ -192,6 +205,7 @@ class MultiTaskLoss(nn.Module):
                 raise ValueError(error_msg)
             if torch.any(torch.isinf(embeddings)):
                 import sys
+
                 error_msg = f"Inf values found in embeddings with shape {embeddings.shape}"
                 print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
                 raise ValueError(error_msg)
@@ -201,13 +215,14 @@ class MultiTaskLoss(nn.Module):
             except ValueError as e:
                 # Re-raise with more context
                 import sys
+
                 print(f"ERROR: Failed to compute pairwise distances from embeddings", file=sys.stderr, flush=True)
                 print(f"embeddings shape={embeddings.shape}, {_format_tensor_stats(embeddings)}", file=sys.stderr, flush=True)
                 raise
         elif encoder_type == "unifrac" and embeddings is None:
             # Legacy mode: use base_pred directly (for backward compatibility)
             pass
-        
+
         # Validate shapes match
         if base_pred.shape != base_true.shape:
             import sys
@@ -445,7 +460,9 @@ class MultiTaskLoss(nn.Module):
                 if reference_tensor is not None:
                     losses["unifrac_loss"] = torch.zeros_like(reference_tensor.sum(), requires_grad=True)
                 else:
-                    losses["unifrac_loss"] = torch.tensor(0.0, device=device if device else torch.device("cpu"), requires_grad=True)
+                    losses["unifrac_loss"] = torch.tensor(
+                        0.0, device=device if device else torch.device("cpu"), requires_grad=True
+                    )
         else:
             if reference_tensor is not None:
                 losses["unifrac_loss"] = torch.zeros_like(reference_tensor.sum(), requires_grad=True)

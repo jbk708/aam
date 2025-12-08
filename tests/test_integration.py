@@ -458,16 +458,16 @@ class TestTrainingPipelineIntegration:
         # Since we're using TensorDataset, we'll create a custom dataset that generates
         # distance matrices per batch
         from aam.data.tokenizer import SequenceTokenizer
-        
+
         class UniFracDataset:
             def __init__(self, tokens, batch_size):
                 self.tokens = tokens
                 self.batch_size = batch_size
                 self.num_batches = len(tokens) // batch_size
-                
+
             def __len__(self):
                 return self.num_batches
-                
+
             def __getitem__(self, idx):
                 start_idx = idx * self.batch_size
                 end_idx = start_idx + self.batch_size
@@ -478,7 +478,7 @@ class TestTrainingPipelineIntegration:
                 dist_matrix.fill_diagonal_(0.0)  # Zero diagonal
                 dist_matrix = dist_matrix.to(batch_tokens.device)
                 return batch_tokens, dist_matrix
-        
+
         dataset = UniFracDataset(tokens, batch_size)
         dataloader = DataLoader(dataset, batch_size=1, shuffle=False, collate_fn=lambda x: x[0])
 

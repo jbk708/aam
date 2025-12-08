@@ -287,7 +287,7 @@ class TestSequenceEncoder:
             assert isinstance(result, dict)
             assert "base_prediction" in result
             assert result["base_prediction"].shape == (2, 32)
-        
+
         # Test UniFrac separately (new architecture)
         encoder = SequenceEncoder(
             embedding_dim=64,
@@ -373,9 +373,10 @@ class TestSequenceEncoder:
         # Embeddings should not be constrained to [0, 1] (they can be any value)
         # They are used to compute distances, which are naturally >= 0
         assert embeddings.shape == (2, 64)
-        
+
         # Test that distances computed from embeddings are non-negative
         from aam.training.losses import compute_pairwise_distances
+
         distances = compute_pairwise_distances(embeddings)
         assert torch.all(distances >= 0.0), "Distances should be >= 0.0"
         assert torch.allclose(torch.diag(distances), torch.zeros(2)), "Diagonal should be 0.0"

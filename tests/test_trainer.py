@@ -112,7 +112,7 @@ def simple_dataloader_encoder(device):
     tokens = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len))
     tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
     tokens = tokens.to(device)
-    
+
     # For UniFrac, base_targets should be pairwise distance matrices [batch_size, batch_size]
     # Since TensorDataset requires same shape, we'll create a custom dataset that generates
     # distance matrices per batch
@@ -121,10 +121,10 @@ def simple_dataloader_encoder(device):
             self.tokens = tokens
             self.batch_size = batch_size
             self.num_batches = len(tokens) // batch_size
-            
+
         def __len__(self):
             return self.num_batches
-            
+
         def __getitem__(self, idx):
             start_idx = idx * self.batch_size
             end_idx = start_idx + self.batch_size
@@ -137,7 +137,7 @@ def simple_dataloader_encoder(device):
             # Move to same device as tokens
             dist_matrix = dist_matrix.to(batch_tokens.device)
             return batch_tokens, dist_matrix
-    
+
     dataset = UniFracDataset(tokens, batch_size)
     # Use collate_fn to handle the batching (each item is already a batch)
     return DataLoader(dataset, batch_size=1, shuffle=False, collate_fn=lambda x: x[0])
@@ -937,14 +937,17 @@ class TestGradientAccumulation:
         tokens1 = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len))
         tokens1[:, :, 0] = SequenceTokenizer.START_TOKEN
         tokens1 = tokens1.to(device)
+
         # For UniFrac, create pairwise distance matrices per batch
         class UniFracDataset:
             def __init__(self, tokens, batch_size):
                 self.tokens = tokens
                 self.batch_size = batch_size
                 self.num_batches = len(tokens) // batch_size
+
             def __len__(self):
                 return self.num_batches
+
             def __getitem__(self, idx):
                 start_idx = idx * self.batch_size
                 end_idx = start_idx + self.batch_size
@@ -955,10 +958,10 @@ class TestGradientAccumulation:
                 dist_matrix.fill_diagonal_(0.0)
                 dist_matrix = dist_matrix.to(batch_tokens.device)
                 return batch_tokens, dist_matrix
-        
+
         dataset1 = UniFracDataset(tokens1, batch_size)
         dataloader1 = DataLoader(dataset1, batch_size=1, shuffle=False, collate_fn=lambda x: x[0])
-        
+
         tokens2 = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len))
         tokens2[:, :, 0] = SequenceTokenizer.START_TOKEN
         tokens2 = tokens2.to(device)

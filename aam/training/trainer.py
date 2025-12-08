@@ -518,7 +518,11 @@ class Trainer:
                         )
                         # Check sample_embeddings too for debugging
                         if "sample_embeddings" in outputs:
-                            print(f"sample_embeddings has NaN: {torch.any(torch.isnan(outputs['sample_embeddings']))}", file=sys.stderr, flush=True)
+                            print(
+                                f"sample_embeddings has NaN: {torch.any(torch.isnan(outputs['sample_embeddings']))}",
+                                file=sys.stderr,
+                                flush=True,
+                            )
                         raise ValueError("NaN values found in embeddings before loss computation")
                 elif "base_prediction" in outputs:
                     if torch.any(torch.isnan(outputs["base_prediction"])):
@@ -806,7 +810,7 @@ class Trainer:
                             # For pretraining, collect base_prediction (UniFrac) for plotting
                             # For UniFrac, compute distances from embeddings if available
                             from aam.training.losses import compute_pairwise_distances
-                            
+
                             if "base_target" in targets:
                                 encoder_type = self._get_encoder_type()
                                 if encoder_type == "unifrac" and "embeddings" in outputs:
@@ -817,7 +821,7 @@ class Trainer:
                                     base_pred_batch = outputs["base_prediction"]
                                 else:
                                     base_pred_batch = None
-                                
+
                                 if base_pred_batch is not None:
                                     if "base_prediction" not in all_predictions:
                                         all_predictions["base_prediction"] = []

@@ -133,37 +133,37 @@ class TestPairwiseDistances:
     def test_compute_pairwise_distances(self):
         """Test that pairwise distances are computed correctly from embeddings."""
         from aam.training.losses import compute_pairwise_distances
-        
+
         batch_size = 4
         embedding_dim = 8
         embeddings = torch.randn(batch_size, embedding_dim)
-        
+
         distances = compute_pairwise_distances(embeddings)
-        
+
         assert distances.shape == (batch_size, batch_size)
         assert torch.all(distances >= 0)  # Distances should be non-negative
         assert torch.allclose(distances, distances.T)  # Should be symmetric
         assert torch.allclose(torch.diag(distances), torch.zeros(batch_size))  # Diagonal should be 0
-        
+
         # Test that distances match manual computation for first pair
         manual_dist = torch.sqrt(((embeddings[0] - embeddings[1]) ** 2).sum())
         assert torch.allclose(distances[0, 1], manual_dist)
-        
+
         # Test that distances are Euclidean
         diff = embeddings[0] - embeddings[1]
-        expected_dist = torch.sqrt((diff ** 2).sum())
+        expected_dist = torch.sqrt((diff**2).sum())
         assert torch.allclose(distances[0, 1], expected_dist)
 
     def test_compute_pairwise_distances_single_sample(self):
         """Test pairwise distances with batch_size=1."""
         from aam.training.losses import compute_pairwise_distances
-        
+
         batch_size = 1
         embedding_dim = 8
         embeddings = torch.randn(batch_size, embedding_dim)
-        
+
         distances = compute_pairwise_distances(embeddings)
-        
+
         assert distances.shape == (batch_size, batch_size)
         assert torch.allclose(distances[0, 0], torch.tensor(0.0))  # Distance to self is 0
 
@@ -174,7 +174,7 @@ class TestBaseLoss:
     def test_base_loss_unifrac_with_embeddings(self, loss_fn):
         """Test MSE loss for UniFrac using embeddings (new approach)."""
         from aam.training.losses import compute_pairwise_distances
-        
+
         batch_size = 4
         embedding_dim = 8
         embeddings = torch.randn(batch_size, embedding_dim)
@@ -182,20 +182,20 @@ class TestBaseLoss:
         # Ensure base_true is symmetric and has zero diagonal
         base_true = (base_true + base_true.T) / 2
         base_true.fill_diagonal_(0.0)
-        
+
         # Compute distances from embeddings
         computed_distances = compute_pairwise_distances(embeddings)
-        
+
         loss = loss_fn.compute_base_loss(
             torch.zeros(1),  # Dummy base_pred (ignored when embeddings provided)
             base_true,
             encoder_type="unifrac",
             embeddings=embeddings,
         )
-        
+
         assert loss.dim() == 0
         assert loss.item() >= 0
-        
+
         # Loss should match manual computation
         triu_indices = torch.triu_indices(batch_size, batch_size, offset=1, device=embeddings.device)
         computed_masked = computed_distances[triu_indices[0], triu_indices[1]]
@@ -261,12 +261,15 @@ class TestBaseLoss:
         expected_loss = nn.functional.mse_loss(base_pred, base_true)
         assert torch.allclose(loss, expected_loss)
 
-    @pytest.mark.parametrize("encoder_type,base_pred_shape,base_true_shape", [
-        ("unifrac", (4, 4), (4, 5)),  # Different second dimension
-        ("unifrac", (4, 4), (6, 6)),  # Different batch sizes
-        ("unifrac", (4, 6), (4, 4)),  # base_output_dim mismatch
-        ("faith_pd", (4, 1), (4, 2)),  # Different output dims
-    ])
+    @pytest.mark.parametrize(
+        "encoder_type,base_pred_shape,base_true_shape",
+        [
+            ("unifrac", (4, 4), (4, 5)),  # Different second dimension
+            ("unifrac", (4, 4), (6, 6)),  # Different batch sizes
+            ("unifrac", (4, 6), (4, 4)),  # base_output_dim mismatch
+            ("faith_pd", (4, 1), (4, 2)),  # Different output dims
+        ],
+    )
     def test_base_loss_shape_mismatch_raises_error(self, loss_fn, encoder_type, base_pred_shape, base_true_shape):
         """Test that shape mismatches in base loss raise ValueError."""
         base_pred = torch.randn(*base_pred_shape)
@@ -305,8 +308,7 @@ class TestBaseLoss:
         loss_unifrac = loss_fn.compute_base_loss(base_pred, base_true, encoder_type="unifrac")
         triu_indices = torch.triu_indices(batch_size, batch_size, offset=1, device=base_pred.device)
         expected_loss = nn.functional.mse_loss(
-            base_pred[triu_indices[0], triu_indices[1]],
-            base_true[triu_indices[0], triu_indices[1]]
+            base_pred[triu_indices[0], triu_indices[1]], base_true[triu_indices[0], triu_indices[1]]
         )
         assert torch.allclose(loss_unifrac, expected_loss)
         assert loss_unifrac.item() < 100.0  # Not affected by large diagonal values
@@ -316,7 +318,6 @@ class TestBaseLoss:
             loss_other = loss_fn.compute_base_loss(base_pred, base_true, encoder_type=encoder_type)
             expected_loss_other = nn.functional.mse_loss(base_pred, base_true)
             assert torch.allclose(loss_other, expected_loss_other)
-
 
     @pytest.mark.parametrize("batch_size", [1, 2, 4, 8])
     def test_base_loss_unifrac_edge_cases(self, loss_fn, batch_size):
@@ -335,11 +336,9 @@ class TestBaseLoss:
             assert loss.item() >= 0
             triu_indices = torch.triu_indices(batch_size, batch_size, offset=1, device=base_pred.device)
             expected_loss = nn.functional.mse_loss(
-                base_pred[triu_indices[0], triu_indices[1]],
-                base_true[triu_indices[0], triu_indices[1]]
+                base_pred[triu_indices[0], triu_indices[1]], base_true[triu_indices[0], triu_indices[1]]
             )
             assert torch.allclose(loss, expected_loss)
-
 
 
 class TestNucleotideLoss:
@@ -465,7 +464,7 @@ class TestTotalLoss:
     def test_total_loss_with_embeddings_unifrac(self, loss_fn):
         """Test total loss with embeddings for UniFrac (new approach)."""
         from aam.training.losses import compute_pairwise_distances
-        
+
         batch_size = 4
         embedding_dim = 8
         num_asvs = 10
@@ -482,7 +481,7 @@ class TestTotalLoss:
 
         # Compute expected distances from embeddings
         expected_distances = compute_pairwise_distances(embeddings)
-        
+
         targets = {
             "target": torch.randn(batch_size, 1),
             "counts": torch.randn(batch_size, num_asvs, 1),
@@ -502,7 +501,7 @@ class TestTotalLoss:
         assert "unifrac_loss" in losses
         assert "nuc_loss" in losses
         assert "total_loss" in losses
-        
+
         # Verify unifrac_loss is computed from embeddings
         assert losses["unifrac_loss"].item() >= 0
 
