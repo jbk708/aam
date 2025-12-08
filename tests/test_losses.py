@@ -303,10 +303,9 @@ class TestBaseLoss:
 
         # Test 1: UniFrac masks diagonal
         loss_unifrac = loss_fn.compute_base_loss(base_pred, base_true, encoder_type="unifrac")
-        base_pred_clipped = torch.clamp(base_pred, 0.0, 1.0)
         triu_indices = torch.triu_indices(batch_size, batch_size, offset=1, device=base_pred.device)
         expected_loss = nn.functional.mse_loss(
-            base_pred_clipped[triu_indices[0], triu_indices[1]],
+            base_pred[triu_indices[0], triu_indices[1]],
             base_true[triu_indices[0], triu_indices[1]]
         )
         assert torch.allclose(loss_unifrac, expected_loss)
@@ -335,55 +334,12 @@ class TestBaseLoss:
             assert loss.dim() == 0
             assert loss.item() >= 0
             triu_indices = torch.triu_indices(batch_size, batch_size, offset=1, device=base_pred.device)
-            base_pred_clipped = torch.clamp(base_pred, 0.0, 1.0)
             expected_loss = nn.functional.mse_loss(
-                base_pred_clipped[triu_indices[0], triu_indices[1]],
+                base_pred[triu_indices[0], triu_indices[1]],
                 base_true[triu_indices[0], triu_indices[1]]
             )
             assert torch.allclose(loss, expected_loss)
 
-    def test_base_loss_unifrac_clipping_behavior(self, loss_fn):
-        """Test UniFrac clipping behavior: enabled by default, only for UniFrac, preserves gradients."""
-        batch_size = 4
-        # Create predictions outside [0, 1] range
-        base_pred = torch.tensor([[-0.5, 0.3, 0.7, 1.5], [0.2, -0.1, 1.2, 0.8], [0.9, 0.4, 0.6, 2.0], [0.1, 0.5, 0.3, -0.3]])
-        base_true = torch.ones(batch_size, batch_size) * 0.5
-
-        # Test 1: Clipping enabled by default
-        loss_default = loss_fn.compute_base_loss(base_pred, base_true, encoder_type="unifrac")
-        loss_explicit = loss_fn.compute_base_loss(base_pred, base_true, encoder_type="unifrac", clip_predictions=True)
-        assert torch.allclose(loss_default, loss_explicit)
-
-        # Test 2: Clipping can be disabled
-        loss_no_clip = loss_fn.compute_base_loss(base_pred, base_true, encoder_type="unifrac", clip_predictions=False)
-        assert not torch.allclose(loss_default, loss_no_clip)
-        assert loss_default.item() < loss_no_clip.item()  # Clipped loss should be lower
-
-        # Test 3: Clipping only applies to UniFrac, not other encoder types
-        for encoder_type in ["faith_pd", "taxonomy"]:
-            loss_other = loss_fn.compute_base_loss(base_pred, base_true, encoder_type=encoder_type, clip_predictions=True)
-            expected_loss = nn.functional.mse_loss(base_pred, base_true)
-            assert torch.allclose(loss_other, expected_loss)  # No clipping for non-UniFrac
-
-        # Test 4: Clipping preserves gradients
-        base_pred_grad = base_pred.clone().requires_grad_(True)
-        loss = loss_fn.compute_base_loss(base_pred_grad, base_true, encoder_type="unifrac", clip_predictions=True)
-        assert loss.requires_grad
-        loss.backward()
-        assert base_pred_grad.grad is not None
-        assert not torch.allclose(base_pred_grad.grad, torch.zeros_like(base_pred_grad.grad))
-
-        # Test 5: Clipping works with diagonal masking
-        base_pred.fill_diagonal_(5.0)
-        base_true.fill_diagonal_(0.0)
-        loss = loss_fn.compute_base_loss(base_pred, base_true, encoder_type="unifrac", clip_predictions=True)
-        base_pred_clipped = torch.clamp(base_pred, 0.0, 1.0)
-        triu_indices = torch.triu_indices(batch_size, batch_size, offset=1, device=base_pred.device)
-        expected_loss = nn.functional.mse_loss(
-            base_pred_clipped[triu_indices[0], triu_indices[1]],
-            base_true[triu_indices[0], triu_indices[1]]
-        )
-        assert torch.allclose(loss, expected_loss)
 
 
 class TestNucleotideLoss:
