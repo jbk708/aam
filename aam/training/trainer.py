@@ -102,7 +102,7 @@ class Trainer:
                 if "Dynamo is not supported" in str(e) or "not supported" in str(e):
                     raise RuntimeError(
                         f"torch.compile() is not supported in this environment: {e}. "
-                        "Model compilation requires PyTorch 2.0+ and Python < 3.12, or PyTorch 2.1+ with Python 3.12+."
+                        "Model compilation requires PyTorch 2.0+ and Python < 3.12, or PyTorch 2.3.0+ with Python 3.12+."
                     ) from e
                 raise
 

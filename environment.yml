@@ -7,7 +7,7 @@ channels:
 dependencies:
   - python >=3.9,<3.13
   - pip
-  - pytorch >=2.1.0
+  - pytorch >=2.3.0
   - numpy
   - pandas
   - scikit-bio-binaries  # OpenMP binaries for scikit-bio on macOS (provides llvm-openmp)
