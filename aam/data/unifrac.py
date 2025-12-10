@@ -55,12 +55,13 @@ class UniFracComputer:
         self._table_for_pruning: Optional[Table] = None
         self._pruned_tree_cache: Optional[str] = None
 
-    def compute_unweighted(self, table: Table, tree_path: str) -> DistanceMatrix:
+    def compute_unweighted(self, table: Table, tree_path: str, filter_table: bool = True) -> DistanceMatrix:
         """Compute unweighted UniFrac distances between samples.
 
         Args:
             table: Rarefied biom.Table object
             tree_path: Path to phylogenetic tree file (.nwk Newick format)
+            filter_table: If True, filter table to only include ASVs present in tree
 
         Returns:
             skbio.DistanceMatrix containing pairwise unweighted UniFrac distances
@@ -79,21 +80,43 @@ class UniFracComputer:
         except Exception as e:
             raise ValueError(f"Error loading phylogenetic tree from {tree_path}: {e}")
 
+        # Filter table to only include ASVs present in tree if requested
+        if filter_table:
+            tree_tips = {tip.name for tip in tree.tips() if tip.name is not None}
+            table_asv_ids = set(table.ids(axis="observation"))
+            asvs_to_keep = table_asv_ids.intersection(tree_tips)
+            
+            if len(asvs_to_keep) == 0:
+                raise ValueError(
+                    f"No ASVs from table found in tree. "
+                    f"Table has {len(table_asv_ids)} ASVs, tree has {len(tree_tips)} tips, overlap: 0"
+                )
+            
+            if len(asvs_to_keep) < len(table_asv_ids):
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    f"Filtering table: {len(table_asv_ids)} ASVs -> {len(asvs_to_keep)} ASVs "
+                    f"({len(table_asv_ids) - len(asvs_to_keep)} ASVs not in tree)"
+                )
+                table = table.filter(asvs_to_keep, axis="observation", inplace=False)
+
         try:
             distance_matrix = unifrac.unweighted(table, tree)
         except Exception as e:
-            if "not found" in str(e).lower() or "mismatch" in str(e).lower():
+            if "not found" in str(e).lower() or "mismatch" in str(e).lower() or "completely represented" in str(e).lower():
                 raise ValueError(f"ASV IDs don't match between table and tree: {e}") from e
             raise ValueError(f"Error computing unweighted UniFrac: {e}") from e
 
         return distance_matrix
 
-    def compute_faith_pd(self, table: Table, tree_path: str) -> Union[DistanceMatrix, pd.Series]:
+    def compute_faith_pd(self, table: Table, tree_path: str, filter_table: bool = True) -> Union[DistanceMatrix, pd.Series]:
         """Compute Faith's Phylogenetic Diversity (Faith PD) per sample.
 
         Args:
             table: Rarefied biom.Table object
             tree_path: Path to phylogenetic tree file (.nwk Newick format)
+            filter_table: If True, filter table to only include ASVs present in tree
 
         Returns:
             pandas Series containing Faith PD values per sample
@@ -112,10 +135,31 @@ class UniFracComputer:
         except Exception as e:
             raise ValueError(f"Error loading phylogenetic tree from {tree_path}: {e}")
 
+        # Filter table to only include ASVs present in tree if requested
+        if filter_table:
+            tree_tips = {tip.name for tip in tree.tips() if tip.name is not None}
+            table_asv_ids = set(table.ids(axis="observation"))
+            asvs_to_keep = table_asv_ids.intersection(tree_tips)
+            
+            if len(asvs_to_keep) == 0:
+                raise ValueError(
+                    f"No ASVs from table found in tree. "
+                    f"Table has {len(table_asv_ids)} ASVs, tree has {len(tree_tips)} tips, overlap: 0"
+                )
+            
+            if len(asvs_to_keep) < len(table_asv_ids):
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    f"Filtering table: {len(table_asv_ids)} ASVs -> {len(asvs_to_keep)} ASVs "
+                    f"({len(table_asv_ids) - len(asvs_to_keep)} ASVs not in tree)"
+                )
+                table = table.filter(asvs_to_keep, axis="observation", inplace=False)
+
         try:
             faith_pd_series = unifrac.faith_pd(table, tree)
         except Exception as e:
-            if "not found" in str(e).lower() or "mismatch" in str(e).lower():
+            if "not found" in str(e).lower() or "mismatch" in str(e).lower() or "completely represented" in str(e).lower():
                 raise ValueError(f"ASV IDs don't match between table and tree: {e}") from e
             raise ValueError(f"Error computing Faith PD: {e}") from e
 
