@@ -290,7 +290,9 @@ def train(
         
         if lazy_unifrac:
             logger.info("Using lazy UniFrac computation (batch-wise, on-the-fly)")
+            logger.info("Setting up lazy computation (loading tree into memory)...")
             unifrac_computer.setup_lazy_computation(table_obj, tree)
+            logger.info("Lazy computation setup complete")
             unifrac_distances = None
             train_distance_matrix = None
             val_distance_matrix = None
@@ -313,10 +315,14 @@ def train(
 
         logger.info("Splitting data...")
         sample_ids = list(table_obj.ids(axis="sample"))
+        logger.info(f"Total samples: {len(sample_ids)}")
         train_ids, val_ids = train_test_split(sample_ids, test_size=test_size, random_state=seed)
+        logger.info(f"Train samples: {len(train_ids)}, Validation samples: {len(val_ids)}")
 
+        logger.info("Filtering tables for train/val splits...")
         train_table = table_obj.filter(train_ids, axis="sample", inplace=False)
         val_table = table_obj.filter(val_ids, axis="sample", inplace=False)
+        logger.info("Table filtering complete")
 
         train_metadata = metadata_df[metadata_df["sample_id"].isin(train_ids)]
         val_metadata = metadata_df[metadata_df["sample_id"].isin(val_ids)]
@@ -612,7 +618,9 @@ def pretrain(
         
         if lazy_unifrac:
             logger.info("Using lazy UniFrac computation (batch-wise, on-the-fly)")
+            logger.info("Setting up lazy computation (loading tree into memory)...")
             unifrac_computer.setup_lazy_computation(table_obj, tree)
+            logger.info("Lazy computation setup complete")
             unifrac_distances = None
             train_distance_matrix = None
             val_distance_matrix = None
@@ -639,10 +647,14 @@ def pretrain(
 
         logger.info("Splitting data...")
         sample_ids = list(table_obj.ids(axis="sample"))
+        logger.info(f"Total samples: {len(sample_ids)}")
         train_ids, val_ids = train_test_split(sample_ids, test_size=test_size, random_state=seed)
+        logger.info(f"Train samples: {len(train_ids)}, Validation samples: {len(val_ids)}")
 
+        logger.info("Filtering tables for train/val splits...")
         train_table = table_obj.filter(train_ids, axis="sample", inplace=False)
         val_table = table_obj.filter(val_ids, axis="sample", inplace=False)
+        logger.info("Table filtering complete")
 
         if not lazy_unifrac:
             train_distance_matrix = None
