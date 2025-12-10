@@ -884,14 +884,18 @@ class Trainer:
 
                             if "base_target" in targets:
                                 encoder_type = self._get_encoder_type()
+                                base_pred_batch = None
+                                
+                                # Try to get embeddings first (for UniFrac encoder type)
                                 if encoder_type == "unifrac" and "embeddings" in outputs:
                                     # Compute distances from embeddings
                                     embeddings = outputs["embeddings"]
-                                    base_pred_batch = compute_pairwise_distances(embeddings)
-                                elif "base_prediction" in outputs:
+                                    if embeddings is not None:
+                                        base_pred_batch = compute_pairwise_distances(embeddings)
+                                
+                                # Fallback to base_prediction if embeddings not available
+                                if base_pred_batch is None and "base_prediction" in outputs:
                                     base_pred_batch = outputs["base_prediction"]
-                                else:
-                                    base_pred_batch = None
 
                                 if base_pred_batch is not None:
                                     if "base_prediction" not in all_predictions:
@@ -954,6 +958,12 @@ class Trainer:
         base_pred_tensor = None
         base_true_tensor = None
 
+        # Debug: Log if predictions weren't collected
+        if compute_metrics and not all_predictions:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"No predictions collected for metrics computation at epoch {epoch}. Outputs keys: {list(outputs.keys()) if 'outputs' in locals() else 'N/A'}")
+        
         if compute_metrics and all_predictions:
             if is_pretraining and "base_prediction" in all_predictions:
                 # For pretraining, compute metrics for UniFrac predictions
