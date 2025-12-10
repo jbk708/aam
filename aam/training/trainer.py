@@ -907,6 +907,7 @@ class Trainer:
                                         try:
                                             # Detach embeddings before computing distances to ensure proper gradient handling
                                             embeddings_detached = embeddings.detach()
+                                            # Normalize distances to [0, 1] for UniFrac (normalize=True is now the default)
                                             base_pred_batch = compute_pairwise_distances(embeddings_detached).detach()
                                         except Exception as e:
                                             import logging

@@ -28,14 +28,21 @@ def _format_tensor_stats(tensor: torch.Tensor) -> str:
         return f"min={min_val:.6f}, max={max_val:.6f}, mean={mean_val:.6f}"
 
 
-def compute_pairwise_distances(embeddings: torch.Tensor) -> torch.Tensor:
+def compute_pairwise_distances(
+    embeddings: torch.Tensor,
+    normalize: bool = True,
+    scale: float = 5.0,
+) -> torch.Tensor:
     """Compute pairwise Euclidean distances from embeddings.
 
     Args:
         embeddings: Sample embeddings [batch_size, embedding_dim]
+        normalize: If True, normalize distances to [0, 1] using sigmoid (default: True)
+        scale: Scaling factor for sigmoid normalization (default: 5.0)
 
     Returns:
         Pairwise distance matrix [batch_size, batch_size]
+        If normalize=True, distances are bounded to [0, 1]
     """
     # Check for NaN or Inf in embeddings
     if torch.any(torch.isnan(embeddings)):
@@ -96,6 +103,18 @@ def compute_pairwise_distances(embeddings: torch.Tensor) -> torch.Tensor:
             flush=True,
         )
         raise ValueError(error_msg)
+
+    # Normalize distances to [0, 1] if requested (for UniFrac distances)
+    if normalize:
+        # Apply sigmoid with scaling to bound distances to [0, 1]
+        # scale parameter controls sensitivity: larger scale = more sensitive to distance changes
+        # sigmoid(scale * distance) maps distances to [0, 1]
+        # Note: diagonal is already 0.0, sigmoid(0) = 0.5, so we need to handle diagonal separately
+        normalized_distances = torch.sigmoid(scale * distances)
+        # Preserve diagonal as 0.0 (distance from sample to itself)
+        eye_mask = torch.eye(distances.shape[0], device=distances.device, dtype=distances.dtype)
+        normalized_distances = normalized_distances * (1.0 - eye_mask)
+        return normalized_distances
 
     return distances
 
@@ -210,6 +229,8 @@ class MultiTaskLoss(nn.Module):
                 print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
                 raise ValueError(error_msg)
             # Compute pairwise distances from embeddings
+            # Normalize to [0, 1] for UniFrac distances (UniFrac distances are bounded)
+            # normalize=True is now the default
             try:
                 base_pred = compute_pairwise_distances(embeddings)
             except ValueError as e:
