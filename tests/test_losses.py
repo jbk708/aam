@@ -131,14 +131,15 @@ class TestPairwiseDistances:
     """Test pairwise distance computation from embeddings."""
 
     def test_compute_pairwise_distances(self):
-        """Test that pairwise distances are computed correctly from embeddings."""
+        """Test that pairwise distances are computed correctly from embeddings (unnormalized)."""
         from aam.training.losses import compute_pairwise_distances
 
         batch_size = 4
         embedding_dim = 8
         embeddings = torch.randn(batch_size, embedding_dim)
 
-        distances = compute_pairwise_distances(embeddings)
+        # Test unnormalized distances (explicitly pass normalize=False)
+        distances = compute_pairwise_distances(embeddings, normalize=False)
 
         assert distances.shape == (batch_size, batch_size)
         assert torch.all(distances >= 0)  # Distances should be non-negative
@@ -155,14 +156,15 @@ class TestPairwiseDistances:
         assert torch.allclose(distances[0, 1], expected_dist)
 
     def test_compute_pairwise_distances_single_sample(self):
-        """Test pairwise distances with batch_size=1."""
+        """Test pairwise distances with batch_size=1 (unnormalized)."""
         from aam.training.losses import compute_pairwise_distances
 
         batch_size = 1
         embedding_dim = 8
         embeddings = torch.randn(batch_size, embedding_dim)
 
-        distances = compute_pairwise_distances(embeddings)
+        # Test unnormalized distances (explicitly pass normalize=False)
+        distances = compute_pairwise_distances(embeddings, normalize=False)
 
         assert distances.shape == (batch_size, batch_size)
         assert torch.allclose(distances[0, 0], torch.tensor(0.0))  # Distance to self is 0
@@ -175,7 +177,7 @@ class TestPairwiseDistances:
         embedding_dim = 8
         embeddings = torch.randn(batch_size, embedding_dim)
 
-        distances = compute_pairwise_distances(embeddings, normalize=True)
+        distances = compute_pairwise_distances(embeddings)
 
         assert distances.shape == (batch_size, batch_size)
         # All distances should be in [0, 1]
@@ -194,15 +196,19 @@ class TestPairwiseDistances:
         embedding_dim = 8
         embeddings = torch.randn(batch_size, embedding_dim, requires_grad=True)
 
-        distances = compute_pairwise_distances(embeddings, normalize=True)
+        distances = compute_pairwise_distances(embeddings)
 
-        # Compute a loss and check gradients
-        loss = distances.sum()
+        # Compute a loss using off-diagonal elements to ensure non-zero gradients
+        # Sum only off-diagonal elements to avoid gradient cancellation from symmetry
+        triu_indices = torch.triu_indices(batch_size, batch_size, offset=1, device=distances.device)
+        off_diagonal_distances = distances[triu_indices[0], triu_indices[1]]
+        loss = off_diagonal_distances.sum()
         loss.backward()
 
-        # Check that gradients exist
+        # Check that gradients exist and are non-zero
         assert embeddings.grad is not None
-        assert not torch.allclose(embeddings.grad, torch.zeros_like(embeddings.grad))
+        # Check that at least some gradients are non-zero (use a more lenient check)
+        assert torch.abs(embeddings.grad).max().item() > 1e-6, "Gradients should be non-zero"
 
     def test_compute_pairwise_distances_normalized_different_scales(self):
         """Test that different scale values affect normalization."""
@@ -212,10 +218,10 @@ class TestPairwiseDistances:
         embedding_dim = 8
         embeddings = torch.randn(batch_size, embedding_dim)
 
-        # Test with different scale values
-        distances_scale_1 = compute_pairwise_distances(embeddings, normalize=True, scale=1.0)
-        distances_scale_5 = compute_pairwise_distances(embeddings, normalize=True, scale=5.0)
-        distances_scale_10 = compute_pairwise_distances(embeddings, normalize=True, scale=10.0)
+        # Test with different scale values (normalize=True is now the default)
+        distances_scale_1 = compute_pairwise_distances(embeddings, scale=1.0)
+        distances_scale_5 = compute_pairwise_distances(embeddings, scale=5.0)
+        distances_scale_10 = compute_pairwise_distances(embeddings, scale=10.0)
 
         # All should be in [0, 1]
         assert torch.all(distances_scale_1 >= 0.0) and torch.all(distances_scale_1 <= 1.0)
@@ -237,18 +243,19 @@ class TestBaseLoss:
     """Test base loss computation."""
 
     def test_base_loss_unifrac_with_embeddings(self, loss_fn):
-        """Test MSE loss for UniFrac using embeddings (new approach)."""
+        """Test MSE loss for UniFrac using embeddings (new approach with normalization)."""
         from aam.training.losses import compute_pairwise_distances
 
         batch_size = 4
         embedding_dim = 8
         embeddings = torch.randn(batch_size, embedding_dim)
-        base_true = torch.randn(batch_size, batch_size)
+        # Create base_true in [0, 1] range (UniFrac distances are bounded)
+        base_true = torch.rand(batch_size, batch_size)
         # Ensure base_true is symmetric and has zero diagonal
         base_true = (base_true + base_true.T) / 2
         base_true.fill_diagonal_(0.0)
 
-        # Compute distances from embeddings
+        # Compute normalized distances from embeddings (normalize=True is now the default)
         computed_distances = compute_pairwise_distances(embeddings)
 
         loss = loss_fn.compute_base_loss(
@@ -261,7 +268,7 @@ class TestBaseLoss:
         assert loss.dim() == 0
         assert loss.item() >= 0
 
-        # Loss should match manual computation
+        # Loss should match manual computation with normalized distances
         triu_indices = torch.triu_indices(batch_size, batch_size, offset=1, device=embeddings.device)
         computed_masked = computed_distances[triu_indices[0], triu_indices[1]]
         base_true_masked = base_true[triu_indices[0], triu_indices[1]]

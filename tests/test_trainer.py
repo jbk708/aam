@@ -518,8 +518,8 @@ class TestTrainingLoop:
 
                 if "embeddings" in outputs:
                     embeddings = outputs["embeddings"]
-                    # Compute normalized distances (as done in trainer)
-                    distances = compute_pairwise_distances(embeddings, normalize=True)
+                    # Compute normalized distances (normalize=True is now the default)
+                    distances = compute_pairwise_distances(embeddings)
 
                     # Verify all distances are in [0, 1]
                     assert torch.all(distances >= 0.0), "UniFrac distances should be >= 0.0"

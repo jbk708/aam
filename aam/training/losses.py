@@ -30,14 +30,14 @@ def _format_tensor_stats(tensor: torch.Tensor) -> str:
 
 def compute_pairwise_distances(
     embeddings: torch.Tensor,
-    normalize: bool = False,
+    normalize: bool = True,
     scale: float = 5.0,
 ) -> torch.Tensor:
     """Compute pairwise Euclidean distances from embeddings.
 
     Args:
         embeddings: Sample embeddings [batch_size, embedding_dim]
-        normalize: If True, normalize distances to [0, 1] using sigmoid (default: False)
+        normalize: If True, normalize distances to [0, 1] using sigmoid (default: True)
         scale: Scaling factor for sigmoid normalization (default: 5.0)
 
     Returns:
@@ -230,8 +230,9 @@ class MultiTaskLoss(nn.Module):
                 raise ValueError(error_msg)
             # Compute pairwise distances from embeddings
             # Normalize to [0, 1] for UniFrac distances (UniFrac distances are bounded)
+            # normalize=True is now the default
             try:
-                base_pred = compute_pairwise_distances(embeddings, normalize=True)
+                base_pred = compute_pairwise_distances(embeddings)
             except ValueError as e:
                 # Re-raise with more context
                 import sys
