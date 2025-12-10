@@ -1,7 +1,7 @@
 # PyTorch Porting Tickets
 
 **Priority**: MEDIUM - Feature Enhancements  
-**Status**: Phase 8-9 Complete, Phase 10 In Progress
+**Status**: Phase 8-9 Complete, Phase 10 In Progress, Phase 11 (Critical Fixes) Pending
 
 This document contains tickets for implementing feature enhancements for the PyTorch port of AAM.
 
@@ -343,6 +343,59 @@ Add support for distributed training using PyTorch's DistributedDataParallel (DD
 **Dependencies:** Multi-GPU hardware
 
 **Estimated Time:** 8-12 hours
+
+---
+
+## Phase 11: Critical Fixes
+
+### PYT-11.1: Fix UniFrac Distance Predictions Exceeding 1.0
+**Priority:** URGENT | **Effort:** Medium (3-4 hours) | **Status:** Not Started
+
+**Description:**
+Fix UniFrac distance predictions that exceed 1.0. UniFrac distances are bounded in [0, 1], but current implementation computes unbounded Euclidean distances from embeddings, which can produce values > 1.0.
+
+**Problem:**
+- Current implementation uses `compute_pairwise_distances()` which computes Euclidean distances from embeddings
+- Euclidean distances are unbounded (can be any positive value)
+- UniFrac distances must be in [0, 1] range
+- Predictions > 1.0 are invalid and cause issues with:
+  - Loss computation (if loss expects [0, 1] range)
+  - Metrics computation (R², MAE, MSE)
+  - Validation plots and visualization
+  - Model evaluation and interpretation
+
+**Root Cause:**
+- After PYT-8.16b refactoring, UniFrac distances are computed from embeddings using Euclidean distance
+- No normalization/scaling is applied to ensure distances are in [0, 1] range
+- Embeddings can produce distances of any magnitude
+
+**Acceptance Criteria:**
+- [ ] Ensure all UniFrac distance predictions are in [0, 1] range
+- [ ] Implement normalization/scaling approach (e.g., sigmoid, tanh, or min-max normalization)
+- [ ] Verify predictions match actual UniFrac distance distribution
+- [ ] Update `compute_pairwise_distances()` or add normalization layer
+- [ ] Ensure gradient flow is maintained (normalization should be differentiable)
+- [ ] Test that loss computation works correctly with normalized distances
+- [ ] Test that metrics (R², MAE, MSE) are computed correctly
+- [ ] Verify validation plots show correct [0, 1] range
+- [ ] Compare with TensorFlow implementation to ensure consistency
+- [ ] Add tests to verify predictions are always in [0, 1] range
+
+**Files to Modify:**
+- `aam/training/losses.py` - Update `compute_pairwise_distances()` or add normalization
+- `aam/models/sequence_encoder.py` - Possibly add normalization layer if needed
+- `tests/test_losses.py` - Add tests for distance normalization
+- `tests/test_trainer.py` - Add tests to verify predictions in [0, 1] range
+
+**Possible Solutions:**
+1. **Sigmoid/Tanh normalization**: Apply sigmoid or tanh to distances to bound them to [0, 1] or [-1, 1]
+2. **Min-Max normalization**: Normalize distances by max distance in batch or use learned scaling
+3. **Embedding normalization**: Normalize embeddings before computing distances (e.g., L2 normalization)
+4. **Learned scaling**: Add a learnable scaling parameter to map distances to [0, 1]
+
+**Dependencies:** PYT-8.16b (completed)
+
+**Estimated Time:** 3-4 hours
 
 ---
 
