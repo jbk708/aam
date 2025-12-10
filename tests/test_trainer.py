@@ -511,23 +511,29 @@ class TestTrainingLoop:
 
         # Manually check predictions from a batch
         small_model.eval()
+        embeddings_found = False
         with torch.no_grad():
             for batch in simple_dataloader_encoder:
                 tokens, targets = trainer._prepare_batch(batch)
                 outputs = small_model(tokens, return_nucleotides=False)
 
-                if "embeddings" in outputs:
-                    embeddings = outputs["embeddings"]
-                    # Compute normalized distances (normalize=True is now the default)
-                    distances = compute_pairwise_distances(embeddings)
+                # For UniFrac encoder, embeddings should always be present
+                assert "embeddings" in outputs, "UniFrac encoder should return embeddings"
+                embeddings = outputs["embeddings"]
+                embeddings_found = True
+                
+                # Compute normalized distances (normalize=True is now the default)
+                distances = compute_pairwise_distances(embeddings)
 
-                    # Verify all distances are in [0, 1]
-                    assert torch.all(distances >= 0.0), "UniFrac distances should be >= 0.0"
-                    assert torch.all(distances <= 1.0), "UniFrac distances should be <= 1.0"
-                    # Diagonal should be 0.0
-                    assert torch.allclose(torch.diag(distances), torch.zeros(distances.shape[0])), "Diagonal should be 0.0"
+                # Verify all distances are in [0, 1]
+                assert torch.all(distances >= 0.0), f"UniFrac distances should be >= 0.0, got min={distances.min().item()}"
+                assert torch.all(distances <= 1.0), f"UniFrac distances should be <= 1.0, got max={distances.max().item()}"
+                # Diagonal should be 0.0
+                assert torch.allclose(torch.diag(distances), torch.zeros(distances.shape[0], device=distances.device)), "Diagonal should be 0.0"
 
                 break  # Just check first batch
+        
+        assert embeddings_found, "Should have found embeddings in at least one batch"
 
     def test_train_early_stopping(self, small_model, loss_fn, simple_dataloader_encoder, device):
         """Test early stopping."""
