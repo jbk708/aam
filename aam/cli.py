@@ -198,6 +198,7 @@ def cli():
     help="Mixed precision training mode (fp16, bf16, or none)",
 )
 @click.option("--compile-model", is_flag=True, help="Compile model with torch.compile() for optimization (PyTorch 2.0+)")
+@click.option("--lazy-unifrac", is_flag=True, help="Compute UniFrac distances on-the-fly (batch-wise) instead of upfront. Faster startup but slower first epoch.")
 def train(
     table: str,
     tree: str,
@@ -236,6 +237,7 @@ def train(
     scheduler: str,
     mixed_precision: Optional[str],
     compile_model: bool,
+    lazy_unifrac: bool,
 ):
     """Train AAM model on microbial sequencing data."""
     try:
@@ -278,20 +280,34 @@ def train(
         if metadata_column not in metadata_df.columns:
             raise ValueError(f"Metadata column '{metadata_column}' not found in metadata file")
 
-        logger.info("Computing UniFrac distances...")
         # Use all available CPU cores for UniFrac computation
         import multiprocessing
         num_threads = multiprocessing.cpu_count()
         logger.info(f"Using {num_threads} threads for UniFrac computation")
         unifrac_computer = UniFracComputer(num_threads=num_threads)
-        if unifrac_metric == "unifrac":
-            unifrac_distances = unifrac_computer.compute_unweighted(table_obj, tree)
-            unifrac_metric_name = "unweighted"
-            encoder_type = "unifrac"
+        
+        if lazy_unifrac:
+            logger.info("Using lazy UniFrac computation (batch-wise, on-the-fly)")
+            unifrac_computer.setup_lazy_computation(table_obj, tree)
+            unifrac_distances = None
+            train_distance_matrix = None
+            val_distance_matrix = None
+            if unifrac_metric == "unifrac":
+                unifrac_metric_name = "unweighted"
+                encoder_type = "unifrac"
+            else:
+                unifrac_metric_name = "faith_pd"
+                encoder_type = "faith_pd"
         else:
-            unifrac_distances = unifrac_computer.compute_faith_pd(table_obj, tree)
-            unifrac_metric_name = "faith_pd"
-            encoder_type = "faith_pd"
+            logger.info("Computing UniFrac distances upfront (full distance matrix)...")
+            if unifrac_metric == "unifrac":
+                unifrac_distances = unifrac_computer.compute_unweighted(table_obj, tree)
+                unifrac_metric_name = "unweighted"
+                encoder_type = "unifrac"
+            else:
+                unifrac_distances = unifrac_computer.compute_faith_pd(table_obj, tree)
+                unifrac_metric_name = "faith_pd"
+                encoder_type = "faith_pd"
 
         logger.info("Splitting data...")
         sample_ids = list(table_obj.ids(axis="sample"))
@@ -303,16 +319,17 @@ def train(
         train_metadata = metadata_df[metadata_df["sample_id"].isin(train_ids)]
         val_metadata = metadata_df[metadata_df["sample_id"].isin(val_ids)]
 
-        train_distance_matrix = None
-        val_distance_matrix = None
-        if unifrac_metric_name == "unweighted":
-            train_distance_matrix = (
-                unifrac_distances.filter(train_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
-            )
-            val_distance_matrix = unifrac_distances.filter(val_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
-        elif unifrac_metric_name == "faith_pd":
-            train_distance_matrix = unifrac_distances.loc[train_ids] if isinstance(unifrac_distances, pd.Series) else None
-            val_distance_matrix = unifrac_distances.loc[val_ids] if isinstance(unifrac_distances, pd.Series) else None
+        if not lazy_unifrac:
+            train_distance_matrix = None
+            val_distance_matrix = None
+            if unifrac_metric_name == "unweighted":
+                train_distance_matrix = (
+                    unifrac_distances.filter(train_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
+                )
+                val_distance_matrix = unifrac_distances.filter(val_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
+            elif unifrac_metric_name == "faith_pd":
+                train_distance_matrix = unifrac_distances.loc[train_ids] if isinstance(unifrac_distances, pd.Series) else None
+                val_distance_matrix = unifrac_distances.loc[val_ids] if isinstance(unifrac_distances, pd.Series) else None
 
         logger.info("Creating datasets...")
         train_dataset = ASVDataset(
@@ -323,6 +340,8 @@ def train(
             token_limit=token_limit,
             target_column=metadata_column,
             unifrac_metric=unifrac_metric_name,
+            lazy_unifrac=lazy_unifrac,
+            unifrac_computer=unifrac_computer if lazy_unifrac else None,
         )
 
         val_dataset = ASVDataset(
@@ -333,6 +352,8 @@ def train(
             token_limit=token_limit,
             target_column=metadata_column,
             unifrac_metric=unifrac_metric_name,
+            lazy_unifrac=lazy_unifrac,
+            unifrac_computer=unifrac_computer if lazy_unifrac else None,
         )
 
         train_collate = partial(
@@ -340,12 +361,16 @@ def train(
             token_limit=token_limit,
             unifrac_distances=train_distance_matrix,
             unifrac_metric=unifrac_metric_name,
+            unifrac_computer=unifrac_computer if lazy_unifrac else None,
+            lazy_unifrac=lazy_unifrac,
         )
         val_collate = partial(
             collate_fn,
             token_limit=token_limit,
             unifrac_distances=val_distance_matrix,
             unifrac_metric=unifrac_metric_name,
+            unifrac_computer=unifrac_computer if lazy_unifrac else None,
+            lazy_unifrac=lazy_unifrac,
         )
 
         train_loader = DataLoader(
@@ -505,6 +530,7 @@ def train(
 @click.option(
     "--asv-chunk-size", default=None, type=int, help="Process ASVs in chunks of this size to reduce memory (None = process all)"
 )
+@click.option("--lazy-unifrac", is_flag=True, help="Compute UniFrac distances on-the-fly (batch-wise) instead of upfront. Faster startup but slower first epoch.")
 def pretrain(
     table: str,
     tree: str,
@@ -537,6 +563,7 @@ def pretrain(
     mixed_precision: Optional[str],
     compile_model: bool,
     asv_chunk_size: Optional[int],
+    lazy_unifrac: bool,
 ):
     """Pre-train SequenceEncoder on UniFrac and nucleotide prediction (self-supervised)."""
     try:
@@ -570,23 +597,38 @@ def pretrain(
         table_obj = biom_loader.load_table(table)
         table_obj = biom_loader.rarefy(table_obj, depth=rarefy_depth, random_seed=seed)
 
-        logger.info("Computing UniFrac distances...")
         # Use all available CPU cores for UniFrac computation
         import multiprocessing
         num_threads = multiprocessing.cpu_count()
         logger.info(f"Using {num_threads} threads for UniFrac computation")
         unifrac_computer = UniFracComputer(num_threads=num_threads)
-        if unifrac_metric == "unifrac":
-            unifrac_distances = unifrac_computer.compute_unweighted(table_obj, tree)
-            unifrac_metric_name = "unweighted"
-            encoder_type = "unifrac"
-            # UniFrac: no base_output_dim needed (distances computed from embeddings)
-            base_output_dim = None
+        
+        if lazy_unifrac:
+            logger.info("Using lazy UniFrac computation (batch-wise, on-the-fly)")
+            unifrac_computer.setup_lazy_computation(table_obj, tree)
+            unifrac_distances = None
+            train_distance_matrix = None
+            val_distance_matrix = None
+            if unifrac_metric == "unifrac":
+                unifrac_metric_name = "unweighted"
+                encoder_type = "unifrac"
+                base_output_dim = None
+            else:
+                unifrac_metric_name = "faith_pd"
+                encoder_type = "faith_pd"
+                base_output_dim = 1
         else:
-            unifrac_distances = unifrac_computer.compute_faith_pd(table_obj, tree)
-            unifrac_metric_name = "faith_pd"
-            encoder_type = "faith_pd"
-            base_output_dim = 1
+            logger.info("Computing UniFrac distances upfront (full distance matrix)...")
+            if unifrac_metric == "unifrac":
+                unifrac_distances = unifrac_computer.compute_unweighted(table_obj, tree)
+                unifrac_metric_name = "unweighted"
+                encoder_type = "unifrac"
+                base_output_dim = None
+            else:
+                unifrac_distances = unifrac_computer.compute_faith_pd(table_obj, tree)
+                unifrac_metric_name = "faith_pd"
+                encoder_type = "faith_pd"
+                base_output_dim = 1
 
         logger.info("Splitting data...")
         sample_ids = list(table_obj.ids(axis="sample"))
@@ -595,16 +637,17 @@ def pretrain(
         train_table = table_obj.filter(train_ids, axis="sample", inplace=False)
         val_table = table_obj.filter(val_ids, axis="sample", inplace=False)
 
-        train_distance_matrix = None
-        val_distance_matrix = None
-        if unifrac_metric_name == "unweighted":
-            train_distance_matrix = (
-                unifrac_distances.filter(train_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
-            )
-            val_distance_matrix = unifrac_distances.filter(val_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
-        elif unifrac_metric_name == "faith_pd":
-            train_distance_matrix = unifrac_distances.loc[train_ids] if isinstance(unifrac_distances, pd.Series) else None
-            val_distance_matrix = unifrac_distances.loc[val_ids] if isinstance(unifrac_distances, pd.Series) else None
+        if not lazy_unifrac:
+            train_distance_matrix = None
+            val_distance_matrix = None
+            if unifrac_metric_name == "unweighted":
+                train_distance_matrix = (
+                    unifrac_distances.filter(train_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
+                )
+                val_distance_matrix = unifrac_distances.filter(val_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
+            elif unifrac_metric_name == "faith_pd":
+                train_distance_matrix = unifrac_distances.loc[train_ids] if isinstance(unifrac_distances, pd.Series) else None
+                val_distance_matrix = unifrac_distances.loc[val_ids] if isinstance(unifrac_distances, pd.Series) else None
 
         logger.info("Creating datasets...")
         train_dataset = ASVDataset(
@@ -615,6 +658,8 @@ def pretrain(
             token_limit=token_limit,
             target_column=None,
             unifrac_metric=unifrac_metric_name,
+            lazy_unifrac=lazy_unifrac,
+            unifrac_computer=unifrac_computer if lazy_unifrac else None,
         )
 
         val_dataset = ASVDataset(
@@ -625,6 +670,8 @@ def pretrain(
             token_limit=token_limit,
             target_column=None,
             unifrac_metric=unifrac_metric_name,
+            lazy_unifrac=lazy_unifrac,
+            unifrac_computer=unifrac_computer if lazy_unifrac else None,
         )
 
         train_collate = partial(
@@ -632,12 +679,16 @@ def pretrain(
             token_limit=token_limit,
             unifrac_distances=train_distance_matrix,
             unifrac_metric=unifrac_metric_name,
+            unifrac_computer=unifrac_computer if lazy_unifrac else None,
+            lazy_unifrac=lazy_unifrac,
         )
         val_collate = partial(
             collate_fn,
             token_limit=token_limit,
             unifrac_distances=val_distance_matrix,
             unifrac_metric=unifrac_metric_name,
+            unifrac_computer=unifrac_computer if lazy_unifrac else None,
+            lazy_unifrac=lazy_unifrac,
         )
 
         train_loader = DataLoader(

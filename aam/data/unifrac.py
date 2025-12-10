@@ -1,9 +1,10 @@
 """UniFrac distance computation for microbial sequencing data."""
 
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Dict, Tuple
 import tempfile
 import os
 from pathlib import Path
+from functools import lru_cache
 
 import biom
 from biom import Table
@@ -24,19 +25,28 @@ class UniFracComputer:
     - Extract batch-level distances from pre-computed distance matrices
     """
 
-    def __init__(self, num_threads: Optional[int] = None):
+    def __init__(self, num_threads: Optional[int] = None, cache_size: int = 128):
         """Initialize UniFracComputer.
         
         Args:
             num_threads: Number of threads to use for UniFrac computation.
                         If None, uses all available CPU cores.
                         Sets OMP_NUM_THREADS environment variable for unifrac library.
+            cache_size: Maximum number of batch distance computations to cache (for lazy computation).
+                       Default: 128. Set to 0 to disable caching.
         """
         if num_threads is None:
             num_threads = multiprocessing.cpu_count()
         self.num_threads = num_threads
+        self.cache_size = cache_size
         # Set OMP_NUM_THREADS for unifrac library (uses OpenMP internally)
         os.environ['OMP_NUM_THREADS'] = str(num_threads)
+        
+        # Cache for lazy batch computation: (frozenset(sample_ids), metric) -> distances
+        self._batch_cache: Dict[Tuple[frozenset, str], np.ndarray] = {}
+        self._table: Optional[Table] = None
+        self._tree: Optional[TreeNode] = None
+        self._tree_path: Optional[str] = None
 
     def compute_unweighted(self, table: Table, tree_path: str) -> DistanceMatrix:
         """Compute unweighted UniFrac distances between samples.
@@ -188,3 +198,170 @@ class UniFracComputer:
         """
         if batch_size % 2 != 0:
             raise ValueError(f"Batch size must be even (multiple of 2), got {batch_size}")
+
+    def setup_lazy_computation(self, table: Table, tree_path: str) -> None:
+        """Setup for lazy batch-wise distance computation.
+        
+        This method loads the table and tree into memory for efficient batch computation.
+        Use this when you want to compute distances on-the-fly instead of upfront.
+        
+        Args:
+            table: Rarefied biom.Table object
+            tree_path: Path to phylogenetic tree file (.nwk Newick format)
+        """
+        self._table = table
+        self._tree_path = tree_path
+        
+        tree_path_obj = Path(tree_path)
+        if not tree_path_obj.exists():
+            raise FileNotFoundError(f"Tree file not found: {tree_path}")
+        
+        try:
+            self._tree = skbio.read(str(tree_path), format="newick", into=TreeNode)
+        except Exception as e:
+            raise ValueError(f"Error loading phylogenetic tree from {tree_path}: {e}")
+
+    def compute_batch_unweighted(
+        self,
+        sample_ids: List[str],
+        table: Optional[Table] = None,
+        tree_path: Optional[str] = None,
+    ) -> np.ndarray:
+        """Compute unweighted UniFrac distances for a batch of samples.
+        
+        This method computes distances only for the specified samples, which is much
+        more efficient than computing the full distance matrix for large datasets.
+        Results are cached to avoid recomputation.
+        
+        Args:
+            sample_ids: List of sample IDs to compute distances for
+            table: Optional biom.Table (uses cached table if None and setup_lazy_computation was called)
+            tree_path: Optional tree path (uses cached tree if None and setup_lazy_computation was called)
+        
+        Returns:
+            numpy array containing pairwise distances [batch_size, batch_size]
+        
+        Raises:
+            ValueError: If batch_size is not even or if table/tree not provided
+        """
+        if not sample_ids:
+            return np.array([]).reshape(0, 0)
+        
+        self.validate_batch_size(len(sample_ids))
+        
+        # Check cache first
+        cache_key = (frozenset(sample_ids), "unweighted")
+        if cache_key in self._batch_cache:
+            cached_distances = self._batch_cache[cache_key]
+            # Reorder to match sample_ids order
+            cached_ids = list(cache_key[0])
+            id_to_idx = {id_: idx for idx, id_ in enumerate(cached_ids)}
+            reorder_indices = [id_to_idx[id_] for id_ in sample_ids]
+            return cached_distances[np.ix_(reorder_indices, reorder_indices)]
+        
+        # Use cached table/tree if available, otherwise use provided
+        if table is None:
+            table = self._table
+        if tree_path is None:
+            tree = self._tree
+        else:
+            tree_path_obj = Path(tree_path)
+            if not tree_path_obj.exists():
+                raise FileNotFoundError(f"Tree file not found: {tree_path}")
+            tree = skbio.read(str(tree_path), format="newick", into=TreeNode)
+        
+        if table is None or tree is None:
+            raise ValueError("Must provide table and tree_path, or call setup_lazy_computation() first")
+        
+        # Filter table to only include samples in batch
+        batch_table = table.filter(sample_ids, axis="sample", inplace=False)
+        
+        try:
+            # Compute distances for this batch only
+            distance_matrix = unifrac.unweighted(batch_table, tree)
+            
+            # Convert to numpy array and ensure correct order
+            batch_ids = list(batch_table.ids(axis="sample"))
+            id_to_idx = {id_: idx for idx, id_ in enumerate(batch_ids)}
+            reorder_indices = [id_to_idx[id_] for id_ in sample_ids]
+            distances = distance_matrix.data[np.ix_(reorder_indices, reorder_indices)]
+            
+            # Cache the result (with original order)
+            if self.cache_size > 0:
+                if len(self._batch_cache) >= self.cache_size:
+                    # Remove oldest entry (simple FIFO, could use LRU but this is simpler)
+                    oldest_key = next(iter(self._batch_cache))
+                    del self._batch_cache[oldest_key]
+                self._batch_cache[cache_key] = distances
+            
+            return distances
+        except Exception as e:
+            if "not found" in str(e).lower() or "mismatch" in str(e).lower():
+                raise ValueError(f"ASV IDs don't match between table and tree: {e}") from e
+            raise ValueError(f"Error computing unweighted UniFrac for batch: {e}") from e
+
+    def compute_batch_faith_pd(
+        self,
+        sample_ids: List[str],
+        table: Optional[Table] = None,
+        tree_path: Optional[str] = None,
+    ) -> np.ndarray:
+        """Compute Faith PD for a batch of samples.
+        
+        Args:
+            sample_ids: List of sample IDs to compute Faith PD for
+            table: Optional biom.Table (uses cached table if None)
+            tree_path: Optional tree path (uses cached tree if None)
+        
+        Returns:
+            numpy array containing Faith PD values [batch_size, 1]
+        """
+        if not sample_ids:
+            return np.array([]).reshape(0, 1)
+        
+        # Check cache first
+        cache_key = (frozenset(sample_ids), "faith_pd")
+        if cache_key in self._batch_cache:
+            cached_values = self._batch_cache[cache_key]
+            # Reorder to match sample_ids order
+            cached_ids = list(cache_key[0])
+            id_to_idx = {id_: idx for idx, id_ in enumerate(cached_ids)}
+            reorder_indices = [id_to_idx[id_] for id_ in sample_ids]
+            return cached_values[reorder_indices].reshape(-1, 1)
+        
+        # Use cached table/tree if available
+        if table is None:
+            table = self._table
+        if tree_path is None:
+            tree = self._tree
+        else:
+            tree_path_obj = Path(tree_path)
+            if not tree_path_obj.exists():
+                raise FileNotFoundError(f"Tree file not found: {tree_path}")
+            tree = skbio.read(str(tree_path), format="newick", into=TreeNode)
+        
+        if table is None or tree is None:
+            raise ValueError("Must provide table and tree_path, or call setup_lazy_computation() first")
+        
+        # Filter table to only include samples in batch
+        batch_table = table.filter(sample_ids, axis="sample", inplace=False)
+        
+        try:
+            # Compute Faith PD for this batch only
+            faith_pd_series = unifrac.faith_pd(batch_table, tree)
+            
+            # Convert to numpy array in correct order
+            values = faith_pd_series.loc[sample_ids].to_numpy().reshape(-1, 1)
+            
+            # Cache the result
+            if self.cache_size > 0:
+                if len(self._batch_cache) >= self.cache_size:
+                    oldest_key = next(iter(self._batch_cache))
+                    del self._batch_cache[oldest_key]
+                self._batch_cache[cache_key] = values.flatten()
+            
+            return values
+        except Exception as e:
+            if "not found" in str(e).lower() or "mismatch" in str(e).lower():
+                raise ValueError(f"ASV IDs don't match between table and tree: {e}") from e
+            raise ValueError(f"Error computing Faith PD for batch: {e}") from e
