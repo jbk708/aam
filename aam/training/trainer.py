@@ -184,7 +184,14 @@ class Trainer:
     def _is_pretraining(self) -> bool:
         """Check if model is SequenceEncoder (pretraining mode)."""
         # Use string comparison to avoid circular import
-        return self.model.__class__.__name__ == "SequenceEncoder"
+        # Handle compiled models (torch.compile wraps the model)
+        model_class_name = self.model.__class__.__name__
+        if model_class_name == "SequenceEncoder":
+            return True
+        # Check if model is wrapped by torch.compile (has _orig_mod attribute)
+        if hasattr(self.model, "_orig_mod"):
+            return self.model._orig_mod.__class__.__name__ == "SequenceEncoder"
+        return False
 
     def _create_prediction_plot(
         self,
