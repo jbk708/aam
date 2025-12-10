@@ -102,7 +102,7 @@ class Trainer:
                 if "Dynamo is not supported" in str(e) or "not supported" in str(e):
                     raise RuntimeError(
                         f"torch.compile() is not supported in this environment: {e}. "
-                        "Model compilation requires PyTorch 2.0+ and Python < 3.12, or PyTorch 2.1+ with Python 3.12+."
+                        "Model compilation requires PyTorch 2.0+ and Python < 3.12, or PyTorch 2.3.0+ with Python 3.12+."
                     ) from e
                 raise
 
@@ -184,7 +184,14 @@ class Trainer:
     def _is_pretraining(self) -> bool:
         """Check if model is SequenceEncoder (pretraining mode)."""
         # Use string comparison to avoid circular import
-        return self.model.__class__.__name__ == "SequenceEncoder"
+        # Handle compiled models (torch.compile wraps the model)
+        model_class_name = self.model.__class__.__name__
+        if model_class_name == "SequenceEncoder":
+            return True
+        # Check if model is wrapped by torch.compile (has _orig_mod attribute)
+        if hasattr(self.model, "_orig_mod"):
+            return self.model._orig_mod.__class__.__name__ == "SequenceEncoder"
+        return False
 
     def _create_prediction_plot(
         self,
@@ -789,9 +796,14 @@ class Trainer:
                 leave=False,
             )
 
+            # Store last batch info for debugging
+            last_targets = None
+            last_outputs = None
+
             for step, batch in enumerate(pbar, 1):
                 try:
                     tokens, targets = self._prepare_batch(batch)
+                    last_targets = targets
 
                     return_nucleotides = "nucleotides" in targets or self.loss_fn.nuc_penalty > 0
 
@@ -807,6 +819,7 @@ class Trainer:
                             outputs = self.model(tokens, return_nucleotides=return_nucleotides)
                     else:
                         outputs = self.model(tokens, return_nucleotides=return_nucleotides)
+                    last_outputs = outputs
 
                     encoder_type = self._get_encoder_type()
                     is_classifier = self._get_is_classifier()
@@ -884,14 +897,27 @@ class Trainer:
 
                             if "base_target" in targets:
                                 encoder_type = self._get_encoder_type()
+                                base_pred_batch = None
+
+                                # Try to get embeddings first (for UniFrac encoder type)
                                 if encoder_type == "unifrac" and "embeddings" in outputs:
                                     # Compute distances from embeddings
                                     embeddings = outputs["embeddings"]
-                                    base_pred_batch = compute_pairwise_distances(embeddings)
-                                elif "base_prediction" in outputs:
+                                    if embeddings is not None:
+                                        try:
+                                            # Detach embeddings before computing distances to ensure proper gradient handling
+                                            embeddings_detached = embeddings.detach()
+                                            base_pred_batch = compute_pairwise_distances(embeddings_detached).detach()
+                                        except Exception as e:
+                                            import logging
+
+                                            logger = logging.getLogger(__name__)
+                                            logger.error(f"Error computing pairwise distances: {e}", exc_info=True)
+                                            base_pred_batch = None
+
+                                # Fallback to base_prediction if embeddings not available
+                                if base_pred_batch is None and "base_prediction" in outputs:
                                     base_pred_batch = outputs["base_prediction"]
-                                else:
-                                    base_pred_batch = None
 
                                 if base_pred_batch is not None:
                                     if "base_prediction" not in all_predictions:
@@ -905,32 +931,39 @@ class Trainer:
                                         triu_indices = torch.triu_indices(
                                             batch_size, batch_size, offset=1, device=base_pred_batch.device
                                         )
-                                        base_pred_flat = base_pred_batch[triu_indices[0], triu_indices[1]]
-                                        base_true_flat = base_true_batch[triu_indices[0], triu_indices[1]]
+                                        base_pred_flat = base_pred_batch[triu_indices[0], triu_indices[1]].detach()
+                                        base_true_flat = base_true_batch[triu_indices[0], triu_indices[1]].detach()
                                         all_predictions["base_prediction"].append(base_pred_flat)
                                         all_targets["base_target"].append(base_true_flat)
                                     else:
                                         # If not square, just flatten (shouldn't happen for UniFrac)
-                                        all_predictions["base_prediction"].append(base_pred_batch.flatten())
-                                        all_targets["base_target"].append(base_true_batch.flatten())
+                                        all_predictions["base_prediction"].append(base_pred_batch.flatten().detach())
+                                        all_targets["base_target"].append(base_true_batch.flatten().detach())
+                            else:
+                                # Debug: log why base_target check failed
+                                if step == 1:  # Only log once per epoch
+                                    import logging
+
+                                    logger = logging.getLogger(__name__)
+                                    logger.debug(f"base_target not in targets. Target keys: {list(targets.keys())}")
                         else:
                             # For regular training, collect target_prediction for plotting
                             if "target_prediction" in outputs and "target" in targets:
                                 if "target_prediction" not in all_predictions:
                                     all_predictions["target_prediction"] = []
                                     all_targets["target"] = []
-                                all_predictions["target_prediction"].append(outputs["target_prediction"])
-                                all_targets["target"].append(targets["target"])
+                                all_predictions["target_prediction"].append(outputs["target_prediction"].detach())
+                                all_targets["target"].append(targets["target"].detach())
 
                         if "count_prediction" in outputs and "counts" in targets:
                             if "count_prediction" not in all_predictions:
                                 all_predictions["count_prediction"] = []
                                 all_targets["counts"] = []
                                 all_targets["mask"] = []
-                            all_predictions["count_prediction"].append(outputs["count_prediction"])
-                            all_targets["counts"].append(targets["counts"])
+                            all_predictions["count_prediction"].append(outputs["count_prediction"].detach())
+                            all_targets["counts"].append(targets["counts"].detach())
                             mask = targets.get("mask", (tokens.sum(dim=-1) > 0).long())
-                            all_targets["mask"].append(mask)
+                            all_targets["mask"].append(mask.detach())
 
                     num_batches += 1
 
@@ -953,6 +986,21 @@ class Trainer:
         target_true_tensor = None
         base_pred_tensor = None
         base_true_tensor = None
+
+        # Debug: Log if predictions weren't collected
+        if compute_metrics and not all_predictions:
+            import logging
+
+            logger = logging.getLogger(__name__)
+            # Get target keys from the last batch processed
+            target_keys = list(last_targets.keys()) if last_targets is not None else []
+            output_keys = list(last_outputs.keys()) if last_outputs is not None else []
+            logger.warning(
+                f"No predictions collected for metrics computation at epoch {epoch}. "
+                f"Outputs keys: {output_keys}, "
+                f"Target keys: {target_keys}, "
+                f"is_pretraining: {is_pretraining}"
+            )
 
         if compute_metrics and all_predictions:
             if is_pretraining and "base_prediction" in all_predictions:

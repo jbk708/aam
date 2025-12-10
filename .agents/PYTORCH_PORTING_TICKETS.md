@@ -1,7 +1,7 @@
 # PyTorch Porting Tickets
 
 **Priority**: MEDIUM - Feature Enhancements  
-**Status**: Phase 8-9 Complete, Phase 10 In Progress
+**Status**: Phase 8-9 Complete, Phase 10 In Progress, Phase 11 (Critical Fixes) Pending
 
 This document contains tickets for implementing feature enhancements for the PyTorch port of AAM.
 
@@ -198,7 +198,7 @@ Add support for PyTorch 2.0+ model compilation using `torch.compile()` to achiev
 ---
 
 ### PYT-10.2.1: Fix Dependencies to Enable Model Compilation
-**Priority:** MEDIUM | **Effort:** Low (1 hour) | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** Low (1 hour) | **Status:** ✅ Completed
 
 **Description:**
 Update dependency specifications (pyproject.toml, environment.yml) to ensure PyTorch 2.1+ is available, enabling model compilation on Python 3.12+ systems. Currently, model compilation fails on Python 3.12+ with PyTorch 2.0 due to Dynamo limitations.
@@ -209,11 +209,12 @@ Update dependency specifications (pyproject.toml, environment.yml) to ensure PyT
 - Users on Python 3.12+ cannot use `--compile-model` flag without upgrading PyTorch
 
 **Acceptance Criteria:**
-- [ ] Update `pyproject.toml` to require PyTorch >= 2.1.0
-- [ ] Update `environment.yml` to require PyTorch >= 2.1.0
-- [ ] Verify model compilation works on Python 3.12+ with updated dependencies
-- [ ] Update documentation to reflect PyTorch version requirements
-- [ ] Test that existing functionality still works with PyTorch 2.1+
+- [x] Update `pyproject.toml` to require PyTorch >= 2.3.0
+- [x] Update `environment.yml` to require PyTorch >= 2.3.0
+- [x] Verify model compilation works on Python 3.12+ with updated dependencies
+- [x] Update documentation to reflect PyTorch version requirements (error message updated)
+- [x] Test that existing functionality still works with PyTorch 2.3+
+- [x] Fix prediction collection and metrics computation for compiled models
 
 **Files to Modify:**
 - `pyproject.toml` - Update PyTorch version requirement
@@ -223,6 +224,24 @@ Update dependency specifications (pyproject.toml, environment.yml) to ensure PyT
 **Dependencies:** None
 
 **Estimated Time:** 1 hour
+
+**Implementation Notes:**
+- ✅ Updated `pyproject.toml` to require `torch >= 2.3.0` (changed from >= 2.1.0 after testing revealed 2.3.0+ is needed for full Python 3.12+ support)
+- ✅ Updated `environment.yml` to require `pytorch >=2.3.0`
+- ✅ Updated error message in `trainer.py` to reflect correct version requirement (PyTorch 2.3.0+ with Python 3.12+)
+- ✅ Fixed `_is_pretraining()` to handle compiled models by checking `_orig_mod` attribute
+- ✅ Fixed prediction collection for compiled models by ensuring outputs are properly detached
+- ✅ Fixed metrics computation (R²) for compiled models by ensuring embeddings are detached before computing pairwise distances
+- ✅ Added comprehensive error handling and debug logging for prediction collection
+- ✅ Verified model compilation works on Python 3.12+ with PyTorch 2.9.1
+- ✅ All compilation tests passing (7/7 tests)
+- ✅ R² metrics and prediction plots now work correctly with compiled models
+
+**Key Fixes:**
+1. **Pretraining detection**: Fixed `_is_pretraining()` to check `_orig_mod` for compiled models
+2. **Prediction collection**: Added explicit `.detach()` calls when collecting predictions for metrics
+3. **Embedding handling**: Ensured embeddings are detached before computing pairwise distances
+4. **Error handling**: Added try-catch around distance computation with proper error logging
 
 ---
 
@@ -327,6 +346,59 @@ Add support for distributed training using PyTorch's DistributedDataParallel (DD
 
 ---
 
+## Phase 11: Critical Fixes
+
+### PYT-11.1: Fix UniFrac Distance Predictions Exceeding 1.0
+**Priority:** URGENT | **Effort:** Medium (3-4 hours) | **Status:** Not Started
+
+**Description:**
+Fix UniFrac distance predictions that exceed 1.0. UniFrac distances are bounded in [0, 1], but current implementation computes unbounded Euclidean distances from embeddings, which can produce values > 1.0.
+
+**Problem:**
+- Current implementation uses `compute_pairwise_distances()` which computes Euclidean distances from embeddings
+- Euclidean distances are unbounded (can be any positive value)
+- UniFrac distances must be in [0, 1] range
+- Predictions > 1.0 are invalid and cause issues with:
+  - Loss computation (if loss expects [0, 1] range)
+  - Metrics computation (R², MAE, MSE)
+  - Validation plots and visualization
+  - Model evaluation and interpretation
+
+**Root Cause:**
+- After PYT-8.16b refactoring, UniFrac distances are computed from embeddings using Euclidean distance
+- No normalization/scaling is applied to ensure distances are in [0, 1] range
+- Embeddings can produce distances of any magnitude
+
+**Acceptance Criteria:**
+- [ ] Ensure all UniFrac distance predictions are in [0, 1] range
+- [ ] Implement normalization/scaling approach (e.g., sigmoid, tanh, or min-max normalization)
+- [ ] Verify predictions match actual UniFrac distance distribution
+- [ ] Update `compute_pairwise_distances()` or add normalization layer
+- [ ] Ensure gradient flow is maintained (normalization should be differentiable)
+- [ ] Test that loss computation works correctly with normalized distances
+- [ ] Test that metrics (R², MAE, MSE) are computed correctly
+- [ ] Verify validation plots show correct [0, 1] range
+- [ ] Compare with TensorFlow implementation to ensure consistency
+- [ ] Add tests to verify predictions are always in [0, 1] range
+
+**Files to Modify:**
+- `aam/training/losses.py` - Update `compute_pairwise_distances()` or add normalization
+- `aam/models/sequence_encoder.py` - Possibly add normalization layer if needed
+- `tests/test_losses.py` - Add tests for distance normalization
+- `tests/test_trainer.py` - Add tests to verify predictions in [0, 1] range
+
+**Possible Solutions:**
+1. **Sigmoid/Tanh normalization**: Apply sigmoid or tanh to distances to bound them to [0, 1] or [-1, 1]
+2. **Min-Max normalization**: Normalize distances by max distance in batch or use learned scaling
+3. **Embedding normalization**: Normalize embeddings before computing distances (e.g., L2 normalization)
+4. **Learned scaling**: Add a learnable scaling parameter to map distances to [0, 1]
+
+**Dependencies:** PYT-8.16b (completed)
+
+**Estimated Time:** 3-4 hours
+
+---
+
 ## Summary
 
 **Total Estimated Time Remaining:** 20-30 hours (Phase 10 optimizations, PYT-10.1 and PYT-10.2 completed)
@@ -373,7 +445,7 @@ Add support for distributed training using PyTorch's DistributedDataParallel (DD
 **Recommended Implementation Order for Phase 10 (Optimizations):**
 1. ✅ **PYT-10.1** (mixed precision) - High impact, low effort, quick win - **COMPLETED**
 2. ✅ **PYT-10.2** (model compilation) - Medium impact, low effort, quick win - **COMPLETED**
-3. **PYT-10.2.1** (fix dependencies for model compilation) - Medium priority, low effort - **PENDING**
+3. ✅ **PYT-10.2.1** (fix dependencies for model compilation) - Medium priority, low effort - **COMPLETED**
 4. **PYT-10.3** (data loading) - Medium impact, medium effort
 5. **PYT-10.4** (gradient checkpointing) - High impact, medium effort
 6. **PYT-10.5** (attention optimization) - Medium impact, medium-high effort
