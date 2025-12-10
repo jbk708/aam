@@ -12,6 +12,7 @@ from skbio import DistanceMatrix, TreeNode
 import pandas as pd
 import numpy as np
 import unifrac
+import multiprocessing
 
 
 class UniFracComputer:
@@ -23,9 +24,19 @@ class UniFracComputer:
     - Extract batch-level distances from pre-computed distance matrices
     """
 
-    def __init__(self):
-        """Initialize UniFracComputer."""
-        pass
+    def __init__(self, num_threads: Optional[int] = None):
+        """Initialize UniFracComputer.
+        
+        Args:
+            num_threads: Number of threads to use for UniFrac computation.
+                        If None, uses all available CPU cores.
+                        Sets OMP_NUM_THREADS environment variable for unifrac library.
+        """
+        if num_threads is None:
+            num_threads = multiprocessing.cpu_count()
+        self.num_threads = num_threads
+        # Set OMP_NUM_THREADS for unifrac library (uses OpenMP internally)
+        os.environ['OMP_NUM_THREADS'] = str(num_threads)
 
     def compute_unweighted(self, table: Table, tree_path: str) -> DistanceMatrix:
         """Compute unweighted UniFrac distances between samples.

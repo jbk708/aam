@@ -41,7 +41,7 @@ def create_simple_tree_file(tmp_path, observation_ids):
 @pytest.fixture
 def computer():
     """Create a UniFracComputer instance."""
-    return UniFracComputer()
+    return UniFracComputer(num_threads=1)  # Use 1 thread for tests to avoid environment variable conflicts
 
 
 @pytest.fixture

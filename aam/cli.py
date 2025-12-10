@@ -279,7 +279,11 @@ def train(
             raise ValueError(f"Metadata column '{metadata_column}' not found in metadata file")
 
         logger.info("Computing UniFrac distances...")
-        unifrac_computer = UniFracComputer()
+        # Use all available CPU cores for UniFrac computation
+        import multiprocessing
+        num_threads = multiprocessing.cpu_count()
+        logger.info(f"Using {num_threads} threads for UniFrac computation")
+        unifrac_computer = UniFracComputer(num_threads=num_threads)
         if unifrac_metric == "unifrac":
             unifrac_distances = unifrac_computer.compute_unweighted(table_obj, tree)
             unifrac_metric_name = "unweighted"
@@ -567,7 +571,11 @@ def pretrain(
         table_obj = biom_loader.rarefy(table_obj, depth=rarefy_depth, random_seed=seed)
 
         logger.info("Computing UniFrac distances...")
-        unifrac_computer = UniFracComputer()
+        # Use all available CPU cores for UniFrac computation
+        import multiprocessing
+        num_threads = multiprocessing.cpu_count()
+        logger.info(f"Using {num_threads} threads for UniFrac computation")
+        unifrac_computer = UniFracComputer(num_threads=num_threads)
         if unifrac_metric == "unifrac":
             unifrac_distances = unifrac_computer.compute_unweighted(table_obj, tree)
             unifrac_metric_name = "unweighted"
