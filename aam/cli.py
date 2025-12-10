@@ -445,10 +445,11 @@ def train(
         )
 
         logger.info("Training completed")
-        logger.info(f"Best validation loss: {min(history['val_loss']) if history['val_loss'] else 'N/A'}")
+        best_val_loss = min(history['val_loss']) if history['val_loss'] else float('inf')
+        logger.info(f"Best validation loss: {best_val_loss}")
 
         final_model_path = output_path / "final_model.pt"
-        trainer.save_checkpoint(str(final_model_path), epoch=epochs - 1, metrics=history)
+        trainer.save_checkpoint(str(final_model_path), epoch=epochs - 1, best_val_loss=best_val_loss, metrics=history)
         logger.info(f"Final model saved to {final_model_path}")
 
     except Exception as e:
@@ -714,10 +715,11 @@ def pretrain(
         )
 
         logger.info("Pre-training completed")
-        logger.info(f"Best validation loss: {min(history['val_loss']) if history['val_loss'] else 'N/A'}")
+        best_val_loss = min(history['val_loss']) if history['val_loss'] else float('inf')
+        logger.info(f"Best validation loss: {best_val_loss}")
 
         final_model_path = output_path / "pretrained_encoder.pt"
-        trainer.save_checkpoint(str(final_model_path), epoch=epochs - 1, metrics=history)
+        trainer.save_checkpoint(str(final_model_path), epoch=epochs - 1, best_val_loss=best_val_loss, metrics=history)
         logger.info(f"Pre-trained encoder saved to {final_model_path}")
 
     except Exception as e:
