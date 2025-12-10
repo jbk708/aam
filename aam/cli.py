@@ -200,6 +200,7 @@ def cli():
 @click.option("--compile-model", is_flag=True, help="Compile model with torch.compile() for optimization (PyTorch 2.0+)")
 @click.option("--lazy-unifrac", is_flag=True, help="Compute UniFrac distances on-the-fly (batch-wise) instead of upfront. Faster startup but slower first epoch.")
 @click.option("--unifrac-threads", default=None, type=int, help="Number of threads for UniFrac computation (default: all available CPU cores)")
+@click.option("--prune-tree", is_flag=True, help="Pre-prune tree to only include ASVs in BIOM table. Dramatically speeds up tree loading and UniFrac computation for large trees.")
 def train(
     table: str,
     tree: str,
@@ -240,6 +241,7 @@ def train(
     compile_model: bool,
     lazy_unifrac: bool,
     unifrac_threads: Optional[int],
+    prune_tree: bool,
 ):
     """Train AAM model on microbial sequencing data."""
     try:
@@ -291,7 +293,15 @@ def train(
         if lazy_unifrac:
             logger.info("Using lazy UniFrac computation (batch-wise, on-the-fly)")
             logger.info("Setting up lazy computation (tree will be loaded per worker process)...")
-            unifrac_computer.setup_lazy_computation(table_obj, tree)
+            pruned_cache_path = None
+            if prune_tree:
+                pruned_cache_path = str(Path(tree).with_suffix('.pruned.nwk'))
+            unifrac_computer.setup_lazy_computation(
+                table_obj,
+                tree,
+                prune_tree=prune_tree,
+                pruned_tree_cache=pruned_cache_path,
+            )
             logger.info("Lazy computation setup complete")
             # Warn if using multiple workers with lazy UniFrac (each worker loads tree)
             if num_workers > 0:
@@ -310,6 +320,15 @@ def train(
                 unifrac_metric_name = "faith_pd"
                 encoder_type = "faith_pd"
         else:
+            # For upfront computation, also support tree pruning
+            if prune_tree:
+                logger.info("Pruning tree before upfront UniFrac computation...")
+                from aam.data.tree_pruner import load_or_prune_tree
+                pruned_cache_path = str(Path(tree).with_suffix('.pruned.nwk'))
+                pruned_tree = load_or_prune_tree(tree, table_obj, pruned_tree_path=pruned_cache_path)
+                tree = pruned_cache_path  # Use pruned tree for computation
+                logger.info(f"Using pruned tree: {pruned_cache_path}")
+            
             logger.info("Computing UniFrac distances upfront (full distance matrix)...")
             if unifrac_metric == "unifrac":
                 unifrac_distances = unifrac_computer.compute_unweighted(table_obj, tree)
@@ -589,6 +608,7 @@ def pretrain(
     asv_chunk_size: Optional[int],
     lazy_unifrac: bool,
     unifrac_threads: Optional[int],
+    prune_tree: bool,
 ):
     """Pre-train SequenceEncoder on UniFrac and nucleotide prediction (self-supervised)."""
     try:
@@ -634,7 +654,15 @@ def pretrain(
         if lazy_unifrac:
             logger.info("Using lazy UniFrac computation (batch-wise, on-the-fly)")
             logger.info("Setting up lazy computation (tree will be loaded per worker process)...")
-            unifrac_computer.setup_lazy_computation(table_obj, tree)
+            pruned_cache_path = None
+            if prune_tree:
+                pruned_cache_path = str(Path(tree).with_suffix('.pruned.nwk'))
+            unifrac_computer.setup_lazy_computation(
+                table_obj,
+                tree,
+                prune_tree=prune_tree,
+                pruned_tree_cache=pruned_cache_path,
+            )
             logger.info("Lazy computation setup complete")
             # Warn if using multiple workers with lazy UniFrac (each worker loads tree)
             if num_workers > 0:
@@ -655,6 +683,15 @@ def pretrain(
                 encoder_type = "faith_pd"
                 base_output_dim = 1
         else:
+            # For upfront computation, also support tree pruning
+            if prune_tree:
+                logger.info("Pruning tree before upfront UniFrac computation...")
+                from aam.data.tree_pruner import load_or_prune_tree
+                pruned_cache_path = str(Path(tree).with_suffix('.pruned.nwk'))
+                pruned_tree = load_or_prune_tree(tree, table_obj, pruned_tree_path=pruned_cache_path)
+                tree = pruned_cache_path  # Use pruned tree for computation
+                logger.info(f"Using pruned tree: {pruned_cache_path}")
+            
             logger.info("Computing UniFrac distances upfront (full distance matrix)...")
             if unifrac_metric == "unifrac":
                 unifrac_distances = unifrac_computer.compute_unweighted(table_obj, tree)

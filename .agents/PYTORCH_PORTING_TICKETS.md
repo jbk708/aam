@@ -285,6 +285,82 @@ Optimize data loading pipeline to reduce I/O bottlenecks and improve training th
 
 ---
 
+### PYT-10.3.1: Optimize Tree Loading with Pre-pruning
+**Priority:** HIGH | **Effort:** Medium (4-6 hours) | **Status:** Not Started
+
+**Description:**
+Pre-process and prune phylogenetic trees to only include ASVs present in the BIOM table before UniFrac computation. This dramatically reduces tree size (from 21M tips to potentially <100K tips) and speeds up both tree loading and UniFrac computation.
+
+**Problem:**
+- Large trees (e.g., 21M tips) are slow to load (6+ minutes)
+- UniFrac computation is slow even for small batches with large trees (~3 min/batch)
+- Most ASVs in the full tree are not present in the dataset
+- Pre-pruning the tree to only dataset ASVs would:
+  - Reduce tree size by 100-1000x
+  - Speed up tree loading from minutes to seconds
+  - Speed up UniFrac computation significantly
+  - Reduce memory usage
+
+**Solution:**
+- Add tree pruning utility to filter tree to only ASVs in BIOM table
+- Integrate pruning into lazy UniFrac setup (auto-prune if tree is large)
+- Cache pruned tree to disk for reuse
+- Use pruned tree for all UniFrac computations
+
+**Acceptance Criteria:**
+- [ ] Create `aam/data/tree_pruner.py` module with tree pruning functionality
+- [ ] Implement tree pruning using skbio (or BioPython if needed) to filter to ASVs in table
+- [ ] Add `--prune-tree` CLI flag to enable automatic tree pruning
+- [ ] Cache pruned tree to disk (e.g., `{tree_path}.pruned.nwk`) for reuse
+- [ ] Integrate pruning into lazy UniFrac setup
+- [ ] Verify pruned tree produces same UniFrac distances as full tree
+- [ ] Benchmark tree loading time before/after pruning
+- [ ] Benchmark UniFrac computation time before/after pruning
+- [ ] Add tests for tree pruning functionality
+- [ ] Update documentation
+
+**Implementation Approach:**
+1. **Tree Pruning Module** (`aam/data/tree_pruner.py`):
+   - `prune_tree_to_table()` - Main pruning function
+   - Uses skbio TreeNode.shear() or similar to remove tips not in table
+   - Preserves tree structure (collapses single-child nodes)
+   - Returns pruned TreeNode
+
+2. **Integration Points**:
+   - In `UniFracComputer.setup_lazy_computation()`: Check if tree should be pruned
+   - In `UniFracComputer.compute_unweighted()`: Use pruned tree if available
+   - Cache pruned tree to `{tree_path}.pruned.nwk` for reuse
+
+3. **CLI Integration**:
+   - Add `--prune-tree` flag (default: False, or auto-detect for large trees)
+   - Add `--pruned-tree-cache` option to specify cache location
+   - Log pruning statistics (original tips, pruned tips, final tips)
+
+**Files to Create/Modify:**
+- `aam/data/tree_pruner.py` - New module for tree pruning
+- `aam/data/unifrac.py` - Integrate pruning into UniFracComputer
+- `aam/cli.py` - Add `--prune-tree` flag
+- `tests/test_tree_pruner.py` - Tests for tree pruning
+- `environment.yml` - Add biopython if needed (or use skbio)
+
+**Benefits:**
+- **Massive speedup**: Tree loading from 6+ minutes to seconds
+- **Faster UniFrac**: Computation time reduced by 10-100x
+- **Lower memory**: Smaller tree uses less memory
+- **Better lazy mode**: Makes lazy UniFrac actually viable for large trees
+
+**Dependencies:** PYT-10.3 (completed), may need biopython package
+
+**Estimated Time:** 4-6 hours
+
+**Implementation Notes:**
+- Can use skbio TreeNode.shear() or BioPython Phylo (user's script uses BioPython)
+- Need to handle tree structure preservation (branch lengths, internal nodes)
+- Should cache pruned tree to avoid re-pruning on subsequent runs
+- Verify that pruned tree produces identical UniFrac distances
+
+---
+
 ### PYT-10.4: Implement Gradient Checkpointing
 **Priority:** MEDIUM | **Effort:** Medium (3-4 hours) | **Status:** Not Started
 
@@ -1004,7 +1080,7 @@ Create Docker container with AAM environment for easy deployment and reproducibi
 1. ✅ **PYT-10.1** (mixed precision) - High impact, low effort, quick win - **COMPLETED**
 2. ✅ **PYT-10.2** (model compilation) - Medium impact, low effort, quick win - **COMPLETED**
 3. ✅ **PYT-10.2.1** (fix dependencies for model compilation) - Medium priority, low effort - **COMPLETED**
-4. **PYT-10.3** (data loading) - Medium impact, medium effort
+4. ✅ **PYT-10.3** (data loading) - Medium impact, medium effort - **COMPLETED**
 5. **PYT-10.4** (gradient checkpointing) - High impact, medium effort
 6. **PYT-10.5** (attention optimization) - Medium impact, medium-high effort
 7. **PYT-10.6** (multi-GPU) - Very high impact, high effort (requires hardware)

@@ -15,6 +15,14 @@ import numpy as np
 import unifrac
 import multiprocessing
 
+# Import tree pruner (avoid circular import)
+try:
+    from aam.data.tree_pruner import load_or_prune_tree, get_pruning_stats
+except ImportError:
+    # During initial stub phase, module may not exist yet
+    load_or_prune_tree = None
+    get_pruning_stats = None
+
 
 class UniFracComputer:
     """Compute phylogenetic distances (UniFrac) from BIOM tables and phylogenetic trees.
@@ -47,6 +55,8 @@ class UniFracComputer:
         self._table: Optional[Table] = None
         self._tree: Optional[TreeNode] = None
         self._tree_path: Optional[str] = None
+        self._prune_tree: bool = False
+        self._table_for_pruning: Optional[Table] = None
 
     def compute_unweighted(self, table: Table, tree_path: str) -> DistanceMatrix:
         """Compute unweighted UniFrac distances between samples.
@@ -199,7 +209,14 @@ class UniFracComputer:
         if batch_size % 2 != 0:
             raise ValueError(f"Batch size must be even (multiple of 2), got {batch_size}")
 
-    def setup_lazy_computation(self, table: Table, tree_path: str, filter_tree: bool = True) -> None:
+    def setup_lazy_computation(
+        self,
+        table: Table,
+        tree_path: str,
+        filter_tree: bool = True,
+        prune_tree: bool = False,
+        pruned_tree_cache: Optional[str] = None,
+    ) -> None:
         """Setup for lazy batch-wise distance computation.
         
         This method stores the table and tree path for efficient batch computation.
@@ -209,6 +226,8 @@ class UniFracComputer:
             table: Rarefied biom.Table object
             tree_path: Path to phylogenetic tree file (.nwk Newick format)
             filter_tree: If True, filter tree to only include ASVs present in the table (much faster)
+            prune_tree: If True, pre-prune tree to only ASVs in table (dramatically reduces tree size)
+            pruned_tree_cache: Optional path to cache pruned tree (default: {tree_path}.pruned.nwk)
         """
         import logging
         logger = logging.getLogger(__name__)
@@ -228,11 +247,35 @@ class UniFracComputer:
         else:
             self._table_asv_ids = None
         
+        # Handle tree pruning if requested
+        if prune_tree:
+            if load_or_prune_tree is None:
+                raise ImportError("Tree pruning requires aam.data.tree_pruner module")
+            logger.info("Pruning tree to only include ASVs in table...")
+            if pruned_tree_cache is None:
+                pruned_tree_cache = str(Path(tree_path).with_suffix('.pruned.nwk'))
+            
+            # Get pruning stats before pruning
+            if get_pruning_stats is not None:
+                stats = get_pruning_stats(skbio.read(str(tree_path), format="newick", into=TreeNode), table)
+                logger.info(
+                    f"Tree pruning: {stats['original_tree_tips']} tips -> {stats['final_tree_tips']} tips "
+                    f"({stats['pruned_tips']} removed, {100 * stats['pruned_tips'] / stats['original_tree_tips']:.1f}% reduction)"
+                )
+            
+            # Use pruned tree path for lazy loading
+            self._tree_path = pruned_tree_cache
+            logger.info(f"Pruned tree will be cached to: {pruned_tree_cache}")
+        else:
+            self._tree_path = tree_path
+        
         # Don't load tree here - load it lazily in each worker process to avoid
         # memory issues when using DataLoader with multiple workers
         # Each worker will load the tree once and cache it
         self._tree = None
-        logger.info(f"Lazy computation setup: tree will be loaded per worker process from {tree_path}")
+        self._prune_tree = prune_tree
+        self._table_for_pruning = table if prune_tree else None
+        logger.info(f"Lazy computation setup: tree will be loaded per worker process from {self._tree_path}")
 
     def compute_batch_unweighted(
         self,
