@@ -55,8 +55,10 @@ class UniFracComputer:
         self._table: Optional[Table] = None
         self._tree: Optional[TreeNode] = None
         self._tree_path: Optional[str] = None
+        self._original_tree_path: Optional[str] = None
         self._prune_tree: bool = False
         self._table_for_pruning: Optional[Table] = None
+        self._pruned_tree_cache: Optional[str] = None
 
     def compute_unweighted(self, table: Table, tree_path: str) -> DistanceMatrix:
         """Compute unweighted UniFrac distances between samples.
@@ -251,23 +253,31 @@ class UniFracComputer:
         if prune_tree:
             if load_or_prune_tree is None:
                 raise ImportError("Tree pruning requires aam.data.tree_pruner module")
-            logger.info("Pruning tree to only include ASVs in table...")
+            logger.info("Tree will be pruned to only include ASVs in table...")
             if pruned_tree_cache is None:
                 pruned_tree_cache = str(Path(tree_path).with_suffix('.pruned.nwk'))
             
-            # Get pruning stats before pruning
+            # Get pruning stats before pruning (load tree temporarily)
             if get_pruning_stats is not None:
-                stats = get_pruning_stats(skbio.read(str(tree_path), format="newick", into=TreeNode), table)
-                logger.info(
-                    f"Tree pruning: {stats['original_tree_tips']} tips -> {stats['final_tree_tips']} tips "
-                    f"({stats['pruned_tips']} removed, {100 * stats['pruned_tips'] / stats['original_tree_tips']:.1f}% reduction)"
-                )
+                try:
+                    full_tree = skbio.read(str(tree_path), format="newick", into=TreeNode)
+                    stats = get_pruning_stats(full_tree, table)
+                    logger.info(
+                        f"Tree pruning: {stats['original_tree_tips']} tips -> {stats['final_tree_tips']} tips "
+                        f"({stats['pruned_tips']} removed, {100 * stats['pruned_tips'] / stats['original_tree_tips']:.1f}% reduction)"
+                    )
+                except Exception as e:
+                    logger.warning(f"Could not compute pruning stats: {e}")
             
-            # Use pruned tree path for lazy loading
-            self._tree_path = pruned_tree_cache
+            # Store original tree path and pruned cache path
+            self._original_tree_path = tree_path
+            self._pruned_tree_cache = pruned_tree_cache
+            self._table_for_pruning = table
             logger.info(f"Pruned tree will be cached to: {pruned_tree_cache}")
         else:
             self._tree_path = tree_path
+            self._original_tree_path = None
+            self._pruned_tree_cache = None
         
         # Don't load tree here - load it lazily in each worker process to avoid
         # memory issues when using DataLoader with multiple workers
