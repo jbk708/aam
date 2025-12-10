@@ -492,6 +492,43 @@ class TestTrainingLoop:
         assert len(history["train_loss"]) == 2
         assert len(history["val_loss"]) == 2
 
+    def test_unifrac_predictions_in_range(self, small_model, loss_fn, simple_dataloader_encoder, device):
+        """Test that UniFrac distance predictions are bounded to [0, 1] during validation."""
+        from aam.training.losses import compute_pairwise_distances
+
+        small_model = small_model.to(device)
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+        )
+
+        # Run validation and check predictions
+        results = trainer.validate_epoch(simple_dataloader_encoder, epoch=0, num_epochs=1, compute_metrics=True)
+
+        # Check that validation completed
+        assert "total_loss" in results
+
+        # Manually check predictions from a batch
+        small_model.eval()
+        with torch.no_grad():
+            for batch in simple_dataloader_encoder:
+                tokens, targets = trainer._prepare_batch(batch)
+                outputs = small_model(tokens, return_nucleotides=False)
+
+                if "embeddings" in outputs:
+                    embeddings = outputs["embeddings"]
+                    # Compute normalized distances (as done in trainer)
+                    distances = compute_pairwise_distances(embeddings, normalize=True)
+
+                    # Verify all distances are in [0, 1]
+                    assert torch.all(distances >= 0.0), "UniFrac distances should be >= 0.0"
+                    assert torch.all(distances <= 1.0), "UniFrac distances should be <= 1.0"
+                    # Diagonal should be 0.0
+                    assert torch.allclose(torch.diag(distances), torch.zeros(distances.shape[0])), "Diagonal should be 0.0"
+
+                break  # Just check first batch
+
     def test_train_early_stopping(self, small_model, loss_fn, simple_dataloader_encoder, device):
         """Test early stopping."""
         small_model = small_model.to(device)
