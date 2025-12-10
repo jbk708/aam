@@ -198,7 +198,7 @@ Add support for PyTorch 2.0+ model compilation using `torch.compile()` to achiev
 ---
 
 ### PYT-10.2.1: Fix Dependencies to Enable Model Compilation
-**Priority:** MEDIUM | **Effort:** Low (1 hour) | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** Low (1 hour) | **Status:** ✅ Completed
 
 **Description:**
 Update dependency specifications (pyproject.toml, environment.yml) to ensure PyTorch 2.1+ is available, enabling model compilation on Python 3.12+ systems. Currently, model compilation fails on Python 3.12+ with PyTorch 2.0 due to Dynamo limitations.
@@ -209,11 +209,12 @@ Update dependency specifications (pyproject.toml, environment.yml) to ensure PyT
 - Users on Python 3.12+ cannot use `--compile-model` flag without upgrading PyTorch
 
 **Acceptance Criteria:**
-- [ ] Update `pyproject.toml` to require PyTorch >= 2.1.0
-- [ ] Update `environment.yml` to require PyTorch >= 2.1.0
-- [ ] Verify model compilation works on Python 3.12+ with updated dependencies
-- [ ] Update documentation to reflect PyTorch version requirements
-- [ ] Test that existing functionality still works with PyTorch 2.1+
+- [x] Update `pyproject.toml` to require PyTorch >= 2.3.0
+- [x] Update `environment.yml` to require PyTorch >= 2.3.0
+- [x] Verify model compilation works on Python 3.12+ with updated dependencies
+- [x] Update documentation to reflect PyTorch version requirements (error message updated)
+- [x] Test that existing functionality still works with PyTorch 2.3+
+- [x] Fix prediction collection and metrics computation for compiled models
 
 **Files to Modify:**
 - `pyproject.toml` - Update PyTorch version requirement
@@ -223,6 +224,24 @@ Update dependency specifications (pyproject.toml, environment.yml) to ensure PyT
 **Dependencies:** None
 
 **Estimated Time:** 1 hour
+
+**Implementation Notes:**
+- ✅ Updated `pyproject.toml` to require `torch >= 2.3.0` (changed from >= 2.1.0 after testing revealed 2.3.0+ is needed for full Python 3.12+ support)
+- ✅ Updated `environment.yml` to require `pytorch >=2.3.0`
+- ✅ Updated error message in `trainer.py` to reflect correct version requirement (PyTorch 2.3.0+ with Python 3.12+)
+- ✅ Fixed `_is_pretraining()` to handle compiled models by checking `_orig_mod` attribute
+- ✅ Fixed prediction collection for compiled models by ensuring outputs are properly detached
+- ✅ Fixed metrics computation (R²) for compiled models by ensuring embeddings are detached before computing pairwise distances
+- ✅ Added comprehensive error handling and debug logging for prediction collection
+- ✅ Verified model compilation works on Python 3.12+ with PyTorch 2.9.1
+- ✅ All compilation tests passing (7/7 tests)
+- ✅ R² metrics and prediction plots now work correctly with compiled models
+
+**Key Fixes:**
+1. **Pretraining detection**: Fixed `_is_pretraining()` to check `_orig_mod` for compiled models
+2. **Prediction collection**: Added explicit `.detach()` calls when collecting predictions for metrics
+3. **Embedding handling**: Ensured embeddings are detached before computing pairwise distances
+4. **Error handling**: Added try-catch around distance computation with proper error logging
 
 ---
 
@@ -373,7 +392,7 @@ Add support for distributed training using PyTorch's DistributedDataParallel (DD
 **Recommended Implementation Order for Phase 10 (Optimizations):**
 1. ✅ **PYT-10.1** (mixed precision) - High impact, low effort, quick win - **COMPLETED**
 2. ✅ **PYT-10.2** (model compilation) - Medium impact, low effort, quick win - **COMPLETED**
-3. **PYT-10.2.1** (fix dependencies for model compilation) - Medium priority, low effort - **PENDING**
+3. ✅ **PYT-10.2.1** (fix dependencies for model compilation) - Medium priority, low effort - **COMPLETED**
 4. **PYT-10.3** (data loading) - Medium impact, medium effort
 5. **PYT-10.4** (gradient checkpointing) - High impact, medium effort
 6. **PYT-10.5** (attention optimization) - Medium impact, medium-high effort
