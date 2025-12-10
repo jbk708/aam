@@ -85,25 +85,76 @@ def compute_batch_unweighted(self, sample_ids, table=None, tree_path=None):
 
 ## Main Branch Implementation
 
-**Status:** `aam/data/unifrac.py` does not exist on main branch.
+**Status:** Main branch uses TensorFlow and different file structure.
 
-The main branch likely:
-- Computes UniFrac distances upfront (not lazy)
-- Loads tree once at startup
-- Extracts batch distances from pre-computed matrix
-- No tree pruning feature
+### Tree Loading Strategy (Main Branch)
+
+1. **Upfront Computation**
+   - Tree loaded once during `_create_encoder_target()` in `UniFracGenerator`
+   - Full distance matrix computed upfront using `unweighted()` or `faith_pd()`
+   - Tree loaded from file path, used for full computation, then kept in memory
+
+2. **Code Location**
+   - `aam/data_handlers/unifrac_generator.py` - Main UniFrac handling
+   - `aam/unifrac_data_utils.py` - Legacy utilities
+
+3. **Implementation Details**
+   ```python
+   # From unifrac_generator.py
+   def _create_encoder_target(self, table: Table) -> DistanceMatrix:
+       # Saves table to temp file
+       temp_path = f"/tmp/temp{random}.biom"
+       table.to_hdf5(temp_path)
+       
+       # Computes FULL distance matrix upfront
+       if self.unifrac_metric == "unifrac":
+           distances = unweighted(temp_path, self.tree_path)  # Full matrix!
+       else:
+           distances = faith_pd(temp_path, self.tree_path)  # Full series!
+       
+       return distances  # Stored in memory
+   ```
+
+### Batch Loading Strategy (Main Branch)
+
+1. **Extract from Pre-computed Matrix**
+   - Full distance matrix computed once at initialization
+   - Batches extract their distances using `encoder_target.filter(sample_ids)`
+   - No on-the-fly computation
+
+2. **Batch Processing**
+   ```python
+   def _encoder_output(self, encoder_target, sample_ids, ob_ids):
+       if self.unifrac_metric == "unifrac":
+           return encoder_target.filter(sample_ids).data  # Extract from full matrix
+       else:
+           return encoder_target.loc[sample_ids].to_numpy()  # Extract from full series
+   ```
+
+### Key Characteristics (Main Branch)
+
+- **Tree Loading**: Once at initialization, used for full computation
+- **UniFrac Computation**: Upfront, full matrix/series computed once
+- **Batch Processing**: Extract from pre-computed matrix (fast)
+- **Memory**: High (full tree + full distance matrix in memory)
+- **Startup Time**: Slow (load tree + compute all distances)
+- **No Tree Pruning**: Full tree always used
 
 ## Key Differences
 
-| Feature | Main Branch | PYT-10.3.1 Branch |
-|---------|-------------|-------------------|
-| Tree Loading | Upfront, single load | Lazy, per worker process |
+| Feature | Main Branch (TensorFlow) | PYT-10.3.1 Branch (PyTorch) |
+|---------|-------------------------|----------------------------|
+| Framework | TensorFlow | PyTorch |
+| Tree Loading | Upfront, single load at init | Lazy, per worker process |
 | Tree Pruning | ❌ Not available | ✅ Pre-prune to ASVs in table |
-| Batch Computation | Extract from full matrix | Compute on-the-fly per batch |
-| Memory Usage | High (full tree + full matrix) | Lower (pruned tree, batch-only computation) |
-| Startup Time | Slow (load tree + compute all distances) | Fast (no tree load, no upfront computation) |
+| UniFrac Computation | Upfront, full matrix/series | Lazy, per batch on-the-fly |
+| Batch Processing | Extract from pre-computed matrix | Compute distances per batch |
+| Memory Usage | Very High (full tree + full N×N matrix) | Lower (pruned tree, batch-only) |
+| Startup Time | Very Slow (load tree + compute all N×N distances) | Fast (no tree load, no upfront computation) |
 | First Epoch | Fast (distances pre-computed) | Slower (compute per batch) |
 | Subsequent Epochs | Fast | Fast (cached batches) |
+| Scalability | Poor (O(N²) memory for distance matrix) | Better (O(batch²) memory) |
+| Large Datasets | May OOM (full matrix too large) | More feasible (batch-only) |
 
 ## Performance Implications
 
