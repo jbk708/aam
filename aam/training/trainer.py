@@ -897,9 +897,15 @@ class Trainer:
                                     # Compute distances from embeddings
                                     embeddings = outputs["embeddings"]
                                     if embeddings is not None:
-                                        # Detach embeddings before computing distances to ensure proper gradient handling
-                                        embeddings_detached = embeddings.detach()
-                                        base_pred_batch = compute_pairwise_distances(embeddings_detached).detach()
+                                        try:
+                                            # Detach embeddings before computing distances to ensure proper gradient handling
+                                            embeddings_detached = embeddings.detach()
+                                            base_pred_batch = compute_pairwise_distances(embeddings_detached).detach()
+                                        except Exception as e:
+                                            import logging
+                                            logger = logging.getLogger(__name__)
+                                            logger.error(f"Error computing pairwise distances: {e}", exc_info=True)
+                                            base_pred_batch = None
 
                                 # Fallback to base_prediction if embeddings not available
                                 if base_pred_batch is None and "base_prediction" in outputs:
@@ -925,6 +931,12 @@ class Trainer:
                                         # If not square, just flatten (shouldn't happen for UniFrac)
                                         all_predictions["base_prediction"].append(base_pred_batch.flatten().detach())
                                         all_targets["base_target"].append(base_true_batch.flatten().detach())
+                            else:
+                                # Debug: log why base_target check failed
+                                if step == 1:  # Only log once per epoch
+                                    import logging
+                                    logger = logging.getLogger(__name__)
+                                    logger.debug(f"base_target not in targets. Target keys: {list(targets.keys())}")
                         else:
                             # For regular training, collect target_prediction for plotting
                             if "target_prediction" in outputs and "target" in targets:
