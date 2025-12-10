@@ -250,13 +250,37 @@ class UniFracComputer:
             if pruned_tree_cache is None:
                 pruned_tree_cache = str(Path(tree_path).with_suffix('.pruned.nwk'))
             
-            # Get pruning stats before pruning (load tree temporarily)
-            if get_pruning_stats is not None:
+            # Prune tree NOW (during setup) and save to cache
+            # This avoids reloading the full tree in each worker process
+            pruned_cache_path_obj = Path(pruned_tree_cache)
+            if not pruned_cache_path_obj.exists():
+                logger.info("Pruning tree now (this may take a few minutes for large trees)...")
                 try:
+                    from aam.data.tree_pruner import prune_tree_to_table, get_pruning_stats
+                    
+                    # Load full tree and get stats
                     full_tree = skbio.read(str(tree_path), format="newick", into=TreeNode)
                     stats = get_pruning_stats(full_tree, table)
                     logger.info(
                         f"Tree pruning: {stats['original_tree_tips']} tips -> {stats['final_tree_tips']} tips "
+                        f"({stats['pruned_tips']} removed, {100 * stats['pruned_tips'] / stats['original_tree_tips']:.1f}% reduction)"
+                    )
+                    
+                    # Prune and save
+                    pruned_tree = prune_tree_to_table(full_tree, table, output_path=pruned_tree_cache)
+                    logger.info(f"Pruned tree saved to: {pruned_tree_cache}")
+                except Exception as e:
+                    logger.error(f"Error pruning tree: {e}")
+                    raise
+            else:
+                logger.info(f"Using existing pruned tree cache: {pruned_tree_cache}")
+                # Get stats from existing pruned tree for logging
+                try:
+                    from aam.data.tree_pruner import get_pruning_stats
+                    full_tree = skbio.read(str(tree_path), format="newick", into=TreeNode)
+                    stats = get_pruning_stats(full_tree, table)
+                    logger.info(
+                        f"Pruned tree cache exists: {stats['original_tree_tips']} tips -> {stats['final_tree_tips']} tips "
                         f"({stats['pruned_tips']} removed, {100 * stats['pruned_tips'] / stats['original_tree_tips']:.1f}% reduction)"
                     )
                 except Exception as e:
@@ -266,7 +290,8 @@ class UniFracComputer:
             self._original_tree_path = tree_path
             self._pruned_tree_cache = pruned_tree_cache
             self._table_for_pruning = table
-            logger.info(f"Pruned tree will be cached to: {pruned_tree_cache}")
+            # Use pruned tree path for lazy loading
+            self._tree_path = pruned_tree_cache
         else:
             self._tree_path = tree_path
             self._original_tree_path = None
@@ -336,20 +361,12 @@ class UniFracComputer:
             import logging
             logger = logging.getLogger(__name__)
             
-            # Use pruned tree if available, otherwise load and prune if needed
-            if self._prune_tree and self._original_tree_path is not None:
-                logger.info(f"Loading/pruning tree in worker process...")
-                self._tree = load_or_prune_tree(
-                    self._original_tree_path,
-                    self._table_for_pruning if self._table_for_pruning is not None else table,
-                    pruned_tree_path=self._pruned_tree_cache,
-                )
-            else:
-                logger.info(f"Loading tree in worker process from {tree_path} (this may take a few minutes for large trees)...")
-                tree_path_obj = Path(tree_path)
-                if not tree_path_obj.exists():
-                    raise FileNotFoundError(f"Tree file not found: {tree_path}")
-                self._tree = skbio.read(str(tree_path), format="newick", into=TreeNode)
+            # Load tree (already pruned if pruning was enabled during setup)
+            logger.info(f"Loading tree in worker process from {tree_path}...")
+            tree_path_obj = Path(tree_path)
+            if not tree_path_obj.exists():
+                raise FileNotFoundError(f"Tree file not found: {tree_path}")
+            self._tree = skbio.read(str(tree_path), format="newick", into=TreeNode)
             logger.info(f"Tree loaded in worker process ({len(list(self._tree.tips()))} tips)")
         
         tree = self._tree
@@ -432,20 +449,12 @@ class UniFracComputer:
             import logging
             logger = logging.getLogger(__name__)
             
-            # Use pruned tree if available, otherwise load and prune if needed
-            if self._prune_tree and self._original_tree_path is not None:
-                logger.info(f"Loading/pruning tree in worker process...")
-                self._tree = load_or_prune_tree(
-                    self._original_tree_path,
-                    self._table_for_pruning if self._table_for_pruning is not None else table,
-                    pruned_tree_path=self._pruned_tree_cache,
-                )
-            else:
-                logger.info(f"Loading tree in worker process from {tree_path} (this may take a few minutes for large trees)...")
-                tree_path_obj = Path(tree_path)
-                if not tree_path_obj.exists():
-                    raise FileNotFoundError(f"Tree file not found: {tree_path}")
-                self._tree = skbio.read(str(tree_path), format="newick", into=TreeNode)
+            # Load tree (already pruned if pruning was enabled during setup)
+            logger.info(f"Loading tree in worker process from {tree_path}...")
+            tree_path_obj = Path(tree_path)
+            if not tree_path_obj.exists():
+                raise FileNotFoundError(f"Tree file not found: {tree_path}")
+            self._tree = skbio.read(str(tree_path), format="newick", into=TreeNode)
             logger.info(f"Tree loaded in worker process ({len(list(self._tree.tips()))} tips)")
         
         tree = self._tree
