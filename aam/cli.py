@@ -290,9 +290,16 @@ def train(
         
         if lazy_unifrac:
             logger.info("Using lazy UniFrac computation (batch-wise, on-the-fly)")
-            logger.info("Setting up lazy computation (loading tree into memory)...")
+            logger.info("Setting up lazy computation (tree will be loaded per worker process)...")
             unifrac_computer.setup_lazy_computation(table_obj, tree)
             logger.info("Lazy computation setup complete")
+            # Warn if using multiple workers with lazy UniFrac (each worker loads tree)
+            if num_workers > 0:
+                logger.warning(
+                    f"Using {num_workers} DataLoader workers with lazy UniFrac. "
+                    f"Each worker will load the tree into memory. "
+                    f"Consider using --num-workers 0 if you encounter memory issues."
+                )
             unifrac_distances = None
             train_distance_matrix = None
             val_distance_matrix = None

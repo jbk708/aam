@@ -202,8 +202,8 @@ class UniFracComputer:
     def setup_lazy_computation(self, table: Table, tree_path: str) -> None:
         """Setup for lazy batch-wise distance computation.
         
-        This method loads the table and tree into memory for efficient batch computation.
-        Use this when you want to compute distances on-the-fly instead of upfront.
+        This method stores the table and tree path for efficient batch computation.
+        The tree is loaded lazily per worker process to avoid memory issues with multiprocessing.
         
         Args:
             table: Rarefied biom.Table object
@@ -219,12 +219,11 @@ class UniFracComputer:
         if not tree_path_obj.exists():
             raise FileNotFoundError(f"Tree file not found: {tree_path}")
         
-        logger.info(f"Loading phylogenetic tree from {tree_path}...")
-        try:
-            self._tree = skbio.read(str(tree_path), format="newick", into=TreeNode)
-            logger.info(f"Tree loaded successfully ({len(list(self._tree.tips()))} tips)")
-        except Exception as e:
-            raise ValueError(f"Error loading phylogenetic tree from {tree_path}: {e}")
+        # Don't load tree here - load it lazily in each worker process to avoid
+        # memory issues when using DataLoader with multiple workers
+        # Each worker will load the tree once and cache it
+        self._tree = None
+        logger.info(f"Lazy computation setup: tree will be loaded per worker process from {tree_path}")
 
     def compute_batch_unweighted(
         self,
@@ -268,15 +267,22 @@ class UniFracComputer:
         if table is None:
             table = self._table
         if tree_path is None:
-            tree = self._tree
-        else:
+            tree_path = self._tree_path
+        
+        if table is None or tree_path is None:
+            raise ValueError("Must provide table and tree_path, or call setup_lazy_computation() first")
+        
+        # Load tree lazily (cache per process to avoid reloading)
+        if self._tree is None:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.debug(f"Loading tree in worker process from {tree_path}")
             tree_path_obj = Path(tree_path)
             if not tree_path_obj.exists():
                 raise FileNotFoundError(f"Tree file not found: {tree_path}")
-            tree = skbio.read(str(tree_path), format="newick", into=TreeNode)
+            self._tree = skbio.read(str(tree_path), format="newick", into=TreeNode)
         
-        if table is None or tree is None:
-            raise ValueError("Must provide table and tree_path, or call setup_lazy_computation() first")
+        tree = self._tree
         
         # Filter table to only include samples in batch
         batch_table = table.filter(sample_ids, axis="sample", inplace=False)
@@ -338,15 +344,22 @@ class UniFracComputer:
         if table is None:
             table = self._table
         if tree_path is None:
-            tree = self._tree
-        else:
+            tree_path = self._tree_path
+        
+        if table is None or tree_path is None:
+            raise ValueError("Must provide table and tree_path, or call setup_lazy_computation() first")
+        
+        # Load tree lazily (cache per process to avoid reloading)
+        if self._tree is None:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.debug(f"Loading tree in worker process from {tree_path}")
             tree_path_obj = Path(tree_path)
             if not tree_path_obj.exists():
                 raise FileNotFoundError(f"Tree file not found: {tree_path}")
-            tree = skbio.read(str(tree_path), format="newick", into=TreeNode)
+            self._tree = skbio.read(str(tree_path), format="newick", into=TreeNode)
         
-        if table is None or tree is None:
-            raise ValueError("Must provide table and tree_path, or call setup_lazy_computation() first")
+        tree = self._tree
         
         # Filter table to only include samples in batch
         batch_table = table.filter(sample_ids, axis="sample", inplace=False)
