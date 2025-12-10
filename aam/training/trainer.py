@@ -789,9 +789,14 @@ class Trainer:
                 leave=False,
             )
 
+            # Store last batch info for debugging
+            last_targets = None
+            last_outputs = None
+            
             for step, batch in enumerate(pbar, 1):
                 try:
                     tokens, targets = self._prepare_batch(batch)
+                    last_targets = targets
 
                     return_nucleotides = "nucleotides" in targets or self.loss_fn.nuc_penalty > 0
 
@@ -807,6 +812,7 @@ class Trainer:
                             outputs = self.model(tokens, return_nucleotides=return_nucleotides)
                     else:
                         outputs = self.model(tokens, return_nucleotides=return_nucleotides)
+                    last_outputs = outputs
 
                     encoder_type = self._get_encoder_type()
                     is_classifier = self._get_is_classifier()
@@ -885,7 +891,7 @@ class Trainer:
                             if "base_target" in targets:
                                 encoder_type = self._get_encoder_type()
                                 base_pred_batch = None
-                                
+
                                 # Try to get embeddings first (for UniFrac encoder type)
                                 if encoder_type == "unifrac" and "embeddings" in outputs:
                                     # Compute distances from embeddings
@@ -894,7 +900,7 @@ class Trainer:
                                         # Detach embeddings before computing distances to ensure proper gradient handling
                                         embeddings_detached = embeddings.detach()
                                         base_pred_batch = compute_pairwise_distances(embeddings_detached).detach()
-                                
+
                                 # Fallback to base_prediction if embeddings not available
                                 if base_pred_batch is None and "base_prediction" in outputs:
                                     base_pred_batch = outputs["base_prediction"]
@@ -963,9 +969,18 @@ class Trainer:
         # Debug: Log if predictions weren't collected
         if compute_metrics and not all_predictions:
             import logging
+
             logger = logging.getLogger(__name__)
-            logger.warning(f"No predictions collected for metrics computation at epoch {epoch}. Outputs keys: {list(outputs.keys()) if 'outputs' in locals() else 'N/A'}")
-        
+            # Get target keys from the last batch processed
+            target_keys = list(last_targets.keys()) if last_targets is not None else []
+            output_keys = list(last_outputs.keys()) if last_outputs is not None else []
+            logger.warning(
+                f"No predictions collected for metrics computation at epoch {epoch}. "
+                f"Outputs keys: {output_keys}, "
+                f"Target keys: {target_keys}, "
+                f"is_pretraining: {is_pretraining}"
+            )
+
         if compute_metrics and all_predictions:
             if is_pretraining and "base_prediction" in all_predictions:
                 # For pretraining, compute metrics for UniFrac predictions
