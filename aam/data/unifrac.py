@@ -329,7 +329,11 @@ class UniFracComputer:
         if table is None:
             table = self._table
         if tree_path is None:
-            tree_path = self._tree_path
+            # Use pruned tree path if pruning is enabled, otherwise use original
+            if self._prune_tree and self._pruned_tree_cache is not None:
+                tree_path = self._pruned_tree_cache
+            else:
+                tree_path = self._tree_path
         
         if table is None or tree_path is None:
             raise ValueError("Must provide table and tree_path, or call setup_lazy_computation() first")
@@ -338,11 +342,21 @@ class UniFracComputer:
         if self._tree is None:
             import logging
             logger = logging.getLogger(__name__)
-            logger.info(f"Loading tree in worker process from {tree_path} (this may take a few minutes for large trees)...")
-            tree_path_obj = Path(tree_path)
-            if not tree_path_obj.exists():
-                raise FileNotFoundError(f"Tree file not found: {tree_path}")
-            self._tree = skbio.read(str(tree_path), format="newick", into=TreeNode)
+            
+            # Use pruned tree if available, otherwise load and prune if needed
+            if self._prune_tree and load_or_prune_tree is not None and self._original_tree_path is not None:
+                logger.info(f"Loading/pruning tree in worker process...")
+                self._tree = load_or_prune_tree(
+                    self._original_tree_path,
+                    self._table_for_pruning if self._table_for_pruning is not None else table,
+                    pruned_tree_path=self._pruned_tree_cache,
+                )
+            else:
+                logger.info(f"Loading tree in worker process from {tree_path} (this may take a few minutes for large trees)...")
+                tree_path_obj = Path(tree_path)
+                if not tree_path_obj.exists():
+                    raise FileNotFoundError(f"Tree file not found: {tree_path}")
+                self._tree = skbio.read(str(tree_path), format="newick", into=TreeNode)
             logger.info(f"Tree loaded in worker process ({len(list(self._tree.tips()))} tips)")
         
         tree = self._tree
@@ -411,7 +425,11 @@ class UniFracComputer:
         if table is None:
             table = self._table
         if tree_path is None:
-            tree_path = self._tree_path
+            # Use pruned tree path if pruning is enabled, otherwise use original
+            if self._prune_tree and self._pruned_tree_cache is not None:
+                tree_path = self._pruned_tree_cache
+            else:
+                tree_path = self._tree_path
         
         if table is None or tree_path is None:
             raise ValueError("Must provide table and tree_path, or call setup_lazy_computation() first")
@@ -420,11 +438,21 @@ class UniFracComputer:
         if self._tree is None:
             import logging
             logger = logging.getLogger(__name__)
-            logger.info(f"Loading tree in worker process from {tree_path} (this may take a few minutes for large trees)...")
-            tree_path_obj = Path(tree_path)
-            if not tree_path_obj.exists():
-                raise FileNotFoundError(f"Tree file not found: {tree_path}")
-            self._tree = skbio.read(str(tree_path), format="newick", into=TreeNode)
+            
+            # Use pruned tree if available, otherwise load and prune if needed
+            if self._prune_tree and load_or_prune_tree is not None and self._original_tree_path is not None:
+                logger.info(f"Loading/pruning tree in worker process...")
+                self._tree = load_or_prune_tree(
+                    self._original_tree_path,
+                    self._table_for_pruning if self._table_for_pruning is not None else table,
+                    pruned_tree_path=self._pruned_tree_cache,
+                )
+            else:
+                logger.info(f"Loading tree in worker process from {tree_path} (this may take a few minutes for large trees)...")
+                tree_path_obj = Path(tree_path)
+                if not tree_path_obj.exists():
+                    raise FileNotFoundError(f"Tree file not found: {tree_path}")
+                self._tree = skbio.read(str(tree_path), format="newick", into=TreeNode)
             logger.info(f"Tree loaded in worker process ({len(list(self._tree.tips()))} tips)")
         
         tree = self._tree
