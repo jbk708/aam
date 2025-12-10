@@ -15,13 +15,8 @@ import numpy as np
 import unifrac
 import multiprocessing
 
-# Import tree pruner (avoid circular import)
-try:
-    from aam.data.tree_pruner import load_or_prune_tree, get_pruning_stats
-except ImportError:
-    # During initial stub phase, module may not exist yet
-    load_or_prune_tree = None
-    get_pruning_stats = None
+# Import tree pruner
+from aam.data.tree_pruner import load_or_prune_tree, get_pruning_stats
 
 
 class UniFracComputer:
@@ -251,8 +246,6 @@ class UniFracComputer:
         
         # Handle tree pruning if requested
         if prune_tree:
-            if load_or_prune_tree is None:
-                raise ImportError("Tree pruning requires aam.data.tree_pruner module")
             logger.info("Tree will be pruned to only include ASVs in table...")
             if pruned_tree_cache is None:
                 pruned_tree_cache = str(Path(tree_path).with_suffix('.pruned.nwk'))
@@ -344,7 +337,7 @@ class UniFracComputer:
             logger = logging.getLogger(__name__)
             
             # Use pruned tree if available, otherwise load and prune if needed
-            if self._prune_tree and load_or_prune_tree is not None and self._original_tree_path is not None:
+            if self._prune_tree and self._original_tree_path is not None:
                 logger.info(f"Loading/pruning tree in worker process...")
                 self._tree = load_or_prune_tree(
                     self._original_tree_path,
@@ -440,7 +433,7 @@ class UniFracComputer:
             logger = logging.getLogger(__name__)
             
             # Use pruned tree if available, otherwise load and prune if needed
-            if self._prune_tree and load_or_prune_tree is not None and self._original_tree_path is not None:
+            if self._prune_tree and self._original_tree_path is not None:
                 logger.info(f"Loading/pruning tree in worker process...")
                 self._tree = load_or_prune_tree(
                     self._original_tree_path,

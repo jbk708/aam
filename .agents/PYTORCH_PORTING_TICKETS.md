@@ -308,16 +308,16 @@ Pre-process and prune phylogenetic trees to only include ASVs present in the BIO
 - Use pruned tree for all UniFrac computations
 
 **Acceptance Criteria:**
-- [ ] Create `aam/data/tree_pruner.py` module with tree pruning functionality
-- [ ] Implement tree pruning using skbio (or BioPython if needed) to filter to ASVs in table
-- [ ] Add `--prune-tree` CLI flag to enable automatic tree pruning
-- [ ] Cache pruned tree to disk (e.g., `{tree_path}.pruned.nwk`) for reuse
-- [ ] Integrate pruning into lazy UniFrac setup
-- [ ] Verify pruned tree produces same UniFrac distances as full tree
-- [ ] Benchmark tree loading time before/after pruning
-- [ ] Benchmark UniFrac computation time before/after pruning
-- [ ] Add tests for tree pruning functionality
-- [ ] Update documentation
+- [x] Create `aam/data/tree_pruner.py` module with tree pruning functionality
+- [x] Implement tree pruning using skbio TreeNode.shear() to filter to ASVs in table
+- [x] Add `--prune-tree` CLI flag to enable automatic tree pruning
+- [x] Cache pruned tree to disk (e.g., `{tree_path}.pruned.nwk`) for reuse
+- [x] Integrate pruning into lazy UniFrac setup
+- [x] Verify pruned tree produces same UniFrac distances as full tree
+- [x] Add tests for tree pruning functionality
+- [ ] Benchmark tree loading time before/after pruning (left to users for benchmarking)
+- [ ] Benchmark UniFrac computation time before/after pruning (left to users for benchmarking)
+- [ ] Update documentation (CLI help text updated)
 
 **Implementation Approach:**
 1. **Tree Pruning Module** (`aam/data/tree_pruner.py`):
@@ -349,15 +349,31 @@ Pre-process and prune phylogenetic trees to only include ASVs present in the BIO
 - **Lower memory**: Smaller tree uses less memory
 - **Better lazy mode**: Makes lazy UniFrac actually viable for large trees
 
-**Dependencies:** PYT-10.3 (completed), may need biopython package
+**Dependencies:** PYT-10.3 (completed)
 
-**Estimated Time:** 4-6 hours
+**Estimated Time:** 4-6 hours (actual: completed)
 
 **Implementation Notes:**
-- Can use skbio TreeNode.shear() or BioPython Phylo (user's script uses BioPython)
-- Need to handle tree structure preservation (branch lengths, internal nodes)
-- Should cache pruned tree to avoid re-pruning on subsequent runs
-- Verify that pruned tree produces identical UniFrac distances
+- ✅ Used skbio TreeNode.shear() (no BioPython dependency needed)
+- ✅ Tree structure preserved (branch lengths, internal nodes maintained by shear())
+- ✅ Pruned tree cached to `{tree_path}.pruned.nwk` for reuse
+- ✅ Comprehensive test suite verifies pruned tree produces identical UniFrac distances
+- ✅ Integrated into both lazy and upfront UniFrac computation modes
+- ✅ Works with both `train` and `pretrain` commands
+- ✅ All tests passing (14 tree pruning tests + 32 UniFrac tests)
+
+**Files Created/Modified:**
+- ✅ `aam/data/tree_pruner.py` - Tree pruning module with `prune_tree_to_table()`, `get_pruning_stats()`, `load_or_prune_tree()`
+- ✅ `aam/data/unifrac.py` - Integrated pruning into `setup_lazy_computation()` and batch computation methods
+- ✅ `aam/cli.py` - Added `--prune-tree` flag to both `train` and `pretrain` commands
+- ✅ `tests/test_tree_pruner.py` - Comprehensive test suite (14 tests)
+
+**Key Features:**
+- Automatic tree pruning to only ASVs in BIOM table
+- Caching of pruned tree to disk for reuse
+- Works with both lazy and upfront UniFrac computation
+- Dramatically reduces tree size (21M tips → potentially <100K tips)
+- Expected speedup: Tree loading from 6+ minutes to seconds, UniFrac computation from 3 min/batch to seconds/batch
 
 ---
 
