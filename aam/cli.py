@@ -351,6 +351,8 @@ def train(
             num_workers=num_workers,
             collate_fn=train_collate,
             drop_last=True,
+            prefetch_factor=2 if num_workers > 0 else None,
+            pin_memory=device == "cuda",
         )
 
         val_loader = DataLoader(
@@ -360,6 +362,8 @@ def train(
             num_workers=num_workers,
             collate_fn=val_collate,
             drop_last=True,
+            prefetch_factor=2 if num_workers > 0 else None,
+            pin_memory=device == "cuda",
         )
 
         logger.info("Creating model...")
@@ -634,6 +638,8 @@ def pretrain(
             num_workers=num_workers,
             collate_fn=train_collate,
             drop_last=True,
+            prefetch_factor=2 if num_workers > 0 else None,
+            pin_memory=device == "cuda",
         )
 
         val_loader = DataLoader(
@@ -643,6 +649,8 @@ def pretrain(
             num_workers=num_workers,
             collate_fn=val_collate,
             drop_last=True,
+            prefetch_factor=2 if num_workers > 0 else None,
+            pin_memory=device == "cuda",
         )
 
         logger.info("Creating model...")
@@ -781,6 +789,7 @@ def predict(
             shuffle=False,
             num_workers=0,
             collate_fn=inference_collate,
+            pin_memory=device == "cuda",
         )
 
         logger.info("Creating model...")
