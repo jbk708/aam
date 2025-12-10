@@ -199,6 +199,7 @@ def cli():
 )
 @click.option("--compile-model", is_flag=True, help="Compile model with torch.compile() for optimization (PyTorch 2.0+)")
 @click.option("--lazy-unifrac", is_flag=True, help="Compute UniFrac distances on-the-fly (batch-wise) instead of upfront. Faster startup but slower first epoch.")
+@click.option("--unifrac-threads", default=None, type=int, help="Number of threads for UniFrac computation (default: all available CPU cores)")
 def train(
     table: str,
     tree: str,
@@ -238,6 +239,7 @@ def train(
     mixed_precision: Optional[str],
     compile_model: bool,
     lazy_unifrac: bool,
+    unifrac_threads: Optional[int],
 ):
     """Train AAM model on microbial sequencing data."""
     try:
@@ -531,6 +533,7 @@ def train(
     "--asv-chunk-size", default=None, type=int, help="Process ASVs in chunks of this size to reduce memory (None = process all)"
 )
 @click.option("--lazy-unifrac", is_flag=True, help="Compute UniFrac distances on-the-fly (batch-wise) instead of upfront. Faster startup but slower first epoch.")
+@click.option("--unifrac-threads", default=None, type=int, help="Number of threads for UniFrac computation (default: all available CPU cores)")
 def pretrain(
     table: str,
     tree: str,
@@ -564,6 +567,7 @@ def pretrain(
     compile_model: bool,
     asv_chunk_size: Optional[int],
     lazy_unifrac: bool,
+    unifrac_threads: Optional[int],
 ):
     """Pre-train SequenceEncoder on UniFrac and nucleotide prediction (self-supervised)."""
     try:
