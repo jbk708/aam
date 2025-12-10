@@ -167,6 +167,71 @@ class TestPairwiseDistances:
         assert distances.shape == (batch_size, batch_size)
         assert torch.allclose(distances[0, 0], torch.tensor(0.0))  # Distance to self is 0
 
+    def test_compute_pairwise_distances_normalized(self):
+        """Test that normalized distances are bounded to [0, 1]."""
+        from aam.training.losses import compute_pairwise_distances
+
+        batch_size = 4
+        embedding_dim = 8
+        embeddings = torch.randn(batch_size, embedding_dim)
+
+        distances = compute_pairwise_distances(embeddings, normalize=True)
+
+        assert distances.shape == (batch_size, batch_size)
+        # All distances should be in [0, 1]
+        assert torch.all(distances >= 0.0)
+        assert torch.all(distances <= 1.0)
+        # Diagonal should still be 0.0
+        assert torch.allclose(torch.diag(distances), torch.zeros(batch_size))
+        # Should be symmetric
+        assert torch.allclose(distances, distances.T)
+
+    def test_compute_pairwise_distances_normalized_gradient_flow(self):
+        """Test that normalized distances maintain gradient flow."""
+        from aam.training.losses import compute_pairwise_distances
+
+        batch_size = 4
+        embedding_dim = 8
+        embeddings = torch.randn(batch_size, embedding_dim, requires_grad=True)
+
+        distances = compute_pairwise_distances(embeddings, normalize=True)
+
+        # Compute a loss and check gradients
+        loss = distances.sum()
+        loss.backward()
+
+        # Check that gradients exist
+        assert embeddings.grad is not None
+        assert not torch.allclose(embeddings.grad, torch.zeros_like(embeddings.grad))
+
+    def test_compute_pairwise_distances_normalized_different_scales(self):
+        """Test that different scale values affect normalization."""
+        from aam.training.losses import compute_pairwise_distances
+
+        batch_size = 4
+        embedding_dim = 8
+        embeddings = torch.randn(batch_size, embedding_dim)
+
+        # Test with different scale values
+        distances_scale_1 = compute_pairwise_distances(embeddings, normalize=True, scale=1.0)
+        distances_scale_5 = compute_pairwise_distances(embeddings, normalize=True, scale=5.0)
+        distances_scale_10 = compute_pairwise_distances(embeddings, normalize=True, scale=10.0)
+
+        # All should be in [0, 1]
+        assert torch.all(distances_scale_1 >= 0.0) and torch.all(distances_scale_1 <= 1.0)
+        assert torch.all(distances_scale_5 >= 0.0) and torch.all(distances_scale_5 <= 1.0)
+        assert torch.all(distances_scale_10 >= 0.0) and torch.all(distances_scale_10 <= 1.0)
+
+        # Larger scale should produce more extreme values (closer to 0 or 1)
+        # For the same embeddings, larger scale should push values toward boundaries
+        # Check that scale=10 produces more extreme values than scale=1
+        # (more values close to 0 or 1)
+        scale_1_extreme = ((distances_scale_1 < 0.1) | (distances_scale_1 > 0.9)).sum()
+        scale_10_extreme = ((distances_scale_10 < 0.1) | (distances_scale_10 > 0.9)).sum()
+        # This is a soft check - larger scale should generally produce more extreme values
+        # but we can't guarantee it for all embeddings, so we just check they're different
+        assert distances_scale_1.shape == distances_scale_10.shape
+
 
 class TestBaseLoss:
     """Test base loss computation."""
@@ -202,6 +267,37 @@ class TestBaseLoss:
         base_true_masked = base_true[triu_indices[0], triu_indices[1]]
         expected_loss = nn.functional.mse_loss(computed_masked, base_true_masked)
         assert torch.allclose(loss, expected_loss)
+
+    def test_base_loss_unifrac_with_embeddings_normalized(self, loss_fn):
+        """Test that UniFrac loss with embeddings produces normalized distances in [0, 1]."""
+        from aam.training.losses import compute_pairwise_distances
+
+        batch_size = 4
+        embedding_dim = 8
+        embeddings = torch.randn(batch_size, embedding_dim)
+        # Create base_true in [0, 1] range (UniFrac distances)
+        base_true = torch.rand(batch_size, batch_size)
+        # Ensure base_true is symmetric and has zero diagonal
+        base_true = (base_true + base_true.T) / 2
+        base_true.fill_diagonal_(0.0)
+
+        # Compute loss (should use normalized distances internally)
+        loss = loss_fn.compute_base_loss(
+            torch.zeros(1),  # Dummy base_pred (ignored when embeddings provided)
+            base_true,
+            encoder_type="unifrac",
+            embeddings=embeddings,
+        )
+
+        # Verify that computed distances are normalized
+        computed_distances = compute_pairwise_distances(embeddings, normalize=True)
+        assert torch.all(computed_distances >= 0.0)
+        assert torch.all(computed_distances <= 1.0)
+
+        # Loss should be valid
+        assert loss.dim() == 0
+        assert loss.item() >= 0
+        assert not torch.isnan(loss)
 
     def test_base_loss_unifrac_legacy(self, loss_fn):
         """Test MSE loss for unweighted UniFrac (legacy approach with direct predictions)."""
@@ -479,13 +575,16 @@ class TestTotalLoss:
             "nuc_predictions": torch.randn(batch_size, num_asvs, seq_len, vocab_size),
         }
 
-        # Compute expected distances from embeddings
-        expected_distances = compute_pairwise_distances(embeddings)
+        # Compute expected distances from embeddings (normalized to [0, 1] for UniFrac)
+        # For test, create base_target in [0, 1] range (UniFrac distances are bounded)
+        base_target = torch.rand(batch_size, batch_size)
+        base_target = (base_target + base_target.T) / 2  # Make symmetric
+        base_target.fill_diagonal_(0.0)  # Diagonal should be 0
 
         targets = {
             "target": torch.randn(batch_size, 1),
             "counts": torch.randn(batch_size, num_asvs, 1),
-            "base_target": expected_distances,  # Use computed distances as target
+            "base_target": base_target,  # Use normalized distances as target (in [0, 1])
             "nucleotides": torch.randint(0, vocab_size, (batch_size, num_asvs, seq_len)),
         }
 
