@@ -526,10 +526,15 @@ class TestTrainingLoop:
                 distances = compute_pairwise_distances(embeddings)
 
                 # Verify all distances are in [0, 1]
-                assert torch.all(distances >= 0.0), f"UniFrac distances should be >= 0.0, got min={distances.min().item()}"
-                assert torch.all(distances <= 1.0), f"UniFrac distances should be <= 1.0, got max={distances.max().item()}"
+                # Use explicit device-aware comparisons
+                zero_tensor = torch.tensor(0.0, device=distances.device)
+                one_tensor = torch.tensor(1.0, device=distances.device)
+                assert torch.all(distances >= zero_tensor), f"UniFrac distances should be >= 0.0, got min={distances.min().item()}"
+                assert torch.all(distances <= one_tensor), f"UniFrac distances should be <= 1.0, got max={distances.max().item()}"
                 # Diagonal should be 0.0
-                assert torch.allclose(torch.diag(distances), torch.zeros(distances.shape[0], device=distances.device)), "Diagonal should be 0.0"
+                diag = torch.diag(distances)
+                zeros = torch.zeros(distances.shape[0], device=distances.device, dtype=distances.dtype)
+                assert torch.allclose(diag, zeros), "Diagonal should be 0.0"
 
                 break  # Just check first batch
         
