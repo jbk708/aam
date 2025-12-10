@@ -286,7 +286,7 @@ Optimize data loading pipeline to reduce I/O bottlenecks and improve training th
 ---
 
 ### PYT-10.3.1: Optimize Tree Loading with Pre-pruning
-**Priority:** HIGH | **Effort:** Medium (4-6 hours) | **Status:** Not Started
+**Priority:** HIGH | **Effort:** Medium (4-6 hours) | **Status:** ✅ Completed
 
 **Description:**
 Pre-process and prune phylogenetic trees to only include ASVs present in the BIOM table before UniFrac computation. This dramatically reduces tree size (from 21M tips to potentially <100K tips) and speeds up both tree loading and UniFrac computation.
