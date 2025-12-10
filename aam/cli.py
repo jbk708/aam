@@ -319,6 +319,14 @@ def train(
                 unifrac_distances = unifrac_computer.compute_faith_pd(table_obj, tree)
                 unifrac_metric_name = "faith_pd"
                 encoder_type = "faith_pd"
+        
+        if lazy_unifrac:
+            logger.warning(
+                "WARNING: Lazy UniFrac computation computes distances per batch, which can be "
+                "very slow for large trees. Each batch may take several minutes. "
+                "For very large trees (>1M tips), upfront computation (without --lazy-unifrac) "
+                "may be faster overall despite the initial delay."
+            )
 
         logger.info("Splitting data...")
         sample_ids = list(table_obj.ids(axis="sample"))
@@ -658,6 +666,14 @@ def pretrain(
                 unifrac_metric_name = "faith_pd"
                 encoder_type = "faith_pd"
                 base_output_dim = 1
+        
+        if lazy_unifrac:
+            logger.warning(
+                "WARNING: Lazy UniFrac computation computes distances per batch, which can be "
+                "very slow for large trees. Each batch may take several minutes. "
+                "For very large trees (>1M tips), upfront computation (without --lazy-unifrac) "
+                "may be faster overall despite the initial delay."
+            )
 
         logger.info("Splitting data...")
         sample_ids = list(table_obj.ids(axis="sample"))

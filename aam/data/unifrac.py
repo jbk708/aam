@@ -199,7 +199,7 @@ class UniFracComputer:
         if batch_size % 2 != 0:
             raise ValueError(f"Batch size must be even (multiple of 2), got {batch_size}")
 
-    def setup_lazy_computation(self, table: Table, tree_path: str) -> None:
+    def setup_lazy_computation(self, table: Table, tree_path: str, filter_tree: bool = True) -> None:
         """Setup for lazy batch-wise distance computation.
         
         This method stores the table and tree path for efficient batch computation.
@@ -208,16 +208,25 @@ class UniFracComputer:
         Args:
             table: Rarefied biom.Table object
             tree_path: Path to phylogenetic tree file (.nwk Newick format)
+            filter_tree: If True, filter tree to only include ASVs present in the table (much faster)
         """
         import logging
         logger = logging.getLogger(__name__)
         
         self._table = table
         self._tree_path = tree_path
+        self._filter_tree = filter_tree
         
         tree_path_obj = Path(tree_path)
         if not tree_path_obj.exists():
             raise FileNotFoundError(f"Tree file not found: {tree_path}")
+        
+        # Get ASV IDs from table for tree filtering
+        if filter_tree:
+            self._table_asv_ids = set(table.ids(axis="observation"))
+            logger.info(f"Will filter tree to {len(self._table_asv_ids)} ASVs present in table")
+        else:
+            self._table_asv_ids = None
         
         # Don't load tree here - load it lazily in each worker process to avoid
         # memory issues when using DataLoader with multiple workers
