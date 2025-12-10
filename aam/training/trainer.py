@@ -891,7 +891,9 @@ class Trainer:
                                     # Compute distances from embeddings
                                     embeddings = outputs["embeddings"]
                                     if embeddings is not None:
-                                        base_pred_batch = compute_pairwise_distances(embeddings)
+                                        # Detach embeddings before computing distances to ensure proper gradient handling
+                                        embeddings_detached = embeddings.detach()
+                                        base_pred_batch = compute_pairwise_distances(embeddings_detached).detach()
                                 
                                 # Fallback to base_prediction if embeddings not available
                                 if base_pred_batch is None and "base_prediction" in outputs:
