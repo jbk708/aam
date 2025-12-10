@@ -209,6 +209,9 @@ class UniFracComputer:
             table: Rarefied biom.Table object
             tree_path: Path to phylogenetic tree file (.nwk Newick format)
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        
         self._table = table
         self._tree_path = tree_path
         
@@ -216,8 +219,10 @@ class UniFracComputer:
         if not tree_path_obj.exists():
             raise FileNotFoundError(f"Tree file not found: {tree_path}")
         
+        logger.info(f"Loading phylogenetic tree from {tree_path}...")
         try:
             self._tree = skbio.read(str(tree_path), format="newick", into=TreeNode)
+            logger.info(f"Tree loaded successfully ({len(list(self._tree.tips()))} tips)")
         except Exception as e:
             raise ValueError(f"Error loading phylogenetic tree from {tree_path}: {e}")
 
