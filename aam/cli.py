@@ -601,9 +601,12 @@ def pretrain(
         table_obj = biom_loader.load_table(table)
         table_obj = biom_loader.rarefy(table_obj, depth=rarefy_depth, random_seed=seed)
 
-        # Use all available CPU cores for UniFrac computation
+        # Use all available CPU cores for UniFrac computation (or user-specified)
         import multiprocessing
-        num_threads = multiprocessing.cpu_count()
+        if unifrac_threads is None:
+            num_threads = multiprocessing.cpu_count()
+        else:
+            num_threads = unifrac_threads
         logger.info(f"Using {num_threads} threads for UniFrac computation")
         unifrac_computer = UniFracComputer(num_threads=num_threads)
         
