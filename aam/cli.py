@@ -175,7 +175,7 @@ def cli():
 @click.option("--class-weights", default=None, help="Class weights for classification (optional)")
 @click.option("--device", default="cuda", type=click.Choice(["cuda", "cpu"]), help="Device to use")
 @click.option("--seed", default=None, type=int, help="Random seed for reproducibility")
-@click.option("--num-workers", default=0, type=int, help="DataLoader workers")
+@click.option("--num-workers", default=4, type=int, help="Number of DataLoader worker processes (default: 4, use 0 to disable multiprocessing)")
 @click.option("--resume-from", default=None, type=click.Path(exists=True), help="Path to checkpoint to resume from")
 @click.option("--freeze-base", is_flag=True, help="Freeze base model parameters")
 @click.option(
@@ -478,7 +478,7 @@ def train(
 @click.option("--nuc-penalty", default=1.0, type=float, help="Weight for nucleotide loss")
 @click.option("--device", default="cuda", type=click.Choice(["cuda", "cpu"]), help="Device to use")
 @click.option("--seed", default=None, type=int, help="Random seed for reproducibility")
-@click.option("--num-workers", default=0, type=int, help="DataLoader workers")
+@click.option("--num-workers", default=4, type=int, help="Number of DataLoader worker processes (default: 4, use 0 to disable multiprocessing)")
 @click.option("--resume-from", default=None, type=click.Path(exists=True), help="Path to checkpoint to resume from")
 @click.option("--gradient-accumulation-steps", default=1, type=int, help="Number of gradient accumulation steps")
 @click.option("--use-expandable-segments", is_flag=True, help="Enable PyTorch CUDA expandable segments for memory optimization")
