@@ -2,27 +2,48 @@
 
 The new `tree_pruner.py` module needs to be included in the package installation.
 
-## Quick Fix
+## Diagnostic
 
-On the remote machine where you're running the command, activate the `aam-rebuild` environment and reinstall the package:
+First, run the diagnostic script to see what's wrong:
 
 ```bash
 conda activate aam-rebuild
 cd /home/jokirkland/repos/aam
-pip install -e .
+python diagnose_tree_pruner.py
 ```
 
-This will reinstall the package in editable mode and include the new `tree_pruner.py` module.
+## Quick Fix
 
-## Alternative: Ensure file is synced
-
-If you haven't pulled the latest changes yet:
-
+1. **Ensure you're on the correct branch and file exists:**
 ```bash
 conda activate aam-rebuild
 cd /home/jokirkland/repos/aam
 git pull origin pyt-10.3.1-optimize-tree-pruning
-pip install -e .
+ls -la aam/data/tree_pruner.py  # Should show the file
 ```
 
-The `tree_pruner.py` file should be at `aam/data/tree_pruner.py` after pulling.
+2. **Force reinstall the package:**
+```bash
+pip install -e . --force-reinstall --no-deps
+```
+
+3. **Verify the import works:**
+```bash
+python -c "from aam.data.tree_pruner import load_or_prune_tree; print('Success!')"
+```
+
+## Alternative: Manual import test
+
+If the above doesn't work, test if the file can be imported directly:
+
+```bash
+cd /home/jokirkland/repos/aam
+python -c "import sys; sys.path.insert(0, '.'); from aam.data.tree_pruner import load_or_prune_tree; print('Direct import works')"
+```
+
+If this works but the package import doesn't, there may be an issue with the editable installation. Try:
+
+```bash
+pip uninstall aam -y
+pip install -e .
+```
