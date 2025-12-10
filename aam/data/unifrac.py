@@ -276,20 +276,25 @@ class UniFracComputer:
         if self._tree is None:
             import logging
             logger = logging.getLogger(__name__)
-            logger.debug(f"Loading tree in worker process from {tree_path}")
+            logger.info(f"Loading tree in worker process from {tree_path} (this may take a few minutes for large trees)...")
             tree_path_obj = Path(tree_path)
             if not tree_path_obj.exists():
                 raise FileNotFoundError(f"Tree file not found: {tree_path}")
             self._tree = skbio.read(str(tree_path), format="newick", into=TreeNode)
+            logger.info(f"Tree loaded in worker process ({len(list(self._tree.tips()))} tips)")
         
         tree = self._tree
         
         # Filter table to only include samples in batch
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.debug(f"Computing UniFrac distances for batch of {len(sample_ids)} samples...")
         batch_table = table.filter(sample_ids, axis="sample", inplace=False)
         
         try:
             # Compute distances for this batch only
             distance_matrix = unifrac.unweighted(batch_table, tree)
+            logger.debug(f"UniFrac computation complete for batch")
             
             # Convert to numpy array and ensure correct order
             batch_ids = list(batch_table.ids(axis="sample"))
@@ -353,20 +358,25 @@ class UniFracComputer:
         if self._tree is None:
             import logging
             logger = logging.getLogger(__name__)
-            logger.debug(f"Loading tree in worker process from {tree_path}")
+            logger.info(f"Loading tree in worker process from {tree_path} (this may take a few minutes for large trees)...")
             tree_path_obj = Path(tree_path)
             if not tree_path_obj.exists():
                 raise FileNotFoundError(f"Tree file not found: {tree_path}")
             self._tree = skbio.read(str(tree_path), format="newick", into=TreeNode)
+            logger.info(f"Tree loaded in worker process ({len(list(self._tree.tips()))} tips)")
         
         tree = self._tree
         
         # Filter table to only include samples in batch
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.debug(f"Computing Faith PD for batch of {len(sample_ids)} samples...")
         batch_table = table.filter(sample_ids, axis="sample", inplace=False)
         
         try:
             # Compute Faith PD for this batch only
             faith_pd_series = unifrac.faith_pd(batch_table, tree)
+            logger.debug(f"Faith PD computation complete for batch")
             
             # Convert to numpy array in correct order
             values = faith_pd_series.loc[sample_ids].to_numpy().reshape(-1, 1)

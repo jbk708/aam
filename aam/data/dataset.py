@@ -86,10 +86,14 @@ def collate_fn(
     if unifrac_distances is not None or (lazy_unifrac and unifrac_computer is not None):
         if lazy_unifrac and unifrac_computer is not None:
             # Lazy computation: compute distances on-the-fly for this batch
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.debug(f"Computing UniFrac distances for batch: {sample_ids[:3]}... (batch size: {len(sample_ids)})")
             if unifrac_metric == "unweighted":
                 batch_distances = unifrac_computer.compute_batch_unweighted(sample_ids)
             else:
                 batch_distances = unifrac_computer.compute_batch_faith_pd(sample_ids)
+            logger.debug(f"Batch distance computation complete")
         else:
             # Pre-computed distances: extract from distance matrix
             if unifrac_computer is None:
