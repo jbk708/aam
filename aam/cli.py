@@ -574,6 +574,7 @@ def train(
 )
 @click.option("--lazy-unifrac", is_flag=True, help="Compute UniFrac distances on-the-fly (batch-wise) instead of upfront. Faster startup but slower first epoch.")
 @click.option("--unifrac-threads", default=None, type=int, help="Number of threads for UniFrac computation (default: all available CPU cores)")
+@click.option("--prune-tree", is_flag=True, help="Pre-prune tree to only include ASVs in BIOM table. Dramatically speeds up tree loading and UniFrac computation for large trees.")
 def pretrain(
     table: str,
     tree: str,
