@@ -799,7 +799,7 @@ class Trainer:
             # Store last batch info for debugging
             last_targets = None
             last_outputs = None
-            
+
             for step, batch in enumerate(pbar, 1):
                 try:
                     tokens, targets = self._prepare_batch(batch)
@@ -910,6 +910,7 @@ class Trainer:
                                             base_pred_batch = compute_pairwise_distances(embeddings_detached).detach()
                                         except Exception as e:
                                             import logging
+
                                             logger = logging.getLogger(__name__)
                                             logger.error(f"Error computing pairwise distances: {e}", exc_info=True)
                                             base_pred_batch = None
@@ -942,6 +943,7 @@ class Trainer:
                                 # Debug: log why base_target check failed
                                 if step == 1:  # Only log once per epoch
                                     import logging
+
                                     logger = logging.getLogger(__name__)
                                     logger.debug(f"base_target not in targets. Target keys: {list(targets.keys())}")
                         else:
