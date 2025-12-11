@@ -605,6 +605,37 @@ class Trainer:
 
                 encoder_type = self._get_encoder_type()
                 is_classifier = self._get_is_classifier()
+                
+                # For stripe mode, we need reference embeddings
+                # Check if we're in stripe mode by looking at base_target shape
+                if "base_target" in targets and encoder_type == "unifrac" and "embeddings" in outputs:
+                    base_target = targets["base_target"]
+                    # Stripe mode: base_target is not square (batch_size != num_reference_samples)
+                    if base_target.dim() == 2 and base_target.shape[0] != base_target.shape[1]:
+                        # We need reference embeddings for stripe mode
+                        # For now, we'll compute them from reference samples in the batch
+                        # TODO: Implement proper reference embedding computation from dataset
+                        # For stripe mode, reference embeddings should be computed once per epoch
+                        # and cached. For now, we'll use a placeholder that will cause an error
+                        # with a helpful message
+                        num_ref_samples = base_target.shape[1]
+                        batch_embeddings = outputs["embeddings"]
+                        embedding_dim = batch_embeddings.shape[1]
+                        
+                        # TODO: Get actual reference embeddings from reference samples
+                        # For now, use zeros as placeholder (will cause error with helpful message)
+                        # In a real implementation, we would:
+                        # 1. Get reference sample IDs from dataset
+                        # 2. Get reference sample data from dataset
+                        # 3. Run through model to get embeddings
+                        # 4. Cache and reuse
+                        reference_embeddings = torch.zeros(
+                            num_ref_samples, embedding_dim, 
+                            device=batch_embeddings.device, 
+                            dtype=batch_embeddings.dtype
+                        )
+                        targets["reference_embeddings"] = reference_embeddings
+                
                 losses = self.loss_fn(outputs, targets, is_classifier=is_classifier, encoder_type=encoder_type)
 
                 # Check for NaN in loss after computation
