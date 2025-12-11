@@ -89,7 +89,7 @@ python -m aam.cli predict \
 - `--stripe-mode/--no-stripe-mode`: Use stripe-based UniFrac (default: enabled, more memory-efficient)
 - `--lazy-unifrac/--no-lazy-unifrac`: Compute distances on-the-fly (default: enabled, faster startup)
 - `--reference-samples`: Reference samples for stripe mode - number (e.g., '100') or file path (auto-selects if not specified)
-- `--unifrac-metric`: 'unifrac' or 'faith_pd' (default: 'unifrac')
+- `--unifrac-metric`: 'unifrac' (unweighted UniFrac) or 'faith_pd' (default: 'unifrac')
 - `--prune-tree`: Pre-prune tree to only ASVs in table (speeds up large trees)
 - **Note**: Stripe mode removes batch size restrictions (no longer requires even batch sizes)
 
