@@ -44,38 +44,54 @@ This document outlines the migration plan from pairwise UniFrac distance computa
 
 ### Phase 1: Research and API Investigation
 
-#### PYT-11.1: Investigate Stripe-Based UniFrac API
-**Priority:** HIGH | **Effort:** Medium (4-6 hours) | **Dependencies:** None
+#### PYT-11.1: Investigate Stripe-Based UniFrac API ✅
+**Priority:** HIGH | **Effort:** Medium (4-6 hours) | **Dependencies:** None | **Status:** ✅ Completed
 
 **Tasks:**
 1. Review unifrac-binaries API documentation for stripe-based computation
 2. Check if `unifrac` Python package supports stripe-based computation
 3. If not available in Python package, investigate:
+   - **scikit-bio unifrac implementation** (check `skbio.diversity.beta.unweighted_unifrac` and related functions)
    - Direct C++ API bindings
    - Alternative libraries (e.g., `fastunifrac`)
    - Custom implementation using unifrac internals
-4. Determine reference set selection strategy:
+4. If scikit-bio is investigated:
+   - Check if `skbio.diversity.beta` supports stripe-based computation
+   - Review `skbio.diversity.beta.unweighted_unifrac` API for batch/stripe capabilities
+   - Test if scikit-bio can compute distances for samples against a reference set
+   - Document scikit-bio API patterns and limitations
+5. Determine reference set selection strategy:
    - Fixed reference samples (e.g., first N samples)
    - Random reference samples
    - Representative samples (e.g., k-means centroids)
    - All samples (degenerates to pairwise, but with different API)
-5. Document API signature and usage patterns
-6. Create proof-of-concept script demonstrating stripe-based computation
+6. Document API signature and usage patterns
+7. Create proof-of-concept script demonstrating stripe-based computation
 
 **Deliverables:**
-- API investigation report
-- Proof-of-concept script
+- API investigation report (covering both `unifrac` package and scikit-bio)
+- Proof-of-concept script (using whichever library supports stripe computation)
 - Reference set selection strategy recommendation
+- Library recommendation (unifrac package vs scikit-bio vs custom implementation)
 
-**Files to Create:**
-- `_design_plan/21_stripe_unifrac_api_investigation.md`
+**Files Created:**
+- ✅ `_design_plan/21_stripe_unifrac_api_investigation.md` - Complete investigation report
+- ✅ `scripts/investigate_stripe_unifrac.py` - Investigation script
+- ✅ `scripts/test_dense_pair.py` - Proof-of-concept test script
+
+**Key Findings:**
+- ✅ `unifrac` package provides `*_dense_pair` functions suitable for stripe computation
+- ✅ `unweighted_dense_pair` can compute distances between specific sample pairs
+- ✅ Verified numerically equivalent to full matrix extraction (max diff < 1e-9)
+- ⚠️ scikit-bio has limited support (pairwise only, less optimized)
+- ✅ **Recommendation:** Use `unifrac.unweighted_dense_pair` for stripe implementation
 
 ---
 
 ### Phase 2: Core UniFracComputer Updates
 
-#### PYT-11.2: Add Stripe-Based Computation to UniFracComputer
-**Priority:** HIGH | **Effort:** High (8-12 hours) | **Dependencies:** PYT-11.1
+#### PYT-11.2: Add Stripe-Based Computation to UniFracComputer ✅
+**Priority:** HIGH | **Effort:** High (8-12 hours) | **Dependencies:** PYT-11.1 | **Status:** ✅ Completed
 
 **Tasks:**
 1. Add `compute_unweighted_stripe()` method to `UniFracComputer`:
@@ -141,11 +157,21 @@ def extract_batch_stripe_distances(
     pass
 ```
 
-**Files to Modify:**
-- `aam/data/unifrac.py`
+**Files Modified:**
+- ✅ `aam/data/unifrac.py` - Added stripe computation methods
 
-**Files to Create:**
-- `tests/test_unifrac_stripe.py` (new test file for stripe methods)
+**Files Created:**
+- ✅ `tests/test_unifrac_stripe.py` - Comprehensive test suite (14 tests, all passing)
+
+**Implementation Summary:**
+- ✅ Added `set_reference_samples()` method for reference set management
+- ✅ Added `compute_unweighted_stripe()` method using `unifrac.unweighted_dense_pair`
+- ✅ Added `compute_batch_unweighted_stripe()` method with caching support
+- ✅ Added `extract_batch_stripe_distances()` method for pre-computed stripe extraction
+- ✅ All methods include proper validation, error handling, and caching
+- ✅ Verified numerical equivalence with pairwise computation (max diff < 1e-6)
+- ✅ No batch size restrictions (unlike pairwise mode)
+- ✅ All 14 tests passing
 
 ---
 

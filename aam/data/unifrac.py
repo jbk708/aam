@@ -54,6 +54,10 @@ class UniFracComputer:
         self._prune_tree: bool = False
         self._table_for_pruning: Optional[Table] = None
         self._pruned_tree_cache: Optional[str] = None
+        
+        # Stripe-based computation support
+        self._reference_sample_ids: Optional[List[str]] = None
+        self._reference_counts_cache: Optional[Dict[str, np.ndarray]] = None
 
     def compute_unweighted(self, table: Table, tree_path: str, filter_table: bool = True) -> DistanceMatrix:
         """Compute unweighted UniFrac distances between samples.
@@ -529,3 +533,344 @@ class UniFracComputer:
             if "not found" in str(e).lower() or "mismatch" in str(e).lower():
                 raise ValueError(f"ASV IDs don't match between table and tree: {e}") from e
             raise ValueError(f"Error computing Faith PD for batch: {e}") from e
+
+    def set_reference_samples(self, reference_sample_ids: List[str], table: Optional[Table] = None) -> None:
+        """Set reference samples for stripe-based computation.
+        
+        Args:
+            reference_sample_ids: List of reference sample IDs
+            table: Optional biom.Table (uses cached table if None)
+        
+        Raises:
+            ValueError: If reference samples not found in table or if list is empty
+        """
+        if not reference_sample_ids:
+            raise ValueError("Reference sample IDs list cannot be empty")
+        
+        if table is None:
+            table = self._table
+        
+        if table is None:
+            raise ValueError("Must provide table or call setup_lazy_computation() first")
+        
+        # Validate all reference samples exist in table
+        table_sample_ids = set(table.ids(axis="sample"))
+        missing_ids = set(reference_sample_ids) - table_sample_ids
+        if missing_ids:
+            raise ValueError(f"Reference sample IDs not found in table: {sorted(missing_ids)}")
+        
+        # Cache reference sample counts
+        observation_ids = list(table.ids(axis="observation"))
+        self._reference_counts_cache = {}
+        
+        for ref_id in reference_sample_ids:
+            counts = np.array([
+                table.get_value_by_ids(obs_id, ref_id)
+                for obs_id in observation_ids
+            ], dtype=np.float64)
+            self._reference_counts_cache[ref_id] = counts
+        
+        self._reference_sample_ids = reference_sample_ids
+
+    def compute_unweighted_stripe(
+        self,
+        table: Table,
+        tree_path: str,
+        reference_sample_ids: List[str],
+        test_sample_ids: Optional[List[str]] = None,
+        filter_table: bool = True,
+    ) -> np.ndarray:
+        """Compute unweighted UniFrac distances in stripe format.
+        
+        Args:
+            table: Rarefied biom.Table object
+            tree_path: Path to phylogenetic tree file (.nwk Newick format)
+            reference_sample_ids: Reference sample IDs (columns of stripe matrix)
+            test_sample_ids: Test sample IDs (rows of stripe matrix). If None, uses all samples.
+            filter_table: If True, filter table to only include ASVs present in tree
+        
+        Returns:
+            numpy array containing stripe distances [N_test_samples, N_reference_samples]
+        
+        Raises:
+            FileNotFoundError: If tree file doesn't exist
+            ValueError: If ASV IDs don't match between table and tree
+            ValueError: If reference or test sample IDs not found in table
+        """
+        tree_path_obj = Path(tree_path)
+        if not tree_path_obj.exists():
+            raise FileNotFoundError(f"Tree file not found: {tree_path}")
+        
+        try:
+            tree = skbio.read(str(tree_path), format="newick", into=TreeNode)
+        except Exception as e:
+            raise ValueError(f"Error loading phylogenetic tree from {tree_path}: {e}")
+        
+        # Filter table to only include ASVs present in tree if requested
+        if filter_table:
+            tree_tips = {tip.name for tip in tree.tips() if tip.name is not None}
+            table_asv_ids = set(table.ids(axis="observation"))
+            asvs_to_keep = table_asv_ids.intersection(tree_tips)
+            
+            if len(asvs_to_keep) == 0:
+                raise ValueError(
+                    f"No ASVs from table found in tree. "
+                    f"Table has {len(table_asv_ids)} ASVs, tree has {len(tree_tips)} tips, overlap: 0"
+                )
+            
+            if len(asvs_to_keep) < len(table_asv_ids):
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    f"Filtering table: {len(table_asv_ids)} ASVs -> {len(asvs_to_keep)} ASVs "
+                    f"({len(table_asv_ids) - len(asvs_to_keep)} ASVs not in tree)"
+                )
+                table = table.filter(asvs_to_keep, axis="observation", inplace=False)
+        
+        # Determine test sample IDs
+        if test_sample_ids is None:
+            test_sample_ids = list(table.ids(axis="sample"))
+        
+        # Validate sample IDs exist in table
+        table_sample_ids = set(table.ids(axis="sample"))
+        missing_ref = set(reference_sample_ids) - table_sample_ids
+        missing_test = set(test_sample_ids) - table_sample_ids
+        
+        if missing_ref:
+            raise ValueError(f"Reference sample IDs not found in table: {sorted(missing_ref)}")
+        if missing_test:
+            raise ValueError(f"Test sample IDs not found in table: {sorted(missing_test)}")
+        
+        # Get observation IDs
+        observation_ids = list(table.ids(axis="observation"))
+        
+        # Pre-compute reference sample counts
+        reference_counts = {}
+        for ref_id in reference_sample_ids:
+            counts = np.array([
+                table.get_value_by_ids(obs_id, ref_id)
+                for obs_id in observation_ids
+            ], dtype=np.float64)
+            reference_counts[ref_id] = counts
+        
+        # Compute stripe distances using unweighted_dense_pair
+        n_test = len(test_sample_ids)
+        n_ref = len(reference_sample_ids)
+        stripe = np.zeros((n_test, n_ref))
+        
+        for i, test_id in enumerate(test_sample_ids):
+            test_counts = np.array([
+                table.get_value_by_ids(obs_id, test_id)
+                for obs_id in observation_ids
+            ], dtype=np.float64)
+            
+            for j, ref_id in enumerate(reference_sample_ids):
+                try:
+                    stripe[i, j] = unifrac.unweighted_dense_pair(
+                        ids=observation_ids,
+                        sample1=test_counts,
+                        sample2=reference_counts[ref_id],
+                        phylogeny=tree
+                    )
+                except Exception as e:
+                    if "not found" in str(e).lower() or "mismatch" in str(e).lower():
+                        raise ValueError(f"ASV IDs don't match between table and tree: {e}") from e
+                    raise ValueError(f"Error computing stripe distance for {test_id} vs {ref_id}: {e}") from e
+        
+        return stripe
+
+    def compute_batch_unweighted_stripe(
+        self,
+        sample_ids: List[str],
+        reference_sample_ids: Optional[List[str]] = None,
+        table: Optional[Table] = None,
+        tree_path: Optional[str] = None,
+    ) -> np.ndarray:
+        """Compute unweighted UniFrac distances in stripe format for a batch of samples.
+        
+        This method computes distances from batch samples to reference samples using
+        unifrac.unweighted_dense_pair for efficiency.
+        
+        Args:
+            sample_ids: List of test sample IDs to compute distances for (rows)
+            reference_sample_ids: List of reference sample IDs (columns). 
+                                 Uses cached reference set if None.
+            table: Optional biom.Table (uses cached table if None)
+            tree_path: Optional tree path (uses cached tree if None)
+        
+        Returns:
+            numpy array containing stripe distances [batch_size, N_reference_samples]
+        
+        Raises:
+            ValueError: If table/tree not provided or reference samples not set
+        """
+        if not sample_ids:
+            return np.array([]).reshape(0, 0)
+        
+        # Use cached reference samples if not provided
+        if reference_sample_ids is None:
+            reference_sample_ids = self._reference_sample_ids
+            reference_counts = self._reference_counts_cache
+        else:
+            # Validate and compute reference counts
+            if table is None:
+                table = self._table
+            if table is None:
+                raise ValueError("Must provide table or call setup_lazy_computation() first")
+            
+            table_sample_ids = set(table.ids(axis="sample"))
+            missing_ids = set(reference_sample_ids) - table_sample_ids
+            if missing_ids:
+                raise ValueError(f"Reference sample IDs not found in table: {sorted(missing_ids)}")
+            
+            observation_ids = list(table.ids(axis="observation"))
+            reference_counts = {}
+            for ref_id in reference_sample_ids:
+                counts = np.array([
+                    table.get_value_by_ids(obs_id, ref_id)
+                    for obs_id in observation_ids
+                ], dtype=np.float64)
+                reference_counts[ref_id] = counts
+        
+        if reference_sample_ids is None or reference_counts is None:
+            raise ValueError("Must provide reference_sample_ids or call set_reference_samples() first")
+        
+        # Check cache first
+        # Use tuple of sorted IDs for cache key to ensure consistent ordering
+        cache_key = (tuple(sorted(sample_ids)), tuple(sorted(reference_sample_ids)), "unweighted_stripe")
+        if cache_key in self._batch_cache:
+            cached_stripe = self._batch_cache[cache_key]
+            # Reorder to match sample_ids order
+            # Cache stores in sorted order, need to map back to requested order
+            cached_sample_ids = list(cache_key[0])  # Sorted order
+            id_to_idx = {id_: idx for idx, id_ in enumerate(cached_sample_ids)}
+            reorder_indices = [id_to_idx[id_] for id_ in sample_ids]
+            return cached_stripe[reorder_indices, :]
+        
+        # Use cached table/tree if available
+        if table is None:
+            table = self._table
+        if tree_path is None:
+            if self._prune_tree and self._pruned_tree_cache is not None:
+                tree_path = self._pruned_tree_cache
+            else:
+                tree_path = self._tree_path
+        
+        if table is None or tree_path is None:
+            raise ValueError("Must provide table and tree_path, or call setup_lazy_computation() first")
+        
+        # Load tree lazily
+        if self._tree is None:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"Loading tree in worker process from {tree_path}...")
+            tree_path_obj = Path(tree_path)
+            if not tree_path_obj.exists():
+                raise FileNotFoundError(f"Tree file not found: {tree_path}")
+            self._tree = skbio.read(str(tree_path), format="newick", into=TreeNode)
+            logger.info(f"Tree loaded in worker process ({len(list(self._tree.tips()))} tips)")
+        
+        tree = self._tree
+        
+        # Get observation IDs
+        observation_ids = list(table.ids(axis="observation"))
+        
+        # Compute stripe distances
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.debug(f"Computing stripe UniFrac distances for batch of {len(sample_ids)} samples against {len(reference_sample_ids)} reference samples...")
+        
+        n_test = len(sample_ids)
+        n_ref = len(reference_sample_ids)
+        stripe = np.zeros((n_test, n_ref))
+        
+        for i, test_id in enumerate(sample_ids):
+            test_counts = np.array([
+                table.get_value_by_ids(obs_id, test_id)
+                for obs_id in observation_ids
+            ], dtype=np.float64)
+            
+            for j, ref_id in enumerate(reference_sample_ids):
+                try:
+                    stripe[i, j] = unifrac.unweighted_dense_pair(
+                        ids=observation_ids,
+                        sample1=test_counts,
+                        sample2=reference_counts[ref_id],
+                        phylogeny=tree
+                    )
+                except Exception as e:
+                    if "not found" in str(e).lower() or "mismatch" in str(e).lower():
+                        raise ValueError(f"ASV IDs don't match between table and tree: {e}") from e
+                    raise ValueError(f"Error computing stripe distance for {test_id} vs {ref_id}: {e}") from e
+        
+        logger.debug(f"Stripe UniFrac computation complete for batch")
+        
+        # Cache the result (store in sorted order for consistent retrieval)
+        if self.cache_size > 0:
+            if len(self._batch_cache) >= self.cache_size:
+                oldest_key = next(iter(self._batch_cache))
+                del self._batch_cache[oldest_key]
+            # Store stripe in sorted order of sample_ids
+            sorted_indices = sorted(range(len(sample_ids)), key=lambda i: sample_ids[i])
+            sorted_stripe = stripe[sorted_indices, :]
+            self._batch_cache[cache_key] = sorted_stripe
+        
+        return stripe
+
+    def extract_batch_stripe_distances(
+        self,
+        stripe_distances: np.ndarray,
+        sample_ids: List[str],
+        reference_sample_ids: List[str],
+        all_sample_ids: List[str],
+    ) -> np.ndarray:
+        """Extract stripe distances for a batch of samples from pre-computed stripe matrix.
+        
+        Args:
+            stripe_distances: Pre-computed stripe matrix [N_all_samples, N_reference_samples]
+            sample_ids: List of sample IDs for the batch (rows to extract)
+            reference_sample_ids: List of reference sample IDs (columns, should match stripe_distances)
+            all_sample_ids: List of all sample IDs (rows) matching stripe_distances
+        
+        Returns:
+            numpy array containing batch stripe distances [batch_size, N_reference_samples]
+        
+        Raises:
+            ValueError: If sample_ids or reference_sample_ids not found in all_sample_ids
+            ValueError: If shapes don't match
+        """
+        if not sample_ids:
+            return np.array([]).reshape(0, len(reference_sample_ids) if reference_sample_ids else 0)
+        
+        # Validate shapes
+        expected_rows = len(all_sample_ids)
+        expected_cols = len(reference_sample_ids)
+        
+        if stripe_distances.shape[0] != expected_rows:
+            raise ValueError(
+                f"Stripe matrix row count ({stripe_distances.shape[0]}) doesn't match "
+                f"all_sample_ids length ({expected_rows})"
+            )
+        if stripe_distances.shape[1] != expected_cols:
+            raise ValueError(
+                f"Stripe matrix column count ({stripe_distances.shape[1]}) doesn't match "
+                f"reference_sample_ids length ({expected_cols})"
+            )
+        
+        # Validate sample IDs exist
+        all_sample_ids_set = set(all_sample_ids)
+        missing_test = set(sample_ids) - all_sample_ids_set
+        missing_ref = set(reference_sample_ids) - all_sample_ids_set
+        
+        if missing_test:
+            raise ValueError(f"Test sample IDs not found in all_sample_ids: {sorted(missing_test)}")
+        if missing_ref:
+            raise ValueError(f"Reference sample IDs not found in all_sample_ids: {sorted(missing_ref)}")
+        
+        # Extract rows for batch samples
+        try:
+            batch_indices = [all_sample_ids.index(sid) for sid in sample_ids]
+            extracted = stripe_distances[batch_indices, :]
+            return extracted
+        except Exception as e:
+            raise ValueError(f"Error extracting batch stripe distances: {e}") from e
