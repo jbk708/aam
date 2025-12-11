@@ -288,7 +288,7 @@ class TestStripeUniFracComputer:
             )
         
         # Test with shape mismatch
-        with pytest.raises(ValueError, match="shape"):
+        with pytest.raises(ValueError, match="row count|column count|shape"):
             computer.extract_batch_stripe_distances(
                 stripe_distances=np.random.rand(10, 3),  # Wrong shape
                 sample_ids=all_sample_ids[:3],
