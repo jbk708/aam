@@ -198,7 +198,9 @@ def cli():
     help="Mixed precision training mode (fp16, bf16, or none)",
 )
 @click.option("--compile-model", is_flag=True, help="Compile model with torch.compile() for optimization (PyTorch 2.0+)")
-@click.option("--lazy-unifrac", is_flag=True, help="Compute UniFrac distances on-the-fly (batch-wise) instead of upfront. Faster startup but slower first epoch.")
+@click.option("--lazy-unifrac/--no-lazy-unifrac", default=True, help="Compute UniFrac distances on-the-fly (batch-wise) instead of upfront. Faster startup but slower first epoch. (default: True)")
+@click.option("--stripe-mode/--no-stripe-mode", default=True, help="Use stripe-based UniFrac distances instead of pairwise. More memory-efficient. (default: True)")
+@click.option("--reference-samples", default=None, type=str, help="Reference samples for stripe mode: path to file with sample IDs (one per line), or number (e.g., '100' for first 100 samples). If not specified, auto-selects first 100 or all if < 100.")
 @click.option("--unifrac-threads", default=None, type=int, help="Number of threads for UniFrac computation (default: all available CPU cores)")
 @click.option("--prune-tree", is_flag=True, help="Pre-prune tree to only include ASVs in BIOM table. Dramatically speeds up tree loading and UniFrac computation for large trees.")
 @click.option("--cache-unifrac", is_flag=True, help="Cache computed UniFrac distance matrix to disk for faster resume. Only applies to upfront computation (not lazy).")
@@ -242,6 +244,8 @@ def train(
     mixed_precision: Optional[str],
     compile_model: bool,
     lazy_unifrac: bool,
+    stripe_mode: bool,
+    reference_samples: Optional[str],
     unifrac_threads: Optional[int],
     prune_tree: bool,
     cache_unifrac: bool,
@@ -440,6 +444,8 @@ def train(
             unifrac_metric=unifrac_metric_name,
             lazy_unifrac=lazy_unifrac,
             unifrac_computer=unifrac_computer if lazy_unifrac else None,
+            stripe_mode=stripe_mode,
+            reference_sample_ids=reference_sample_ids,
         )
 
         val_dataset = ASVDataset(
@@ -452,6 +458,8 @@ def train(
             unifrac_metric=unifrac_metric_name,
             lazy_unifrac=lazy_unifrac,
             unifrac_computer=unifrac_computer if lazy_unifrac else None,
+            stripe_mode=stripe_mode,
+            reference_sample_ids=reference_sample_ids,
         )
 
         train_collate = partial(
@@ -461,6 +469,9 @@ def train(
             unifrac_metric=unifrac_metric_name,
             unifrac_computer=unifrac_computer if lazy_unifrac else None,
             lazy_unifrac=lazy_unifrac,
+            stripe_mode=stripe_mode,
+            reference_sample_ids=reference_sample_ids,
+            all_sample_ids=train_ids if not lazy_unifrac and stripe_mode else None,
         )
         val_collate = partial(
             collate_fn,
@@ -469,6 +480,9 @@ def train(
             unifrac_metric=unifrac_metric_name,
             unifrac_computer=unifrac_computer if lazy_unifrac else None,
             lazy_unifrac=lazy_unifrac,
+            stripe_mode=stripe_mode,
+            reference_sample_ids=reference_sample_ids,
+            all_sample_ids=val_ids if not lazy_unifrac and stripe_mode else None,
         )
 
         train_loader = DataLoader(
@@ -628,7 +642,9 @@ def train(
 @click.option(
     "--asv-chunk-size", default=None, type=int, help="Process ASVs in chunks of this size to reduce memory (None = process all)"
 )
-@click.option("--lazy-unifrac", is_flag=True, help="Compute UniFrac distances on-the-fly (batch-wise) instead of upfront. Faster startup but slower first epoch.")
+@click.option("--lazy-unifrac/--no-lazy-unifrac", default=True, help="Compute UniFrac distances on-the-fly (batch-wise) instead of upfront. Faster startup but slower first epoch. (default: True)")
+@click.option("--stripe-mode/--no-stripe-mode", default=True, help="Use stripe-based UniFrac distances instead of pairwise. More memory-efficient. (default: True)")
+@click.option("--reference-samples", default=None, type=str, help="Reference samples for stripe mode: path to file with sample IDs (one per line), or number (e.g., '100' for first 100 samples). If not specified, auto-selects first 100 or all if < 100.")
 @click.option("--unifrac-threads", default=None, type=int, help="Number of threads for UniFrac computation (default: all available CPU cores)")
 @click.option("--prune-tree", is_flag=True, help="Pre-prune tree to only include ASVs in BIOM table. Dramatically speeds up tree loading and UniFrac computation for large trees.")
 @click.option("--cache-unifrac", is_flag=True, help="Cache computed UniFrac distance matrix to disk for faster resume. Only applies to upfront computation (not lazy).")
@@ -666,6 +682,8 @@ def pretrain(
     compile_model: bool,
     asv_chunk_size: Optional[int],
     lazy_unifrac: bool,
+    stripe_mode: bool,
+    reference_samples: Optional[str],
     unifrac_threads: Optional[int],
     prune_tree: bool,
     cache_unifrac: bool,
@@ -832,6 +850,48 @@ def pretrain(
         logger.info(f"Total samples: {len(sample_ids)}")
         train_ids, val_ids = train_test_split(sample_ids, test_size=test_size, random_state=seed)
         logger.info(f"Train samples: {len(train_ids)}, Validation samples: {len(val_ids)}")
+        
+        # Parse reference samples for stripe mode
+        reference_sample_ids = None
+        if stripe_mode:
+            if reference_samples is not None:
+                # Try to parse as number first
+                try:
+                    num_ref = int(reference_samples)
+                    if num_ref <= 0:
+                        raise ValueError("Number of reference samples must be positive")
+                    if num_ref > len(sample_ids):
+                        logger.warning(f"Requested {num_ref} reference samples but only {len(sample_ids)} available. Using all samples.")
+                        reference_sample_ids = sample_ids.copy()
+                    else:
+                        reference_sample_ids = sample_ids[:num_ref]
+                    logger.info(f"Selected first {len(reference_sample_ids)} samples as reference set")
+                except ValueError:
+                    # Not a number, treat as file path
+                    ref_path = Path(reference_samples)
+                    if not ref_path.exists():
+                        raise FileNotFoundError(f"Reference samples file not found: {reference_samples}")
+                    with open(ref_path, 'r') as f:
+                        reference_sample_ids = [line.strip() for line in f if line.strip()]
+                    if not reference_sample_ids:
+                        raise ValueError(f"Reference samples file is empty: {reference_samples}")
+                    # Validate all reference samples exist
+                    missing_ref = set(reference_sample_ids) - set(sample_ids)
+                    if missing_ref:
+                        raise ValueError(f"Reference sample IDs not found in table: {sorted(missing_ref)}")
+                    logger.info(f"Loaded {len(reference_sample_ids)} reference samples from file")
+            else:
+                # Auto-select: first 100 or all if < 100
+                if len(sample_ids) <= 100:
+                    reference_sample_ids = sample_ids.copy()
+                else:
+                    reference_sample_ids = sample_ids[:100]
+                logger.info(f"Auto-selected {len(reference_sample_ids)} reference samples for stripe mode")
+            
+            # Set reference samples in unifrac_computer if using lazy mode
+            if lazy_unifrac and unifrac_computer is not None:
+                unifrac_computer.set_reference_samples(reference_sample_ids, table=table_obj)
+                logger.info(f"Set {len(reference_sample_ids)} reference samples in UniFracComputer")
 
         logger.info("Filtering tables for train/val splits...")
         train_table = table_obj.filter(train_ids, axis="sample", inplace=False)
@@ -861,6 +921,8 @@ def pretrain(
             unifrac_metric=unifrac_metric_name,
             lazy_unifrac=lazy_unifrac,
             unifrac_computer=unifrac_computer if lazy_unifrac else None,
+            stripe_mode=stripe_mode,
+            reference_sample_ids=reference_sample_ids,
         )
 
         val_dataset = ASVDataset(
@@ -873,6 +935,8 @@ def pretrain(
             unifrac_metric=unifrac_metric_name,
             lazy_unifrac=lazy_unifrac,
             unifrac_computer=unifrac_computer if lazy_unifrac else None,
+            stripe_mode=stripe_mode,
+            reference_sample_ids=reference_sample_ids,
         )
 
         train_collate = partial(
@@ -882,6 +946,9 @@ def pretrain(
             unifrac_metric=unifrac_metric_name,
             unifrac_computer=unifrac_computer if lazy_unifrac else None,
             lazy_unifrac=lazy_unifrac,
+            stripe_mode=stripe_mode,
+            reference_sample_ids=reference_sample_ids,
+            all_sample_ids=train_ids if not lazy_unifrac and stripe_mode else None,
         )
         val_collate = partial(
             collate_fn,
@@ -890,6 +957,9 @@ def pretrain(
             unifrac_metric=unifrac_metric_name,
             unifrac_computer=unifrac_computer if lazy_unifrac else None,
             lazy_unifrac=lazy_unifrac,
+            stripe_mode=stripe_mode,
+            reference_sample_ids=reference_sample_ids,
+            all_sample_ids=val_ids if not lazy_unifrac and stripe_mode else None,
         )
 
         train_loader = DataLoader(

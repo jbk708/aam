@@ -17,18 +17,26 @@ from aam.data.unifrac import UniFracComputer
 def collate_fn(
     batch: List[Dict[str, Union[torch.Tensor, str]]],
     token_limit: int,
-    unifrac_distances: Optional[Union[DistanceMatrix, pd.Series]] = None,
+    unifrac_distances: Optional[Union[DistanceMatrix, pd.Series, np.ndarray]] = None,
     unifrac_metric: str = "unweighted",
     unifrac_computer: Optional["UniFracComputer"] = None,
-    lazy_unifrac: bool = False,
+    lazy_unifrac: bool = True,
+    stripe_mode: bool = True,
+    reference_sample_ids: Optional[List[str]] = None,
+    all_sample_ids: Optional[List[str]] = None,
 ) -> Dict[str, torch.Tensor]:
     """Custom collate function for batching samples with variable ASV counts.
 
     Args:
         batch: List of sample dictionaries
         token_limit: Maximum number of ASVs per sample
-        unifrac_distances: Optional full distance matrix/series for batch extraction
+        unifrac_distances: Optional full distance matrix/series/stripe matrix for batch extraction
         unifrac_metric: Type of UniFrac metric ("unweighted" or "faith_pd")
+        unifrac_computer: UniFracComputer instance for lazy computation
+        lazy_unifrac: If True, compute distances on-the-fly (default: True)
+        stripe_mode: If True, use stripe-based distances instead of pairwise (default: True)
+        reference_sample_ids: List of reference sample IDs for stripe mode
+        all_sample_ids: List of all sample IDs for stripe extraction (required if stripe_mode=True and not lazy)
 
     Returns:
         Batched dictionary with padded tensors
@@ -84,21 +92,54 @@ def collate_fn(
         result["y_target"] = torch.stack(y_targets)
 
     if unifrac_distances is not None or (lazy_unifrac and unifrac_computer is not None):
-        if lazy_unifrac and unifrac_computer is not None:
-            # Lazy computation: compute distances on-the-fly for this batch
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.debug(f"Computing UniFrac distances for batch: {sample_ids[:3]}... (batch size: {len(sample_ids)})")
-            if unifrac_metric == "unweighted":
-                batch_distances = unifrac_computer.compute_batch_unweighted(sample_ids)
+        if stripe_mode:
+            # Stripe-based computation
+            if lazy_unifrac and unifrac_computer is not None:
+                # Lazy stripe computation: compute distances on-the-fly for this batch
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.debug(f"Computing stripe UniFrac distances for batch: {sample_ids[:3]}... (batch size: {len(sample_ids)})")
+                if reference_sample_ids is None:
+                    raise ValueError("reference_sample_ids required for stripe mode")
+                if unifrac_metric == "unweighted":
+                    batch_distances = unifrac_computer.compute_batch_unweighted_stripe(
+                        sample_ids, reference_sample_ids=reference_sample_ids
+                    )
+                else:
+                    # Faith PD doesn't support stripe mode, fall back to pairwise
+                    logger.warning("Faith PD doesn't support stripe mode, falling back to pairwise computation")
+                    batch_distances = unifrac_computer.compute_batch_faith_pd(sample_ids)
+                logger.debug(f"Stripe batch distance computation complete")
             else:
-                batch_distances = unifrac_computer.compute_batch_faith_pd(sample_ids)
-            logger.debug(f"Batch distance computation complete")
+                # Pre-computed stripe distances: extract from stripe matrix
+                if unifrac_computer is None:
+                    unifrac_computer = UniFracComputer()
+                if reference_sample_ids is None:
+                    raise ValueError("reference_sample_ids required for stripe mode")
+                if all_sample_ids is None:
+                    raise ValueError("all_sample_ids required for stripe extraction when not using lazy mode")
+                batch_distances = unifrac_computer.extract_batch_stripe_distances(
+                    unifrac_distances, sample_ids, 
+                    reference_sample_ids=reference_sample_ids,
+                    all_sample_ids=all_sample_ids
+                )
         else:
-            # Pre-computed distances: extract from distance matrix
-            if unifrac_computer is None:
-                unifrac_computer = UniFracComputer()
-            batch_distances = unifrac_computer.extract_batch_distances(unifrac_distances, sample_ids, metric=unifrac_metric)
+            # Pairwise computation (backward compatibility)
+            if lazy_unifrac and unifrac_computer is not None:
+                # Lazy computation: compute distances on-the-fly for this batch
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.debug(f"Computing UniFrac distances for batch: {sample_ids[:3]}... (batch size: {len(sample_ids)})")
+                if unifrac_metric == "unweighted":
+                    batch_distances = unifrac_computer.compute_batch_unweighted(sample_ids)
+                else:
+                    batch_distances = unifrac_computer.compute_batch_faith_pd(sample_ids)
+                logger.debug(f"Batch distance computation complete")
+            else:
+                # Pre-computed distances: extract from distance matrix
+                if unifrac_computer is None:
+                    unifrac_computer = UniFracComputer()
+                batch_distances = unifrac_computer.extract_batch_distances(unifrac_distances, sample_ids, metric=unifrac_metric)
         
         # Validate extracted distances
         if np.any(np.isnan(batch_distances)):
@@ -125,28 +166,32 @@ class ASVDataset(Dataset):
         self,
         table: Table,
         metadata: Optional[pd.DataFrame] = None,
-        unifrac_distances: Optional[Union[DistanceMatrix, pd.Series]] = None,
+        unifrac_distances: Optional[Union[DistanceMatrix, pd.Series, np.ndarray]] = None,
         tokenizer: Optional[SequenceTokenizer] = None,
         max_bp: int = 150,
         token_limit: int = 1024,
         target_column: Optional[str] = None,
         unifrac_metric: str = "unweighted",
-        lazy_unifrac: bool = False,
+        lazy_unifrac: bool = True,
         unifrac_computer: Optional[UniFracComputer] = None,
+        stripe_mode: bool = True,
+        reference_sample_ids: Optional[List[str]] = None,
     ):
         """Initialize ASVDataset.
 
         Args:
             table: Rarefied biom.Table object
             metadata: Optional DataFrame with sample metadata and targets
-            unifrac_distances: Optional pre-computed UniFrac distances (ignored if lazy_unifrac=True)
+            unifrac_distances: Optional pre-computed UniFrac distances/stripe matrix (ignored if lazy_unifrac=True)
             tokenizer: SequenceTokenizer instance (creates default if None)
             max_bp: Maximum base pairs per sequence
             token_limit: Maximum ASVs per sample
             target_column: Column name in metadata for target values
             unifrac_metric: Type of UniFrac metric ("unweighted" or "faith_pd")
-            lazy_unifrac: If True, compute distances on-the-fly instead of using pre-computed distances
+            lazy_unifrac: If True, compute distances on-the-fly instead of using pre-computed distances (default: True)
             unifrac_computer: UniFracComputer instance for lazy computation (required if lazy_unifrac=True)
+            stripe_mode: If True, use stripe-based distances instead of pairwise (default: True)
+            reference_sample_ids: List of reference sample IDs for stripe mode (required if stripe_mode=True)
         """
         self.table = table
         self.metadata = metadata
@@ -158,9 +203,29 @@ class ASVDataset(Dataset):
         self.unifrac_metric = unifrac_metric
         self.lazy_unifrac = lazy_unifrac
         self.unifrac_computer = unifrac_computer
+        self.stripe_mode = stripe_mode
+        self.reference_sample_ids = reference_sample_ids
 
         self.sample_ids = list(table.ids(axis="sample"))
         self.observation_ids = list(table.ids(axis="observation"))
+        
+        # Validate stripe mode parameters
+        if stripe_mode and reference_sample_ids is None:
+            # Auto-select reference samples if not provided (use first 100 or all if < 100)
+            if len(self.sample_ids) <= 100:
+                self.reference_sample_ids = self.sample_ids.copy()
+            else:
+                self.reference_sample_ids = self.sample_ids[:100]
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"Auto-selected {len(self.reference_sample_ids)} reference samples for stripe mode")
+        
+        if stripe_mode and reference_sample_ids is not None:
+            # Validate reference samples exist in table
+            table_sample_ids = set(self.sample_ids)
+            missing_ref = set(reference_sample_ids) - table_sample_ids
+            if missing_ref:
+                raise ValueError(f"Reference sample IDs not found in table: {sorted(missing_ref)}")
 
         loader = BIOMLoader()
         self.sequences = loader.get_sequences(table)
