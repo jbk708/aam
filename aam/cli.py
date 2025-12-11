@@ -412,6 +412,48 @@ def train(
         logger.info(f"Total samples: {len(sample_ids)}")
         train_ids, val_ids = train_test_split(sample_ids, test_size=test_size, random_state=seed)
         logger.info(f"Train samples: {len(train_ids)}, Validation samples: {len(val_ids)}")
+        
+        # Parse reference samples for stripe mode (initialize to None for pairwise mode)
+        reference_sample_ids = None
+        if stripe_mode:
+            if reference_samples is not None:
+                # Try to parse as number first
+                try:
+                    num_ref = int(reference_samples)
+                    if num_ref <= 0:
+                        raise ValueError("Number of reference samples must be positive")
+                    if num_ref > len(sample_ids):
+                        logger.warning(f"Requested {num_ref} reference samples but only {len(sample_ids)} available. Using all samples.")
+                        reference_sample_ids = sample_ids.copy()
+                    else:
+                        reference_sample_ids = sample_ids[:num_ref]
+                    logger.info(f"Selected first {len(reference_sample_ids)} samples as reference set")
+                except ValueError:
+                    # Not a number, treat as file path
+                    ref_path = Path(reference_samples)
+                    if not ref_path.exists():
+                        raise FileNotFoundError(f"Reference samples file not found: {reference_samples}")
+                    with open(ref_path, 'r') as f:
+                        reference_sample_ids = [line.strip() for line in f if line.strip()]
+                    if not reference_sample_ids:
+                        raise ValueError(f"Reference samples file is empty: {reference_samples}")
+                    # Validate all reference samples exist
+                    missing_ref = set(reference_sample_ids) - set(sample_ids)
+                    if missing_ref:
+                        raise ValueError(f"Reference sample IDs not found in table: {sorted(missing_ref)}")
+                    logger.info(f"Loaded {len(reference_sample_ids)} reference samples from file")
+            else:
+                # Auto-select: first 100 or all if < 100
+                if len(sample_ids) <= 100:
+                    reference_sample_ids = sample_ids.copy()
+                else:
+                    reference_sample_ids = sample_ids[:100]
+                logger.info(f"Auto-selected {len(reference_sample_ids)} reference samples for stripe mode")
+            
+            # Set reference samples in unifrac_computer if using lazy mode
+            if lazy_unifrac and unifrac_computer is not None:
+                unifrac_computer.set_reference_samples(reference_sample_ids, table=table_obj)
+                logger.info(f"Set {len(reference_sample_ids)} reference samples in UniFracComputer")
 
         logger.info("Filtering tables for train/val splits...")
         train_table = table_obj.filter(train_ids, axis="sample", inplace=False)
