@@ -211,14 +211,15 @@ class ASVDataset(Dataset):
         
         # Validate stripe mode parameters
         if stripe_mode and reference_sample_ids is None:
-            # Auto-select reference samples if not provided (use first 100 or all if < 100)
+            # Auto-select reference samples if not provided (randomly pick 100 or all if < 100)
+            import random
             if len(self.sample_ids) <= 100:
                 self.reference_sample_ids = self.sample_ids.copy()
             else:
-                self.reference_sample_ids = self.sample_ids[:100]
+                self.reference_sample_ids = random.sample(self.sample_ids, 100)
             import logging
             logger = logging.getLogger(__name__)
-            logger.info(f"Auto-selected {len(self.reference_sample_ids)} reference samples for stripe mode")
+            logger.info(f"Auto-selected {len(self.reference_sample_ids)} random reference samples for stripe mode")
         
         if stripe_mode and reference_sample_ids is not None:
             # Validate reference samples exist in table

@@ -200,7 +200,7 @@ def cli():
 @click.option("--compile-model", is_flag=True, help="Compile model with torch.compile() for optimization (PyTorch 2.0+)")
 @click.option("--lazy-unifrac/--no-lazy-unifrac", default=True, help="Compute UniFrac distances on-the-fly (batch-wise) instead of upfront. Faster startup but slower first epoch. (default: True)")
 @click.option("--stripe-mode/--no-stripe-mode", default=True, help="Use stripe-based UniFrac distances instead of pairwise. More memory-efficient. (default: True)")
-@click.option("--reference-samples", default=None, type=str, help="Reference samples for stripe mode: path to file with sample IDs (one per line), or number (e.g., '100' for first 100 samples). If not specified, auto-selects first 100 or all if < 100.")
+@click.option("--reference-samples", default=None, type=str, help="Reference samples for stripe mode: path to file with sample IDs (one per line), or number (e.g., '100' for 100 randomly selected samples). If not specified, auto-selects 100 random samples or all if < 100.")
 @click.option("--unifrac-threads", default=None, type=int, help="Number of threads for UniFrac computation (default: all available CPU cores)")
 @click.option("--prune-tree", is_flag=True, help="Pre-prune tree to only include ASVs in BIOM table. Dramatically speeds up tree loading and UniFrac computation for large trees.")
 @click.option("--cache-unifrac", is_flag=True, help="Cache computed UniFrac distance matrix to disk for faster resume. Only applies to upfront computation (not lazy).")
@@ -426,8 +426,12 @@ def train(
                         logger.warning(f"Requested {num_ref} reference samples but only {len(sample_ids)} available. Using all samples.")
                         reference_sample_ids = sample_ids.copy()
                     else:
-                        reference_sample_ids = sample_ids[:num_ref]
-                    logger.info(f"Selected first {len(reference_sample_ids)} samples as reference set")
+                        # Randomly select reference samples
+                        import random
+                        if seed is not None:
+                            random.seed(seed)
+                        reference_sample_ids = random.sample(sample_ids, num_ref)
+                    logger.info(f"Selected {len(reference_sample_ids)} random samples as reference set")
                 except ValueError:
                     # Not a number, treat as file path
                     ref_path = Path(reference_samples)
@@ -443,12 +447,15 @@ def train(
                         raise ValueError(f"Reference sample IDs not found in table: {sorted(missing_ref)}")
                     logger.info(f"Loaded {len(reference_sample_ids)} reference samples from file")
             else:
-                # Auto-select: first 100 or all if < 100
+                # Auto-select: randomly pick 100 or all if < 100
+                import random
+                if seed is not None:
+                    random.seed(seed)
                 if len(sample_ids) <= 100:
                     reference_sample_ids = sample_ids.copy()
                 else:
-                    reference_sample_ids = sample_ids[:100]
-                logger.info(f"Auto-selected {len(reference_sample_ids)} reference samples for stripe mode")
+                    reference_sample_ids = random.sample(sample_ids, 100)
+                logger.info(f"Auto-selected {len(reference_sample_ids)} random reference samples for stripe mode")
             
             # Set reference samples in unifrac_computer if using lazy mode
             if lazy_unifrac and unifrac_computer is not None:
@@ -686,7 +693,7 @@ def train(
 )
 @click.option("--lazy-unifrac/--no-lazy-unifrac", default=True, help="Compute UniFrac distances on-the-fly (batch-wise) instead of upfront. Faster startup but slower first epoch. (default: True)")
 @click.option("--stripe-mode/--no-stripe-mode", default=True, help="Use stripe-based UniFrac distances instead of pairwise. More memory-efficient. (default: True)")
-@click.option("--reference-samples", default=None, type=str, help="Reference samples for stripe mode: path to file with sample IDs (one per line), or number (e.g., '100' for first 100 samples). If not specified, auto-selects first 100 or all if < 100.")
+@click.option("--reference-samples", default=None, type=str, help="Reference samples for stripe mode: path to file with sample IDs (one per line), or number (e.g., '100' for 100 randomly selected samples). If not specified, auto-selects 100 random samples or all if < 100.")
 @click.option("--unifrac-threads", default=None, type=int, help="Number of threads for UniFrac computation (default: all available CPU cores)")
 @click.option("--prune-tree", is_flag=True, help="Pre-prune tree to only include ASVs in BIOM table. Dramatically speeds up tree loading and UniFrac computation for large trees.")
 @click.option("--cache-unifrac", is_flag=True, help="Cache computed UniFrac distance matrix to disk for faster resume. Only applies to upfront computation (not lazy).")
@@ -906,8 +913,12 @@ def pretrain(
                         logger.warning(f"Requested {num_ref} reference samples but only {len(sample_ids)} available. Using all samples.")
                         reference_sample_ids = sample_ids.copy()
                     else:
-                        reference_sample_ids = sample_ids[:num_ref]
-                    logger.info(f"Selected first {len(reference_sample_ids)} samples as reference set")
+                        # Randomly select reference samples
+                        import random
+                        if seed is not None:
+                            random.seed(seed)
+                        reference_sample_ids = random.sample(sample_ids, num_ref)
+                    logger.info(f"Selected {len(reference_sample_ids)} random samples as reference set")
                 except ValueError:
                     # Not a number, treat as file path
                     ref_path = Path(reference_samples)
@@ -923,12 +934,15 @@ def pretrain(
                         raise ValueError(f"Reference sample IDs not found in table: {sorted(missing_ref)}")
                     logger.info(f"Loaded {len(reference_sample_ids)} reference samples from file")
             else:
-                # Auto-select: first 100 or all if < 100
+                # Auto-select: randomly pick 100 or all if < 100
+                import random
+                if seed is not None:
+                    random.seed(seed)
                 if len(sample_ids) <= 100:
                     reference_sample_ids = sample_ids.copy()
                 else:
-                    reference_sample_ids = sample_ids[:100]
-                logger.info(f"Auto-selected {len(reference_sample_ids)} reference samples for stripe mode")
+                    reference_sample_ids = random.sample(sample_ids, 100)
+                logger.info(f"Auto-selected {len(reference_sample_ids)} random reference samples for stripe mode")
             
             # Set reference samples in unifrac_computer if using lazy mode
             if lazy_unifrac and unifrac_computer is not None:
