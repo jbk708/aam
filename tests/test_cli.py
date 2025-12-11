@@ -506,7 +506,14 @@ class TestCLIIntegration:
         mock_biom_loader_instance = MagicMock()
         mock_biom_loader.return_value = mock_biom_loader_instance
         mock_table = MagicMock()
-        mock_table.ids.return_value = ["sample1", "sample2", "sample3", "sample4"]
+        # Mock ids() to return list when called with axis="sample" or axis="observation"
+        def mock_ids(axis=None):
+            if axis == "sample":
+                return ["sample1", "sample2", "sample3", "sample4"]
+            elif axis == "observation":
+                return ["obs1", "obs2", "obs3"]
+            return ["sample1", "sample2", "sample3", "sample4"]
+        mock_table.ids = mock_ids
         mock_biom_loader_instance.load_table.return_value = mock_table
         mock_biom_loader_instance.rarefy.return_value = mock_table
 
@@ -688,7 +695,14 @@ class TestCLIIntegration:
         mock_biom_loader_instance = MagicMock()
         mock_biom_loader_class.return_value = mock_biom_loader_instance
         mock_table = MagicMock()
-        mock_table.ids.return_value = ["sample1", "sample2", "sample3", "sample4"]
+        # Mock ids() to return list when called with axis="sample" or axis="observation"
+        def mock_ids(axis=None):
+            if axis == "sample":
+                return ["sample1", "sample2", "sample3", "sample4"]
+            elif axis == "observation":
+                return ["obs1", "obs2", "obs3"]
+            return ["sample1", "sample2", "sample3", "sample4"]
+        mock_table.ids = mock_ids
         mock_biom_loader_instance.load_table.return_value = mock_table
         mock_biom_loader_instance.rarefy.return_value = mock_table
 
@@ -747,6 +761,8 @@ class TestCLIIntegration:
                 "8",
                 "--epochs",
                 "1",
+                "--no-stripe-mode",
+                "--no-lazy-unifrac",
             ],
         )
 
@@ -1172,7 +1188,14 @@ class TestPretrainedEncoderLoading:
         mock_biom_loader_instance = MagicMock()
         mock_biom_loader_class.return_value = mock_biom_loader_instance
         mock_table = MagicMock()
-        mock_table.ids.return_value = ["sample1", "sample2", "sample3", "sample4"]
+        # Mock ids() to return list when called with axis="sample" or axis="observation"
+        def mock_ids(axis=None):
+            if axis == "sample":
+                return ["sample1", "sample2", "sample3", "sample4"]
+            elif axis == "observation":
+                return ["obs1", "obs2", "obs3"]
+            return ["sample1", "sample2", "sample3", "sample4"]
+        mock_table.ids = mock_ids
         mock_biom_loader_instance.load_table.return_value = mock_table
         mock_biom_loader_instance.rarefy.return_value = mock_table
 
@@ -1236,6 +1259,8 @@ class TestPretrainedEncoderLoading:
                 "1",
                 "--pretrained-encoder",
                 str(pretrained_encoder_path),
+                "--no-stripe-mode",
+                "--no-lazy-unifrac",
             ],
         )
 
@@ -1299,7 +1324,14 @@ class TestPretrainedEncoderLoading:
         mock_biom_loader_instance = MagicMock()
         mock_biom_loader_class.return_value = mock_biom_loader_instance
         mock_table = MagicMock()
-        mock_table.ids.return_value = ["sample1", "sample2", "sample3", "sample4"]
+        # Mock ids() to return list when called with axis="sample" or axis="observation"
+        def mock_ids(axis=None):
+            if axis == "sample":
+                return ["sample1", "sample2", "sample3", "sample4"]
+            elif axis == "observation":
+                return ["obs1", "obs2", "obs3"]
+            return ["sample1", "sample2", "sample3", "sample4"]
+        mock_table.ids = mock_ids
         mock_biom_loader_instance.load_table.return_value = mock_table
         mock_biom_loader_instance.rarefy.return_value = mock_table
 
@@ -1426,7 +1458,14 @@ class TestPretrainedEncoderLoading:
         mock_biom_loader_instance = MagicMock()
         mock_biom_loader_class.return_value = mock_biom_loader_instance
         mock_table = MagicMock()
-        mock_table.ids.return_value = ["sample1", "sample2", "sample3", "sample4"]
+        # Mock ids() to return list when called with axis="sample" or axis="observation"
+        def mock_ids(axis=None):
+            if axis == "sample":
+                return ["sample1", "sample2", "sample3", "sample4"]
+            elif axis == "observation":
+                return ["obs1", "obs2", "obs3"]
+            return ["sample1", "sample2", "sample3", "sample4"]
+        mock_table.ids = mock_ids
         mock_biom_loader_instance.load_table.return_value = mock_table
         mock_biom_loader_instance.rarefy.return_value = mock_table
 

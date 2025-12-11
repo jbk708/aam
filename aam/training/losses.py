@@ -28,6 +28,74 @@ def _format_tensor_stats(tensor: torch.Tensor) -> str:
         return f"min={min_val:.6f}, max={max_val:.6f}, mean={mean_val:.6f}"
 
 
+def compute_stripe_distances(
+    embeddings: torch.Tensor,
+    reference_embeddings: torch.Tensor,
+    normalize: bool = True,
+    scale: float = 5.0,
+) -> torch.Tensor:
+    """Compute stripe Euclidean distances from embeddings to reference embeddings.
+
+    Args:
+        embeddings: Sample embeddings [batch_size, embedding_dim]
+        reference_embeddings: Reference sample embeddings [num_reference_samples, embedding_dim]
+        normalize: If True, normalize distances to [0, 1] using sigmoid (default: True)
+        scale: Scaling factor for sigmoid normalization (default: 5.0)
+
+    Returns:
+        Stripe distance matrix [batch_size, num_reference_samples]
+        If normalize=True, distances are bounded to [0, 1]
+    """
+    # Check for NaN or Inf in embeddings
+    if torch.any(torch.isnan(embeddings)):
+        import sys
+        error_msg = f"NaN values found in embeddings before stripe distance computation, shape={embeddings.shape}"
+        print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
+        raise ValueError(error_msg)
+    if torch.any(torch.isinf(embeddings)):
+        import sys
+        error_msg = f"Inf values found in embeddings before stripe distance computation, shape={embeddings.shape}"
+        print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
+        raise ValueError(error_msg)
+    if torch.any(torch.isnan(reference_embeddings)):
+        import sys
+        error_msg = f"NaN values found in reference_embeddings before stripe distance computation, shape={reference_embeddings.shape}"
+        print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
+        raise ValueError(error_msg)
+    if torch.any(torch.isinf(reference_embeddings)):
+        import sys
+        error_msg = f"Inf values found in reference_embeddings before stripe distance computation, shape={reference_embeddings.shape}"
+        print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
+        raise ValueError(error_msg)
+
+    # Compute distances using torch.cdist: [batch_size, num_reference_samples]
+    # This computes Euclidean distance between each embedding and each reference embedding
+    distances = torch.cdist(embeddings, reference_embeddings, p=2)
+
+    # Check for NaN in distances
+    if torch.any(torch.isnan(distances)):
+        import sys
+        error_msg = f"NaN values found in computed stripe distances, shape={distances.shape}"
+        print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
+        raise ValueError(error_msg)
+
+    # Normalize distances to [0, 1] if requested (for UniFrac distances)
+    if normalize:
+        # Apply sigmoid with scaling to bound distances to [0, 1]
+        # scale parameter controls sensitivity: larger scale = more sensitive to distance changes
+        # Use max distance as normalization factor, then apply sigmoid
+        max_dist = distances.max()
+        if max_dist > 0:
+            # Normalize by max distance, then apply sigmoid
+            normalized = distances / (max_dist * scale)
+            distances = torch.sigmoid(normalized)
+        else:
+            # All distances are 0, return zeros
+            distances = torch.zeros_like(distances)
+
+    return distances
+
+
 def compute_pairwise_distances(
     embeddings: torch.Tensor,
     normalize: bool = True,
@@ -195,6 +263,7 @@ class MultiTaskLoss(nn.Module):
         base_true: torch.Tensor,
         encoder_type: str = "unifrac",
         embeddings: Optional[torch.Tensor] = None,
+        reference_embeddings: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Compute MSE loss for base prediction (UniFrac/Faith PD).
 
@@ -202,12 +271,21 @@ class MultiTaskLoss(nn.Module):
             base_pred: Predicted base values [batch_size, base_output_dim] or [batch_size, batch_size] for unifrac
                       For UniFrac with embeddings, this is ignored (use embeddings instead)
             base_true: True base values [batch_size, base_output_dim] or [batch_size, batch_size] for unifrac
+                      For stripe mode: [batch_size, num_reference_samples]
             encoder_type: Type of encoder ('unifrac', 'faith_pd', 'taxonomy', 'combined')
             embeddings: Optional embeddings [batch_size, embedding_dim] for UniFrac distance computation
+            reference_embeddings: Optional reference embeddings [num_reference_samples, embedding_dim] for stripe mode
 
         Returns:
             Base loss scalar tensor
         """
+        # Detect stripe mode: base_true is not square (batch_size != num_reference_samples)
+        is_stripe_mode = (
+            encoder_type == "unifrac" 
+            and base_true.dim() == 2 
+            and base_true.shape[0] != base_true.shape[1]
+        )
+        
         # For UniFrac, compute distances from embeddings if provided
         if encoder_type == "unifrac" and embeddings is not None:
             # Check for NaN in embeddings before computing distances
@@ -228,17 +306,30 @@ class MultiTaskLoss(nn.Module):
                 error_msg = f"Inf values found in embeddings with shape {embeddings.shape}"
                 print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
                 raise ValueError(error_msg)
-            # Compute pairwise distances from embeddings
+            # Compute distances from embeddings
             # Normalize to [0, 1] for UniFrac distances (UniFrac distances are bounded)
             # normalize=True is now the default
             try:
-                base_pred = compute_pairwise_distances(embeddings)
+                if is_stripe_mode:
+                    # Stripe mode: compute distances to reference embeddings
+                    if reference_embeddings is None:
+                        raise ValueError(
+                            f"reference_embeddings required for stripe mode. "
+                            f"base_true shape={base_true.shape} indicates stripe mode "
+                            f"(expected [batch_size, num_reference_samples])"
+                        )
+                    base_pred = compute_stripe_distances(embeddings, reference_embeddings)
+                else:
+                    # Pairwise mode: compute pairwise distances within batch
+                    base_pred = compute_pairwise_distances(embeddings)
             except ValueError as e:
                 # Re-raise with more context
                 import sys
-
-                print(f"ERROR: Failed to compute pairwise distances from embeddings", file=sys.stderr, flush=True)
+                mode_str = "stripe" if is_stripe_mode else "pairwise"
+                print(f"ERROR: Failed to compute {mode_str} distances from embeddings", file=sys.stderr, flush=True)
                 print(f"embeddings shape={embeddings.shape}, {_format_tensor_stats(embeddings)}", file=sys.stderr, flush=True)
+                if is_stripe_mode and reference_embeddings is not None:
+                    print(f"reference_embeddings shape={reference_embeddings.shape}, {_format_tensor_stats(reference_embeddings)}", file=sys.stderr, flush=True)
                 raise
         elif encoder_type == "unifrac" and embeddings is None:
             # Legacy mode: use base_pred directly (for backward compatibility)
@@ -299,8 +390,9 @@ class MultiTaskLoss(nn.Module):
 
         # For UniFrac pairwise distance matrices, mask diagonal elements
         # Diagonal elements are always 0.0 (distance from sample to itself) and provide no training signal
+        # For stripe mode, no diagonal masking needed (no diagonal exists)
         if encoder_type == "unifrac" and base_pred.dim() == 2 and base_pred.shape[0] == base_pred.shape[1]:
-            # Extract upper triangle (excluding diagonal) using offset=1
+            # Pairwise mode: extract upper triangle (excluding diagonal) using offset=1
             batch_size = base_pred.shape[0]
             triu_indices = torch.triu_indices(batch_size, batch_size, offset=1, device=base_pred.device)
 
@@ -313,7 +405,7 @@ class MultiTaskLoss(nn.Module):
             base_true_masked = base_true[triu_indices[0], triu_indices[1]]
             return nn.functional.mse_loss(base_pred_masked, base_true_masked)
         else:
-            # For non-UniFrac encoders or non-square matrices, use existing logic
+            # For stripe mode or non-UniFrac encoders, use all elements (no diagonal masking)
             return nn.functional.mse_loss(base_pred, base_true)
 
     def compute_nucleotide_loss(
@@ -463,11 +555,14 @@ class MultiTaskLoss(nn.Module):
                 embeddings = outputs["embeddings"]
                 # Pass dummy base_pred (will be replaced by computed distances in compute_base_loss)
                 base_pred = torch.zeros(1, device=embeddings.device)
+                # Get reference embeddings from targets if available (for stripe mode)
+                reference_embeddings = targets.get("reference_embeddings", None)
                 losses["unifrac_loss"] = self.compute_base_loss(
                     base_pred,
                     targets["base_target"],
                     encoder_type=encoder_type,
                     embeddings=embeddings,
+                    reference_embeddings=reference_embeddings,
                 )
             elif "base_prediction" in outputs:
                 # Legacy approach: use base_prediction directly

@@ -198,7 +198,10 @@ def cli():
     help="Mixed precision training mode (fp16, bf16, or none)",
 )
 @click.option("--compile-model", is_flag=True, help="Compile model with torch.compile() for optimization (PyTorch 2.0+)")
-@click.option("--lazy-unifrac", is_flag=True, help="Compute UniFrac distances on-the-fly (batch-wise) instead of upfront. Faster startup but slower first epoch.")
+@click.option("--lazy-unifrac/--no-lazy-unifrac", default=True, help="Compute UniFrac distances on-the-fly (batch-wise) instead of upfront. Faster startup but slower first epoch. (default: True)")
+@click.option("--stripe-mode/--no-stripe-mode", default=True, help="Use stripe-based UniFrac distances instead of pairwise. More memory-efficient. (default: True)")
+@click.option("--reference-samples", default=None, type=str, help="Reference samples for stripe mode: path to file with sample IDs (one per line), or number (e.g., '100' for 100 randomly selected samples). If not specified, auto-selects 100 random samples or all if < 100.")
+@click.option("--precomputed-stripe", default=None, type=click.Path(exists=True), help="Path to pre-computed stripe distance matrix (.npy file from precompute_stripe_unifrac.py). If provided, loads this instead of computing distances.")
 @click.option("--unifrac-threads", default=None, type=int, help="Number of threads for UniFrac computation (default: all available CPU cores)")
 @click.option("--prune-tree", is_flag=True, help="Pre-prune tree to only include ASVs in BIOM table. Dramatically speeds up tree loading and UniFrac computation for large trees.")
 @click.option("--cache-unifrac", is_flag=True, help="Cache computed UniFrac distance matrix to disk for faster resume. Only applies to upfront computation (not lazy).")
@@ -242,6 +245,9 @@ def train(
     mixed_precision: Optional[str],
     compile_model: bool,
     lazy_unifrac: bool,
+    stripe_mode: bool,
+    reference_samples: Optional[str],
+    precomputed_stripe: Optional[str],
     unifrac_threads: Optional[int],
     prune_tree: bool,
     cache_unifrac: bool,
@@ -408,6 +414,76 @@ def train(
         logger.info(f"Total samples: {len(sample_ids)}")
         train_ids, val_ids = train_test_split(sample_ids, test_size=test_size, random_state=seed)
         logger.info(f"Train samples: {len(train_ids)}, Validation samples: {len(val_ids)}")
+        
+        # Load pre-computed stripe matrix if provided
+        precomputed_stripe_matrix = None
+        precomputed_sample_ids = None
+        if precomputed_stripe and stripe_mode:
+            logger.info(f"Loading pre-computed stripe matrix from {precomputed_stripe}...")
+            stripe_data = np.load(precomputed_stripe, allow_pickle=True)
+            precomputed_stripe_matrix = stripe_data["stripe_distances"]
+            precomputed_sample_ids = stripe_data["sample_ids"].tolist()
+            reference_sample_ids = stripe_data["reference_sample_ids"].tolist()
+            logger.info(f"Loaded stripe matrix: shape {precomputed_stripe_matrix.shape}")
+            logger.info(f"Reference samples: {len(reference_sample_ids)}")
+            # Validate sample IDs match
+            if set(precomputed_sample_ids) != set(sample_ids):
+                missing = set(sample_ids) - set(precomputed_sample_ids)
+                extra = set(precomputed_sample_ids) - set(sample_ids)
+                if missing:
+                    logger.warning(f"Pre-computed matrix missing {len(missing)} samples from current table")
+                if extra:
+                    logger.warning(f"Pre-computed matrix has {len(extra)} extra samples not in current table")
+        else:
+            reference_sample_ids = None
+        
+        # Parse reference samples for stripe mode (initialize to None for pairwise mode)
+        if stripe_mode and not precomputed_stripe:
+            if reference_samples is not None:
+                # Try to parse as number first
+                try:
+                    num_ref = int(reference_samples)
+                    if num_ref <= 0:
+                        raise ValueError("Number of reference samples must be positive")
+                    if num_ref > len(sample_ids):
+                        logger.warning(f"Requested {num_ref} reference samples but only {len(sample_ids)} available. Using all samples.")
+                        reference_sample_ids = sample_ids.copy()
+                    else:
+                        # Randomly select reference samples
+                        import random
+                        if seed is not None:
+                            random.seed(seed)
+                        reference_sample_ids = random.sample(sample_ids, num_ref)
+                    logger.info(f"Selected {len(reference_sample_ids)} random samples as reference set")
+                except ValueError:
+                    # Not a number, treat as file path
+                    ref_path = Path(reference_samples)
+                    if not ref_path.exists():
+                        raise FileNotFoundError(f"Reference samples file not found: {reference_samples}")
+                    with open(ref_path, 'r') as f:
+                        reference_sample_ids = [line.strip() for line in f if line.strip()]
+                    if not reference_sample_ids:
+                        raise ValueError(f"Reference samples file is empty: {reference_samples}")
+                    # Validate all reference samples exist
+                    missing_ref = set(reference_sample_ids) - set(sample_ids)
+                    if missing_ref:
+                        raise ValueError(f"Reference sample IDs not found in table: {sorted(missing_ref)}")
+                    logger.info(f"Loaded {len(reference_sample_ids)} reference samples from file")
+            else:
+                # Auto-select: randomly pick 100 or all if < 100
+                import random
+                if seed is not None:
+                    random.seed(seed)
+                if len(sample_ids) <= 100:
+                    reference_sample_ids = sample_ids.copy()
+                else:
+                    reference_sample_ids = random.sample(sample_ids, 100)
+                logger.info(f"Auto-selected {len(reference_sample_ids)} random reference samples for stripe mode")
+            
+            # Set reference samples in unifrac_computer if using lazy mode
+            if lazy_unifrac and unifrac_computer is not None:
+                unifrac_computer.set_reference_samples(reference_sample_ids, table=table_obj)
+                logger.info(f"Set {len(reference_sample_ids)} reference samples in UniFracComputer")
 
         logger.info("Filtering tables for train/val splits...")
         train_table = table_obj.filter(train_ids, axis="sample", inplace=False)
@@ -420,7 +496,14 @@ def train(
         if not lazy_unifrac:
             train_distance_matrix = None
             val_distance_matrix = None
-            if unifrac_metric_name == "unweighted":
+            if stripe_mode and precomputed_stripe and precomputed_stripe_matrix is not None:
+                # Extract stripe matrices for train/val splits
+                train_indices = [precomputed_sample_ids.index(sid) for sid in train_ids if sid in precomputed_sample_ids]
+                val_indices = [precomputed_sample_ids.index(sid) for sid in val_ids if sid in precomputed_sample_ids]
+                train_distance_matrix = precomputed_stripe_matrix[train_indices, :] if train_indices else None
+                val_distance_matrix = precomputed_stripe_matrix[val_indices, :] if val_indices else None
+                logger.info(f"Extracted stripe matrices: train {train_distance_matrix.shape if train_distance_matrix is not None else 'None'}, val {val_distance_matrix.shape if val_distance_matrix is not None else 'None'}")
+            elif unifrac_metric_name == "unweighted":
                 train_distance_matrix = (
                     unifrac_distances.filter(train_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
                 )
@@ -440,6 +523,8 @@ def train(
             unifrac_metric=unifrac_metric_name,
             lazy_unifrac=lazy_unifrac,
             unifrac_computer=unifrac_computer if lazy_unifrac else None,
+            stripe_mode=stripe_mode,
+            reference_sample_ids=reference_sample_ids,
         )
 
         val_dataset = ASVDataset(
@@ -452,6 +537,8 @@ def train(
             unifrac_metric=unifrac_metric_name,
             lazy_unifrac=lazy_unifrac,
             unifrac_computer=unifrac_computer if lazy_unifrac else None,
+            stripe_mode=stripe_mode,
+            reference_sample_ids=reference_sample_ids,
         )
 
         train_collate = partial(
@@ -461,6 +548,9 @@ def train(
             unifrac_metric=unifrac_metric_name,
             unifrac_computer=unifrac_computer if lazy_unifrac else None,
             lazy_unifrac=lazy_unifrac,
+            stripe_mode=stripe_mode,
+            reference_sample_ids=reference_sample_ids,
+            all_sample_ids=train_ids if not lazy_unifrac and stripe_mode else None,
         )
         val_collate = partial(
             collate_fn,
@@ -469,6 +559,9 @@ def train(
             unifrac_metric=unifrac_metric_name,
             unifrac_computer=unifrac_computer if lazy_unifrac else None,
             lazy_unifrac=lazy_unifrac,
+            stripe_mode=stripe_mode,
+            reference_sample_ids=reference_sample_ids,
+            all_sample_ids=val_ids if not lazy_unifrac and stripe_mode else None,
         )
 
         train_loader = DataLoader(
@@ -628,7 +721,10 @@ def train(
 @click.option(
     "--asv-chunk-size", default=None, type=int, help="Process ASVs in chunks of this size to reduce memory (None = process all)"
 )
-@click.option("--lazy-unifrac", is_flag=True, help="Compute UniFrac distances on-the-fly (batch-wise) instead of upfront. Faster startup but slower first epoch.")
+@click.option("--lazy-unifrac/--no-lazy-unifrac", default=True, help="Compute UniFrac distances on-the-fly (batch-wise) instead of upfront. Faster startup but slower first epoch. (default: True)")
+@click.option("--stripe-mode/--no-stripe-mode", default=True, help="Use stripe-based UniFrac distances instead of pairwise. More memory-efficient. (default: True)")
+@click.option("--reference-samples", default=None, type=str, help="Reference samples for stripe mode: path to file with sample IDs (one per line), or number (e.g., '100' for 100 randomly selected samples). If not specified, auto-selects 100 random samples or all if < 100.")
+@click.option("--precomputed-stripe", default=None, type=click.Path(exists=True), help="Path to pre-computed stripe distance matrix (.npy file from precompute_stripe_unifrac.py). If provided, loads this instead of computing distances.")
 @click.option("--unifrac-threads", default=None, type=int, help="Number of threads for UniFrac computation (default: all available CPU cores)")
 @click.option("--prune-tree", is_flag=True, help="Pre-prune tree to only include ASVs in BIOM table. Dramatically speeds up tree loading and UniFrac computation for large trees.")
 @click.option("--cache-unifrac", is_flag=True, help="Cache computed UniFrac distance matrix to disk for faster resume. Only applies to upfront computation (not lazy).")
@@ -666,6 +762,9 @@ def pretrain(
     compile_model: bool,
     asv_chunk_size: Optional[int],
     lazy_unifrac: bool,
+    stripe_mode: bool,
+    reference_samples: Optional[str],
+    precomputed_stripe: Optional[str],
     unifrac_threads: Optional[int],
     prune_tree: bool,
     cache_unifrac: bool,
@@ -832,6 +931,76 @@ def pretrain(
         logger.info(f"Total samples: {len(sample_ids)}")
         train_ids, val_ids = train_test_split(sample_ids, test_size=test_size, random_state=seed)
         logger.info(f"Train samples: {len(train_ids)}, Validation samples: {len(val_ids)}")
+        
+        # Load pre-computed stripe matrix if provided
+        precomputed_stripe_matrix = None
+        precomputed_sample_ids = None
+        if precomputed_stripe and stripe_mode:
+            logger.info(f"Loading pre-computed stripe matrix from {precomputed_stripe}...")
+            stripe_data = np.load(precomputed_stripe, allow_pickle=True)
+            precomputed_stripe_matrix = stripe_data["stripe_distances"]
+            precomputed_sample_ids = stripe_data["sample_ids"].tolist()
+            reference_sample_ids = stripe_data["reference_sample_ids"].tolist()
+            logger.info(f"Loaded stripe matrix: shape {precomputed_stripe_matrix.shape}")
+            logger.info(f"Reference samples: {len(reference_sample_ids)}")
+            # Validate sample IDs match
+            if set(precomputed_sample_ids) != set(sample_ids):
+                missing = set(sample_ids) - set(precomputed_sample_ids)
+                extra = set(precomputed_sample_ids) - set(sample_ids)
+                if missing:
+                    logger.warning(f"Pre-computed matrix missing {len(missing)} samples from current table")
+                if extra:
+                    logger.warning(f"Pre-computed matrix has {len(extra)} extra samples not in current table")
+        else:
+            reference_sample_ids = None
+        
+        # Parse reference samples for stripe mode (initialize to None for pairwise mode)
+        if stripe_mode and not precomputed_stripe:
+            if reference_samples is not None:
+                # Try to parse as number first
+                try:
+                    num_ref = int(reference_samples)
+                    if num_ref <= 0:
+                        raise ValueError("Number of reference samples must be positive")
+                    if num_ref > len(sample_ids):
+                        logger.warning(f"Requested {num_ref} reference samples but only {len(sample_ids)} available. Using all samples.")
+                        reference_sample_ids = sample_ids.copy()
+                    else:
+                        # Randomly select reference samples
+                        import random
+                        if seed is not None:
+                            random.seed(seed)
+                        reference_sample_ids = random.sample(sample_ids, num_ref)
+                    logger.info(f"Selected {len(reference_sample_ids)} random samples as reference set")
+                except ValueError:
+                    # Not a number, treat as file path
+                    ref_path = Path(reference_samples)
+                    if not ref_path.exists():
+                        raise FileNotFoundError(f"Reference samples file not found: {reference_samples}")
+                    with open(ref_path, 'r') as f:
+                        reference_sample_ids = [line.strip() for line in f if line.strip()]
+                    if not reference_sample_ids:
+                        raise ValueError(f"Reference samples file is empty: {reference_samples}")
+                    # Validate all reference samples exist
+                    missing_ref = set(reference_sample_ids) - set(sample_ids)
+                    if missing_ref:
+                        raise ValueError(f"Reference sample IDs not found in table: {sorted(missing_ref)}")
+                    logger.info(f"Loaded {len(reference_sample_ids)} reference samples from file")
+            else:
+                # Auto-select: randomly pick 100 or all if < 100
+                import random
+                if seed is not None:
+                    random.seed(seed)
+                if len(sample_ids) <= 100:
+                    reference_sample_ids = sample_ids.copy()
+                else:
+                    reference_sample_ids = random.sample(sample_ids, 100)
+                logger.info(f"Auto-selected {len(reference_sample_ids)} random reference samples for stripe mode")
+            
+            # Set reference samples in unifrac_computer if using lazy mode
+            if lazy_unifrac and unifrac_computer is not None:
+                unifrac_computer.set_reference_samples(reference_sample_ids, table=table_obj)
+                logger.info(f"Set {len(reference_sample_ids)} reference samples in UniFracComputer")
 
         logger.info("Filtering tables for train/val splits...")
         train_table = table_obj.filter(train_ids, axis="sample", inplace=False)
@@ -841,7 +1010,14 @@ def pretrain(
         if not lazy_unifrac:
             train_distance_matrix = None
             val_distance_matrix = None
-            if unifrac_metric_name == "unweighted":
+            if stripe_mode and precomputed_stripe and precomputed_stripe_matrix is not None:
+                # Extract stripe matrices for train/val splits
+                train_indices = [precomputed_sample_ids.index(sid) for sid in train_ids if sid in precomputed_sample_ids]
+                val_indices = [precomputed_sample_ids.index(sid) for sid in val_ids if sid in precomputed_sample_ids]
+                train_distance_matrix = precomputed_stripe_matrix[train_indices, :] if train_indices else None
+                val_distance_matrix = precomputed_stripe_matrix[val_indices, :] if val_indices else None
+                logger.info(f"Extracted stripe matrices: train {train_distance_matrix.shape if train_distance_matrix is not None else 'None'}, val {val_distance_matrix.shape if val_distance_matrix is not None else 'None'}")
+            elif unifrac_metric_name == "unweighted":
                 train_distance_matrix = (
                     unifrac_distances.filter(train_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
                 )
@@ -861,6 +1037,8 @@ def pretrain(
             unifrac_metric=unifrac_metric_name,
             lazy_unifrac=lazy_unifrac,
             unifrac_computer=unifrac_computer if lazy_unifrac else None,
+            stripe_mode=stripe_mode,
+            reference_sample_ids=reference_sample_ids,
         )
 
         val_dataset = ASVDataset(
@@ -873,6 +1051,8 @@ def pretrain(
             unifrac_metric=unifrac_metric_name,
             lazy_unifrac=lazy_unifrac,
             unifrac_computer=unifrac_computer if lazy_unifrac else None,
+            stripe_mode=stripe_mode,
+            reference_sample_ids=reference_sample_ids,
         )
 
         train_collate = partial(
@@ -882,6 +1062,9 @@ def pretrain(
             unifrac_metric=unifrac_metric_name,
             unifrac_computer=unifrac_computer if lazy_unifrac else None,
             lazy_unifrac=lazy_unifrac,
+            stripe_mode=stripe_mode,
+            reference_sample_ids=reference_sample_ids,
+            all_sample_ids=train_ids if not lazy_unifrac and stripe_mode else None,
         )
         val_collate = partial(
             collate_fn,
@@ -890,6 +1073,9 @@ def pretrain(
             unifrac_metric=unifrac_metric_name,
             unifrac_computer=unifrac_computer if lazy_unifrac else None,
             lazy_unifrac=lazy_unifrac,
+            stripe_mode=stripe_mode,
+            reference_sample_ids=reference_sample_ids,
+            all_sample_ids=val_ids if not lazy_unifrac and stripe_mode else None,
         )
 
         train_loader = DataLoader(

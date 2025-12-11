@@ -455,6 +455,98 @@ Add support for distributed training using PyTorch's DistributedDataParallel (DD
 
 ## Phase 11: Critical Fixes
 
+### PYT-11.2: Implement Reference Embedding Computation for Stripe Mode
+**Priority:** HIGH | **Effort:** Medium (4-6 hours) | **Status:** Not Started
+
+**Description:**
+Implement reference embedding computation for stripe-based UniFrac training. Currently, stripe mode requires reference embeddings to compute stripe distances from batch embeddings, but this computation is not yet implemented, causing training to fail with a NotImplementedError.
+
+**Problem:**
+- Stripe mode is now the default (`--stripe-mode` is True by default)
+- Stripe mode computes distances from each batch sample to a fixed set of reference samples
+- The loss function needs reference embeddings `[num_reference_samples, embedding_dim]` to compute stripe distances
+- Currently, reference embeddings are not computed, causing training to fail with:
+  ```
+  NotImplementedError: Stripe mode requires reference embeddings, but computation is not yet implemented.
+  ```
+- Users must use `--no-stripe-mode` to train, which defeats the purpose of stripe mode
+
+**Solution:**
+1. Compute reference embeddings once per epoch (or cache across epochs)
+2. Get reference sample data from dataset
+3. Run reference samples through model to get embeddings
+4. Cache reference embeddings and pass to loss function via targets dictionary
+5. Update trainer to handle reference embedding computation
+
+**Acceptance Criteria:**
+- [ ] Add method to compute reference embeddings from reference samples
+- [ ] Update `Trainer` to accept `reference_sample_ids` and dataset
+- [ ] Compute reference embeddings once per epoch (at start of epoch)
+- [ ] Cache reference embeddings for reuse throughout epoch
+- [ ] Pass reference embeddings to loss function via targets dictionary
+- [ ] Handle reference embeddings in both train and validation loops
+- [ ] Support reference embeddings with lazy UniFrac mode
+- [ ] Support reference embeddings with pre-computed stripe matrices
+- [ ] Add tests for reference embedding computation
+- [ ] Verify stripe mode training works end-to-end
+- [ ] Update documentation
+
+**Implementation Details:**
+
+1. **Update Trainer.__init__()**:
+   - Add `reference_sample_ids: Optional[List[str]] = None` parameter
+   - Add `train_dataset: Optional[Dataset] = None` parameter (for accessing reference samples)
+   - Store reference sample IDs and dataset
+
+2. **Add method to compute reference embeddings**:
+   ```python
+   def _compute_reference_embeddings(self, epoch: int = 0) -> torch.Tensor:
+       """Compute embeddings for reference samples.
+       
+       Returns:
+           Reference embeddings [num_reference_samples, embedding_dim]
+       """
+       # Get reference samples from dataset
+       # Run through model to get embeddings
+       # Return embeddings
+   ```
+
+3. **Update train_epoch()**:
+   - Compute reference embeddings at start of epoch (or use cached if available)
+   - Pass reference embeddings to loss function via targets dictionary
+   - Cache reference embeddings for reuse throughout epoch
+
+4. **Update validate_epoch()**:
+   - Compute reference embeddings (or reuse from training)
+   - Pass reference embeddings to loss function
+
+5. **Update CLI**:
+   - Pass `reference_sample_ids` to Trainer
+   - Pass `train_dataset` to Trainer (or extract from DataLoader)
+
+**Files to Modify:**
+- `aam/training/trainer.py` - Add reference embedding computation
+- `aam/cli.py` - Pass reference_sample_ids and dataset to Trainer
+- `tests/test_trainer.py` - Add tests for reference embedding computation
+- `tests/test_integration.py` - Add integration tests for stripe mode training
+
+**Dependencies:** PYT-11.3 (stripe mode dataset/collation - in progress)
+
+**Estimated Time:** 4-6 hours
+
+**Implementation Notes:**
+- Reference embeddings should be computed with model in eval mode (no gradients)
+- Reference embeddings can be cached across epochs (model changes slowly)
+- Need to handle reference samples that might not be in current split (train/val)
+- Reference embeddings should be on same device as model
+- Consider memory implications of storing reference embeddings
+
+**Related Tickets:**
+- PYT-11.3: Update Dataset and Collation for Stripe Mode (in progress)
+- See `_design_plan/21_stripe_unifrac_migration.md` for full migration plan
+
+---
+
 ### PYT-11.1: Fix UniFrac Distance Predictions Exceeding 1.0
 **Priority:** URGENT | **Effort:** Medium (3-4 hours) | **Status:** ✅ Completed
 

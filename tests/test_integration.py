@@ -120,6 +120,7 @@ class TestDataPipelineIntegration:
             max_bp=150,
             token_limit=1024,
             unifrac_distances=unifrac_distances,
+            stripe_mode=False,
         )
 
         assert len(dataset) > 0
@@ -167,7 +168,7 @@ class TestDataPipelineIntegration:
         # Test that collate_fn adds unifrac_target correctly
         from functools import partial
 
-        collate = partial(collate_fn, token_limit=1024, unifrac_distances=unifrac_distances, unifrac_metric="faith_pd")
+        collate = partial(collate_fn, token_limit=1024, unifrac_distances=unifrac_distances, unifrac_metric="faith_pd", stripe_mode=False)
         batch = [dataset[0], dataset[1]]
         batched = collate(batch)
         assert "unifrac_target" in batched
@@ -205,7 +206,7 @@ class TestDataPipelineIntegration:
         # Test that collate_fn adds unifrac_target with correct dtype
         from functools import partial
 
-        collate = partial(collate_fn, token_limit=1024, unifrac_distances=unifrac_distances, unifrac_metric="faith_pd")
+        collate = partial(collate_fn, token_limit=1024, unifrac_distances=unifrac_distances, unifrac_metric="faith_pd", stripe_mode=False)
         batch = [dataset[0]]
         batched = collate(batch)
         assert batched["unifrac_target"].dtype == torch.float32
@@ -234,7 +235,7 @@ class TestDataPipelineIntegration:
             batch_size=4,
             shuffle=False,
             collate_fn=lambda batch: collate_fn(
-                batch, token_limit=1024, unifrac_distances=unifrac_distances, unifrac_metric="faith_pd"
+                batch, token_limit=1024, unifrac_distances=unifrac_distances, unifrac_metric="faith_pd", stripe_mode=False
             ),
         )
 
@@ -529,7 +530,7 @@ class TestEndToEnd:
             dataset,
             batch_size=batch_size,
             shuffle=False,
-            collate_fn=lambda batch: collate_fn(batch, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted"),
+            collate_fn=lambda batch: collate_fn(batch, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False),
         )
 
         model_config = small_model_config.copy()
@@ -608,7 +609,7 @@ class TestEndToEnd:
             dataset,
             batch_size=batch_size,
             shuffle=False,
-            collate_fn=lambda batch: collate_fn(batch, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted"),
+            collate_fn=lambda batch: collate_fn(batch, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False),
         )
 
         model_config = small_model_config.copy()
@@ -686,7 +687,7 @@ class TestEndToEnd:
             dataset,
             batch_size=batch_size,
             shuffle=False,
-            collate_fn=lambda batch: collate_fn(batch, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted"),
+            collate_fn=lambda batch: collate_fn(batch, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False),
         )
 
         model_config = small_model_config.copy()

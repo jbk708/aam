@@ -605,6 +605,29 @@ class Trainer:
 
                 encoder_type = self._get_encoder_type()
                 is_classifier = self._get_is_classifier()
+                
+                # For stripe mode, we need reference embeddings
+                # Check if we're in stripe mode by looking at base_target shape
+                if "base_target" in targets and encoder_type == "unifrac" and "embeddings" in outputs:
+                    base_target = targets["base_target"]
+                    # Stripe mode: base_target is not square (batch_size != num_reference_samples)
+                    if base_target.dim() == 2 and base_target.shape[0] != base_target.shape[1]:
+                        # We need reference embeddings for stripe mode
+                        # TODO: Implement proper reference embedding computation from dataset
+                        # For stripe mode, reference embeddings should be computed once per epoch
+                        # by:
+                        # 1. Getting reference sample IDs from dataset (passed to trainer)
+                        # 2. Getting reference sample data from dataset
+                        # 3. Running through model to get embeddings
+                        # 4. Caching and reusing throughout the epoch
+                        raise NotImplementedError(
+                            f"Stripe mode requires reference embeddings, but computation is not yet implemented. "
+                            f"base_target shape={base_target.shape} indicates stripe mode "
+                            f"(expected [batch_size, num_reference_samples]). "
+                            f"Please use --no-stripe-mode for now, or implement reference embedding computation "
+                            f"in Trainer.train_epoch() method."
+                        )
+                
                 losses = self.loss_fn(outputs, targets, is_classifier=is_classifier, encoder_type=encoder_type)
 
                 # Check for NaN in loss after computation

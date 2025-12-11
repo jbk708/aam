@@ -198,6 +198,7 @@ class TestASVDataset:
             max_bp=150,
             token_limit=1024,
             unifrac_metric="unweighted",
+            stripe_mode=False,
         )
 
         sample = dataset[0]
@@ -310,7 +311,7 @@ class TestCollateFn:
         ]
 
         token_limit = 5
-        result = collate_fn(batch, token_limit, unifrac_distances=None, unifrac_metric="unweighted")
+        result = collate_fn(batch, token_limit, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False)
 
         assert result["tokens"].shape[0] == 2
         assert result["tokens"].shape[1] <= token_limit
@@ -329,7 +330,7 @@ class TestCollateFn:
         ]
 
         token_limit = 5
-        result = collate_fn(batch, token_limit, unifrac_distances=None, unifrac_metric="unweighted")
+        result = collate_fn(batch, token_limit, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False)
 
         assert result["tokens"].shape[1] == token_limit
         assert result["counts"].shape[1] == token_limit
@@ -350,7 +351,7 @@ class TestDatasetEdgeCases:
             },
         ]
         token_limit = 10
-        result = collate_fn(batch, token_limit, unifrac_distances=None, unifrac_metric="unweighted")
+        result = collate_fn(batch, token_limit, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False)
         assert result["tokens"].shape[1] == token_limit
         assert result["counts"].shape[1] == token_limit
         assert result["tokens"].shape[0] == 1
@@ -418,6 +419,7 @@ class TestDatasetEdgeCases:
             token_limit=1024,
             unifrac_distances=faith_pd_values,
             unifrac_metric="faith_pd",
+            stripe_mode=False,
         )
 
         sample = dataset[0]
@@ -440,6 +442,7 @@ class TestDatasetEdgeCases:
             token_limit=1024,
             unifrac_distances=faith_pd_values,
             unifrac_metric="faith_pd",
+            stripe_mode=False,
         )
 
         # unifrac_target is NOT in __getitem__ output - it's added in collate_fn
@@ -455,9 +458,9 @@ class TestDatasetEdgeCases:
         from functools import partial
 
         batch = [dataset[0], dataset[2]]  # sample 2 is missing from faith_pd_values
-        collate = partial(collate_fn, token_limit=1024, unifrac_distances=faith_pd_values, unifrac_metric="faith_pd")
+        collate = partial(collate_fn, token_limit=1024, unifrac_distances=faith_pd_values, unifrac_metric="faith_pd", stripe_mode=False)
         # This should raise ValueError because sample_ids[2] is not in faith_pd_values
-        with pytest.raises(ValueError, match="not found"):
+        with pytest.raises(ValueError, match="not found|reference_sample_ids"):
             collate(batch)
 
 
@@ -474,7 +477,7 @@ class TestASVDatasetIntegration:
         )
 
         def custom_collate(batch):
-            return collate_fn(batch, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted")
+            return collate_fn(batch, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False)
 
         dataloader = DataLoader(dataset, batch_size=2, collate_fn=custom_collate, shuffle=False)
 
@@ -497,7 +500,7 @@ class TestASVDatasetIntegration:
         )
 
         def custom_collate(batch):
-            return collate_fn(batch, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted")
+            return collate_fn(batch, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False)
 
         dataloader = DataLoader(dataset, batch_size=2, collate_fn=custom_collate, shuffle=False)
 
@@ -515,10 +518,11 @@ class TestASVDatasetIntegration:
             max_bp=150,
             token_limit=1024,
             unifrac_metric="unweighted",
+            stripe_mode=False,
         )
 
         def custom_collate(batch):
-            return collate_fn(batch, token_limit=1024, unifrac_distances=simple_unifrac_distances, unifrac_metric="unweighted")
+            return collate_fn(batch, token_limit=1024, unifrac_distances=simple_unifrac_distances, unifrac_metric="unweighted", stripe_mode=False)
 
         dataloader = DataLoader(dataset, batch_size=2, collate_fn=custom_collate, shuffle=False)
 
@@ -552,6 +556,7 @@ class TestShuffledBatchDistances:
             token_limit=token_limit,
             unifrac_distances=simple_unifrac_distances,
             unifrac_metric="unweighted",
+            stripe_mode=False,
         )
 
         assert "unifrac_target" in result
@@ -584,6 +589,7 @@ class TestShuffledBatchDistances:
             token_limit=token_limit,
             unifrac_distances=simple_unifrac_distances,
             unifrac_metric="unweighted",
+            stripe_mode=False,
         )
 
         assert "unifrac_target" in result
@@ -621,6 +627,7 @@ class TestShuffledBatchDistances:
             token_limit=token_limit,
             unifrac_distances=faith_pd,
             unifrac_metric="faith_pd",
+            stripe_mode=False,
         )
 
         assert "unifrac_target" in result
@@ -640,6 +647,7 @@ class TestShuffledBatchDistances:
             max_bp=150,
             token_limit=1024,
             unifrac_metric="unweighted",
+            stripe_mode=False,
         )
 
         def custom_collate(batch):
@@ -648,6 +656,7 @@ class TestShuffledBatchDistances:
                 token_limit=1024,
                 unifrac_distances=simple_unifrac_distances,
                 unifrac_metric="unweighted",
+                stripe_mode=False,
             )
 
         dataloader = DataLoader(dataset, batch_size=2, collate_fn=custom_collate, shuffle=True)
@@ -670,6 +679,7 @@ class TestShuffledBatchDistances:
             max_bp=150,
             token_limit=1024,
             unifrac_metric="unweighted",
+            stripe_mode=False,
         )
 
         def custom_collate(batch):
@@ -678,6 +688,7 @@ class TestShuffledBatchDistances:
                 token_limit=1024,
                 unifrac_distances=simple_unifrac_distances,
                 unifrac_metric="unweighted",
+                stripe_mode=False,
             )
 
         dataloader = DataLoader(dataset, batch_size=2, collate_fn=custom_collate, shuffle=False)
@@ -739,6 +750,7 @@ class TestShuffledBatchDistances:
             token_limit=token_limit,
             unifrac_distances=simple_unifrac_distances,
             unifrac_metric="unweighted",
+            stripe_mode=False,
         )
 
         assert "unifrac_target" in result
@@ -771,6 +783,7 @@ class TestShuffledBatchDistances:
             token_limit=token_limit,
             unifrac_distances=simple_unifrac_distances,
             unifrac_metric="unweighted",
+            stripe_mode=False,
         )
 
         assert "unifrac_target" in result
@@ -808,6 +821,7 @@ class TestShuffledBatchDistances:
             token_limit=token_limit,
             unifrac_distances=faith_pd,
             unifrac_metric="faith_pd",
+            stripe_mode=False,
         )
 
         assert "unifrac_target" in result
@@ -827,6 +841,7 @@ class TestShuffledBatchDistances:
             max_bp=150,
             token_limit=1024,
             unifrac_metric="unweighted",
+            stripe_mode=False,
         )
 
         def custom_collate(batch):
@@ -835,6 +850,7 @@ class TestShuffledBatchDistances:
                 token_limit=1024,
                 unifrac_distances=simple_unifrac_distances,
                 unifrac_metric="unweighted",
+                stripe_mode=False,
             )
 
         dataloader = DataLoader(dataset, batch_size=2, collate_fn=custom_collate, shuffle=True)
@@ -857,6 +873,7 @@ class TestShuffledBatchDistances:
             max_bp=150,
             token_limit=1024,
             unifrac_metric="unweighted",
+            stripe_mode=False,
         )
 
         def custom_collate(batch):
@@ -865,6 +882,7 @@ class TestShuffledBatchDistances:
                 token_limit=1024,
                 unifrac_distances=simple_unifrac_distances,
                 unifrac_metric="unweighted",
+                stripe_mode=False,
             )
 
         dataloader = DataLoader(dataset, batch_size=2, collate_fn=custom_collate, shuffle=False)
@@ -914,7 +932,7 @@ class TestDataLoaderOptimizations:
             token_limit=1024,
         )
 
-        custom_collate = partial(collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted")
+        custom_collate = partial(collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False)
 
         # Test with 2 workers
         dataloader = DataLoader(
@@ -947,7 +965,7 @@ class TestDataLoaderOptimizations:
             token_limit=1024,
         )
 
-        custom_collate = partial(collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted")
+        custom_collate = partial(collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False)
 
         # Load data with single worker
         dataloader_single = DataLoader(
@@ -995,7 +1013,7 @@ class TestDataLoaderOptimizations:
             token_limit=1024,
         )
 
-        custom_collate = partial(collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted")
+        custom_collate = partial(collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False)
 
         # Test with prefetch_factor
         dataloader = DataLoader(
@@ -1026,7 +1044,7 @@ class TestDataLoaderOptimizations:
             token_limit=1024,
         )
 
-        custom_collate = partial(collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted")
+        custom_collate = partial(collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False)
 
         # pin_memory=True should work on CPU (though not as effective)
         dataloader = DataLoader(
@@ -1052,6 +1070,7 @@ class TestDataLoaderOptimizations:
             max_bp=150,
             token_limit=1024,
             unifrac_metric="unweighted",
+            stripe_mode=False,
         )
 
         custom_collate = partial(
@@ -1059,6 +1078,7 @@ class TestDataLoaderOptimizations:
             token_limit=1024,
             unifrac_distances=simple_unifrac_distances,
             unifrac_metric="unweighted",
+            stripe_mode=False,
         )
 
         dataloader = DataLoader(
@@ -1085,7 +1105,7 @@ class TestDataLoaderOptimizations:
             token_limit=1024,
         )
 
-        custom_collate = partial(collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted")
+        custom_collate = partial(collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False)
 
         dataloader = DataLoader(
             dataset,
@@ -1105,3 +1125,245 @@ class TestDataLoaderOptimizations:
         expected_sample_ids = list(rarefied_table.ids(axis="sample"))
         assert len(all_sample_ids) == len(expected_sample_ids)
         assert set(all_sample_ids) == set(expected_sample_ids)
+
+
+class TestStripeMode:
+    """Test suite for stripe-based UniFrac mode in dataset and collate_fn."""
+
+    def test_dataset_stripe_mode_auto_select_reference(self, rarefied_table, tokenizer, tmp_path):
+        """Test that dataset auto-selects reference samples when stripe_mode=True."""
+        observation_ids = list(rarefied_table.ids(axis="observation"))
+        tree_file = create_simple_tree_file(tmp_path, observation_ids)
+        
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            max_bp=150,
+            token_limit=1024,
+            stripe_mode=True,
+        )
+        
+        # Should auto-select reference samples
+        assert dataset.stripe_mode is True
+        assert dataset.reference_sample_ids is not None
+        assert len(dataset.reference_sample_ids) > 0
+        # Should be <= 100 or all if < 100
+        total_samples = len(rarefied_table.ids(axis="sample"))
+        if total_samples <= 100:
+            assert len(dataset.reference_sample_ids) == total_samples
+        else:
+            assert len(dataset.reference_sample_ids) == 100
+
+    def test_dataset_stripe_mode_custom_reference(self, rarefied_table, tokenizer, tmp_path):
+        """Test that dataset uses custom reference samples when provided."""
+        observation_ids = list(rarefied_table.ids(axis="observation"))
+        tree_file = create_simple_tree_file(tmp_path, observation_ids)
+        
+        sample_ids = list(rarefied_table.ids(axis="sample"))
+        custom_ref = sample_ids[:2]  # First 2 samples
+        
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            max_bp=150,
+            token_limit=1024,
+            stripe_mode=True,
+            reference_sample_ids=custom_ref,
+        )
+        
+        assert dataset.stripe_mode is True
+        assert dataset.reference_sample_ids == custom_ref
+
+    def test_dataset_stripe_mode_invalid_reference(self, rarefied_table, tokenizer, tmp_path):
+        """Test that dataset raises error for invalid reference samples."""
+        observation_ids = list(rarefied_table.ids(axis="observation"))
+        tree_file = create_simple_tree_file(tmp_path, observation_ids)
+        
+        with pytest.raises(ValueError, match="Reference sample IDs not found"):
+            ASVDataset(
+                table=rarefied_table,
+                tokenizer=tokenizer,
+                max_bp=150,
+                token_limit=1024,
+                stripe_mode=True,
+                reference_sample_ids=["invalid_sample_id"],
+            )
+
+    def test_collate_fn_stripe_mode_lazy(self, rarefied_table, tokenizer, tmp_path):
+        """Test collate_fn with stripe mode and lazy computation."""
+        observation_ids = list(rarefied_table.ids(axis="observation"))
+        tree_file = create_simple_tree_file(tmp_path, observation_ids)
+        
+        computer = UniFracComputer(num_threads=1)
+        computer.setup_lazy_computation(rarefied_table, tree_file)
+        
+        sample_ids = list(rarefied_table.ids(axis="sample"))
+        reference_sample_ids = sample_ids[:2]  # First 2 as reference
+        computer.set_reference_samples(reference_sample_ids, table=rarefied_table)
+        
+        # Create batch
+        batch = []
+        for i in range(2):
+            sample = rarefied_table.ids(axis="sample")[i]
+            sample_data = rarefied_table.matrix_data[:, i].toarray().flatten()
+            asv_indices = np.where(sample_data > 0)[0]
+            
+            tokens_list = []
+            counts_list = []
+            for asv_idx in asv_indices:
+                seq = observation_ids[asv_idx]
+                tokenized = tokenizer.tokenize(seq)
+                padded = tokenizer.pad_sequences([tokenized], 151)[0]
+                tokens_list.append(padded)
+                counts_list.append(sample_data[asv_idx])
+            
+            batch.append({
+                "tokens": torch.stack(tokens_list) if tokens_list else torch.zeros(1, 151, dtype=torch.long),
+                "counts": torch.FloatTensor(counts_list).unsqueeze(1) if counts_list else torch.zeros(1, 1),
+                "sample_id": sample,
+            })
+        
+        result = collate_fn(
+            batch,
+            token_limit=1024,
+            unifrac_distances=None,
+            unifrac_metric="unweighted",
+            unifrac_computer=computer,
+            lazy_unifrac=True,
+            stripe_mode=True,
+            reference_sample_ids=reference_sample_ids,
+        )
+        
+        assert "unifrac_target" in result
+        # Stripe shape: [batch_size, N_reference_samples]
+        assert result["unifrac_target"].shape == (2, len(reference_sample_ids))
+        assert not torch.isnan(result["unifrac_target"]).any()
+        assert not torch.isinf(result["unifrac_target"]).any()
+
+    def test_collate_fn_stripe_mode_precomputed(self, rarefied_table, tokenizer, tmp_path):
+        """Test collate_fn with stripe mode and pre-computed distances."""
+        observation_ids = list(rarefied_table.ids(axis="observation"))
+        tree_file = create_simple_tree_file(tmp_path, observation_ids)
+        
+        computer = UniFracComputer(num_threads=1)
+        sample_ids = list(rarefied_table.ids(axis="sample"))
+        reference_sample_ids = sample_ids[:2]  # First 2 as reference
+        
+        # Compute stripe distances upfront
+        stripe_distances = computer.compute_unweighted_stripe(
+            rarefied_table, tree_file, reference_sample_ids
+        )
+        
+        # Create batch
+        batch = []
+        for i in range(2):
+            sample = sample_ids[i]
+            sample_data = rarefied_table.matrix_data[:, i].toarray().flatten()
+            asv_indices = np.where(sample_data > 0)[0]
+            
+            tokens_list = []
+            counts_list = []
+            for asv_idx in asv_indices:
+                seq = observation_ids[asv_idx]
+                tokenized = tokenizer.tokenize(seq)
+                padded = tokenizer.pad_sequences([tokenized], 151)[0]
+                tokens_list.append(padded)
+                counts_list.append(sample_data[asv_idx])
+            
+            batch.append({
+                "tokens": torch.stack(tokens_list) if tokens_list else torch.zeros(1, 151, dtype=torch.long),
+                "counts": torch.FloatTensor(counts_list).unsqueeze(1) if counts_list else torch.zeros(1, 1),
+                "sample_id": sample,
+            })
+        
+        result = collate_fn(
+            batch,
+            token_limit=1024,
+            unifrac_distances=stripe_distances,
+            unifrac_metric="unweighted",
+            unifrac_computer=computer,
+            lazy_unifrac=False,
+            stripe_mode=True,
+            reference_sample_ids=reference_sample_ids,
+            all_sample_ids=sample_ids,
+        )
+        
+        assert "unifrac_target" in result
+        # Stripe shape: [batch_size, N_reference_samples]
+        assert result["unifrac_target"].shape == (2, len(reference_sample_ids))
+        assert not torch.isnan(result["unifrac_target"]).any()
+        assert not torch.isinf(result["unifrac_target"]).any()
+
+    def test_collate_fn_stripe_mode_missing_reference(self, tokenizer):
+        """Test that collate_fn raises error when reference_sample_ids missing in stripe mode."""
+        batch = [
+            {
+                "tokens": torch.LongTensor([[1, 2, 3], [4, 1, 2]]),
+                "counts": torch.FloatTensor([[10.0], [20.0]]),
+                "sample_id": "sample1",
+            },
+        ]
+        
+        # When stripe_mode=True and unifrac_distances is provided, reference_sample_ids is required
+        with pytest.raises(ValueError, match="reference_sample_ids required"):
+            collate_fn(
+                batch,
+                token_limit=1024,
+                unifrac_distances=np.array([[0.1, 0.2]]),  # Provide a distance matrix to trigger stripe extraction
+                unifrac_metric="unweighted",
+                unifrac_computer=None,
+                lazy_unifrac=False,
+                stripe_mode=True,
+                reference_sample_ids=None,
+            )
+
+    def test_dataloader_stripe_mode(self, rarefied_table, tokenizer, tmp_path):
+        """Test DataLoader with stripe mode."""
+        observation_ids = list(rarefied_table.ids(axis="observation"))
+        tree_file = create_simple_tree_file(tmp_path, observation_ids)
+        
+        computer = UniFracComputer(num_threads=1)
+        computer.setup_lazy_computation(rarefied_table, tree_file)
+        
+        sample_ids = list(rarefied_table.ids(axis="sample"))
+        reference_sample_ids = sample_ids[:2]  # First 2 as reference
+        computer.set_reference_samples(reference_sample_ids, table=rarefied_table)
+        
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            max_bp=150,
+            token_limit=1024,
+            lazy_unifrac=True,
+            unifrac_computer=computer,
+            stripe_mode=True,
+            reference_sample_ids=reference_sample_ids,
+        )
+        
+        collate = partial(
+            collate_fn,
+            token_limit=1024,
+            unifrac_distances=None,
+            unifrac_metric="unweighted",
+            unifrac_computer=computer,
+            lazy_unifrac=True,
+            stripe_mode=True,
+            reference_sample_ids=reference_sample_ids,
+        )
+        
+        dataloader = DataLoader(
+            dataset,
+            batch_size=2,
+            shuffle=False,
+            num_workers=0,
+            collate_fn=collate,
+        )
+        
+        # Get one batch
+        batch = next(iter(dataloader))
+        
+        assert "unifrac_target" in batch
+        # Stripe shape: [batch_size, N_reference_samples]
+        assert batch["unifrac_target"].shape[0] == 2
+        assert batch["unifrac_target"].shape[1] == len(reference_sample_ids)
+        assert not torch.isnan(batch["unifrac_target"]).any()

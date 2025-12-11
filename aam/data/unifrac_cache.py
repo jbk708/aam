@@ -173,6 +173,58 @@ def load_distance_matrix(
         return None
 
 
+def save_stripe_matrix(
+    stripe_distances: np.ndarray,
+    cache_path: Path,
+    sample_ids: list,
+    reference_sample_ids: list,
+) -> None:
+    """Save stripe distance matrix to cache file.
+    
+    Args:
+        stripe_distances: Stripe distance matrix [N_samples, N_reference_samples]
+        cache_path: Path to save cache file
+        sample_ids: List of all sample IDs (rows)
+        reference_sample_ids: List of reference sample IDs (columns)
+    """
+    try:
+        np.savez_compressed(
+            cache_path,
+            stripe_distances=stripe_distances,
+            sample_ids=sample_ids,
+            reference_sample_ids=reference_sample_ids,
+            metric="stripe_unweighted",
+        )
+        logger.info(f"Saved stripe distance matrix cache to {cache_path}")
+    except Exception as e:
+        logger.warning(f"Failed to save stripe distance matrix cache: {e}")
+
+
+def load_stripe_matrix(
+    cache_path: Path,
+) -> Optional[tuple[np.ndarray, list, list]]:
+    """Load stripe distance matrix from cache file.
+    
+    Args:
+        cache_path: Path to cache file
+    
+    Returns:
+        Tuple of (stripe_distances, sample_ids, reference_sample_ids) if cache exists, None otherwise
+    """
+    if not cache_path.exists():
+        return None
+    
+    try:
+        cache_data = np.load(cache_path, allow_pickle=True)
+        stripe_distances = cache_data["stripe_distances"]
+        sample_ids = cache_data["sample_ids"].tolist()
+        reference_sample_ids = cache_data["reference_sample_ids"].tolist()
+        return stripe_distances, sample_ids, reference_sample_ids
+    except Exception as e:
+        logger.warning(f"Failed to load stripe distance matrix cache: {e}")
+        return None
+
+
 def clear_cache(cache_dir: Optional[str] = None, pattern: Optional[str] = None) -> int:
     """Clear cached distance matrices.
     
