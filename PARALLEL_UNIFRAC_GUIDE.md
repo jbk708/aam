@@ -8,7 +8,14 @@ For large datasets (like your 32K samples), computing the full UniFrac distance 
 
 ### Step 1: Compute Distance Matrix in Parallel
 
+**Option A: Using standalone script (recommended)**
 ```bash
+python compute_unifrac_parallel.py \
+```
+
+**Option B: Using module (requires package reinstall)**
+```bash
+pip install -e .  # Reinstall package first
 python -m aam.scripts.compute_unifrac_parallel \
   --table /projects/deep-learning/aam-publication-data/agp-emp-large.biom \
   --tree /projects/deep-learning/aam-publication-data/2022.10.phylogeny.asv.pruned.nwk \
