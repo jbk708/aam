@@ -200,6 +200,9 @@ def cli():
 @click.option("--compile-model", is_flag=True, help="Compile model with torch.compile() for optimization (PyTorch 2.0+)")
 @click.option("--lazy-unifrac", is_flag=True, help="Compute UniFrac distances on-the-fly (batch-wise) instead of upfront. Faster startup but slower first epoch.")
 @click.option("--unifrac-threads", default=None, type=int, help="Number of threads for UniFrac computation (default: all available CPU cores)")
+@click.option("--prune-tree", is_flag=True, help="Pre-prune tree to only include ASVs in BIOM table. Dramatically speeds up tree loading and UniFrac computation for large trees.")
+@click.option("--cache-unifrac", is_flag=True, help="Cache computed UniFrac distance matrix to disk for faster resume. Only applies to upfront computation (not lazy).")
+@click.option("--unifrac-cache-dir", default=None, type=str, help="Directory for UniFrac cache files (default: ~/.aam_cache/unifrac)")
 def train(
     table: str,
     tree: str,
@@ -240,6 +243,9 @@ def train(
     compile_model: bool,
     lazy_unifrac: bool,
     unifrac_threads: Optional[int],
+    prune_tree: bool,
+    cache_unifrac: bool,
+    unifrac_cache_dir: Optional[str],
 ):
     """Train AAM model on microbial sequencing data."""
     try:
@@ -291,7 +297,15 @@ def train(
         if lazy_unifrac:
             logger.info("Using lazy UniFrac computation (batch-wise, on-the-fly)")
             logger.info("Setting up lazy computation (tree will be loaded per worker process)...")
-            unifrac_computer.setup_lazy_computation(table_obj, tree)
+            pruned_cache_path = None
+            if prune_tree:
+                pruned_cache_path = str(Path(tree).with_suffix('.pruned.nwk'))
+            unifrac_computer.setup_lazy_computation(
+                table_obj,
+                tree,
+                prune_tree=prune_tree,
+                pruned_tree_cache=pruned_cache_path,
+            )
             logger.info("Lazy computation setup complete")
             # Warn if using multiple workers with lazy UniFrac (each worker loads tree)
             if num_workers > 0:
@@ -310,15 +324,76 @@ def train(
                 unifrac_metric_name = "faith_pd"
                 encoder_type = "faith_pd"
         else:
-            logger.info("Computing UniFrac distances upfront (full distance matrix)...")
-            if unifrac_metric == "unifrac":
-                unifrac_distances = unifrac_computer.compute_unweighted(table_obj, tree)
-                unifrac_metric_name = "unweighted"
-                encoder_type = "unifrac"
+            # For upfront computation, also support tree pruning
+            if prune_tree:
+                logger.info("Pruning tree before upfront UniFrac computation...")
+                from aam.data.tree_pruner import load_or_prune_tree
+                pruned_cache_path = str(Path(tree).with_suffix('.pruned.nwk'))
+                pruned_tree = load_or_prune_tree(tree, table_obj, pruned_tree_path=pruned_cache_path)
+                tree = pruned_cache_path  # Use pruned tree for computation
+                logger.info(f"Using pruned tree: {pruned_cache_path}")
+            
+            # Check cache for distance matrix
+            unifrac_distances = None
+            if cache_unifrac and not lazy_unifrac:
+                from aam.data.unifrac_cache import (
+                    get_cache_key,
+                    get_cache_path,
+                    load_distance_matrix,
+                    save_distance_matrix,
+                )
+                cache_key = get_cache_key(
+                    table,
+                    tree,
+                    rarefy_depth=rarefy_depth,
+                    rarefy_seed=seed,
+                    metric="unweighted" if unifrac_metric == "unifrac" else "faith_pd",
+                )
+                cache_path = get_cache_path(unifrac_cache_dir, cache_key)
+                logger.info(f"Checking for cached distance matrix: {cache_path}")
+                cached_distances = load_distance_matrix(
+                    cache_path,
+                    metric="unweighted" if unifrac_metric == "unifrac" else "faith_pd",
+                )
+                if cached_distances is not None:
+                    logger.info("Using cached distance matrix (skipping computation)")
+                    unifrac_distances = cached_distances
+            
+            if unifrac_distances is None:
+                logger.info("Computing UniFrac distances upfront (full distance matrix)...")
+                if unifrac_metric == "unifrac":
+                    unifrac_distances = unifrac_computer.compute_unweighted(table_obj, tree)
+                    unifrac_metric_name = "unweighted"
+                    encoder_type = "unifrac"
+                else:
+                    unifrac_distances = unifrac_computer.compute_faith_pd(table_obj, tree)
+                    unifrac_metric_name = "faith_pd"
+                    encoder_type = "faith_pd"
+                
+                # Save to cache if requested
+                if cache_unifrac:
+                    from aam.data.unifrac_cache import (
+                        get_cache_key,
+                        get_cache_path,
+                        save_distance_matrix,
+                    )
+                    cache_key = get_cache_key(
+                        table,
+                        tree,
+                        rarefy_depth=rarefy_depth,
+                        rarefy_seed=seed,
+                        metric=unifrac_metric_name,
+                    )
+                    cache_path = get_cache_path(unifrac_cache_dir, cache_key)
+                    save_distance_matrix(unifrac_distances, cache_path, metric=unifrac_metric_name)
             else:
-                unifrac_distances = unifrac_computer.compute_faith_pd(table_obj, tree)
-                unifrac_metric_name = "faith_pd"
-                encoder_type = "faith_pd"
+                # Set metric names from cached data
+                if unifrac_metric == "unifrac":
+                    unifrac_metric_name = "unweighted"
+                    encoder_type = "unifrac"
+                else:
+                    unifrac_metric_name = "faith_pd"
+                    encoder_type = "faith_pd"
         
         if lazy_unifrac:
             logger.warning(
@@ -555,6 +630,9 @@ def train(
 )
 @click.option("--lazy-unifrac", is_flag=True, help="Compute UniFrac distances on-the-fly (batch-wise) instead of upfront. Faster startup but slower first epoch.")
 @click.option("--unifrac-threads", default=None, type=int, help="Number of threads for UniFrac computation (default: all available CPU cores)")
+@click.option("--prune-tree", is_flag=True, help="Pre-prune tree to only include ASVs in BIOM table. Dramatically speeds up tree loading and UniFrac computation for large trees.")
+@click.option("--cache-unifrac", is_flag=True, help="Cache computed UniFrac distance matrix to disk for faster resume. Only applies to upfront computation (not lazy).")
+@click.option("--unifrac-cache-dir", default=None, type=str, help="Directory for UniFrac cache files (default: ~/.aam_cache/unifrac)")
 def pretrain(
     table: str,
     tree: str,
@@ -589,6 +667,9 @@ def pretrain(
     asv_chunk_size: Optional[int],
     lazy_unifrac: bool,
     unifrac_threads: Optional[int],
+    prune_tree: bool,
+    cache_unifrac: bool,
+    unifrac_cache_dir: Optional[str],
 ):
     """Pre-train SequenceEncoder on UniFrac and nucleotide prediction (self-supervised)."""
     try:
@@ -634,7 +715,15 @@ def pretrain(
         if lazy_unifrac:
             logger.info("Using lazy UniFrac computation (batch-wise, on-the-fly)")
             logger.info("Setting up lazy computation (tree will be loaded per worker process)...")
-            unifrac_computer.setup_lazy_computation(table_obj, tree)
+            pruned_cache_path = None
+            if prune_tree:
+                pruned_cache_path = str(Path(tree).with_suffix('.pruned.nwk'))
+            unifrac_computer.setup_lazy_computation(
+                table_obj,
+                tree,
+                prune_tree=prune_tree,
+                pruned_tree_cache=pruned_cache_path,
+            )
             logger.info("Lazy computation setup complete")
             # Warn if using multiple workers with lazy UniFrac (each worker loads tree)
             if num_workers > 0:
@@ -655,17 +744,80 @@ def pretrain(
                 encoder_type = "faith_pd"
                 base_output_dim = 1
         else:
-            logger.info("Computing UniFrac distances upfront (full distance matrix)...")
-            if unifrac_metric == "unifrac":
-                unifrac_distances = unifrac_computer.compute_unweighted(table_obj, tree)
-                unifrac_metric_name = "unweighted"
-                encoder_type = "unifrac"
-                base_output_dim = None
+            # For upfront computation, also support tree pruning
+            if prune_tree:
+                logger.info("Pruning tree before upfront UniFrac computation...")
+                from aam.data.tree_pruner import load_or_prune_tree
+                pruned_cache_path = str(Path(tree).with_suffix('.pruned.nwk'))
+                pruned_tree = load_or_prune_tree(tree, table_obj, pruned_tree_path=pruned_cache_path)
+                tree = pruned_cache_path  # Use pruned tree for computation
+                logger.info(f"Using pruned tree: {pruned_cache_path}")
+            
+            # Check cache for distance matrix
+            unifrac_distances = None
+            if cache_unifrac and not lazy_unifrac:
+                from aam.data.unifrac_cache import (
+                    get_cache_key,
+                    get_cache_path,
+                    load_distance_matrix,
+                    save_distance_matrix,
+                )
+                cache_key = get_cache_key(
+                    table,
+                    tree,
+                    rarefy_depth=rarefy_depth,
+                    rarefy_seed=seed,
+                    metric="unweighted" if unifrac_metric == "unifrac" else "faith_pd",
+                )
+                cache_path = get_cache_path(unifrac_cache_dir, cache_key)
+                logger.info(f"Checking for cached distance matrix: {cache_path}")
+                cached_distances = load_distance_matrix(
+                    cache_path,
+                    metric="unweighted" if unifrac_metric == "unifrac" else "faith_pd",
+                )
+                if cached_distances is not None:
+                    logger.info("Using cached distance matrix (skipping computation)")
+                    unifrac_distances = cached_distances
+            
+            if unifrac_distances is None:
+                logger.info("Computing UniFrac distances upfront (full distance matrix)...")
+                if unifrac_metric == "unifrac":
+                    unifrac_distances = unifrac_computer.compute_unweighted(table_obj, tree)
+                    unifrac_metric_name = "unweighted"
+                    encoder_type = "unifrac"
+                    base_output_dim = None
+                else:
+                    unifrac_distances = unifrac_computer.compute_faith_pd(table_obj, tree)
+                    unifrac_metric_name = "faith_pd"
+                    encoder_type = "faith_pd"
+                    base_output_dim = 1
+                
+                # Save to cache if requested
+                if cache_unifrac:
+                    from aam.data.unifrac_cache import (
+                        get_cache_key,
+                        get_cache_path,
+                        save_distance_matrix,
+                    )
+                    cache_key = get_cache_key(
+                        table,
+                        tree,
+                        rarefy_depth=rarefy_depth,
+                        rarefy_seed=seed,
+                        metric=unifrac_metric_name,
+                    )
+                    cache_path = get_cache_path(unifrac_cache_dir, cache_key)
+                    save_distance_matrix(unifrac_distances, cache_path, metric=unifrac_metric_name)
             else:
-                unifrac_distances = unifrac_computer.compute_faith_pd(table_obj, tree)
-                unifrac_metric_name = "faith_pd"
-                encoder_type = "faith_pd"
-                base_output_dim = 1
+                # Set metric names from cached data
+                if unifrac_metric == "unifrac":
+                    unifrac_metric_name = "unweighted"
+                    encoder_type = "unifrac"
+                    base_output_dim = None
+                else:
+                    unifrac_metric_name = "faith_pd"
+                    encoder_type = "faith_pd"
+                    base_output_dim = 1
         
         if lazy_unifrac:
             logger.warning(

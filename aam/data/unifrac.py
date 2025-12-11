@@ -15,6 +15,9 @@ import numpy as np
 import unifrac
 import multiprocessing
 
+# Import tree pruner
+from aam.data.tree_pruner import load_or_prune_tree, get_pruning_stats
+
 
 class UniFracComputer:
     """Compute phylogenetic distances (UniFrac) from BIOM tables and phylogenetic trees.
@@ -47,13 +50,18 @@ class UniFracComputer:
         self._table: Optional[Table] = None
         self._tree: Optional[TreeNode] = None
         self._tree_path: Optional[str] = None
+        self._original_tree_path: Optional[str] = None
+        self._prune_tree: bool = False
+        self._table_for_pruning: Optional[Table] = None
+        self._pruned_tree_cache: Optional[str] = None
 
-    def compute_unweighted(self, table: Table, tree_path: str) -> DistanceMatrix:
+    def compute_unweighted(self, table: Table, tree_path: str, filter_table: bool = True) -> DistanceMatrix:
         """Compute unweighted UniFrac distances between samples.
 
         Args:
             table: Rarefied biom.Table object
             tree_path: Path to phylogenetic tree file (.nwk Newick format)
+            filter_table: If True, filter table to only include ASVs present in tree
 
         Returns:
             skbio.DistanceMatrix containing pairwise unweighted UniFrac distances
@@ -72,21 +80,43 @@ class UniFracComputer:
         except Exception as e:
             raise ValueError(f"Error loading phylogenetic tree from {tree_path}: {e}")
 
+        # Filter table to only include ASVs present in tree if requested
+        if filter_table:
+            tree_tips = {tip.name for tip in tree.tips() if tip.name is not None}
+            table_asv_ids = set(table.ids(axis="observation"))
+            asvs_to_keep = table_asv_ids.intersection(tree_tips)
+            
+            if len(asvs_to_keep) == 0:
+                raise ValueError(
+                    f"No ASVs from table found in tree. "
+                    f"Table has {len(table_asv_ids)} ASVs, tree has {len(tree_tips)} tips, overlap: 0"
+                )
+            
+            if len(asvs_to_keep) < len(table_asv_ids):
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    f"Filtering table: {len(table_asv_ids)} ASVs -> {len(asvs_to_keep)} ASVs "
+                    f"({len(table_asv_ids) - len(asvs_to_keep)} ASVs not in tree)"
+                )
+                table = table.filter(asvs_to_keep, axis="observation", inplace=False)
+
         try:
             distance_matrix = unifrac.unweighted(table, tree)
         except Exception as e:
-            if "not found" in str(e).lower() or "mismatch" in str(e).lower():
+            if "not found" in str(e).lower() or "mismatch" in str(e).lower() or "completely represented" in str(e).lower():
                 raise ValueError(f"ASV IDs don't match between table and tree: {e}") from e
             raise ValueError(f"Error computing unweighted UniFrac: {e}") from e
 
         return distance_matrix
 
-    def compute_faith_pd(self, table: Table, tree_path: str) -> Union[DistanceMatrix, pd.Series]:
+    def compute_faith_pd(self, table: Table, tree_path: str, filter_table: bool = True) -> Union[DistanceMatrix, pd.Series]:
         """Compute Faith's Phylogenetic Diversity (Faith PD) per sample.
 
         Args:
             table: Rarefied biom.Table object
             tree_path: Path to phylogenetic tree file (.nwk Newick format)
+            filter_table: If True, filter table to only include ASVs present in tree
 
         Returns:
             pandas Series containing Faith PD values per sample
@@ -105,10 +135,31 @@ class UniFracComputer:
         except Exception as e:
             raise ValueError(f"Error loading phylogenetic tree from {tree_path}: {e}")
 
+        # Filter table to only include ASVs present in tree if requested
+        if filter_table:
+            tree_tips = {tip.name for tip in tree.tips() if tip.name is not None}
+            table_asv_ids = set(table.ids(axis="observation"))
+            asvs_to_keep = table_asv_ids.intersection(tree_tips)
+            
+            if len(asvs_to_keep) == 0:
+                raise ValueError(
+                    f"No ASVs from table found in tree. "
+                    f"Table has {len(table_asv_ids)} ASVs, tree has {len(tree_tips)} tips, overlap: 0"
+                )
+            
+            if len(asvs_to_keep) < len(table_asv_ids):
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    f"Filtering table: {len(table_asv_ids)} ASVs -> {len(asvs_to_keep)} ASVs "
+                    f"({len(table_asv_ids) - len(asvs_to_keep)} ASVs not in tree)"
+                )
+                table = table.filter(asvs_to_keep, axis="observation", inplace=False)
+
         try:
             faith_pd_series = unifrac.faith_pd(table, tree)
         except Exception as e:
-            if "not found" in str(e).lower() or "mismatch" in str(e).lower():
+            if "not found" in str(e).lower() or "mismatch" in str(e).lower() or "completely represented" in str(e).lower():
                 raise ValueError(f"ASV IDs don't match between table and tree: {e}") from e
             raise ValueError(f"Error computing Faith PD: {e}") from e
 
@@ -199,7 +250,14 @@ class UniFracComputer:
         if batch_size % 2 != 0:
             raise ValueError(f"Batch size must be even (multiple of 2), got {batch_size}")
 
-    def setup_lazy_computation(self, table: Table, tree_path: str, filter_tree: bool = True) -> None:
+    def setup_lazy_computation(
+        self,
+        table: Table,
+        tree_path: str,
+        filter_tree: bool = True,
+        prune_tree: bool = False,
+        pruned_tree_cache: Optional[str] = None,
+    ) -> None:
         """Setup for lazy batch-wise distance computation.
         
         This method stores the table and tree path for efficient batch computation.
@@ -209,6 +267,8 @@ class UniFracComputer:
             table: Rarefied biom.Table object
             tree_path: Path to phylogenetic tree file (.nwk Newick format)
             filter_tree: If True, filter tree to only include ASVs present in the table (much faster)
+            prune_tree: If True, pre-prune tree to only ASVs in table (dramatically reduces tree size)
+            pruned_tree_cache: Optional path to cache pruned tree (default: {tree_path}.pruned.nwk)
         """
         import logging
         logger = logging.getLogger(__name__)
@@ -228,11 +288,66 @@ class UniFracComputer:
         else:
             self._table_asv_ids = None
         
+        # Handle tree pruning if requested
+        if prune_tree:
+            logger.info("Tree will be pruned to only include ASVs in table...")
+            if pruned_tree_cache is None:
+                pruned_tree_cache = str(Path(tree_path).with_suffix('.pruned.nwk'))
+            
+            # Prune tree NOW (during setup) and save to cache
+            # This avoids reloading the full tree in each worker process
+            pruned_cache_path_obj = Path(pruned_tree_cache)
+            if not pruned_cache_path_obj.exists():
+                logger.info("Pruning tree now (this may take a few minutes for large trees)...")
+                try:
+                    from aam.data.tree_pruner import prune_tree_to_table, get_pruning_stats
+                    
+                    # Load full tree and get stats
+                    full_tree = skbio.read(str(tree_path), format="newick", into=TreeNode)
+                    stats = get_pruning_stats(full_tree, table)
+                    logger.info(
+                        f"Tree pruning: {stats['original_tree_tips']} tips -> {stats['final_tree_tips']} tips "
+                        f"({stats['pruned_tips']} removed, {100 * stats['pruned_tips'] / stats['original_tree_tips']:.1f}% reduction)"
+                    )
+                    
+                    # Prune and save
+                    pruned_tree = prune_tree_to_table(full_tree, table, output_path=pruned_tree_cache)
+                    logger.info(f"Pruned tree saved to: {pruned_tree_cache}")
+                except Exception as e:
+                    logger.error(f"Error pruning tree: {e}")
+                    raise
+            else:
+                logger.info(f"Using existing pruned tree cache: {pruned_tree_cache}")
+                # Get stats from existing pruned tree for logging
+                try:
+                    from aam.data.tree_pruner import get_pruning_stats
+                    full_tree = skbio.read(str(tree_path), format="newick", into=TreeNode)
+                    stats = get_pruning_stats(full_tree, table)
+                    logger.info(
+                        f"Pruned tree cache exists: {stats['original_tree_tips']} tips -> {stats['final_tree_tips']} tips "
+                        f"({stats['pruned_tips']} removed, {100 * stats['pruned_tips'] / stats['original_tree_tips']:.1f}% reduction)"
+                    )
+                except Exception as e:
+                    logger.warning(f"Could not compute pruning stats: {e}")
+            
+            # Store original tree path and pruned cache path
+            self._original_tree_path = tree_path
+            self._pruned_tree_cache = pruned_tree_cache
+            self._table_for_pruning = table
+            # Use pruned tree path for lazy loading
+            self._tree_path = pruned_tree_cache
+        else:
+            self._tree_path = tree_path
+            self._original_tree_path = None
+            self._pruned_tree_cache = None
+        
         # Don't load tree here - load it lazily in each worker process to avoid
         # memory issues when using DataLoader with multiple workers
         # Each worker will load the tree once and cache it
         self._tree = None
-        logger.info(f"Lazy computation setup: tree will be loaded per worker process from {tree_path}")
+        self._prune_tree = prune_tree
+        self._table_for_pruning = table if prune_tree else None
+        logger.info(f"Lazy computation setup: tree will be loaded per worker process from {self._tree_path}")
 
     def compute_batch_unweighted(
         self,
@@ -276,7 +391,11 @@ class UniFracComputer:
         if table is None:
             table = self._table
         if tree_path is None:
-            tree_path = self._tree_path
+            # Use pruned tree path if pruning is enabled, otherwise use original
+            if self._prune_tree and self._pruned_tree_cache is not None:
+                tree_path = self._pruned_tree_cache
+            else:
+                tree_path = self._tree_path
         
         if table is None or tree_path is None:
             raise ValueError("Must provide table and tree_path, or call setup_lazy_computation() first")
@@ -285,7 +404,9 @@ class UniFracComputer:
         if self._tree is None:
             import logging
             logger = logging.getLogger(__name__)
-            logger.info(f"Loading tree in worker process from {tree_path} (this may take a few minutes for large trees)...")
+            
+            # Load tree (already pruned if pruning was enabled during setup)
+            logger.info(f"Loading tree in worker process from {tree_path}...")
             tree_path_obj = Path(tree_path)
             if not tree_path_obj.exists():
                 raise FileNotFoundError(f"Tree file not found: {tree_path}")
@@ -358,7 +479,11 @@ class UniFracComputer:
         if table is None:
             table = self._table
         if tree_path is None:
-            tree_path = self._tree_path
+            # Use pruned tree path if pruning is enabled, otherwise use original
+            if self._prune_tree and self._pruned_tree_cache is not None:
+                tree_path = self._pruned_tree_cache
+            else:
+                tree_path = self._tree_path
         
         if table is None or tree_path is None:
             raise ValueError("Must provide table and tree_path, or call setup_lazy_computation() first")
@@ -367,7 +492,9 @@ class UniFracComputer:
         if self._tree is None:
             import logging
             logger = logging.getLogger(__name__)
-            logger.info(f"Loading tree in worker process from {tree_path} (this may take a few minutes for large trees)...")
+            
+            # Load tree (already pruned if pruning was enabled during setup)
+            logger.info(f"Loading tree in worker process from {tree_path}...")
             tree_path_obj = Path(tree_path)
             if not tree_path_obj.exists():
                 raise FileNotFoundError(f"Tree file not found: {tree_path}")
