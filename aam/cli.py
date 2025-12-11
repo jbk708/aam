@@ -932,9 +932,30 @@ def pretrain(
         train_ids, val_ids = train_test_split(sample_ids, test_size=test_size, random_state=seed)
         logger.info(f"Train samples: {len(train_ids)}, Validation samples: {len(val_ids)}")
         
+        # Load pre-computed stripe matrix if provided
+        precomputed_stripe_matrix = None
+        precomputed_sample_ids = None
+        if precomputed_stripe and stripe_mode:
+            logger.info(f"Loading pre-computed stripe matrix from {precomputed_stripe}...")
+            stripe_data = np.load(precomputed_stripe, allow_pickle=True)
+            precomputed_stripe_matrix = stripe_data["stripe_distances"]
+            precomputed_sample_ids = stripe_data["sample_ids"].tolist()
+            reference_sample_ids = stripe_data["reference_sample_ids"].tolist()
+            logger.info(f"Loaded stripe matrix: shape {precomputed_stripe_matrix.shape}")
+            logger.info(f"Reference samples: {len(reference_sample_ids)}")
+            # Validate sample IDs match
+            if set(precomputed_sample_ids) != set(sample_ids):
+                missing = set(sample_ids) - set(precomputed_sample_ids)
+                extra = set(precomputed_sample_ids) - set(sample_ids)
+                if missing:
+                    logger.warning(f"Pre-computed matrix missing {len(missing)} samples from current table")
+                if extra:
+                    logger.warning(f"Pre-computed matrix has {len(extra)} extra samples not in current table")
+        else:
+            reference_sample_ids = None
+        
         # Parse reference samples for stripe mode (initialize to None for pairwise mode)
-        reference_sample_ids = None
-        if stripe_mode:
+        if stripe_mode and not precomputed_stripe:
             if reference_samples is not None:
                 # Try to parse as number first
                 try:
