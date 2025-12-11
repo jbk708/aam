@@ -81,6 +81,22 @@ def investigate_unifrac_package_api():
             print(f"  ⚠️  Found potential: {func_name}")
             found_stripe = True
     
+    # Check for dense_pair functions (might be relevant for stripe computation)
+    dense_pair_functions = [f for f in unifrac_functions if 'dense_pair' in f]
+    if dense_pair_functions:
+        print("\n🔍 Found *_dense_pair functions (may support pair-wise computation):")
+        for func_name in sorted(dense_pair_functions):
+            print(f"  ⚠️  {func_name}")
+            # Try to inspect signature
+            try:
+                import inspect
+                func = getattr(unifrac, func_name)
+                sig = inspect.signature(func)
+                print(f"      Signature: {sig}")
+            except Exception:
+                pass
+        found_stripe = True
+    
     if not found_stripe:
         print("  ❌ No obvious stripe-related functions found")
     
@@ -293,7 +309,10 @@ def create_test_data(tmp_path: Path) -> Tuple[Table, TreeNode, List[str], List[s
     
     # Create simple tree (star tree for simplicity)
     tree_str = "(" + ",".join([f"{obs_id}:0.1" for obs_id in observation_ids]) + ");"
-    tree = skbio.read(tree_str, format="newick", into=TreeNode)
+    # Write to file first (skbio.read needs a file path, not a string directly)
+    tree_file = tmp_path / "test_tree.nwk"
+    tree_file.write_text(tree_str)
+    tree = skbio.read(str(tree_file), format="newick", into=TreeNode)
     
     # Define reference and test samples
     reference_sample_ids = sample_ids[:5]  # First 5 samples
