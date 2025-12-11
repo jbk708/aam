@@ -72,7 +72,6 @@ python -m aam.cli predict \
 - `--pretrained-encoder`: Load pre-trained SequenceEncoder checkpoint
 - `--freeze-base`: Freeze base model parameters (faster training)
 - `--classifier`: Use classification mode (requires `--out-dim > 1`)
-- `--batch-size`: Must be even for unweighted UniFrac
 - `--optimizer`: Optimizer type - 'adamw' (default), 'adam', or 'sgd'
 - `--scheduler`: Learning rate scheduler - 'warmup_cosine' (default), 'cosine', 'plateau', or 'onecycle'
 - `--lr`: Learning rate (default: 1e-4)
@@ -85,7 +84,14 @@ python -m aam.cli predict \
 - `--attention-layers`: Number of transformer layers (default: 4)
 - `--max-bp`: Maximum base pairs per sequence (default: 150)
 - `--token-limit`: Maximum ASVs per sample (default: 1024, **critical for memory**)
-- **Note**: UniFrac predictions use sigmoid activation (not hard clipping) to prevent boundary clustering
+
+**UniFrac Computation:**
+- `--stripe-mode/--no-stripe-mode`: Use stripe-based UniFrac (default: enabled, more memory-efficient)
+- `--lazy-unifrac/--no-lazy-unifrac`: Compute distances on-the-fly (default: enabled, faster startup)
+- `--reference-samples`: Reference samples for stripe mode - number (e.g., '100') or file path (auto-selects if not specified)
+- `--unifrac-metric`: 'unifrac' or 'faith_pd' (default: 'unifrac')
+- `--prune-tree`: Pre-prune tree to only ASVs in table (speeds up large trees)
+- **Note**: Stripe mode removes batch size restrictions (no longer requires even batch sizes)
 
 **Memory Optimization:**
 - `--gradient-accumulation-steps`: Accumulate gradients over N steps (default: 1)
@@ -94,34 +100,24 @@ python -m aam.cli predict \
 - **Important**: Reduce `--token-limit` from 1024 to 256-512 for 24GB GPUs (reduces memory by 4-16x)
 
 **Data:**
-- `--unifrac-metric`: 'unifrac' or 'faith_pd' (default: 'unifrac')
 - `--rarefy-depth`: Rarefaction depth (default: 5000)
 - `--test-size`: Validation split size (default: 0.2)
 
 See `python -m aam.cli <command> --help` for full options.
 
-### Optimizer and Scheduler Options
+### Optimizer and Scheduler
 
-**Optimizers:**
-- `adamw` (default): AdamW optimizer with weight decay - recommended for transformer models
-- `adam`: Standard Adam optimizer without weight decay
-- `sgd`: SGD optimizer with momentum - traditional optimizer, may require different learning rates
-
-**Schedulers:**
-- `warmup_cosine` (default): Custom warmup + cosine decay scheduler - good for pretraining
-- `cosine`: PyTorch CosineAnnealingLR - cosine annealing without warmup
-- `plateau`: ReduceLROnPlateau - reduces LR when validation loss plateaus (requires validation set)
-- `onecycle`: OneCycleLR - one cycle learning rate policy - can improve convergence speed
+**Optimizers:** `adamw` (default, recommended), `adam`, `sgd`  
+**Schedulers:** `warmup_cosine` (default), `cosine`, `plateau`, `onecycle`
 
 **Recommendations:**
-- **Pretraining**: Use `adamw` + `warmup_cosine` (default) for stable training
-- **Fine-tuning**: Try `adamw` + `plateau` for adaptive learning rate reduction
-- **Fast experimentation**: Try `adamw` + `onecycle` for faster convergence
-- **Memory-constrained**: `sgd` may use less memory than Adam variants
+- **Pretraining**: `adamw` + `warmup_cosine` (default)
+- **Fine-tuning**: `adamw` + `plateau` for adaptive LR reduction
+- **Fast experimentation**: `adamw` + `onecycle`
 
 ### Memory Optimization
 
-For GPUs with limited memory (e.g., 24GB), use these optimizations:
+For limited GPU memory (e.g., 24GB):
 
 ```bash
 python -m aam.cli pretrain \
@@ -135,11 +131,12 @@ python -m aam.cli pretrain \
 ```
 
 **Key optimizations:**
-- `--token-limit 256`: Reduces sample-level attention by 16x (most critical)
-- `--gradient-accumulation-steps 16`: Maintains effective batch size while reducing memory
+- `--token-limit 256`: Reduces memory by 16x (most critical)
+- `--gradient-accumulation-steps 16`: Maintains effective batch size
 - `--use-expandable-segments`: Reduces memory fragmentation
+- Stripe mode (default) is more memory-efficient than pairwise UniFrac
 
-See [MEMORY_OPTIMIZATION.md](MEMORY_OPTIMIZATION.md) for detailed memory optimization strategies.
+See [MEMORY_OPTIMIZATION.md](MEMORY_OPTIMIZATION.md) for detailed strategies.
 
 ## Monitoring Training with TensorBoard
 
@@ -159,122 +156,49 @@ Then open your browser to `http://localhost:6006` (or the port you specified).
 
 ### What's Logged
 
-**Losses (per epoch):**
-- `train/total_loss`: Total training loss
-- `train/target_loss`: Target prediction loss (MSE/NLL)
-- `train/count_loss`: ASV count prediction loss (masked MSE)
-- `train/unifrac_loss`: UniFrac prediction loss (MSE)
-- `train/nuc_loss`: Nucleotide prediction loss (CrossEntropy)
-- `val/total_loss`: Total validation loss
-- `val/target_loss`, `val/count_loss`, `val/unifrac_loss`, `val/nuc_loss`: Validation component losses
+**Losses:** `train/total_loss`, `train/target_loss`, `train/unifrac_loss`, `train/nuc_loss`, `train/count_loss` (and validation equivalents)
 
-**Progress Bar Abbreviations:**
-- **TL**: Total Loss - Combined loss from all tasks
-- **UL**: UniFrac Loss - UniFrac distance prediction loss (only shown in pretrain mode)
-- **NL**: Nucleotide Loss - Nucleotide sequence prediction loss (only shown when nucleotide prediction is enabled)
-- **LR**: Learning Rate - Current learning rate (only shown during training, not validation)
+**Progress Bar:** TL (Total Loss), UL (UniFrac Loss), NL (Nucleotide Loss), LR (Learning Rate)
 
-**Metrics (per epoch, validation only):**
-- **Regression metrics**: `val/mae`, `val/mse`, `val/r2`
-- **Classification metrics**: `val/accuracy`, `val/precision`, `val/recall`, `val/f1`
-- **Count metrics**: `val/count_mae`, `val/count_mse`
+**Metrics (validation):** `val/mae`, `val/mse`, `val/r2` (regression), `val/accuracy`, `val/precision`, `val/recall`, `val/f1` (classification)
 
-**Training Info:**
-- `train/learning_rate`: Learning rate schedule
-
-**Model Weights & Gradients (every 10 epochs):**
-- `weights/{layer_name}`: Weight histograms
-- `gradients/{layer_name}`: Gradient histograms
+**Model:** Weight and gradient histograms (every 10 epochs), learning rate schedule
 
 ### Interpreting Loss Values
 
-**For Pretraining (UniFrac + Nucleotides):**
-- **Epoch 1**: Total loss ~1.5-2.0 (near random baseline)
-  - `nuc_loss` ~1.5-1.7 (random baseline: log(5) ≈ 1.609)
-  - `unifrac_loss` ~0.1-0.5 (depends on distance scale)
-- **Well-trained**: Total loss ~0.1-0.5
-  - `nuc_loss` ~0.1-0.5
-  - `unifrac_loss` ~0.01-0.1
+**Pretraining:** Epoch 1 total loss ~1.5-2.0 (random baseline), well-trained ~0.1-0.5  
+**Fine-tuning:** Monitor `target_loss` decreasing; `unifrac_loss`/`nuc_loss` stable if `freeze_base=True`
 
-**For Fine-tuning (with Target Prediction):**
-- Monitor `target_loss` decreasing over epochs
-- `unifrac_loss` and `nuc_loss` should remain stable if `freeze_base=True`
-- Total loss should decrease steadily
-
-### Tips
-
-1. **Monitor loss trends**: Look for steady decreases, not just absolute values
-2. **Check for overfitting**: If `val_loss` increases while `train_loss` decreases, model is overfitting
-3. **Learning rate**: Watch `learning_rate` schedule - should warmup then decay
-4. **Gradients**: Check gradient histograms for vanishing/exploding gradients (should be well-distributed)
-5. **Compare runs**: Use different `--output-dir` for different experiments to compare in TensorBoard
-
-### Example: Monitoring Pretraining
-
-```bash
-# Terminal 1: Start training
-python -m aam.cli pretrain \
-  --table data.biom \
-  --tree tree.nwk \
-  --output-dir runs/pretrain_exp1 \
-  --epochs 1000
-
-# Terminal 2: Start TensorBoard
-tensorboard --logdir runs/pretrain_exp1/tensorboard
-```
-
-Then monitor:
-- `train/total_loss` decreasing from ~1.7 → ~0.3 over 100-200 epochs
-- `train/unifrac_loss` and `train/nuc_loss` both decreasing
-- `val/total_loss` tracking `train/total_loss` (no overfitting)
+**Tips:** Monitor trends (not absolute values), watch for overfitting (val_loss increasing), check learning rate schedule, verify gradients are well-distributed
 
 ## Testing
 
-Run the full test suite:
-
-```bash
-pytest tests/ -v --tb=short --no-header -rA
-```
-
-**Test Coverage:**
-- 359+ tests covering all components
-- Unit tests for data pipeline, models, training
-- Integration tests for end-to-end workflows
-- CUDA GPU support verified
-
-**Quick Test Commands:**
 ```bash
 # Run all tests
 pytest tests/ -v
 
-# Run specific test file
-pytest tests/test_biom_loader.py -v
-
 # Run with coverage
 pytest tests/ --cov=aam --cov-report=html
-
-# Run only CUDA tests (if CUDA available)
-pytest tests/ -v -k "cuda or device"
 ```
+
+359+ tests covering data pipeline, models, training, and end-to-end workflows.
 
 ## Architecture
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed architecture documentation.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed documentation.
 
 ### Recent Improvements
 
-**Boundary Prediction Clustering Fix (PYT-8.16):**
-- Replaced hard clipping (`torch.clamp`) with scaled sigmoid activation for UniFrac predictions
-- Fixes issue where 53.59% of predictions clustered at boundaries (0.0 or 1.0)
-- Uses `torch.sigmoid(x * 0.1)` with smaller weight initialization to prevent saturation
-- Provides natural [0, 1] constraint without hard boundaries
-- Improves gradient flow and prevents mode collapse
-- See `debug/BOUNDARY_PREDICTION_ANALYSIS.md` for detailed analysis
+**Stripe-Based UniFrac (Default):**
+- Memory-efficient stripe-based computation (O(N×R) vs O(N²) for pairwise)
+- No batch size restrictions (pairwise required even batch sizes)
+- Auto-selects reference samples (first 100 or all if < 100)
+- Lazy computation enabled by default (faster startup)
 
-**Key Changes:**
-- UniFrac predictions now use sigmoid activation instead of hard clipping
-- Output head weights initialized with `std=0.01` to prevent sigmoid saturation
-- Predictions are continuous and match actual distance distribution better
+**UniFrac Distance Prediction:**
+- Computes distances from embeddings (Euclidean) instead of direct prediction
+- Sigmoid normalization ensures [0, 1] range
+- Eliminates boundary clustering and mode collapse issues
 
 ## Documentation
 
