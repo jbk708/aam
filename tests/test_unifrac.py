@@ -243,13 +243,16 @@ class TestUniFracComputerErrorHandling:
         """Test compute_unweighted with ASV ID mismatch."""
         mismatched_tree = tmp_path / "mismatched.nwk"
         mismatched_tree.write_text("(ASV999:0.1,ASV888:0.1);")
-        with pytest.raises(ValueError, match="Error computing unweighted UniFrac"):
+        with pytest.raises(ValueError, match="No ASVs from table found in tree|Error computing unweighted UniFrac"):
             computer.compute_unweighted(rarefied_table, str(mismatched_tree))
 
     def test_compute_unweighted_general_error(self, computer, rarefied_table, tmp_path):
         """Test compute_unweighted with general computation error."""
+        # Create a tree that matches the table ASVs to avoid early validation error
+        observation_ids = list(rarefied_table.ids(axis="observation"))
+        tree_str = "(" + ",".join([f"{obs_id}:0.1" for obs_id in observation_ids]) + ");"
         tree_file = tmp_path / "tree.nwk"
-        tree_file.write_text("(A:0.1,B:0.2);")
+        tree_file.write_text(tree_str)
         with patch("aam.data.unifrac.unifrac.unweighted") as mock_unifrac:
             mock_unifrac.side_effect = Exception("General error")
             with pytest.raises(ValueError, match="Error computing unweighted UniFrac"):
@@ -272,13 +275,16 @@ class TestUniFracComputerErrorHandling:
         """Test compute_faith_pd with ASV ID mismatch."""
         mismatched_tree = tmp_path / "mismatched.nwk"
         mismatched_tree.write_text("(ASV999:0.1,ASV888:0.1);")
-        with pytest.raises(ValueError, match="Error computing Faith PD"):
+        with pytest.raises(ValueError, match="No ASVs from table found in tree|Error computing Faith PD"):
             computer.compute_faith_pd(rarefied_table, str(mismatched_tree))
 
     def test_compute_faith_pd_general_error(self, computer, rarefied_table, tmp_path):
         """Test compute_faith_pd with general computation error."""
+        # Create a tree that matches the table ASVs to avoid early validation error
+        observation_ids = list(rarefied_table.ids(axis="observation"))
+        tree_str = "(" + ",".join([f"{obs_id}:0.1" for obs_id in observation_ids]) + ");"
         tree_file = tmp_path / "tree.nwk"
-        tree_file.write_text("(A:0.1,B:0.2);")
+        tree_file.write_text(tree_str)
         with patch("aam.data.unifrac.unifrac.faith_pd") as mock_faith_pd:
             mock_faith_pd.side_effect = Exception("General error")
             with pytest.raises(ValueError, match="Error computing Faith PD"):
