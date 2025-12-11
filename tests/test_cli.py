@@ -747,6 +747,8 @@ class TestCLIIntegration:
                 "8",
                 "--epochs",
                 "1",
+                "--no-stripe-mode",
+                "--no-lazy-unifrac",
             ],
         )
 
@@ -1236,6 +1238,8 @@ class TestPretrainedEncoderLoading:
                 "1",
                 "--pretrained-encoder",
                 str(pretrained_encoder_path),
+                "--no-stripe-mode",
+                "--no-lazy-unifrac",
             ],
         )
 

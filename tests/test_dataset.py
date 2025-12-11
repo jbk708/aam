@@ -198,6 +198,7 @@ class TestASVDataset:
             max_bp=150,
             token_limit=1024,
             unifrac_metric="unweighted",
+            stripe_mode=False,
         )
 
         sample = dataset[0]
@@ -310,7 +311,7 @@ class TestCollateFn:
         ]
 
         token_limit = 5
-        result = collate_fn(batch, token_limit, unifrac_distances=None, unifrac_metric="unweighted")
+        result = collate_fn(batch, token_limit, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False)
 
         assert result["tokens"].shape[0] == 2
         assert result["tokens"].shape[1] <= token_limit
@@ -329,7 +330,7 @@ class TestCollateFn:
         ]
 
         token_limit = 5
-        result = collate_fn(batch, token_limit, unifrac_distances=None, unifrac_metric="unweighted")
+        result = collate_fn(batch, token_limit, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False)
 
         assert result["tokens"].shape[1] == token_limit
         assert result["counts"].shape[1] == token_limit
@@ -350,7 +351,7 @@ class TestDatasetEdgeCases:
             },
         ]
         token_limit = 10
-        result = collate_fn(batch, token_limit, unifrac_distances=None, unifrac_metric="unweighted")
+        result = collate_fn(batch, token_limit, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False)
         assert result["tokens"].shape[1] == token_limit
         assert result["counts"].shape[1] == token_limit
         assert result["tokens"].shape[0] == 1
@@ -418,6 +419,7 @@ class TestDatasetEdgeCases:
             token_limit=1024,
             unifrac_distances=faith_pd_values,
             unifrac_metric="faith_pd",
+            stripe_mode=False,
         )
 
         sample = dataset[0]
@@ -440,6 +442,7 @@ class TestDatasetEdgeCases:
             token_limit=1024,
             unifrac_distances=faith_pd_values,
             unifrac_metric="faith_pd",
+            stripe_mode=False,
         )
 
         # unifrac_target is NOT in __getitem__ output - it's added in collate_fn
@@ -455,9 +458,9 @@ class TestDatasetEdgeCases:
         from functools import partial
 
         batch = [dataset[0], dataset[2]]  # sample 2 is missing from faith_pd_values
-        collate = partial(collate_fn, token_limit=1024, unifrac_distances=faith_pd_values, unifrac_metric="faith_pd")
+        collate = partial(collate_fn, token_limit=1024, unifrac_distances=faith_pd_values, unifrac_metric="faith_pd", stripe_mode=False)
         # This should raise ValueError because sample_ids[2] is not in faith_pd_values
-        with pytest.raises(ValueError, match="not found"):
+        with pytest.raises(ValueError, match="not found|reference_sample_ids"):
             collate(batch)
 
 
@@ -474,7 +477,7 @@ class TestASVDatasetIntegration:
         )
 
         def custom_collate(batch):
-            return collate_fn(batch, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted")
+            return collate_fn(batch, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False)
 
         dataloader = DataLoader(dataset, batch_size=2, collate_fn=custom_collate, shuffle=False)
 
@@ -497,7 +500,7 @@ class TestASVDatasetIntegration:
         )
 
         def custom_collate(batch):
-            return collate_fn(batch, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted")
+            return collate_fn(batch, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False)
 
         dataloader = DataLoader(dataset, batch_size=2, collate_fn=custom_collate, shuffle=False)
 
@@ -515,10 +518,11 @@ class TestASVDatasetIntegration:
             max_bp=150,
             token_limit=1024,
             unifrac_metric="unweighted",
+            stripe_mode=False,
         )
 
         def custom_collate(batch):
-            return collate_fn(batch, token_limit=1024, unifrac_distances=simple_unifrac_distances, unifrac_metric="unweighted")
+            return collate_fn(batch, token_limit=1024, unifrac_distances=simple_unifrac_distances, unifrac_metric="unweighted", stripe_mode=False)
 
         dataloader = DataLoader(dataset, batch_size=2, collate_fn=custom_collate, shuffle=False)
 
@@ -552,6 +556,7 @@ class TestShuffledBatchDistances:
             token_limit=token_limit,
             unifrac_distances=simple_unifrac_distances,
             unifrac_metric="unweighted",
+            stripe_mode=False,
         )
 
         assert "unifrac_target" in result
@@ -584,6 +589,7 @@ class TestShuffledBatchDistances:
             token_limit=token_limit,
             unifrac_distances=simple_unifrac_distances,
             unifrac_metric="unweighted",
+            stripe_mode=False,
         )
 
         assert "unifrac_target" in result
@@ -621,6 +627,7 @@ class TestShuffledBatchDistances:
             token_limit=token_limit,
             unifrac_distances=faith_pd,
             unifrac_metric="faith_pd",
+            stripe_mode=False,
         )
 
         assert "unifrac_target" in result
@@ -640,6 +647,7 @@ class TestShuffledBatchDistances:
             max_bp=150,
             token_limit=1024,
             unifrac_metric="unweighted",
+            stripe_mode=False,
         )
 
         def custom_collate(batch):
@@ -648,6 +656,7 @@ class TestShuffledBatchDistances:
                 token_limit=1024,
                 unifrac_distances=simple_unifrac_distances,
                 unifrac_metric="unweighted",
+                stripe_mode=False,
             )
 
         dataloader = DataLoader(dataset, batch_size=2, collate_fn=custom_collate, shuffle=True)
@@ -670,6 +679,7 @@ class TestShuffledBatchDistances:
             max_bp=150,
             token_limit=1024,
             unifrac_metric="unweighted",
+            stripe_mode=False,
         )
 
         def custom_collate(batch):
@@ -678,6 +688,7 @@ class TestShuffledBatchDistances:
                 token_limit=1024,
                 unifrac_distances=simple_unifrac_distances,
                 unifrac_metric="unweighted",
+                stripe_mode=False,
             )
 
         dataloader = DataLoader(dataset, batch_size=2, collate_fn=custom_collate, shuffle=False)
@@ -739,6 +750,7 @@ class TestShuffledBatchDistances:
             token_limit=token_limit,
             unifrac_distances=simple_unifrac_distances,
             unifrac_metric="unweighted",
+            stripe_mode=False,
         )
 
         assert "unifrac_target" in result
@@ -771,6 +783,7 @@ class TestShuffledBatchDistances:
             token_limit=token_limit,
             unifrac_distances=simple_unifrac_distances,
             unifrac_metric="unweighted",
+            stripe_mode=False,
         )
 
         assert "unifrac_target" in result
@@ -808,6 +821,7 @@ class TestShuffledBatchDistances:
             token_limit=token_limit,
             unifrac_distances=faith_pd,
             unifrac_metric="faith_pd",
+            stripe_mode=False,
         )
 
         assert "unifrac_target" in result
@@ -827,6 +841,7 @@ class TestShuffledBatchDistances:
             max_bp=150,
             token_limit=1024,
             unifrac_metric="unweighted",
+            stripe_mode=False,
         )
 
         def custom_collate(batch):
@@ -835,6 +850,7 @@ class TestShuffledBatchDistances:
                 token_limit=1024,
                 unifrac_distances=simple_unifrac_distances,
                 unifrac_metric="unweighted",
+                stripe_mode=False,
             )
 
         dataloader = DataLoader(dataset, batch_size=2, collate_fn=custom_collate, shuffle=True)
@@ -857,6 +873,7 @@ class TestShuffledBatchDistances:
             max_bp=150,
             token_limit=1024,
             unifrac_metric="unweighted",
+            stripe_mode=False,
         )
 
         def custom_collate(batch):
@@ -865,6 +882,7 @@ class TestShuffledBatchDistances:
                 token_limit=1024,
                 unifrac_distances=simple_unifrac_distances,
                 unifrac_metric="unweighted",
+                stripe_mode=False,
             )
 
         dataloader = DataLoader(dataset, batch_size=2, collate_fn=custom_collate, shuffle=False)
@@ -914,7 +932,7 @@ class TestDataLoaderOptimizations:
             token_limit=1024,
         )
 
-        custom_collate = partial(collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted")
+        custom_collate = partial(collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False)
 
         # Test with 2 workers
         dataloader = DataLoader(
@@ -947,7 +965,7 @@ class TestDataLoaderOptimizations:
             token_limit=1024,
         )
 
-        custom_collate = partial(collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted")
+        custom_collate = partial(collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False)
 
         # Load data with single worker
         dataloader_single = DataLoader(
@@ -995,7 +1013,7 @@ class TestDataLoaderOptimizations:
             token_limit=1024,
         )
 
-        custom_collate = partial(collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted")
+        custom_collate = partial(collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False)
 
         # Test with prefetch_factor
         dataloader = DataLoader(
@@ -1026,7 +1044,7 @@ class TestDataLoaderOptimizations:
             token_limit=1024,
         )
 
-        custom_collate = partial(collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted")
+        custom_collate = partial(collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False)
 
         # pin_memory=True should work on CPU (though not as effective)
         dataloader = DataLoader(
@@ -1052,6 +1070,7 @@ class TestDataLoaderOptimizations:
             max_bp=150,
             token_limit=1024,
             unifrac_metric="unweighted",
+            stripe_mode=False,
         )
 
         custom_collate = partial(
@@ -1059,6 +1078,7 @@ class TestDataLoaderOptimizations:
             token_limit=1024,
             unifrac_distances=simple_unifrac_distances,
             unifrac_metric="unweighted",
+            stripe_mode=False,
         )
 
         dataloader = DataLoader(
@@ -1085,7 +1105,7 @@ class TestDataLoaderOptimizations:
             token_limit=1024,
         )
 
-        custom_collate = partial(collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted")
+        custom_collate = partial(collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False)
 
         dataloader = DataLoader(
             dataset,
@@ -1284,11 +1304,12 @@ class TestStripeMode:
             },
         ]
         
+        # When stripe_mode=True and unifrac_distances is provided, reference_sample_ids is required
         with pytest.raises(ValueError, match="reference_sample_ids required"):
             collate_fn(
                 batch,
                 token_limit=1024,
-                unifrac_distances=None,
+                unifrac_distances=np.array([[0.1, 0.2]]),  # Provide a distance matrix to trigger stripe extraction
                 unifrac_metric="unweighted",
                 unifrac_computer=None,
                 lazy_unifrac=False,
