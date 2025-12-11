@@ -851,7 +851,7 @@ def pretrain(
         train_ids, val_ids = train_test_split(sample_ids, test_size=test_size, random_state=seed)
         logger.info(f"Train samples: {len(train_ids)}, Validation samples: {len(val_ids)}")
         
-        # Parse reference samples for stripe mode
+        # Parse reference samples for stripe mode (initialize to None for pairwise mode)
         reference_sample_ids = None
         if stripe_mode:
             if reference_samples is not None:
