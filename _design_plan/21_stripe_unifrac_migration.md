@@ -90,8 +90,8 @@ This document outlines the migration plan from pairwise UniFrac distance computa
 
 ### Phase 2: Core UniFracComputer Updates
 
-#### PYT-11.2: Add Stripe-Based Computation to UniFracComputer
-**Priority:** HIGH | **Effort:** High (8-12 hours) | **Dependencies:** PYT-11.1
+#### PYT-11.2: Add Stripe-Based Computation to UniFracComputer ✅
+**Priority:** HIGH | **Effort:** High (8-12 hours) | **Dependencies:** PYT-11.1 | **Status:** ✅ Completed
 
 **Tasks:**
 1. Add `compute_unweighted_stripe()` method to `UniFracComputer`:
@@ -157,11 +157,21 @@ def extract_batch_stripe_distances(
     pass
 ```
 
-**Files to Modify:**
-- `aam/data/unifrac.py`
+**Files Modified:**
+- ✅ `aam/data/unifrac.py` - Added stripe computation methods
 
-**Files to Create:**
-- `tests/test_unifrac_stripe.py` (new test file for stripe methods)
+**Files Created:**
+- ✅ `tests/test_unifrac_stripe.py` - Comprehensive test suite (14 tests, all passing)
+
+**Implementation Summary:**
+- ✅ Added `set_reference_samples()` method for reference set management
+- ✅ Added `compute_unweighted_stripe()` method using `unifrac.unweighted_dense_pair`
+- ✅ Added `compute_batch_unweighted_stripe()` method with caching support
+- ✅ Added `extract_batch_stripe_distances()` method for pre-computed stripe extraction
+- ✅ All methods include proper validation, error handling, and caching
+- ✅ Verified numerical equivalence with pairwise computation (max diff < 1e-6)
+- ✅ No batch size restrictions (unlike pairwise mode)
+- ✅ All 14 tests passing
 
 ---
 
