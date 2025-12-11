@@ -4,6 +4,7 @@ import pytest
 import numpy as np
 import torch
 from torch.utils.data import DataLoader
+from functools import partial
 import biom
 from biom import Table
 import pandas as pd
@@ -899,3 +900,208 @@ class TestShuffledBatchDistances:
         assert "tokens" in result
         assert "counts" in result
         assert "sample_ids" in result
+
+
+class TestDataLoaderOptimizations:
+    """Test suite for DataLoader optimizations (PYT-10.3)."""
+
+    def test_dataloader_multi_worker(self, rarefied_table, tokenizer):
+        """Test DataLoader with multiple workers produces correct batches."""
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            max_bp=150,
+            token_limit=1024,
+        )
+
+        custom_collate = partial(collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted")
+
+        # Test with 2 workers
+        dataloader = DataLoader(
+            dataset,
+            batch_size=1,
+            collate_fn=custom_collate,
+            shuffle=False,
+            num_workers=2,
+            prefetch_factor=2,
+        )
+
+        all_sample_ids = []
+        for batch in dataloader:
+            assert "tokens" in batch
+            assert "counts" in batch
+            assert "sample_ids" in batch
+            all_sample_ids.extend(batch["sample_ids"])
+
+        # Verify all samples were loaded (no duplicates, no missing)
+        expected_sample_ids = list(rarefied_table.ids(axis="sample"))
+        assert len(all_sample_ids) == len(expected_sample_ids)
+        assert set(all_sample_ids) == set(expected_sample_ids)
+
+    def test_dataloader_multi_worker_no_corruption(self, rarefied_table, tokenizer):
+        """Test that multi-worker DataLoader doesn't corrupt data."""
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            max_bp=150,
+            token_limit=1024,
+        )
+
+        custom_collate = partial(collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted")
+
+        # Load data with single worker
+        dataloader_single = DataLoader(
+            dataset,
+            batch_size=1,
+            collate_fn=custom_collate,
+            shuffle=False,
+            num_workers=0,
+        )
+
+        # Load data with multiple workers
+        dataloader_multi = DataLoader(
+            dataset,
+            batch_size=1,
+            collate_fn=custom_collate,
+            shuffle=False,
+            num_workers=2,
+            prefetch_factor=2,
+        )
+
+        # Collect all batches
+        batches_single = list(dataloader_single)
+        batches_multi = list(dataloader_multi)
+
+        # Verify same number of batches
+        assert len(batches_single) == len(batches_multi)
+
+        # Verify data integrity: same sample IDs (order may differ)
+        sample_ids_single = [batch["sample_ids"][0] for batch in batches_single]
+        sample_ids_multi = [batch["sample_ids"][0] for batch in batches_multi]
+
+        assert set(sample_ids_single) == set(sample_ids_multi)
+
+        # Verify tensor shapes are consistent
+        for batch_single, batch_multi in zip(batches_single, batches_multi):
+            assert batch_single["tokens"].shape == batch_multi["tokens"].shape
+            assert batch_single["counts"].shape == batch_multi["counts"].shape
+
+    def test_dataloader_prefetch_factor(self, rarefied_table, tokenizer):
+        """Test that prefetch_factor parameter works correctly."""
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            max_bp=150,
+            token_limit=1024,
+        )
+
+        custom_collate = partial(collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted")
+
+        # Test with prefetch_factor
+        dataloader = DataLoader(
+            dataset,
+            batch_size=1,
+            collate_fn=custom_collate,
+            shuffle=False,
+            num_workers=2,
+            prefetch_factor=2,
+        )
+
+        # Should iterate without errors
+        batch_count = 0
+        for batch in dataloader:
+            assert "tokens" in batch
+            batch_count += 1
+            if batch_count >= 3:  # Test a few batches
+                break
+
+        assert batch_count > 0
+
+    def test_dataloader_pin_memory_cpu(self, rarefied_table, tokenizer):
+        """Test that pin_memory works on CPU (should not error)."""
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            max_bp=150,
+            token_limit=1024,
+        )
+
+        custom_collate = partial(collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted")
+
+        # pin_memory=True should work on CPU (though not as effective)
+        dataloader = DataLoader(
+            dataset,
+            batch_size=1,
+            collate_fn=custom_collate,
+            shuffle=False,
+            num_workers=0,
+            pin_memory=True,
+        )
+
+        # Should iterate without errors
+        for batch in dataloader:
+            assert "tokens" in batch
+            break
+
+    def test_dataloader_multi_worker_with_unifrac(self, rarefied_table, tokenizer, simple_unifrac_distances):
+        """Test multi-worker DataLoader with UniFrac distances."""
+        dataset = ASVDataset(
+            table=rarefied_table,
+            unifrac_distances=simple_unifrac_distances,
+            tokenizer=tokenizer,
+            max_bp=150,
+            token_limit=1024,
+            unifrac_metric="unweighted",
+        )
+
+        custom_collate = partial(
+            collate_fn,
+            token_limit=1024,
+            unifrac_distances=simple_unifrac_distances,
+            unifrac_metric="unweighted",
+        )
+
+        dataloader = DataLoader(
+            dataset,
+            batch_size=2,
+            collate_fn=custom_collate,
+            shuffle=False,
+            num_workers=2,
+            prefetch_factor=2,
+        )
+
+        # Verify batches have correct structure
+        for batch in dataloader:
+            assert "unifrac_target" in batch
+            assert batch["unifrac_target"].shape[0] == batch["tokens"].shape[0]
+            break
+
+    def test_dataloader_multi_worker_shuffled(self, rarefied_table, tokenizer):
+        """Test multi-worker DataLoader with shuffling."""
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            max_bp=150,
+            token_limit=1024,
+        )
+
+        custom_collate = partial(collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted")
+
+        dataloader = DataLoader(
+            dataset,
+            batch_size=1,
+            collate_fn=custom_collate,
+            shuffle=True,
+            num_workers=2,
+            prefetch_factor=2,
+        )
+
+        # Should iterate without errors
+        all_sample_ids = []
+        for batch in dataloader:
+            all_sample_ids.extend(batch["sample_ids"])
+
+        # Verify all samples were loaded
+        expected_sample_ids = list(rarefied_table.ids(axis="sample"))
+        assert len(all_sample_ids) == len(expected_sample_ids)
+        assert set(all_sample_ids) == set(expected_sample_ids)

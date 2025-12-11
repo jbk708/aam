@@ -175,7 +175,7 @@ def cli():
 @click.option("--class-weights", default=None, help="Class weights for classification (optional)")
 @click.option("--device", default="cuda", type=click.Choice(["cuda", "cpu"]), help="Device to use")
 @click.option("--seed", default=None, type=int, help="Random seed for reproducibility")
-@click.option("--num-workers", default=0, type=int, help="DataLoader workers")
+@click.option("--num-workers", default=4, type=int, help="Number of DataLoader worker processes (default: 4, use 0 to disable multiprocessing)")
 @click.option("--resume-from", default=None, type=click.Path(exists=True), help="Path to checkpoint to resume from")
 @click.option("--freeze-base", is_flag=True, help="Freeze base model parameters")
 @click.option(
@@ -198,6 +198,11 @@ def cli():
     help="Mixed precision training mode (fp16, bf16, or none)",
 )
 @click.option("--compile-model", is_flag=True, help="Compile model with torch.compile() for optimization (PyTorch 2.0+)")
+@click.option("--lazy-unifrac", is_flag=True, help="Compute UniFrac distances on-the-fly (batch-wise) instead of upfront. Faster startup but slower first epoch.")
+@click.option("--unifrac-threads", default=None, type=int, help="Number of threads for UniFrac computation (default: all available CPU cores)")
+@click.option("--prune-tree", is_flag=True, help="Pre-prune tree to only include ASVs in BIOM table. Dramatically speeds up tree loading and UniFrac computation for large trees.")
+@click.option("--cache-unifrac", is_flag=True, help="Cache computed UniFrac distance matrix to disk for faster resume. Only applies to upfront computation (not lazy).")
+@click.option("--unifrac-cache-dir", default=None, type=str, help="Directory for UniFrac cache files (default: ~/.aam_cache/unifrac)")
 def train(
     table: str,
     tree: str,
@@ -236,6 +241,11 @@ def train(
     scheduler: str,
     mixed_precision: Optional[str],
     compile_model: bool,
+    lazy_unifrac: bool,
+    unifrac_threads: Optional[int],
+    prune_tree: bool,
+    cache_unifrac: bool,
+    unifrac_cache_dir: Optional[str],
 ):
     """Train AAM model on microbial sequencing data."""
     try:
@@ -278,37 +288,146 @@ def train(
         if metadata_column not in metadata_df.columns:
             raise ValueError(f"Metadata column '{metadata_column}' not found in metadata file")
 
-        logger.info("Computing UniFrac distances...")
-        unifrac_computer = UniFracComputer()
-        if unifrac_metric == "unifrac":
-            unifrac_distances = unifrac_computer.compute_unweighted(table_obj, tree)
-            unifrac_metric_name = "unweighted"
-            encoder_type = "unifrac"
+        # Use all available CPU cores for UniFrac computation
+        import multiprocessing
+        num_threads = multiprocessing.cpu_count()
+        logger.info(f"Using {num_threads} threads for UniFrac computation")
+        unifrac_computer = UniFracComputer(num_threads=num_threads)
+        
+        if lazy_unifrac:
+            logger.info("Using lazy UniFrac computation (batch-wise, on-the-fly)")
+            logger.info("Setting up lazy computation (tree will be loaded per worker process)...")
+            pruned_cache_path = None
+            if prune_tree:
+                pruned_cache_path = str(Path(tree).with_suffix('.pruned.nwk'))
+            unifrac_computer.setup_lazy_computation(
+                table_obj,
+                tree,
+                prune_tree=prune_tree,
+                pruned_tree_cache=pruned_cache_path,
+            )
+            logger.info("Lazy computation setup complete")
+            # Warn if using multiple workers with lazy UniFrac (each worker loads tree)
+            if num_workers > 0:
+                logger.warning(
+                    f"Using {num_workers} DataLoader workers with lazy UniFrac. "
+                    f"Each worker will load the tree into memory. "
+                    f"Consider using --num-workers 0 if you encounter memory issues."
+                )
+            unifrac_distances = None
+            train_distance_matrix = None
+            val_distance_matrix = None
+            if unifrac_metric == "unifrac":
+                unifrac_metric_name = "unweighted"
+                encoder_type = "unifrac"
+            else:
+                unifrac_metric_name = "faith_pd"
+                encoder_type = "faith_pd"
         else:
-            unifrac_distances = unifrac_computer.compute_faith_pd(table_obj, tree)
-            unifrac_metric_name = "faith_pd"
-            encoder_type = "faith_pd"
+            # For upfront computation, also support tree pruning
+            if prune_tree:
+                logger.info("Pruning tree before upfront UniFrac computation...")
+                from aam.data.tree_pruner import load_or_prune_tree
+                pruned_cache_path = str(Path(tree).with_suffix('.pruned.nwk'))
+                pruned_tree = load_or_prune_tree(tree, table_obj, pruned_tree_path=pruned_cache_path)
+                tree = pruned_cache_path  # Use pruned tree for computation
+                logger.info(f"Using pruned tree: {pruned_cache_path}")
+            
+            # Check cache for distance matrix
+            unifrac_distances = None
+            if cache_unifrac and not lazy_unifrac:
+                from aam.data.unifrac_cache import (
+                    get_cache_key,
+                    get_cache_path,
+                    load_distance_matrix,
+                    save_distance_matrix,
+                )
+                cache_key = get_cache_key(
+                    table,
+                    tree,
+                    rarefy_depth=rarefy_depth,
+                    rarefy_seed=seed,
+                    metric="unweighted" if unifrac_metric == "unifrac" else "faith_pd",
+                )
+                cache_path = get_cache_path(unifrac_cache_dir, cache_key)
+                logger.info(f"Checking for cached distance matrix: {cache_path}")
+                cached_distances = load_distance_matrix(
+                    cache_path,
+                    metric="unweighted" if unifrac_metric == "unifrac" else "faith_pd",
+                )
+                if cached_distances is not None:
+                    logger.info("Using cached distance matrix (skipping computation)")
+                    unifrac_distances = cached_distances
+            
+            if unifrac_distances is None:
+                logger.info("Computing UniFrac distances upfront (full distance matrix)...")
+                if unifrac_metric == "unifrac":
+                    unifrac_distances = unifrac_computer.compute_unweighted(table_obj, tree)
+                    unifrac_metric_name = "unweighted"
+                    encoder_type = "unifrac"
+                else:
+                    unifrac_distances = unifrac_computer.compute_faith_pd(table_obj, tree)
+                    unifrac_metric_name = "faith_pd"
+                    encoder_type = "faith_pd"
+                
+                # Save to cache if requested
+                if cache_unifrac:
+                    from aam.data.unifrac_cache import (
+                        get_cache_key,
+                        get_cache_path,
+                        save_distance_matrix,
+                    )
+                    cache_key = get_cache_key(
+                        table,
+                        tree,
+                        rarefy_depth=rarefy_depth,
+                        rarefy_seed=seed,
+                        metric=unifrac_metric_name,
+                    )
+                    cache_path = get_cache_path(unifrac_cache_dir, cache_key)
+                    save_distance_matrix(unifrac_distances, cache_path, metric=unifrac_metric_name)
+            else:
+                # Set metric names from cached data
+                if unifrac_metric == "unifrac":
+                    unifrac_metric_name = "unweighted"
+                    encoder_type = "unifrac"
+                else:
+                    unifrac_metric_name = "faith_pd"
+                    encoder_type = "faith_pd"
+        
+        if lazy_unifrac:
+            logger.warning(
+                "WARNING: Lazy UniFrac computation computes distances per batch, which can be "
+                "very slow for large trees. Each batch may take several minutes. "
+                "For very large trees (>1M tips), upfront computation (without --lazy-unifrac) "
+                "may be faster overall despite the initial delay."
+            )
 
         logger.info("Splitting data...")
         sample_ids = list(table_obj.ids(axis="sample"))
+        logger.info(f"Total samples: {len(sample_ids)}")
         train_ids, val_ids = train_test_split(sample_ids, test_size=test_size, random_state=seed)
+        logger.info(f"Train samples: {len(train_ids)}, Validation samples: {len(val_ids)}")
 
+        logger.info("Filtering tables for train/val splits...")
         train_table = table_obj.filter(train_ids, axis="sample", inplace=False)
         val_table = table_obj.filter(val_ids, axis="sample", inplace=False)
+        logger.info("Table filtering complete")
 
         train_metadata = metadata_df[metadata_df["sample_id"].isin(train_ids)]
         val_metadata = metadata_df[metadata_df["sample_id"].isin(val_ids)]
 
-        train_distance_matrix = None
-        val_distance_matrix = None
-        if unifrac_metric_name == "unweighted":
-            train_distance_matrix = (
-                unifrac_distances.filter(train_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
-            )
-            val_distance_matrix = unifrac_distances.filter(val_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
-        elif unifrac_metric_name == "faith_pd":
-            train_distance_matrix = unifrac_distances.loc[train_ids] if isinstance(unifrac_distances, pd.Series) else None
-            val_distance_matrix = unifrac_distances.loc[val_ids] if isinstance(unifrac_distances, pd.Series) else None
+        if not lazy_unifrac:
+            train_distance_matrix = None
+            val_distance_matrix = None
+            if unifrac_metric_name == "unweighted":
+                train_distance_matrix = (
+                    unifrac_distances.filter(train_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
+                )
+                val_distance_matrix = unifrac_distances.filter(val_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
+            elif unifrac_metric_name == "faith_pd":
+                train_distance_matrix = unifrac_distances.loc[train_ids] if isinstance(unifrac_distances, pd.Series) else None
+                val_distance_matrix = unifrac_distances.loc[val_ids] if isinstance(unifrac_distances, pd.Series) else None
 
         logger.info("Creating datasets...")
         train_dataset = ASVDataset(
@@ -319,6 +438,8 @@ def train(
             token_limit=token_limit,
             target_column=metadata_column,
             unifrac_metric=unifrac_metric_name,
+            lazy_unifrac=lazy_unifrac,
+            unifrac_computer=unifrac_computer if lazy_unifrac else None,
         )
 
         val_dataset = ASVDataset(
@@ -329,6 +450,8 @@ def train(
             token_limit=token_limit,
             target_column=metadata_column,
             unifrac_metric=unifrac_metric_name,
+            lazy_unifrac=lazy_unifrac,
+            unifrac_computer=unifrac_computer if lazy_unifrac else None,
         )
 
         train_collate = partial(
@@ -336,12 +459,16 @@ def train(
             token_limit=token_limit,
             unifrac_distances=train_distance_matrix,
             unifrac_metric=unifrac_metric_name,
+            unifrac_computer=unifrac_computer if lazy_unifrac else None,
+            lazy_unifrac=lazy_unifrac,
         )
         val_collate = partial(
             collate_fn,
             token_limit=token_limit,
             unifrac_distances=val_distance_matrix,
             unifrac_metric=unifrac_metric_name,
+            unifrac_computer=unifrac_computer if lazy_unifrac else None,
+            lazy_unifrac=lazy_unifrac,
         )
 
         train_loader = DataLoader(
@@ -351,6 +478,8 @@ def train(
             num_workers=num_workers,
             collate_fn=train_collate,
             drop_last=True,
+            prefetch_factor=2 if num_workers > 0 else None,
+            pin_memory=device == "cuda",
         )
 
         val_loader = DataLoader(
@@ -360,6 +489,8 @@ def train(
             num_workers=num_workers,
             collate_fn=val_collate,
             drop_last=True,
+            prefetch_factor=2 if num_workers > 0 else None,
+            pin_memory=device == "cuda",
         )
 
         logger.info("Creating model...")
@@ -441,10 +572,11 @@ def train(
         )
 
         logger.info("Training completed")
-        logger.info(f"Best validation loss: {min(history['val_loss']) if history['val_loss'] else 'N/A'}")
+        best_val_loss = min(history['val_loss']) if history['val_loss'] else float('inf')
+        logger.info(f"Best validation loss: {best_val_loss}")
 
         final_model_path = output_path / "final_model.pt"
-        trainer.save_checkpoint(str(final_model_path), epoch=epochs - 1, metrics=history)
+        trainer.save_checkpoint(str(final_model_path), epoch=epochs - 1, best_val_loss=best_val_loss, metrics=history)
         logger.info(f"Final model saved to {final_model_path}")
 
     except Exception as e:
@@ -474,7 +606,7 @@ def train(
 @click.option("--nuc-penalty", default=1.0, type=float, help="Weight for nucleotide loss")
 @click.option("--device", default="cuda", type=click.Choice(["cuda", "cpu"]), help="Device to use")
 @click.option("--seed", default=None, type=int, help="Random seed for reproducibility")
-@click.option("--num-workers", default=0, type=int, help="DataLoader workers")
+@click.option("--num-workers", default=4, type=int, help="Number of DataLoader worker processes (default: 4, use 0 to disable multiprocessing)")
 @click.option("--resume-from", default=None, type=click.Path(exists=True), help="Path to checkpoint to resume from")
 @click.option("--gradient-accumulation-steps", default=1, type=int, help="Number of gradient accumulation steps")
 @click.option("--use-expandable-segments", is_flag=True, help="Enable PyTorch CUDA expandable segments for memory optimization")
@@ -496,6 +628,11 @@ def train(
 @click.option(
     "--asv-chunk-size", default=None, type=int, help="Process ASVs in chunks of this size to reduce memory (None = process all)"
 )
+@click.option("--lazy-unifrac", is_flag=True, help="Compute UniFrac distances on-the-fly (batch-wise) instead of upfront. Faster startup but slower first epoch.")
+@click.option("--unifrac-threads", default=None, type=int, help="Number of threads for UniFrac computation (default: all available CPU cores)")
+@click.option("--prune-tree", is_flag=True, help="Pre-prune tree to only include ASVs in BIOM table. Dramatically speeds up tree loading and UniFrac computation for large trees.")
+@click.option("--cache-unifrac", is_flag=True, help="Cache computed UniFrac distance matrix to disk for faster resume. Only applies to upfront computation (not lazy).")
+@click.option("--unifrac-cache-dir", default=None, type=str, help="Directory for UniFrac cache files (default: ~/.aam_cache/unifrac)")
 def pretrain(
     table: str,
     tree: str,
@@ -528,6 +665,11 @@ def pretrain(
     mixed_precision: Optional[str],
     compile_model: bool,
     asv_chunk_size: Optional[int],
+    lazy_unifrac: bool,
+    unifrac_threads: Optional[int],
+    prune_tree: bool,
+    cache_unifrac: bool,
+    unifrac_cache_dir: Optional[str],
 ):
     """Pre-train SequenceEncoder on UniFrac and nucleotide prediction (self-supervised)."""
     try:
@@ -561,37 +703,152 @@ def pretrain(
         table_obj = biom_loader.load_table(table)
         table_obj = biom_loader.rarefy(table_obj, depth=rarefy_depth, random_seed=seed)
 
-        logger.info("Computing UniFrac distances...")
-        unifrac_computer = UniFracComputer()
-        if unifrac_metric == "unifrac":
-            unifrac_distances = unifrac_computer.compute_unweighted(table_obj, tree)
-            unifrac_metric_name = "unweighted"
-            encoder_type = "unifrac"
-            # UniFrac: no base_output_dim needed (distances computed from embeddings)
-            base_output_dim = None
+        # Use all available CPU cores for UniFrac computation (or user-specified)
+        import multiprocessing
+        if unifrac_threads is None:
+            num_threads = multiprocessing.cpu_count()
         else:
-            unifrac_distances = unifrac_computer.compute_faith_pd(table_obj, tree)
-            unifrac_metric_name = "faith_pd"
-            encoder_type = "faith_pd"
-            base_output_dim = 1
+            num_threads = unifrac_threads
+        logger.info(f"Using {num_threads} threads for UniFrac computation")
+        unifrac_computer = UniFracComputer(num_threads=num_threads)
+        
+        if lazy_unifrac:
+            logger.info("Using lazy UniFrac computation (batch-wise, on-the-fly)")
+            logger.info("Setting up lazy computation (tree will be loaded per worker process)...")
+            pruned_cache_path = None
+            if prune_tree:
+                pruned_cache_path = str(Path(tree).with_suffix('.pruned.nwk'))
+            unifrac_computer.setup_lazy_computation(
+                table_obj,
+                tree,
+                prune_tree=prune_tree,
+                pruned_tree_cache=pruned_cache_path,
+            )
+            logger.info("Lazy computation setup complete")
+            # Warn if using multiple workers with lazy UniFrac (each worker loads tree)
+            if num_workers > 0:
+                logger.warning(
+                    f"Using {num_workers} DataLoader workers with lazy UniFrac. "
+                    f"Each worker will load the tree into memory. "
+                    f"Consider using --num-workers 0 if you encounter memory issues."
+                )
+            unifrac_distances = None
+            train_distance_matrix = None
+            val_distance_matrix = None
+            if unifrac_metric == "unifrac":
+                unifrac_metric_name = "unweighted"
+                encoder_type = "unifrac"
+                base_output_dim = None
+            else:
+                unifrac_metric_name = "faith_pd"
+                encoder_type = "faith_pd"
+                base_output_dim = 1
+        else:
+            # For upfront computation, also support tree pruning
+            if prune_tree:
+                logger.info("Pruning tree before upfront UniFrac computation...")
+                from aam.data.tree_pruner import load_or_prune_tree
+                pruned_cache_path = str(Path(tree).with_suffix('.pruned.nwk'))
+                pruned_tree = load_or_prune_tree(tree, table_obj, pruned_tree_path=pruned_cache_path)
+                tree = pruned_cache_path  # Use pruned tree for computation
+                logger.info(f"Using pruned tree: {pruned_cache_path}")
+            
+            # Check cache for distance matrix
+            unifrac_distances = None
+            if cache_unifrac and not lazy_unifrac:
+                from aam.data.unifrac_cache import (
+                    get_cache_key,
+                    get_cache_path,
+                    load_distance_matrix,
+                    save_distance_matrix,
+                )
+                cache_key = get_cache_key(
+                    table,
+                    tree,
+                    rarefy_depth=rarefy_depth,
+                    rarefy_seed=seed,
+                    metric="unweighted" if unifrac_metric == "unifrac" else "faith_pd",
+                )
+                cache_path = get_cache_path(unifrac_cache_dir, cache_key)
+                logger.info(f"Checking for cached distance matrix: {cache_path}")
+                cached_distances = load_distance_matrix(
+                    cache_path,
+                    metric="unweighted" if unifrac_metric == "unifrac" else "faith_pd",
+                )
+                if cached_distances is not None:
+                    logger.info("Using cached distance matrix (skipping computation)")
+                    unifrac_distances = cached_distances
+            
+            if unifrac_distances is None:
+                logger.info("Computing UniFrac distances upfront (full distance matrix)...")
+                if unifrac_metric == "unifrac":
+                    unifrac_distances = unifrac_computer.compute_unweighted(table_obj, tree)
+                    unifrac_metric_name = "unweighted"
+                    encoder_type = "unifrac"
+                    base_output_dim = None
+                else:
+                    unifrac_distances = unifrac_computer.compute_faith_pd(table_obj, tree)
+                    unifrac_metric_name = "faith_pd"
+                    encoder_type = "faith_pd"
+                    base_output_dim = 1
+                
+                # Save to cache if requested
+                if cache_unifrac:
+                    from aam.data.unifrac_cache import (
+                        get_cache_key,
+                        get_cache_path,
+                        save_distance_matrix,
+                    )
+                    cache_key = get_cache_key(
+                        table,
+                        tree,
+                        rarefy_depth=rarefy_depth,
+                        rarefy_seed=seed,
+                        metric=unifrac_metric_name,
+                    )
+                    cache_path = get_cache_path(unifrac_cache_dir, cache_key)
+                    save_distance_matrix(unifrac_distances, cache_path, metric=unifrac_metric_name)
+            else:
+                # Set metric names from cached data
+                if unifrac_metric == "unifrac":
+                    unifrac_metric_name = "unweighted"
+                    encoder_type = "unifrac"
+                    base_output_dim = None
+                else:
+                    unifrac_metric_name = "faith_pd"
+                    encoder_type = "faith_pd"
+                    base_output_dim = 1
+        
+        if lazy_unifrac:
+            logger.warning(
+                "WARNING: Lazy UniFrac computation computes distances per batch, which can be "
+                "very slow for large trees. Each batch may take several minutes. "
+                "For very large trees (>1M tips), upfront computation (without --lazy-unifrac) "
+                "may be faster overall despite the initial delay."
+            )
 
         logger.info("Splitting data...")
         sample_ids = list(table_obj.ids(axis="sample"))
+        logger.info(f"Total samples: {len(sample_ids)}")
         train_ids, val_ids = train_test_split(sample_ids, test_size=test_size, random_state=seed)
+        logger.info(f"Train samples: {len(train_ids)}, Validation samples: {len(val_ids)}")
 
+        logger.info("Filtering tables for train/val splits...")
         train_table = table_obj.filter(train_ids, axis="sample", inplace=False)
         val_table = table_obj.filter(val_ids, axis="sample", inplace=False)
+        logger.info("Table filtering complete")
 
-        train_distance_matrix = None
-        val_distance_matrix = None
-        if unifrac_metric_name == "unweighted":
-            train_distance_matrix = (
-                unifrac_distances.filter(train_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
-            )
-            val_distance_matrix = unifrac_distances.filter(val_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
-        elif unifrac_metric_name == "faith_pd":
-            train_distance_matrix = unifrac_distances.loc[train_ids] if isinstance(unifrac_distances, pd.Series) else None
-            val_distance_matrix = unifrac_distances.loc[val_ids] if isinstance(unifrac_distances, pd.Series) else None
+        if not lazy_unifrac:
+            train_distance_matrix = None
+            val_distance_matrix = None
+            if unifrac_metric_name == "unweighted":
+                train_distance_matrix = (
+                    unifrac_distances.filter(train_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
+                )
+                val_distance_matrix = unifrac_distances.filter(val_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
+            elif unifrac_metric_name == "faith_pd":
+                train_distance_matrix = unifrac_distances.loc[train_ids] if isinstance(unifrac_distances, pd.Series) else None
+                val_distance_matrix = unifrac_distances.loc[val_ids] if isinstance(unifrac_distances, pd.Series) else None
 
         logger.info("Creating datasets...")
         train_dataset = ASVDataset(
@@ -602,6 +859,8 @@ def pretrain(
             token_limit=token_limit,
             target_column=None,
             unifrac_metric=unifrac_metric_name,
+            lazy_unifrac=lazy_unifrac,
+            unifrac_computer=unifrac_computer if lazy_unifrac else None,
         )
 
         val_dataset = ASVDataset(
@@ -612,6 +871,8 @@ def pretrain(
             token_limit=token_limit,
             target_column=None,
             unifrac_metric=unifrac_metric_name,
+            lazy_unifrac=lazy_unifrac,
+            unifrac_computer=unifrac_computer if lazy_unifrac else None,
         )
 
         train_collate = partial(
@@ -619,12 +880,16 @@ def pretrain(
             token_limit=token_limit,
             unifrac_distances=train_distance_matrix,
             unifrac_metric=unifrac_metric_name,
+            unifrac_computer=unifrac_computer if lazy_unifrac else None,
+            lazy_unifrac=lazy_unifrac,
         )
         val_collate = partial(
             collate_fn,
             token_limit=token_limit,
             unifrac_distances=val_distance_matrix,
             unifrac_metric=unifrac_metric_name,
+            unifrac_computer=unifrac_computer if lazy_unifrac else None,
+            lazy_unifrac=lazy_unifrac,
         )
 
         train_loader = DataLoader(
@@ -634,6 +899,8 @@ def pretrain(
             num_workers=num_workers,
             collate_fn=train_collate,
             drop_last=True,
+            prefetch_factor=2 if num_workers > 0 else None,
+            pin_memory=device == "cuda",
         )
 
         val_loader = DataLoader(
@@ -643,6 +910,8 @@ def pretrain(
             num_workers=num_workers,
             collate_fn=val_collate,
             drop_last=True,
+            prefetch_factor=2 if num_workers > 0 else None,
+            pin_memory=device == "cuda",
         )
 
         logger.info("Creating model...")
@@ -706,10 +975,11 @@ def pretrain(
         )
 
         logger.info("Pre-training completed")
-        logger.info(f"Best validation loss: {min(history['val_loss']) if history['val_loss'] else 'N/A'}")
+        best_val_loss = min(history['val_loss']) if history['val_loss'] else float('inf')
+        logger.info(f"Best validation loss: {best_val_loss}")
 
         final_model_path = output_path / "pretrained_encoder.pt"
-        trainer.save_checkpoint(str(final_model_path), epoch=epochs - 1, metrics=history)
+        trainer.save_checkpoint(str(final_model_path), epoch=epochs - 1, best_val_loss=best_val_loss, metrics=history)
         logger.info(f"Pre-trained encoder saved to {final_model_path}")
 
     except Exception as e:
@@ -781,6 +1051,7 @@ def predict(
             shuffle=False,
             num_workers=0,
             collate_fn=inference_collate,
+            pin_memory=device == "cuda",
         )
 
         logger.info("Creating model...")

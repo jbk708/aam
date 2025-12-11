@@ -19,6 +19,8 @@ def collate_fn(
     token_limit: int,
     unifrac_distances: Optional[Union[DistanceMatrix, pd.Series]] = None,
     unifrac_metric: str = "unweighted",
+    unifrac_computer: Optional["UniFracComputer"] = None,
+    lazy_unifrac: bool = False,
 ) -> Dict[str, torch.Tensor]:
     """Custom collate function for batching samples with variable ASV counts.
 
@@ -81,9 +83,22 @@ def collate_fn(
     if y_targets:
         result["y_target"] = torch.stack(y_targets)
 
-    if unifrac_distances is not None:
-        computer = UniFracComputer()
-        batch_distances = computer.extract_batch_distances(unifrac_distances, sample_ids, metric=unifrac_metric)
+    if unifrac_distances is not None or (lazy_unifrac and unifrac_computer is not None):
+        if lazy_unifrac and unifrac_computer is not None:
+            # Lazy computation: compute distances on-the-fly for this batch
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.debug(f"Computing UniFrac distances for batch: {sample_ids[:3]}... (batch size: {len(sample_ids)})")
+            if unifrac_metric == "unweighted":
+                batch_distances = unifrac_computer.compute_batch_unweighted(sample_ids)
+            else:
+                batch_distances = unifrac_computer.compute_batch_faith_pd(sample_ids)
+            logger.debug(f"Batch distance computation complete")
+        else:
+            # Pre-computed distances: extract from distance matrix
+            if unifrac_computer is None:
+                unifrac_computer = UniFracComputer()
+            batch_distances = unifrac_computer.extract_batch_distances(unifrac_distances, sample_ids, metric=unifrac_metric)
         
         # Validate extracted distances
         if np.any(np.isnan(batch_distances)):
@@ -116,18 +131,22 @@ class ASVDataset(Dataset):
         token_limit: int = 1024,
         target_column: Optional[str] = None,
         unifrac_metric: str = "unweighted",
+        lazy_unifrac: bool = False,
+        unifrac_computer: Optional[UniFracComputer] = None,
     ):
         """Initialize ASVDataset.
 
         Args:
             table: Rarefied biom.Table object
             metadata: Optional DataFrame with sample metadata and targets
-            unifrac_distances: Optional pre-computed UniFrac distances
+            unifrac_distances: Optional pre-computed UniFrac distances (ignored if lazy_unifrac=True)
             tokenizer: SequenceTokenizer instance (creates default if None)
             max_bp: Maximum base pairs per sequence
             token_limit: Maximum ASVs per sample
             target_column: Column name in metadata for target values
             unifrac_metric: Type of UniFrac metric ("unweighted" or "faith_pd")
+            lazy_unifrac: If True, compute distances on-the-fly instead of using pre-computed distances
+            unifrac_computer: UniFracComputer instance for lazy computation (required if lazy_unifrac=True)
         """
         self.table = table
         self.metadata = metadata
@@ -137,6 +156,8 @@ class ASVDataset(Dataset):
         self.token_limit = token_limit
         self.target_column = target_column
         self.unifrac_metric = unifrac_metric
+        self.lazy_unifrac = lazy_unifrac
+        self.unifrac_computer = unifrac_computer
 
         self.sample_ids = list(table.ids(axis="sample"))
         self.observation_ids = list(table.ids(axis="observation"))
