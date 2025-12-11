@@ -223,10 +223,12 @@ class ASVDataset(Dataset):
         
         if stripe_mode and reference_sample_ids is not None:
             # Validate reference samples exist in table
-            table_sample_ids = set(self.sample_ids)
-            missing_ref = set(reference_sample_ids) - table_sample_ids
-            if missing_ref:
-                raise ValueError(f"Reference sample IDs not found in table: {sorted(missing_ref)}")
+            # Skip validation if using lazy_unifrac (unifrac_computer has full table)
+            if not lazy_unifrac:
+                table_sample_ids = set(self.sample_ids)
+                missing_ref = set(reference_sample_ids) - table_sample_ids
+                if missing_ref:
+                    raise ValueError(f"Reference sample IDs not found in table: {sorted(missing_ref)}")
 
         loader = BIOMLoader()
         self.sequences = loader.get_sequences(table)
