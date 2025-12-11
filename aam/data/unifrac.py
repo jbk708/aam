@@ -54,6 +54,10 @@ class UniFracComputer:
         self._prune_tree: bool = False
         self._table_for_pruning: Optional[Table] = None
         self._pruned_tree_cache: Optional[str] = None
+        
+        # Stripe-based computation support
+        self._reference_sample_ids: Optional[List[str]] = None
+        self._reference_counts_cache: Optional[Dict[str, np.ndarray]] = None
 
     def compute_unweighted(self, table: Table, tree_path: str, filter_table: bool = True) -> DistanceMatrix:
         """Compute unweighted UniFrac distances between samples.
@@ -529,3 +533,93 @@ class UniFracComputer:
             if "not found" in str(e).lower() or "mismatch" in str(e).lower():
                 raise ValueError(f"ASV IDs don't match between table and tree: {e}") from e
             raise ValueError(f"Error computing Faith PD for batch: {e}") from e
+
+    def set_reference_samples(self, reference_sample_ids: List[str], table: Optional[Table] = None) -> None:
+        """Set reference samples for stripe-based computation.
+        
+        Args:
+            reference_sample_ids: List of reference sample IDs
+            table: Optional biom.Table (uses cached table if None)
+        
+        Raises:
+            ValueError: If reference samples not found in table
+        """
+        pass
+
+    def compute_unweighted_stripe(
+        self,
+        table: Table,
+        tree_path: str,
+        reference_sample_ids: List[str],
+        test_sample_ids: Optional[List[str]] = None,
+        filter_table: bool = True,
+    ) -> np.ndarray:
+        """Compute unweighted UniFrac distances in stripe format.
+        
+        Args:
+            table: Rarefied biom.Table object
+            tree_path: Path to phylogenetic tree file (.nwk Newick format)
+            reference_sample_ids: Reference sample IDs (columns of stripe matrix)
+            test_sample_ids: Test sample IDs (rows of stripe matrix). If None, uses all samples.
+            filter_table: If True, filter table to only include ASVs present in tree
+        
+        Returns:
+            numpy array containing stripe distances [N_test_samples, N_reference_samples]
+        
+        Raises:
+            FileNotFoundError: If tree file doesn't exist
+            ValueError: If ASV IDs don't match between table and tree
+            ValueError: If reference or test sample IDs not found in table
+        """
+        pass
+
+    def compute_batch_unweighted_stripe(
+        self,
+        sample_ids: List[str],
+        reference_sample_ids: Optional[List[str]] = None,
+        table: Optional[Table] = None,
+        tree_path: Optional[str] = None,
+    ) -> np.ndarray:
+        """Compute unweighted UniFrac distances in stripe format for a batch of samples.
+        
+        This method computes distances from batch samples to reference samples using
+        unifrac.unweighted_dense_pair for efficiency.
+        
+        Args:
+            sample_ids: List of test sample IDs to compute distances for (rows)
+            reference_sample_ids: List of reference sample IDs (columns). 
+                                 Uses cached reference set if None.
+            table: Optional biom.Table (uses cached table if None)
+            tree_path: Optional tree path (uses cached tree if None)
+        
+        Returns:
+            numpy array containing stripe distances [batch_size, N_reference_samples]
+        
+        Raises:
+            ValueError: If table/tree not provided or reference samples not set
+        """
+        pass
+
+    def extract_batch_stripe_distances(
+        self,
+        stripe_distances: np.ndarray,
+        sample_ids: List[str],
+        reference_sample_ids: List[str],
+        all_sample_ids: List[str],
+    ) -> np.ndarray:
+        """Extract stripe distances for a batch of samples from pre-computed stripe matrix.
+        
+        Args:
+            stripe_distances: Pre-computed stripe matrix [N_all_samples, N_reference_samples]
+            sample_ids: List of sample IDs for the batch (rows to extract)
+            reference_sample_ids: List of reference sample IDs (columns, should match stripe_distances)
+            all_sample_ids: List of all sample IDs (rows) matching stripe_distances
+        
+        Returns:
+            numpy array containing batch stripe distances [batch_size, N_reference_samples]
+        
+        Raises:
+            ValueError: If sample_ids or reference_sample_ids not found in all_sample_ids
+            ValueError: If shapes don't match
+        """
+        pass
