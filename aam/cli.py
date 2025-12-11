@@ -201,6 +201,7 @@ def cli():
 @click.option("--lazy-unifrac/--no-lazy-unifrac", default=True, help="Compute UniFrac distances on-the-fly (batch-wise) instead of upfront. Faster startup but slower first epoch. (default: True)")
 @click.option("--stripe-mode/--no-stripe-mode", default=True, help="Use stripe-based UniFrac distances instead of pairwise. More memory-efficient. (default: True)")
 @click.option("--reference-samples", default=None, type=str, help="Reference samples for stripe mode: path to file with sample IDs (one per line), or number (e.g., '100' for 100 randomly selected samples). If not specified, auto-selects 100 random samples or all if < 100.")
+@click.option("--precomputed-stripe", default=None, type=click.Path(exists=True), help="Path to pre-computed stripe distance matrix (.npy file from precompute_stripe_unifrac.py). If provided, loads this instead of computing distances.")
 @click.option("--unifrac-threads", default=None, type=int, help="Number of threads for UniFrac computation (default: all available CPU cores)")
 @click.option("--prune-tree", is_flag=True, help="Pre-prune tree to only include ASVs in BIOM table. Dramatically speeds up tree loading and UniFrac computation for large trees.")
 @click.option("--cache-unifrac", is_flag=True, help="Cache computed UniFrac distance matrix to disk for faster resume. Only applies to upfront computation (not lazy).")
@@ -246,6 +247,7 @@ def train(
     lazy_unifrac: bool,
     stripe_mode: bool,
     reference_samples: Optional[str],
+    precomputed_stripe: Optional[str],
     unifrac_threads: Optional[int],
     prune_tree: bool,
     cache_unifrac: bool,
@@ -473,7 +475,14 @@ def train(
         if not lazy_unifrac:
             train_distance_matrix = None
             val_distance_matrix = None
-            if unifrac_metric_name == "unweighted":
+            if stripe_mode and precomputed_stripe_matrix is not None:
+                # Extract stripe matrices for train/val splits
+                train_indices = [precomputed_sample_ids.index(sid) for sid in train_ids if sid in precomputed_sample_ids]
+                val_indices = [precomputed_sample_ids.index(sid) for sid in val_ids if sid in precomputed_sample_ids]
+                train_distance_matrix = precomputed_stripe_matrix[train_indices, :] if train_indices else None
+                val_distance_matrix = precomputed_stripe_matrix[val_indices, :] if val_indices else None
+                logger.info(f"Extracted stripe matrices: train {train_distance_matrix.shape if train_distance_matrix is not None else 'None'}, val {val_distance_matrix.shape if val_distance_matrix is not None else 'None'}")
+            elif unifrac_metric_name == "unweighted":
                 train_distance_matrix = (
                     unifrac_distances.filter(train_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
                 )
@@ -694,6 +703,7 @@ def train(
 @click.option("--lazy-unifrac/--no-lazy-unifrac", default=True, help="Compute UniFrac distances on-the-fly (batch-wise) instead of upfront. Faster startup but slower first epoch. (default: True)")
 @click.option("--stripe-mode/--no-stripe-mode", default=True, help="Use stripe-based UniFrac distances instead of pairwise. More memory-efficient. (default: True)")
 @click.option("--reference-samples", default=None, type=str, help="Reference samples for stripe mode: path to file with sample IDs (one per line), or number (e.g., '100' for 100 randomly selected samples). If not specified, auto-selects 100 random samples or all if < 100.")
+@click.option("--precomputed-stripe", default=None, type=click.Path(exists=True), help="Path to pre-computed stripe distance matrix (.npy file from precompute_stripe_unifrac.py). If provided, loads this instead of computing distances.")
 @click.option("--unifrac-threads", default=None, type=int, help="Number of threads for UniFrac computation (default: all available CPU cores)")
 @click.option("--prune-tree", is_flag=True, help="Pre-prune tree to only include ASVs in BIOM table. Dramatically speeds up tree loading and UniFrac computation for large trees.")
 @click.option("--cache-unifrac", is_flag=True, help="Cache computed UniFrac distance matrix to disk for faster resume. Only applies to upfront computation (not lazy).")
@@ -733,6 +743,7 @@ def pretrain(
     lazy_unifrac: bool,
     stripe_mode: bool,
     reference_samples: Optional[str],
+    precomputed_stripe: Optional[str],
     unifrac_threads: Optional[int],
     prune_tree: bool,
     cache_unifrac: bool,
@@ -957,7 +968,14 @@ def pretrain(
         if not lazy_unifrac:
             train_distance_matrix = None
             val_distance_matrix = None
-            if unifrac_metric_name == "unweighted":
+            if stripe_mode and precomputed_stripe_matrix is not None:
+                # Extract stripe matrices for train/val splits
+                train_indices = [precomputed_sample_ids.index(sid) for sid in train_ids if sid in precomputed_sample_ids]
+                val_indices = [precomputed_sample_ids.index(sid) for sid in val_ids if sid in precomputed_sample_ids]
+                train_distance_matrix = precomputed_stripe_matrix[train_indices, :] if train_indices else None
+                val_distance_matrix = precomputed_stripe_matrix[val_indices, :] if val_indices else None
+                logger.info(f"Extracted stripe matrices: train {train_distance_matrix.shape if train_distance_matrix is not None else 'None'}, val {val_distance_matrix.shape if val_distance_matrix is not None else 'None'}")
+            elif unifrac_metric_name == "unweighted":
                 train_distance_matrix = (
                     unifrac_distances.filter(train_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
                 )
