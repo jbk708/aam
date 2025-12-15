@@ -441,7 +441,11 @@ class TestCLIIntegration:
         mock_unifrac_loader.return_value = mock_unifrac_loader_instance
         from skbio import DistanceMatrix
         import numpy as np
-        mock_distance_matrix = DistanceMatrix(np.random.rand(4, 4), ids=["sample1", "sample2", "sample3", "sample4"])
+        # Create a symmetric distance matrix (required by DistanceMatrix)
+        dist_data = np.random.rand(4, 4)
+        dist_data = (dist_data + dist_data.T) / 2  # Make symmetric
+        np.fill_diagonal(dist_data, 0)  # Diagonal must be 0
+        mock_distance_matrix = DistanceMatrix(dist_data, ids=["sample1", "sample2", "sample3", "sample4"])
         mock_unifrac_loader_instance.load_matrix.return_value = mock_distance_matrix
 
         mock_dataset_instance = MagicMock()
@@ -527,7 +531,11 @@ class TestCLIIntegration:
         mock_unifrac_loader.return_value = mock_unifrac_loader_instance
         from skbio import DistanceMatrix
         import numpy as np
-        mock_distance_matrix = DistanceMatrix(np.random.rand(4, 4), ids=["sample1", "sample2", "sample3", "sample4"])
+        # Create a symmetric distance matrix (required by DistanceMatrix)
+        dist_data = np.random.rand(4, 4)
+        dist_data = (dist_data + dist_data.T) / 2  # Make symmetric
+        np.fill_diagonal(dist_data, 0)  # Diagonal must be 0
+        mock_distance_matrix = DistanceMatrix(dist_data, ids=["sample1", "sample2", "sample3", "sample4"])
         mock_unifrac_loader_instance.load_matrix.return_value = mock_distance_matrix
 
         mock_dataset_instance = MagicMock()
@@ -714,7 +722,11 @@ class TestCLIIntegration:
         mock_unifrac_loader_class.return_value = mock_unifrac_loader_instance
         from skbio import DistanceMatrix
         import numpy as np
-        mock_distance_matrix = DistanceMatrix(np.random.rand(4, 4), ids=["sample1", "sample2", "sample3", "sample4"])
+        # Create a symmetric distance matrix (required by DistanceMatrix)
+        dist_data = np.random.rand(4, 4)
+        dist_data = (dist_data + dist_data.T) / 2  # Make symmetric
+        np.fill_diagonal(dist_data, 0)  # Diagonal must be 0
+        mock_distance_matrix = DistanceMatrix(dist_data, ids=["sample1", "sample2", "sample3", "sample4"])
         mock_unifrac_loader_instance.load_matrix.return_value = mock_distance_matrix
 
         mock_train_ids = ["sample1", "sample2", "sample3"]

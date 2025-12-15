@@ -14,6 +14,7 @@ from aam.data.dataset import ASVDataset, collate_fn
 from aam.data.tokenizer import SequenceTokenizer
 from aam.data.biom_loader import BIOMLoader
 from aam.data.unifrac_loader import UniFracLoader
+from aam.data.unifrac import UniFracComputer
 
 
 def generate_150bp_sequence(seed=None):
@@ -1175,6 +1176,7 @@ class TestStripeMode:
     def test_collate_fn_stripe_mode_precomputed(self, rarefied_table, tokenizer, tmp_path):
         """Test collate_fn with stripe mode and pre-computed distances."""
         sample_ids = list(rarefied_table.ids(axis="sample"))
+        observation_ids = list(rarefied_table.ids(axis="observation"))
         reference_sample_ids = sample_ids[:2]  # First 2 as reference
         
         # Create pre-computed stripe distances
