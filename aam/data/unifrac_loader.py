@@ -143,9 +143,26 @@ class UniFracLoader:
                 h5_sample_ids = None
                 if 'order' in f:
                     order_data = f['order']
-                    # Handle both string and bytes arrays
+                    # Handle different data types in order array
                     if order_data.dtype.kind == 'S':  # String/bytes
                         h5_sample_ids = [sid.decode('utf-8') for sid in order_data]
+                    elif order_data.dtype.kind == 'O':  # Object dtype (may contain bytes objects)
+                        h5_sample_ids = []
+                        for sid in order_data:
+                            # Check if it's actually a bytes object
+                            if isinstance(sid, bytes):
+                                h5_sample_ids.append(sid.decode('utf-8'))
+                            else:
+                                # Try to decode if it looks like bytes representation
+                                sid_str = str(sid)
+                                if sid_str.startswith("b'") and sid_str.endswith("'"):
+                                    # Extract the actual string from bytes representation
+                                    h5_sample_ids.append(sid_str[2:-1])
+                                elif sid_str.startswith('b"') and sid_str.endswith('"'):
+                                    # Handle double-quoted bytes representation
+                                    h5_sample_ids.append(sid_str[2:-1])
+                                else:
+                                    h5_sample_ids.append(sid_str)
                     else:
                         h5_sample_ids = [str(sid) for sid in order_data]
                     
@@ -199,12 +216,6 @@ class UniFracLoader:
                                 matrix = matrix[np.ix_(reorder_indices, reorder_indices)]
                                 logger.info(f"Reordered HDF5 matrix to match provided sample IDs")
                                 h5_sample_ids = sample_ids
-            
-            # Store the actual sample IDs used (for later retrieval if needed)
-            # This will be used when creating DistanceMatrix
-            if h5_sample_ids is not None:
-                # Store as attribute for later access
-                matrix._aam_sample_ids = h5_sample_ids
             else:
                 keys = list(f.keys())
                 if len(keys) == 1:
@@ -216,13 +227,8 @@ class UniFracLoader:
                     )
             
         # Get sample IDs to use (from h5_sample_ids if available, otherwise from provided sample_ids)
-        ids_to_use = None
-        if hasattr(matrix, '_aam_sample_ids'):
-            ids_to_use = matrix._aam_sample_ids
-            # Remove the temporary attribute
-            delattr(matrix, '_aam_sample_ids')
-        elif sample_ids is not None:
-            ids_to_use = sample_ids
+        # h5_sample_ids is set above when loading from 'matrix' key with 'order' key
+        ids_to_use = h5_sample_ids if h5_sample_ids is not None else sample_ids
         
         # Validate dimensions if we have sample IDs
         if ids_to_use is not None:
