@@ -24,6 +24,22 @@ pip install -e ".[dev,docs,training]"
 
 ## Usage
 
+### Generating UniFrac Distance Matrices
+
+**Important:** AAM requires pre-computed UniFrac distance matrices. Generate them before training:
+
+```bash
+# Generate pairwise UniFrac distance matrix
+python aam/scripts/compute_unifrac_parallel.py \
+  --table <biom_file> \
+  --tree <tree_file> \
+  --output <unifrac_matrix.npy> \
+  --metric unweighted \
+  --num-workers 4
+```
+
+**Alternative:** Use external tools like `unifrac-binaries` or `scikit-bio` to generate matrices, then save in `.npy`, `.h5`, or `.csv` format.
+
 ### Pre-training (Stage 1: Self-supervised)
 
 Pre-train SequenceEncoder on UniFrac + nucleotide prediction:
@@ -31,7 +47,7 @@ Pre-train SequenceEncoder on UniFrac + nucleotide prediction:
 ```bash
 python -m aam.cli pretrain \
   --table <biom_file> \
-  --tree <tree_file> \
+  --unifrac-matrix <unifrac_matrix.npy> \
   --output-dir <output_dir> \
   --batch-size 8 \
   --epochs 100
@@ -44,7 +60,7 @@ Train SequencePredictor with optional pre-trained encoder:
 ```bash
 python -m aam.cli train \
   --table <biom_file> \
-  --tree <tree_file> \
+  --unifrac-matrix <unifrac_matrix.npy> \
   --metadata <metadata.tsv> \
   --metadata-column <target_column> \
   --output-dir <output_dir> \
@@ -62,7 +78,6 @@ Run predictions on new data:
 python -m aam.cli predict \
   --model <model_checkpoint.pt> \
   --table <biom_file> \
-  --tree <tree_file> \
   --output <predictions.tsv>
 ```
 
@@ -85,13 +100,13 @@ python -m aam.cli predict \
 - `--max-bp`: Maximum base pairs per sequence (default: 150)
 - `--token-limit`: Maximum ASVs per sample (default: 1024, **critical for memory**)
 
-**UniFrac Computation:**
-- `--stripe-mode/--no-stripe-mode`: Use stripe-based UniFrac (default: enabled, more memory-efficient)
-- `--lazy-unifrac/--no-lazy-unifrac`: Compute distances on-the-fly (default: enabled, faster startup)
-- `--reference-samples`: Reference samples for stripe mode - number (e.g., '100') or file path (auto-selects if not specified)
-- `--unifrac-metric`: 'unifrac' (unweighted UniFrac) or 'faith_pd' (default: 'unifrac')
-- `--prune-tree`: Pre-prune tree to only ASVs in table (speeds up large trees)
-- **Note**: Stripe mode removes batch size restrictions (no longer requires even batch sizes)
+**UniFrac Distance Matrix:**
+- `--unifrac-matrix`: Path to pre-computed UniFrac distance matrix (required)
+  - Supported formats: `.npy` (NumPy array), `.h5` (HDF5), `.csv` (CSV)
+  - For pairwise UniFrac: symmetric matrix `[N_samples, N_samples]`
+  - For Faith PD: vector `[N_samples]` (per-sample values)
+- `--unifrac-metric`: 'unifrac' (pairwise unweighted UniFrac) or 'faith_pd' (per-sample Faith PD, default: 'unifrac')
+- **Note**: Matrices must be pre-computed using external tools (see "Generating UniFrac Distance Matrices" above)
 
 **Memory Optimization:**
 - `--gradient-accumulation-steps`: Accumulate gradients over N steps (default: 1)
@@ -122,7 +137,7 @@ For limited GPU memory (e.g., 24GB):
 ```bash
 python -m aam.cli pretrain \
   --table <biom_file> \
-  --tree <tree_file> \
+  --unifrac-matrix <unifrac_matrix.npy> \
   --output-dir <output_dir> \
   --batch-size 2 \
   --gradient-accumulation-steps 16 \
@@ -134,7 +149,6 @@ python -m aam.cli pretrain \
 - `--token-limit 256`: Reduces memory by 16x (most critical)
 - `--gradient-accumulation-steps 16`: Maintains effective batch size
 - `--use-expandable-segments`: Reduces memory fragmentation
-- Stripe mode (default) is more memory-efficient than pairwise UniFrac
 
 See [MEMORY_OPTIMIZATION.md](MEMORY_OPTIMIZATION.md) for detailed strategies.
 
@@ -189,15 +203,15 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed documentation.
 
 ### Recent Improvements
 
-**Stripe-Based UniFrac (Default):**
-- Memory-efficient stripe-based computation (O(N×R) vs O(N²) for pairwise)
-- No batch size restrictions (pairwise required even batch sizes)
-- Auto-selects reference samples (first 100 or all if < 100)
-- Lazy computation enabled by default (faster startup)
+**Pre-computed UniFrac Matrices (PYT-11.4):**
+- UniFrac matrices are now pre-computed using external tools (unifrac-binaries, scikit-bio, etc.)
+- Faster training startup (no on-the-fly computation)
+- More flexible: use any UniFrac computation tool
+- Supports multiple formats: `.npy`, `.h5`, `.csv`
 
 **UniFrac Distance Prediction:**
 - Computes distances from embeddings (Euclidean) instead of direct prediction
-- Sigmoid normalization ensures [0, 1] range
+- Normalized to [0, 1] range for stable training
 - Eliminates boundary clustering and mode collapse issues
 
 ## Documentation
