@@ -189,7 +189,7 @@ class TestPairwiseDistances:
         assert torch.allclose(distances, distances.T)
 
     def test_compute_pairwise_distances_normalized_gradient_flow(self):
-        """Test that normalized distances maintain gradient flow."""
+        """Test that normalized distances maintain healthy gradient flow (no saturation)."""
         from aam.training.losses import compute_pairwise_distances
 
         batch_size = 4
@@ -207,19 +207,21 @@ class TestPairwiseDistances:
 
         # Check that gradients exist and are non-zero
         assert embeddings.grad is not None
-        # Check that at least some gradients are non-zero (use a more lenient threshold for numerical precision)
-        # With sigmoid normalization, gradients can be small, so use 1e-7 threshold
-        assert torch.abs(embeddings.grad).max().item() > 1e-7, "Gradients should be non-zero"
+        # With direct normalization (no sigmoid), gradients should be healthy (> 1e-4)
+        # This is much larger than the previous sigmoid-based threshold (1e-7)
+        max_grad = torch.abs(embeddings.grad).max().item()
+        assert max_grad > 1e-4, f"Gradients should be healthy (max={max_grad:.2e}), not saturated"
 
     def test_compute_pairwise_distances_normalized_different_scales(self):
-        """Test that different scale values affect normalization."""
+        """Test that scale parameter is deprecated but doesn't break (backward compatibility)."""
         from aam.training.losses import compute_pairwise_distances
 
         batch_size = 4
         embedding_dim = 8
         embeddings = torch.randn(batch_size, embedding_dim)
 
-        # Test with different scale values (normalize=True is now the default)
+        # Scale parameter is now deprecated (not used), but should not break
+        # All calls should produce the same result regardless of scale value
         distances_scale_1 = compute_pairwise_distances(embeddings, scale=1.0)
         distances_scale_5 = compute_pairwise_distances(embeddings, scale=5.0)
         distances_scale_10 = compute_pairwise_distances(embeddings, scale=10.0)
@@ -229,15 +231,134 @@ class TestPairwiseDistances:
         assert torch.all(distances_scale_5 >= 0.0) and torch.all(distances_scale_5 <= 1.0)
         assert torch.all(distances_scale_10 >= 0.0) and torch.all(distances_scale_10 <= 1.0)
 
-        # Larger scale should produce more extreme values (closer to 0 or 1)
-        # For the same embeddings, larger scale should push values toward boundaries
-        # Check that scale=10 produces more extreme values than scale=1
-        # (more values close to 0 or 1)
-        scale_1_extreme = ((distances_scale_1 < 0.1) | (distances_scale_1 > 0.9)).sum()
-        scale_10_extreme = ((distances_scale_10 < 0.1) | (distances_scale_10 > 0.9)).sum()
-        # This is a soft check - larger scale should generally produce more extreme values
-        # but we can't guarantee it for all embeddings, so we just check they're different
-        assert distances_scale_1.shape == distances_scale_10.shape
+        # With direct normalization, all scale values should produce identical results
+        # (scale is no longer used)
+        assert torch.allclose(distances_scale_1, distances_scale_5)
+        assert torch.allclose(distances_scale_1, distances_scale_10)
+
+    def test_compute_pairwise_distances_no_saturation(self):
+        """Test that normalized distances do not saturate at ~0.55 (no sigmoid saturation)."""
+        from aam.training.losses import compute_pairwise_distances
+
+        batch_size = 8
+        embedding_dim = 16
+        # Use diverse embeddings to ensure varied distances
+        embeddings = torch.randn(batch_size, embedding_dim) * 2.0
+
+        distances = compute_pairwise_distances(embeddings)
+
+        # Extract off-diagonal elements
+        triu_indices = torch.triu_indices(batch_size, batch_size, offset=1, device=distances.device)
+        off_diagonal = distances[triu_indices[0], triu_indices[1]]
+
+        # Check that values are distributed across [0, 1] range, not all clustered at ~0.55
+        mean_val = off_diagonal.mean().item()
+        std_val = off_diagonal.std().item()
+        
+        # Mean should not be ~0.55 (sigmoid saturation indicator)
+        assert abs(mean_val - 0.55) > 0.1, f"Mean value {mean_val:.3f} suggests saturation at ~0.55"
+        
+        # Values should have reasonable spread (std > 0.1 indicates distribution, not clustering)
+        assert std_val > 0.1, f"Std {std_val:.3f} too small, suggests clustering/saturation"
+        
+        # Check that we have values across the range (not all near 0.5)
+        values_near_05 = ((off_diagonal > 0.5 - 0.1) & (off_diagonal < 0.5 + 0.1)).sum().item()
+        total_values = off_diagonal.numel()
+        fraction_near_05 = values_near_05 / total_values
+        
+        # Less than 50% should be near 0.5 (if all were at 0.55, this would be ~100%)
+        assert fraction_near_05 < 0.5, f"Too many values near 0.5 ({fraction_near_05:.1%}), suggests saturation"
+
+    def test_compute_stripe_distances(self):
+        """Test that stripe distances are computed correctly (unnormalized)."""
+        from aam.training.losses import compute_stripe_distances
+
+        batch_size = 4
+        num_reference = 6
+        embedding_dim = 8
+        embeddings = torch.randn(batch_size, embedding_dim)
+        reference_embeddings = torch.randn(num_reference, embedding_dim)
+
+        # Test unnormalized distances
+        distances = compute_stripe_distances(embeddings, reference_embeddings, normalize=False)
+
+        assert distances.shape == (batch_size, num_reference)
+        assert torch.all(distances >= 0)  # Distances should be non-negative
+
+        # Test that distances match manual computation for first pair
+        manual_dist = torch.sqrt(((embeddings[0] - reference_embeddings[0]) ** 2).sum())
+        assert torch.allclose(distances[0, 0], manual_dist)
+
+    def test_compute_stripe_distances_normalized(self):
+        """Test that normalized stripe distances are bounded to [0, 1]."""
+        from aam.training.losses import compute_stripe_distances
+
+        batch_size = 4
+        num_reference = 6
+        embedding_dim = 8
+        embeddings = torch.randn(batch_size, embedding_dim)
+        reference_embeddings = torch.randn(num_reference, embedding_dim)
+
+        distances = compute_stripe_distances(embeddings, reference_embeddings)
+
+        assert distances.shape == (batch_size, num_reference)
+        # All distances should be in [0, 1]
+        assert torch.all(distances >= 0.0)
+        assert torch.all(distances <= 1.0)
+
+    def test_compute_stripe_distances_no_saturation(self):
+        """Test that normalized stripe distances do not saturate at ~0.55 (no sigmoid saturation)."""
+        from aam.training.losses import compute_stripe_distances
+
+        batch_size = 8
+        num_reference = 10
+        embedding_dim = 16
+        # Use diverse embeddings to ensure varied distances
+        embeddings = torch.randn(batch_size, embedding_dim) * 2.0
+        reference_embeddings = torch.randn(num_reference, embedding_dim) * 2.0
+
+        distances = compute_stripe_distances(embeddings, reference_embeddings)
+
+        # Flatten to get all distances
+        all_distances = distances.flatten()
+
+        # Check that values are distributed across [0, 1] range, not all clustered at ~0.55
+        mean_val = all_distances.mean().item()
+        std_val = all_distances.std().item()
+        
+        # Mean should not be ~0.55 (sigmoid saturation indicator)
+        assert abs(mean_val - 0.55) > 0.1, f"Mean value {mean_val:.3f} suggests saturation at ~0.55"
+        
+        # Values should have reasonable spread (std > 0.1 indicates distribution, not clustering)
+        assert std_val > 0.1, f"Std {std_val:.3f} too small, suggests clustering/saturation"
+        
+        # Check that we have values across the range (not all near 0.5)
+        values_near_05 = ((all_distances > 0.5 - 0.1) & (all_distances < 0.5 + 0.1)).sum().item()
+        total_values = all_distances.numel()
+        fraction_near_05 = values_near_05 / total_values
+        
+        # Less than 50% should be near 0.5 (if all were at 0.55, this would be ~100%)
+        assert fraction_near_05 < 0.5, f"Too many values near 0.5 ({fraction_near_05:.1%}), suggests saturation"
+
+    def test_compute_stripe_distances_gradient_flow(self):
+        """Test that normalized stripe distances maintain healthy gradient flow (no saturation)."""
+        from aam.training.losses import compute_stripe_distances
+
+        batch_size = 4
+        num_reference = 6
+        embedding_dim = 8
+        embeddings = torch.randn(batch_size, embedding_dim, requires_grad=True)
+        reference_embeddings = torch.randn(num_reference, embedding_dim)
+
+        distances = compute_stripe_distances(embeddings, reference_embeddings)
+        loss = distances.sum()
+        loss.backward()
+
+        # Check that gradients exist and are non-zero
+        assert embeddings.grad is not None
+        # With direct normalization (no sigmoid), gradients should be healthy (> 1e-4)
+        max_grad = torch.abs(embeddings.grad).max().item()
+        assert max_grad > 1e-4, f"Gradients should be healthy (max={max_grad:.2e}), not saturated"
 
 
 class TestBaseLoss:

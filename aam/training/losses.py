@@ -39,12 +39,12 @@ def compute_stripe_distances(
     Args:
         embeddings: Sample embeddings [batch_size, embedding_dim]
         reference_embeddings: Reference sample embeddings [num_reference_samples, embedding_dim]
-        normalize: If True, normalize distances to [0, 1] using sigmoid (default: True)
-        scale: Scaling factor for sigmoid normalization (default: 5.0)
+        normalize: If True, normalize distances to [0, 1] by dividing by max distance (default: True)
+        scale: Deprecated parameter, kept for backward compatibility (not used)
 
     Returns:
         Stripe distance matrix [batch_size, num_reference_samples]
-        If normalize=True, distances are bounded to [0, 1]
+        If normalize=True, distances are bounded to [0, 1] by direct normalization
     """
     # Check for NaN or Inf in embeddings
     if torch.any(torch.isnan(embeddings)):
@@ -81,14 +81,13 @@ def compute_stripe_distances(
 
     # Normalize distances to [0, 1] if requested (for UniFrac distances)
     if normalize:
-        # Apply sigmoid with scaling to bound distances to [0, 1]
-        # scale parameter controls sensitivity: larger scale = more sensitive to distance changes
-        # Use max distance as normalization factor, then apply sigmoid
+        # Use direct normalization by max distance to bound distances to [0, 1]
+        # This preserves distance relationships and maintains healthy gradient flow
+        # (sigmoid was removed to prevent saturation at ~0.55)
         max_dist = distances.max()
         if max_dist > 0:
-            # Normalize by max distance, then apply sigmoid
-            normalized = distances / (max_dist * scale)
-            distances = torch.sigmoid(normalized)
+            # Normalize by max distance directly (no sigmoid)
+            distances = distances / max_dist
         else:
             # All distances are 0, return zeros
             distances = torch.zeros_like(distances)
@@ -105,12 +104,12 @@ def compute_pairwise_distances(
 
     Args:
         embeddings: Sample embeddings [batch_size, embedding_dim]
-        normalize: If True, normalize distances to [0, 1] using sigmoid (default: True)
-        scale: Scaling factor for sigmoid normalization (default: 5.0)
+        normalize: If True, normalize distances to [0, 1] by dividing by max distance (default: True)
+        scale: Deprecated parameter, kept for backward compatibility (not used)
 
     Returns:
         Pairwise distance matrix [batch_size, batch_size]
-        If normalize=True, distances are bounded to [0, 1]
+        If normalize=True, distances are bounded to [0, 1] by direct normalization
     """
     # Check for NaN or Inf in embeddings
     if torch.any(torch.isnan(embeddings)):
@@ -174,15 +173,13 @@ def compute_pairwise_distances(
 
     # Normalize distances to [0, 1] if requested (for UniFrac distances)
     if normalize:
-        # Apply sigmoid with scaling to bound distances to [0, 1]
-        # scale parameter controls sensitivity: larger scale = more sensitive to distance changes
-        # Use max distance as normalization factor, then apply sigmoid (prevents saturation)
-        # Note: diagonal is already 0.0, sigmoid(0) = 0.5, so we need to handle diagonal separately
+        # Use direct normalization by max distance to bound distances to [0, 1]
+        # This preserves distance relationships and maintains healthy gradient flow
+        # (sigmoid was removed to prevent saturation at ~0.55)
         max_dist = distances.max()
         if max_dist > 0:
-            # Normalize by max distance, then apply sigmoid
-            normalized = distances / (max_dist * scale)
-            normalized_distances = torch.sigmoid(normalized)
+            # Normalize by max distance directly (no sigmoid)
+            normalized_distances = distances / max_dist
         else:
             # All distances are 0, return zeros
             normalized_distances = torch.zeros_like(distances)
