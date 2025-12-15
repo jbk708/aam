@@ -9,7 +9,7 @@ import tempfile
 import os
 
 from aam.data.biom_loader import BIOMLoader
-from aam.data.unifrac import UniFracComputer
+from aam.data.unifrac_loader import UniFracLoader
 from aam.data.tokenizer import SequenceTokenizer
 from aam.data.dataset import ASVDataset, collate_fn
 from aam.models.sequence_encoder import SequenceEncoder
@@ -94,8 +94,8 @@ def small_predictor_config(small_model_config):
 class TestDataPipelineIntegration:
     """Test data pipeline end-to-end integration."""
 
-    def test_data_pipeline_integration(self, biom_file, tree_file):
-        """Test complete data pipeline: Load → Rarefy → UniFrac → Tokenize → Dataset."""
+    def test_data_pipeline_integration(self, biom_file, tmp_path):
+        """Test complete data pipeline: Load → Rarefy → Load UniFrac Matrix → Tokenize → Dataset."""
         loader = BIOMLoader()
         table = loader.load_table(str(biom_file))
 
@@ -108,8 +108,15 @@ class TestDataPipelineIntegration:
         assert rarefied_table is not None
         assert rarefied_table.shape[0] > 0
 
-        computer = UniFracComputer()
-        unifrac_distances = computer.compute_unweighted(rarefied_table, str(tree_file))
+        # Create pre-computed UniFrac distance matrix for testing
+        from skbio import DistanceMatrix
+        import numpy as np
+        sample_ids = list(rarefied_table.ids(axis="sample"))
+        n_samples = len(sample_ids)
+        distances = np.random.rand(n_samples, n_samples)
+        distances = (distances + distances.T) / 2  # Make symmetric
+        np.fill_diagonal(distances, 0.0)  # Diagonal is 0
+        unifrac_distances = DistanceMatrix(distances, ids=sample_ids)
 
         assert unifrac_distances is not None
 
@@ -133,14 +140,17 @@ class TestDataPipelineIntegration:
         assert "unifrac_target" not in sample
         assert dataset.unifrac_distances is not None
 
-    def test_data_pipeline_tensor_shapes(self, biom_file, tree_file):
+    def test_data_pipeline_tensor_shapes(self, biom_file):
         """Verify tensor shapes throughout data pipeline."""
         loader = BIOMLoader()
         table = loader.load_table(str(biom_file))
         rarefied_table = loader.rarefy(table, depth=1000, random_seed=42)
 
-        computer = UniFracComputer()
-        unifrac_distances = computer.compute_faith_pd(rarefied_table, str(tree_file))
+        # Create pre-computed Faith PD values
+        import pandas as pd
+        sample_ids = list(rarefied_table.ids(axis="sample"))
+        faith_pd_values = np.random.rand(len(sample_ids))
+        unifrac_distances = pd.Series(faith_pd_values, index=sample_ids)
 
         tokenizer = SequenceTokenizer()
         dataset = ASVDataset(
@@ -177,14 +187,17 @@ class TestDataPipelineIntegration:
         assert batched["unifrac_target"].shape[0] == 2
         assert batched["unifrac_target"].shape[1] == 1
 
-    def test_data_pipeline_dtypes(self, biom_file, tree_file):
+    def test_data_pipeline_dtypes(self, biom_file):
         """Verify tensor dtypes throughout data pipeline."""
         loader = BIOMLoader()
         table = loader.load_table(str(biom_file))
         rarefied_table = loader.rarefy(table, depth=1000, random_seed=42)
 
-        computer = UniFracComputer()
-        unifrac_distances = computer.compute_faith_pd(rarefied_table, str(tree_file))
+        # Create pre-computed Faith PD values
+        import pandas as pd
+        sample_ids = list(rarefied_table.ids(axis="sample"))
+        faith_pd_values = np.random.rand(len(sample_ids))
+        unifrac_distances = pd.Series(faith_pd_values, index=sample_ids)
 
         tokenizer = SequenceTokenizer()
         dataset = ASVDataset(
@@ -211,14 +224,17 @@ class TestDataPipelineIntegration:
         batched = collate(batch)
         assert batched["unifrac_target"].dtype == torch.float32
 
-    def test_data_pipeline_dataloader(self, biom_file, tree_file):
+    def test_data_pipeline_dataloader(self, biom_file):
         """Test data pipeline with DataLoader."""
         loader = BIOMLoader()
         table = loader.load_table(str(biom_file))
         rarefied_table = loader.rarefy(table, depth=1000, random_seed=42)
 
-        computer = UniFracComputer()
-        unifrac_distances = computer.compute_faith_pd(rarefied_table, str(tree_file))
+        # Create pre-computed Faith PD values
+        import pandas as pd
+        sample_ids = list(rarefied_table.ids(axis="sample"))
+        faith_pd_values = np.random.rand(len(sample_ids))
+        unifrac_distances = pd.Series(faith_pd_values, index=sample_ids)
 
         tokenizer = SequenceTokenizer()
         dataset = ASVDataset(
@@ -506,15 +522,21 @@ class TestEndToEnd:
     """Test end-to-end training workflow."""
 
     @pytest.mark.slow
-    def test_end_to_end_training(self, biom_file, tree_file, device, small_model_config, tmp_path):
+    def test_end_to_end_training(self, biom_file, device, small_model_config, tmp_path):
         """Test full training workflow with real data."""
         batch_size = 4
         loader = BIOMLoader()
         table = loader.load_table(str(biom_file))
         rarefied_table = loader.rarefy(table, depth=1000, random_seed=42)
 
-        computer = UniFracComputer()
-        unifrac_distances = computer.compute_unweighted(rarefied_table, str(tree_file))
+        # Create pre-computed UniFrac distance matrix
+        from skbio import DistanceMatrix
+        sample_ids = list(rarefied_table.ids(axis="sample"))
+        n_samples = len(sample_ids)
+        distances = np.random.rand(n_samples, n_samples)
+        distances = (distances + distances.T) / 2  # Make symmetric
+        np.fill_diagonal(distances, 0.0)  # Diagonal is 0
+        unifrac_distances = DistanceMatrix(distances, ids=sample_ids)
 
         tokenizer = SequenceTokenizer()
         dataset = ASVDataset(
@@ -585,15 +607,21 @@ class TestEndToEnd:
         assert initial_loss >= 0
 
     @pytest.mark.slow
-    def test_end_to_end_loss_decreases(self, biom_file, tree_file, device, small_model_config):
+    def test_end_to_end_loss_decreases(self, biom_file, device, small_model_config):
         """Verify loss decreases during training."""
         batch_size = 4
         loader = BIOMLoader()
         table = loader.load_table(str(biom_file))
         rarefied_table = loader.rarefy(table, depth=1000, random_seed=42)
 
-        computer = UniFracComputer()
-        unifrac_distances = computer.compute_unweighted(rarefied_table, str(tree_file))
+        # Create pre-computed UniFrac distance matrix
+        from skbio import DistanceMatrix
+        sample_ids = list(rarefied_table.ids(axis="sample"))
+        n_samples = len(sample_ids)
+        distances = np.random.rand(n_samples, n_samples)
+        distances = (distances + distances.T) / 2  # Make symmetric
+        np.fill_diagonal(distances, 0.0)  # Diagonal is 0
+        unifrac_distances = DistanceMatrix(distances, ids=sample_ids)
 
         tokenizer = SequenceTokenizer()
         dataset = ASVDataset(
@@ -663,15 +691,21 @@ class TestEndToEnd:
         assert all(l >= 0 for l in losses)
 
     @pytest.mark.slow
-    def test_end_to_end_checkpoint_saving(self, biom_file, tree_file, device, small_model_config, tmp_path):
+    def test_end_to_end_checkpoint_saving(self, biom_file, device, small_model_config, tmp_path):
         """Test checkpoint saving during training."""
         batch_size = 4
         loader = BIOMLoader()
         table = loader.load_table(str(biom_file))
         rarefied_table = loader.rarefy(table, depth=1000, random_seed=42)
 
-        computer = UniFracComputer()
-        unifrac_distances = computer.compute_unweighted(rarefied_table, str(tree_file))
+        # Create pre-computed UniFrac distance matrix
+        from skbio import DistanceMatrix
+        sample_ids = list(rarefied_table.ids(axis="sample"))
+        n_samples = len(sample_ids)
+        distances = np.random.rand(n_samples, n_samples)
+        distances = (distances + distances.T) / 2  # Make symmetric
+        np.fill_diagonal(distances, 0.0)  # Diagonal is 0
+        unifrac_distances = DistanceMatrix(distances, ids=sample_ids)
 
         tokenizer = SequenceTokenizer()
         dataset = ASVDataset(
@@ -711,7 +745,8 @@ class TestEndToEnd:
         batch = next(iter(dataloader))
         tokens = batch["tokens"].to(device)
         sample_ids = batch["sample_ids"]
-        batch_distances = computer.extract_batch_distances(unifrac_distances, sample_ids, metric="unweighted")
+        unifrac_loader = UniFracLoader()
+        batch_distances = unifrac_loader.extract_batch_distances(unifrac_distances, sample_ids, metric="unweighted")
         base_targets = torch.FloatTensor(batch_distances).to(device)
 
         model.train()
