@@ -1,15 +1,22 @@
 # Stripe-Based UniFrac API Investigation Report
 
-**Status:** ✅ Completed  
+**Status:** ⚠️ **DEPRECATED** - This investigation is obsolete as of PYT-11.4  
 **Date:** 2025  
-**Ticket:** PYT-11.1  
+**Deprecated:** 2025 (PYT-11.4)  
+**Ticket:** PYT-11.1 (superseded by PYT-11.4)  
 **Investigator:** Auto (AI Assistant)
 
-## Executive Summary
+## ⚠️ Deprecation Notice
 
-This report documents the investigation into stripe-based UniFrac computation APIs. The investigation examined both the `unifrac` Python package and scikit-bio (`skbio`) to determine their capabilities for computing stripe-based distances (distances from samples to a reference set rather than all pairwise combinations).
+**This investigation report is obsolete as of PYT-11.4.** Stripe mode and all UniFrac computation functionality has been deprecated. Users should generate UniFrac matrices using unifrac-binaries or other external tools, then load pre-computed matrices using `UniFracLoader`. This document is kept for historical reference only.
+
+## Executive Summary (Historical)
+
+This report documented the investigation into stripe-based UniFrac computation APIs. The investigation examined both the `unifrac` Python package and scikit-bio (`skbio`) to determine their capabilities for computing stripe-based distances (distances from samples to a reference set rather than all pairwise combinations).
 
 **Key Finding:** The `unifrac` package provides `*_dense_pair` functions that can be used to efficiently compute stripe-based distances by computing individual sample-to-reference distances.
+
+**Note:** This approach was superseded by PYT-11.4, which uses pre-computed matrices instead of on-the-fly computation.
 
 ## Investigation Results
 
