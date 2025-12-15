@@ -1,6 +1,14 @@
-"""Unit tests for stripe-based UniFrac computation methods."""
+"""Unit tests for stripe-based UniFrac computation methods.
+
+DEPRECATED: Stripe mode and computation functionality is deprecated as of PYT-11.4.
+Users should generate UniFrac matrices using unifrac-binaries or other external tools.
+These tests are kept for reference but are skipped.
+"""
 
 import pytest
+
+# Mark all tests in this file as deprecated
+pytestmark = pytest.mark.skip(reason="Stripe mode and computation functionality deprecated in PYT-11.4. Use pre-computed matrices instead.")
 import numpy as np
 from pathlib import Path
 from biom import Table
