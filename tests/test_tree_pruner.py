@@ -1,4 +1,9 @@
-"""Unit tests for tree pruning utilities."""
+"""Unit tests for tree pruning utilities.
+
+DEPRECATED: Tree pruning functionality is deprecated as of PYT-11.4.
+Tree pruning should be handled by unifrac-binaries or other external tools
+when generating UniFrac matrices. These tests are kept for reference but are skipped.
+"""
 
 import pytest
 import numpy as np
@@ -9,6 +14,9 @@ from biom import Table
 from skbio import TreeNode
 
 from aam.data.tree_pruner import prune_tree_to_table, get_pruning_stats, load_or_prune_tree
+
+# Mark all tests in this file as deprecated
+pytestmark = pytest.mark.skip(reason="Tree pruning functionality deprecated in PYT-11.4. Use unifrac-binaries instead.")
 
 
 def create_simple_tree() -> TreeNode:
