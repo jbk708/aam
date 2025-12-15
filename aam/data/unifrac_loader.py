@@ -5,7 +5,7 @@ Users should generate UniFrac matrices using unifrac-binaries or other tools,
 then load them for training.
 """
 
-from typing import List, Optional, Union, Dict
+from typing import List, Optional, Union, Dict, Tuple
 from pathlib import Path
 import logging
 
