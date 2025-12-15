@@ -60,14 +60,14 @@ class UniFracLoader:
         
         file_ext = matrix_path_obj.suffix.lower()
         
-        if file_ext == '.npy':
+        if file_ext == '.npy' or file_ext == '.npz':
             return self._load_npy(matrix_path, sample_ids, matrix_format)
         elif file_ext == '.h5' or file_ext == '.hdf5':
             return self._load_h5(matrix_path, sample_ids, matrix_format)
         elif file_ext == '.csv':
             return self._load_csv(matrix_path, sample_ids, matrix_format)
         else:
-            raise ValueError(f"Unsupported matrix file format: {file_ext}. Supported: .npy, .h5, .csv")
+            raise ValueError(f"Unsupported matrix file format: {file_ext}. Supported: .npy, .npz, .h5, .csv")
     
     def _load_npy(
         self,
@@ -100,6 +100,9 @@ class UniFracLoader:
             self.validate_matrix_dimensions(matrix, sample_ids, matrix_format or "unweighted")
         
         if matrix_format == "faith_pd" or (matrix.ndim == 1 and matrix_format is None):
+            # Handle both 1D and 2D arrays (2D with shape [N, 1])
+            if matrix.ndim == 2 and matrix.shape[1] == 1:
+                matrix = matrix.flatten()
             return pd.Series(matrix, index=sample_ids) if sample_ids is not None else pd.Series(matrix)
         elif matrix_format == "pairwise" or (matrix.ndim == 2 and matrix.shape[0] == matrix.shape[1] and matrix_format is None):
             if sample_ids is not None:
@@ -134,17 +137,20 @@ class UniFracLoader:
                 else:
                     raise ValueError(f"Multiple datasets in HDF5 file. Expected one of: distances, stripe_distances, faith_pd. Found: {keys}")
             
+        if sample_ids is not None:
+            self.validate_matrix_dimensions(matrix, sample_ids, matrix_format or "unweighted")
+        
+        if matrix_format == "faith_pd" or (matrix.ndim == 1 and matrix_format is None):
+            # Handle both 1D and 2D arrays (2D with shape [N, 1])
+            if matrix.ndim == 2 and matrix.shape[1] == 1:
+                matrix = matrix.flatten()
+            return pd.Series(matrix, index=sample_ids) if sample_ids is not None else pd.Series(matrix)
+        elif matrix_format == "pairwise" or (matrix.ndim == 2 and matrix.shape[0] == matrix.shape[1] and matrix_format is None):
             if sample_ids is not None:
-                self.validate_matrix_dimensions(matrix, sample_ids, matrix_format or "unweighted")
-            
-            if matrix_format == "faith_pd" or (matrix.ndim == 1 and matrix_format is None):
-                return pd.Series(matrix, index=sample_ids) if sample_ids is not None else pd.Series(matrix)
-            elif matrix_format == "pairwise" or (matrix.ndim == 2 and matrix.shape[0] == matrix.shape[1] and matrix_format is None):
-                if sample_ids is not None:
-                    return DistanceMatrix(matrix, ids=sample_ids)
-                return matrix
-            else:
-                return matrix
+                return DistanceMatrix(matrix, ids=sample_ids)
+            return matrix
+        else:
+            return matrix
     
     def _load_csv(
         self,
@@ -168,9 +174,18 @@ class UniFracLoader:
                     logger.warning(f"CSV matrix has {len(extra)} extra samples not in expected IDs")
             
             reorder_indices = [csv_sample_ids.index(sid) for sid in sample_ids if sid in csv_sample_ids]
-            matrix = matrix[np.ix_(reorder_indices, reorder_indices)] if matrix.ndim == 2 and matrix.shape[0] == matrix.shape[1] else matrix[reorder_indices]
+            if matrix.ndim == 2 and matrix.shape[0] == matrix.shape[1]:
+                matrix = matrix[np.ix_(reorder_indices, reorder_indices)]
+            elif matrix.ndim == 2 and matrix.shape[1] == 1:
+                # Faith PD as column vector
+                matrix = matrix[reorder_indices, 0]
+            else:
+                matrix = matrix[reorder_indices]
         
         if matrix_format == "faith_pd" or (matrix.ndim == 1 and matrix_format is None):
+            # Handle both 1D and 2D arrays (2D with shape [N, 1])
+            if matrix.ndim == 2 and matrix.shape[1] == 1:
+                matrix = matrix.flatten()
             return pd.Series(matrix, index=sample_ids if sample_ids else csv_sample_ids)
         elif matrix_format == "pairwise" or (matrix.ndim == 2 and matrix.shape[0] == matrix.shape[1] and matrix_format is None):
             ids = sample_ids if sample_ids else csv_sample_ids
@@ -284,12 +299,10 @@ class UniFracLoader:
         
         all_sample_ids_set = set(all_sample_ids)
         missing_test = set(sample_ids) - all_sample_ids_set
-        missing_ref = set(reference_sample_ids) - all_sample_ids_set
         
         if missing_test:
             raise ValueError(f"Test sample IDs not found in all_sample_ids: {sorted(missing_test)}")
-        if missing_ref:
-            raise ValueError(f"Reference sample IDs not found in all_sample_ids: {sorted(missing_ref)}")
+        # Note: reference_sample_ids don't need to be in all_sample_ids - they're separate
         
         try:
             batch_indices = [all_sample_ids.index(sid) for sid in sample_ids]
