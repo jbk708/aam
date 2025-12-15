@@ -1,5 +1,12 @@
-"""UniFrac distance computation for microbial sequencing data."""
+"""UniFrac distance computation for microbial sequencing data.
 
+DEPRECATED: Computation functionality is deprecated as of PYT-11.4.
+Users should generate UniFrac matrices using unifrac-binaries or other external tools,
+then use UniFracLoader to load pre-computed matrices.
+This module is kept for backward compatibility but will be removed in a future version.
+"""
+
+import warnings
 from typing import List, Optional, Union, Dict, Tuple
 import tempfile
 import os
@@ -15,17 +22,33 @@ import numpy as np
 import unifrac
 import multiprocessing
 
-# Import tree pruner
-from aam.data.tree_pruner import load_or_prune_tree, get_pruning_stats
+# Import tree pruner (deprecated)
+try:
+    from aam.data.tree_pruner import load_or_prune_tree, get_pruning_stats
+except ImportError:
+    # Tree pruner may be removed
+    pass
+
+# Deprecation warning
+warnings.warn(
+    "UniFracComputer computation functionality is deprecated. "
+    "Use UniFracLoader to load pre-computed matrices instead. "
+    "Generate matrices using unifrac-binaries or other external tools. "
+    "This module will be removed in a future version.",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 
 class UniFracComputer:
     """Compute phylogenetic distances (UniFrac) from BIOM tables and phylogenetic trees.
 
+    DEPRECATED: This class is deprecated as of PYT-11.4.
+    Use UniFracLoader to load pre-computed matrices instead.
+    
     This class provides functionality to:
-    - Compute unweighted UniFrac distances between samples
-    - Compute Faith's Phylogenetic Diversity (Faith PD) per sample
-    - Extract batch-level distances from pre-computed distance matrices
+    - Extract batch-level distances from pre-computed distance matrices (still supported)
+    - Computation methods are deprecated and will be removed
     """
 
     def __init__(self, num_threads: Optional[int] = None, cache_size: int = 128):
@@ -61,6 +84,9 @@ class UniFracComputer:
 
     def compute_unweighted(self, table: Table, tree_path: str, filter_table: bool = True) -> DistanceMatrix:
         """Compute unweighted UniFrac distances between samples.
+        
+        DEPRECATED: This method is deprecated as of PYT-11.4.
+        Generate UniFrac matrices using unifrac-binaries, then use UniFracLoader to load them.
 
         Args:
             table: Rarefied biom.Table object
@@ -75,6 +101,12 @@ class UniFracComputer:
             FileNotFoundError: If tree file doesn't exist
             ValueError: If ASV IDs don't match between table and tree
         """
+        warnings.warn(
+            "compute_unweighted() is deprecated. Generate matrices using unifrac-binaries, "
+            "then use UniFracLoader.load_matrix() to load them.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         tree_path_obj = Path(tree_path)
         if not tree_path_obj.exists():
             raise FileNotFoundError(f"Tree file not found: {tree_path}")
@@ -116,6 +148,9 @@ class UniFracComputer:
 
     def compute_faith_pd(self, table: Table, tree_path: str, filter_table: bool = True) -> Union[DistanceMatrix, pd.Series]:
         """Compute Faith's Phylogenetic Diversity (Faith PD) per sample.
+        
+        DEPRECATED: This method is deprecated as of PYT-11.4.
+        Generate UniFrac matrices using unifrac-binaries, then use UniFracLoader to load them.
 
         Args:
             table: Rarefied biom.Table object
@@ -130,6 +165,12 @@ class UniFracComputer:
             FileNotFoundError: If tree file doesn't exist
             ValueError: If ASV IDs don't match between table and tree
         """
+        warnings.warn(
+            "compute_faith_pd() is deprecated. Generate matrices using unifrac-binaries, "
+            "then use UniFracLoader.load_matrix() to load them.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         tree_path_obj = Path(tree_path)
         if not tree_path_obj.exists():
             raise FileNotFoundError(f"Tree file not found: {tree_path}")
@@ -264,6 +305,9 @@ class UniFracComputer:
     ) -> None:
         """Setup for lazy batch-wise distance computation.
         
+        DEPRECATED: This method is deprecated as of PYT-11.4.
+        Use UniFracLoader to load pre-computed matrices instead.
+        
         This method stores the table and tree path for efficient batch computation.
         The tree is loaded lazily per worker process to avoid memory issues with multiprocessing.
         
@@ -274,6 +318,12 @@ class UniFracComputer:
             prune_tree: If True, pre-prune tree to only ASVs in table (dramatically reduces tree size)
             pruned_tree_cache: Optional path to cache pruned tree (default: {tree_path}.pruned.nwk)
         """
+        warnings.warn(
+            "setup_lazy_computation() is deprecated. Generate matrices using unifrac-binaries, "
+            "then use UniFracLoader.load_matrix() to load them.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         import logging
         logger = logging.getLogger(__name__)
         
