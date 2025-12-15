@@ -36,6 +36,7 @@
 **Analysis & Planning:**
 - **[19_unifrac_underfitting_analysis.md](19_unifrac_underfitting_analysis.md)** - UniFrac underfitting analysis and fixes ✅
 - **[20_optimization_plan.md](20_optimization_plan.md)** - Performance optimization plan 📋
+- **[22_sigmoid_saturation_fix.md](22_sigmoid_saturation_fix.md)** - Fix sigmoid saturation in distance normalization 🔴 HIGH PRIORITY
 - **[FUTURE_WORK.md](FUTURE_WORK.md)** - Future enhancements and next steps 📋
 
 ## Quick Reference
