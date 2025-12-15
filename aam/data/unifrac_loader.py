@@ -35,7 +35,7 @@ class UniFracLoader:
         matrix_path: str,
         sample_ids: Optional[List[str]] = None,
         matrix_format: Optional[str] = None,
-    ) -> Union[np.ndarray, DistanceMatrix, pd.Series, Tuple[Union[np.ndarray, DistanceMatrix, pd.Series], List[str]]]:
+    ) -> Union[np.ndarray, DistanceMatrix, pd.Series]:
         """Load pre-computed UniFrac distance matrix from disk.
         
         Args:
