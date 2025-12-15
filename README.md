@@ -26,19 +26,26 @@ pip install -e ".[dev,docs,training]"
 
 ### Generating UniFrac Distance Matrices
 
-**Important:** AAM requires pre-computed UniFrac distance matrices. Generate them before training:
+**Important:** AAM requires pre-computed UniFrac distance matrices. Generate them before training using [unifrac-binaries](https://github.com/biocore/unifrac-binaries/tree/main):
 
 ```bash
-# Generate pairwise UniFrac distance matrix
-python aam/scripts/compute_unifrac_parallel.py \
-  --table <biom_file> \
+# Install unifrac-binaries (if not already installed)
+# See: https://github.com/biocore/unifrac-binaries/tree/main
+
+# Generate pairwise unweighted UniFrac distance matrix
+# Use float32 mode for memory efficiency (recommended)
+unifrac \
+  --input <biom_file> \
   --tree <tree_file> \
   --output <unifrac_matrix.npy> \
-  --metric unweighted \
-  --num-workers 4
+  --mode unweighted \
+  --format numpy \
+  --dtype float32
 ```
 
-**Alternative:** Use external tools like `unifrac-binaries` or `scikit-bio` to generate matrices, then save in `.npy`, `.h5`, or `.csv` format.
+**Note:** `float32` mode is recommended and fully supported. It reduces memory usage by 50% compared to float64 while maintaining sufficient precision for training.
+
+**Alternative formats:** You can also generate matrices using `scikit-bio` or other tools, then save in `.npy`, `.h5`, or `.csv` format. The matrix should be symmetric for pairwise UniFrac (shape `[N_samples, N_samples]`) or a vector for Faith PD (shape `[N_samples]`).
 
 ### Pre-training (Stage 1: Self-supervised)
 
