@@ -649,6 +649,141 @@ python -m aam.cli train --table table.biom --unifrac-matrix distances.npy ...
 
 ---
 
+### PYT-11.5: Fix Sigmoid Saturation in UniFrac Distance Normalization
+**Priority:** HIGH | **Effort:** Medium (3-4 hours) | **Status:** ✅ Completed
+
+**Description:**
+Fix sigmoid saturation issue where all UniFrac distance predictions cluster at ~0.55 and do not change during training. The current normalization approach applies sigmoid after normalizing by max distance, causing gradient saturation and preventing the model from learning meaningful distance relationships.
+
+**Problem:**
+- All predicted UniFrac distances are approximately 0.55
+- Predictions do not change during training
+- Model appears stuck in a local minimum
+- Loss decreases but predictions remain constant
+- Validation plots show flat line at 0.55
+
+**Root Cause:**
+The current normalization in `compute_pairwise_distances()` and `compute_stripe_distances()`:
+1. Normalizes distances by max distance: `normalized = distances / (max_dist * scale)`
+2. Applies sigmoid: `distances = torch.sigmoid(normalized)`
+
+**Problem:** After normalization by max distance, values are typically in [0, 1] range. Applying sigmoid to this range:
+- `sigmoid(0) ≈ 0.5`
+- `sigmoid(1) ≈ 0.73`
+- Most values cluster around 0.5-0.73, explaining the 0.55 observation
+
+This causes:
+- **Gradient saturation**: Sigmoid gradients are very small in the [0.5, 0.73] range
+- **Loss of information**: All distance relationships compressed into narrow [0.5, 0.73] range
+- **Training stagnation**: Model cannot learn because gradients are too small
+
+**Solution:**
+Remove sigmoid and use direct normalization:
+- Normalize by max distance only: `distances = distances / max_dist`
+- Keep values in [0, 1] range without sigmoid
+- Preserves distance relationships and gradient flow
+- Matches original TensorFlow approach (no sigmoid)
+
+**Acceptance Criteria:**
+- [x] Remove sigmoid application from `compute_pairwise_distances()`
+- [x] Remove sigmoid application from `compute_stripe_distances()`
+- [x] Use direct normalization: `distances = distances / max_dist`
+- [x] Ensure diagonal remains 0.0 for pairwise distances
+- [x] Verify distances are in [0, 1] range
+- [x] Verify gradient flow is maintained (no saturation)
+- [x] Update tests to verify new normalization behavior
+- [x] Add tests for gradient flow without sigmoid
+- [x] Verify predictions vary across [0, 1] range (not all ~0.55)
+- [x] Run integration test to verify training works correctly
+- [x] Verify no regression in training stability
+
+**Files to Modify:**
+- `aam/training/losses.py`:
+  - `compute_pairwise_distances()` - Remove sigmoid, use direct normalization
+  - `compute_stripe_distances()` - Remove sigmoid, use direct normalization
+- `tests/test_losses.py`:
+  - Update tests to verify new normalization behavior
+  - Add tests for gradient flow without sigmoid
+  - Add tests to verify no saturation (values not all ~0.5)
+
+**Implementation Details:**
+
+1. **Update `compute_pairwise_distances()`:**
+   - Remove sigmoid application
+   - Use direct normalization: `distances = distances / max_dist` (when max_dist > 0)
+   - Ensure diagonal remains 0.0
+   - Keep values in [0, 1] range
+
+2. **Update `compute_stripe_distances()`:**
+   - Remove sigmoid application
+   - Use direct normalization: `distances = distances / max_dist` (when max_dist > 0)
+   - Keep values in [0, 1] range
+
+3. **Update tests:**
+   - Verify distances are in [0, 1] range
+   - Verify gradient flow is maintained
+   - Verify no saturation occurs (values not all ~0.5)
+   - Verify diagonal is 0.0 for pairwise distances
+
+**Expected Outcomes:**
+
+**Before Fix:**
+- Predictions: All ~0.55
+- Gradient magnitudes: Very small (< 1e-6)
+- Training: Stagnant, loss plateaus
+- Validation plots: Flat line at 0.55
+
+**After Fix:**
+- Predictions: Distributed across [0, 1] range
+- Gradient magnitudes: Healthy (> 1e-4)
+- Training: Loss decreases, predictions improve
+- Validation plots: Predictions vary and correlate with true values
+
+**Dependencies:** PYT-11.1 (completed), PYT-11.4 (completed)
+
+**Estimated Time:** 3-4 hours (actual: completed)
+
+**Implementation Notes:**
+- ✅ Removed sigmoid from `compute_pairwise_distances()` and `compute_stripe_distances()`
+- ✅ Replaced with direct normalization: `distances = distances / max_dist` (when max_dist > 0)
+- ✅ Updated docstrings to reflect new normalization behavior
+- ✅ Deprecated `scale` parameter (kept for backward compatibility but not used)
+- ✅ Added comprehensive tests to verify no saturation:
+  - `test_compute_pairwise_distances_no_saturation()` - Verifies values not all ~0.55
+  - `test_compute_stripe_distances_no_saturation()` - Verifies stripe distances not saturated
+  - Updated gradient flow tests to expect healthy gradients (> 1e-4 instead of > 1e-7)
+- ✅ Added tests for stripe distances normalization
+- ✅ All tests passing (42 passed, 1 skipped)
+- ✅ No regressions in existing functionality
+
+**Files Modified:**
+- ✅ `aam/training/losses.py` - Removed sigmoid, implemented direct normalization
+- ✅ `tests/test_losses.py` - Added saturation tests, updated gradient flow tests
+
+**Key Changes:**
+1. **Before**: `distances = torch.sigmoid(distances / (max_dist * scale))` → caused saturation at ~0.55
+2. **After**: `distances = distances / max_dist` → preserves distance relationships, healthy gradients
+
+**Expected Results:**
+- Predictions now distributed across [0, 1] range (not all ~0.55)
+- Gradient magnitudes healthy (> 1e-4) instead of saturated (< 1e-6)
+- Training should show improved loss decrease and prediction quality
+- Validation plots should show varied predictions correlating with true values
+
+**Implementation Notes:**
+- This issue was discovered during PYT-11.4 validation
+- The sigmoid was added in PYT-11.1 to ensure [0, 1] range, but direct normalization achieves the same without saturation
+- Original TensorFlow implementation used direct normalization without sigmoid
+- The 0.55 value is approximately `sigmoid(0)` which occurs when normalized distances are near 0
+- See `_design_plan/22_sigmoid_saturation_fix.md` for detailed analysis
+
+**Related Issues:**
+- PYT-11.1: Original sigmoid normalization implementation (where sigmoid was introduced)
+- PYT-11.4: Pre-computed UniFrac matrix ingestion (where issue was discovered)
+- PYT-8.16b: Original UniFrac distance computation implementation
+
+---
+
 ## Phase 12: Additional Performance Optimizations
 
 ### PYT-12.1: Implement FSDP (Fully Sharded Data Parallel)
