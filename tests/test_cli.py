@@ -1025,13 +1025,12 @@ class TestCLIIntegration:
                     str(model_file),
                     "--table",
                     sample_biom_file,
-                    "--tree",
-                    sample_tree_file,
                     "--output",
                     str(temp_dir / "output.tsv"),
                 ],
             )
 
+            assert result.exit_code == 0
             assert mock_model_class.called
 
     @patch("aam.cli.setup_device")
@@ -1061,8 +1060,8 @@ class TestCLIIntegration:
                 "train",
                 "--table",
                 sample_biom_file,
-                "--tree",
-                sample_tree_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
                 "--metadata",
                 sample_metadata_file,
                 "--metadata-column",
@@ -1104,11 +1103,9 @@ class TestCLIIntegration:
                 "predict",
                 "--model",
                 str(model_file),
-                "--table",
-                sample_biom_file,
-                "--tree",
-                sample_tree_file,
-                "--output",
+                    "--table",
+                    sample_biom_file,
+                    "--output",
                 str(temp_dir / "output.tsv"),
             ],
         )
@@ -1193,6 +1190,7 @@ class TestPretrainedEncoderLoading:
         sample_tree_file,
         sample_metadata_file,
         sample_output_dir,
+        sample_unifrac_matrix_file,
         temp_dir,
     ):
         """Test train command loads pretrained encoder when provided."""
@@ -1259,8 +1257,8 @@ class TestPretrainedEncoderLoading:
                 "train",
                 "--table",
                 sample_biom_file,
-                "--tree",
-                sample_tree_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
                 "--metadata",
                 sample_metadata_file,
                 "--metadata-column",
@@ -1273,8 +1271,6 @@ class TestPretrainedEncoderLoading:
                 "1",
                 "--pretrained-encoder",
                 str(pretrained_encoder_path),
-                "--no-stripe-mode",
-                "--no-lazy-unifrac",
             ],
         )
 
@@ -1324,6 +1320,7 @@ class TestPretrainedEncoderLoading:
         sample_tree_file,
         sample_metadata_file,
         sample_output_dir,
+        sample_unifrac_matrix_file,
         temp_dir,
     ):
         """Test train command with pretrained encoder and freeze_base option."""
@@ -1390,8 +1387,8 @@ class TestPretrainedEncoderLoading:
                 "train",
                 "--table",
                 sample_biom_file,
-                "--tree",
-                sample_tree_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
                 "--metadata",
                 sample_metadata_file,
                 "--metadata-column",
@@ -1508,8 +1505,8 @@ class TestPretrainedEncoderLoading:
                 "train",
                 "--table",
                 sample_biom_file,
-                "--tree",
-                sample_tree_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
                 "--metadata",
                 sample_metadata_file,
                 "--metadata-column",
