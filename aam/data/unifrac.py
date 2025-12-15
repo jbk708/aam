@@ -411,6 +411,9 @@ class UniFracComputer:
     ) -> np.ndarray:
         """Compute unweighted UniFrac distances for a batch of samples.
         
+        DEPRECATED: This method is deprecated as of PYT-11.4.
+        Generate UniFrac matrices using unifrac-binaries, then use UniFracLoader to load them.
+        
         This method computes distances only for the specified samples, which is much
         more efficient than computing the full distance matrix for large datasets.
         Results are cached to avoid recomputation.
@@ -426,6 +429,12 @@ class UniFracComputer:
         Raises:
             ValueError: If batch_size is not even or if table/tree not provided
         """
+        warnings.warn(
+            "compute_batch_unweighted() is deprecated. Generate matrices using unifrac-binaries, "
+            "then use UniFracLoader.load_matrix() to load them.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         if not sample_ids:
             return np.array([]).reshape(0, 0)
         
@@ -508,6 +517,9 @@ class UniFracComputer:
     ) -> np.ndarray:
         """Compute Faith PD for a batch of samples.
         
+        DEPRECATED: This method is deprecated as of PYT-11.4.
+        Generate UniFrac matrices using unifrac-binaries, then use UniFracLoader to load them.
+        
         Args:
             sample_ids: List of sample IDs to compute Faith PD for
             table: Optional biom.Table (uses cached table if None)
@@ -516,6 +528,12 @@ class UniFracComputer:
         Returns:
             numpy array containing Faith PD values [batch_size, 1]
         """
+        warnings.warn(
+            "compute_batch_faith_pd() is deprecated. Generate matrices using unifrac-binaries, "
+            "then use UniFracLoader.load_matrix() to load them.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         if not sample_ids:
             return np.array([]).reshape(0, 1)
         
@@ -587,6 +605,9 @@ class UniFracComputer:
     def set_reference_samples(self, reference_sample_ids: List[str], table: Optional[Table] = None) -> None:
         """Set reference samples for stripe-based computation.
         
+        DEPRECATED: Stripe mode is deprecated as of PYT-11.4.
+        Use pairwise matrices instead.
+        
         Args:
             reference_sample_ids: List of reference sample IDs
             table: Optional biom.Table (uses cached table if None)
@@ -594,6 +615,12 @@ class UniFracComputer:
         Raises:
             ValueError: If reference samples not found in table or if list is empty
         """
+        warnings.warn(
+            "set_reference_samples() is deprecated. Stripe mode is deprecated. "
+            "Use pairwise matrices instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         if not reference_sample_ids:
             raise ValueError("Reference sample IDs list cannot be empty")
         
@@ -632,6 +659,9 @@ class UniFracComputer:
     ) -> np.ndarray:
         """Compute unweighted UniFrac distances in stripe format.
         
+        DEPRECATED: Stripe mode is deprecated as of PYT-11.4.
+        Generate pairwise matrices using unifrac-binaries, then use UniFracLoader to load them.
+        
         Args:
             table: Rarefied biom.Table object
             tree_path: Path to phylogenetic tree file (.nwk Newick format)
@@ -647,6 +677,12 @@ class UniFracComputer:
             ValueError: If ASV IDs don't match between table and tree
             ValueError: If reference or test sample IDs not found in table
         """
+        warnings.warn(
+            "compute_unweighted_stripe() is deprecated. Stripe mode is deprecated. "
+            "Generate pairwise matrices using unifrac-binaries, then use UniFracLoader.load_matrix() to load them.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         tree_path_obj = Path(tree_path)
         if not tree_path_obj.exists():
             raise FileNotFoundError(f"Tree file not found: {tree_path}")
@@ -738,6 +774,9 @@ class UniFracComputer:
     ) -> np.ndarray:
         """Compute unweighted UniFrac distances in stripe format for a batch of samples.
         
+        DEPRECATED: Stripe mode is deprecated as of PYT-11.4.
+        Generate pairwise matrices using unifrac-binaries, then use UniFracLoader to load them.
+        
         This method computes distances from batch samples to reference samples using
         unifrac.unweighted_dense_pair for efficiency.
         
@@ -754,6 +793,12 @@ class UniFracComputer:
         Raises:
             ValueError: If table/tree not provided or reference samples not set
         """
+        warnings.warn(
+            "compute_batch_unweighted_stripe() is deprecated. Stripe mode is deprecated. "
+            "Generate pairwise matrices using unifrac-binaries, then use UniFracLoader.load_matrix() to load them.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         if not sample_ids:
             return np.array([]).reshape(0, 0)
         
