@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 from sklearn.model_selection import train_test_split
 
 from aam.data.biom_loader import BIOMLoader
-from aam.data.unifrac import UniFracComputer
+from aam.data.unifrac_loader import UniFracLoader
 from aam.data.dataset import ASVDataset, collate_fn
 from skbio import DistanceMatrix
 from aam.models.sequence_predictor import SequencePredictor
@@ -150,7 +150,7 @@ def cli():
 
 @cli.command()
 @click.option("--table", required=True, type=click.Path(exists=True), help="Path to BIOM table file")
-@click.option("--tree", required=True, type=click.Path(exists=True), help="Path to phylogenetic tree file (.nwk)")
+@click.option("--unifrac-matrix", required=True, type=click.Path(exists=True), help="Path to pre-computed UniFrac distance matrix (.npy, .h5, or .csv format)")
 @click.option("--metadata", required=True, type=click.Path(exists=True), help="Path to metadata file (.tsv)")
 @click.option("--metadata-column", required=True, help="Column name for target prediction")
 @click.option("--output-dir", required=True, type=click.Path(), help="Output directory for checkpoints and logs")
@@ -169,7 +169,7 @@ def cli():
 @click.option("--classifier", is_flag=True, help="Use classification mode")
 @click.option("--rarefy-depth", default=5000, type=int, help="Rarefaction depth")
 @click.option("--test-size", default=0.2, type=float, help="Validation split size")
-@click.option("--unifrac-metric", default="unifrac", type=click.Choice(["unifrac", "faith_pd"]), help="UniFrac metric")
+@click.option("--unifrac-metric", default="unifrac", type=click.Choice(["unifrac", "faith_pd"]), help="UniFrac metric type (unifrac for pairwise, faith_pd for per-sample values)")
 @click.option("--penalty", default=1.0, type=float, help="Weight for base/UniFrac loss")
 @click.option("--nuc-penalty", default=1.0, type=float, help="Weight for nucleotide loss")
 @click.option("--class-weights", default=None, help="Class weights for classification (optional)")
@@ -198,17 +198,9 @@ def cli():
     help="Mixed precision training mode (fp16, bf16, or none)",
 )
 @click.option("--compile-model", is_flag=True, help="Compile model with torch.compile() for optimization (PyTorch 2.0+)")
-@click.option("--lazy-unifrac/--no-lazy-unifrac", default=True, help="Compute UniFrac distances on-the-fly (batch-wise) instead of upfront. Faster startup but slower first epoch. (default: True)")
-@click.option("--stripe-mode/--no-stripe-mode", default=True, help="Use stripe-based UniFrac distances instead of pairwise. More memory-efficient. (default: True)")
-@click.option("--reference-samples", default=None, type=str, help="Reference samples for stripe mode: path to file with sample IDs (one per line), or number (e.g., '100' for 100 randomly selected samples). If not specified, auto-selects 100 random samples or all if < 100.")
-@click.option("--precomputed-stripe", default=None, type=click.Path(exists=True), help="Path to pre-computed stripe distance matrix (.npy file from precompute_stripe_unifrac.py). If provided, loads this instead of computing distances.")
-@click.option("--unifrac-threads", default=None, type=int, help="Number of threads for UniFrac computation (default: all available CPU cores)")
-@click.option("--prune-tree", is_flag=True, help="Pre-prune tree to only include ASVs in BIOM table. Dramatically speeds up tree loading and UniFrac computation for large trees.")
-@click.option("--cache-unifrac", is_flag=True, help="Cache computed UniFrac distance matrix to disk for faster resume. Only applies to upfront computation (not lazy).")
-@click.option("--unifrac-cache-dir", default=None, type=str, help="Directory for UniFrac cache files (default: ~/.aam_cache/unifrac)")
 def train(
     table: str,
-    tree: str,
+    unifrac_matrix: str,
     metadata: str,
     metadata_column: str,
     output_dir: str,
@@ -244,14 +236,6 @@ def train(
     scheduler: str,
     mixed_precision: Optional[str],
     compile_model: bool,
-    lazy_unifrac: bool,
-    stripe_mode: bool,
-    reference_samples: Optional[str],
-    precomputed_stripe: Optional[str],
-    unifrac_threads: Optional[int],
-    prune_tree: bool,
-    cache_unifrac: bool,
-    unifrac_cache_dir: Optional[str],
 ):
     """Train AAM model on microbial sequencing data."""
     try:
@@ -261,10 +245,10 @@ def train(
         setup_logging(output_path)
         logger = logging.getLogger(__name__)
         logger.info("Starting AAM training")
-        logger.info(f"Arguments: table={table}, tree={tree}, metadata={metadata}")
+        logger.info(f"Arguments: table={table}, unifrac_matrix={unifrac_matrix}, metadata={metadata}")
 
         validate_file_path(table, "BIOM table")
-        validate_file_path(tree, "Phylogenetic tree")
+        validate_file_path(unifrac_matrix, "UniFrac matrix")
         validate_file_path(metadata, "Metadata file")
 
         validate_arguments(
@@ -294,196 +278,54 @@ def train(
         if metadata_column not in metadata_df.columns:
             raise ValueError(f"Metadata column '{metadata_column}' not found in metadata file")
 
-        # Use all available CPU cores for UniFrac computation
-        import multiprocessing
-        num_threads = multiprocessing.cpu_count()
-        logger.info(f"Using {num_threads} threads for UniFrac computation")
-        unifrac_computer = UniFracComputer(num_threads=num_threads)
+        logger.info("Loading pre-computed UniFrac distance matrix...")
+        unifrac_loader = UniFracLoader()
         
-        if lazy_unifrac:
-            logger.info("Using lazy UniFrac computation (batch-wise, on-the-fly)")
-            logger.info("Setting up lazy computation (tree will be loaded per worker process)...")
-            pruned_cache_path = None
-            if prune_tree:
-                pruned_cache_path = str(Path(tree).with_suffix('.pruned.nwk'))
-            unifrac_computer.setup_lazy_computation(
-                table_obj,
-                tree,
-                prune_tree=prune_tree,
-                pruned_tree_cache=pruned_cache_path,
-            )
-            logger.info("Lazy computation setup complete")
-            # Warn if using multiple workers with lazy UniFrac (each worker loads tree)
-            if num_workers > 0:
-                logger.warning(
-                    f"Using {num_workers} DataLoader workers with lazy UniFrac. "
-                    f"Each worker will load the tree into memory. "
-                    f"Consider using --num-workers 0 if you encounter memory issues."
-                )
-            unifrac_distances = None
-            train_distance_matrix = None
-            val_distance_matrix = None
-            if unifrac_metric == "unifrac":
-                unifrac_metric_name = "unweighted"
-                encoder_type = "unifrac"
-            else:
-                unifrac_metric_name = "faith_pd"
-                encoder_type = "faith_pd"
-        else:
-            # For upfront computation, also support tree pruning
-            if prune_tree:
-                logger.info("Pruning tree before upfront UniFrac computation...")
-                from aam.data.tree_pruner import load_or_prune_tree
-                pruned_cache_path = str(Path(tree).with_suffix('.pruned.nwk'))
-                pruned_tree = load_or_prune_tree(tree, table_obj, pruned_tree_path=pruned_cache_path)
-                tree = pruned_cache_path  # Use pruned tree for computation
-                logger.info(f"Using pruned tree: {pruned_cache_path}")
-            
-            # Check cache for distance matrix
-            unifrac_distances = None
-            if cache_unifrac and not lazy_unifrac:
-                from aam.data.unifrac_cache import (
-                    get_cache_key,
-                    get_cache_path,
-                    load_distance_matrix,
-                    save_distance_matrix,
-                )
-                cache_key = get_cache_key(
-                    table,
-                    tree,
-                    rarefy_depth=rarefy_depth,
-                    rarefy_seed=seed,
-                    metric="unweighted" if unifrac_metric == "unifrac" else "faith_pd",
-                )
-                cache_path = get_cache_path(unifrac_cache_dir, cache_key)
-                logger.info(f"Checking for cached distance matrix: {cache_path}")
-                cached_distances = load_distance_matrix(
-                    cache_path,
-                    metric="unweighted" if unifrac_metric == "unifrac" else "faith_pd",
-                )
-                if cached_distances is not None:
-                    logger.info("Using cached distance matrix (skipping computation)")
-                    unifrac_distances = cached_distances
-            
-            if unifrac_distances is None:
-                logger.info("Computing UniFrac distances upfront (full distance matrix)...")
-                if unifrac_metric == "unifrac":
-                    unifrac_distances = unifrac_computer.compute_unweighted(table_obj, tree)
-                    unifrac_metric_name = "unweighted"
-                    encoder_type = "unifrac"
-                else:
-                    unifrac_distances = unifrac_computer.compute_faith_pd(table_obj, tree)
-                    unifrac_metric_name = "faith_pd"
-                    encoder_type = "faith_pd"
-                
-                # Save to cache if requested
-                if cache_unifrac:
-                    from aam.data.unifrac_cache import (
-                        get_cache_key,
-                        get_cache_path,
-                        save_distance_matrix,
-                    )
-                    cache_key = get_cache_key(
-                        table,
-                        tree,
-                        rarefy_depth=rarefy_depth,
-                        rarefy_seed=seed,
-                        metric=unifrac_metric_name,
-                    )
-                    cache_path = get_cache_path(unifrac_cache_dir, cache_key)
-                    save_distance_matrix(unifrac_distances, cache_path, metric=unifrac_metric_name)
-            else:
-                # Set metric names from cached data
-                if unifrac_metric == "unifrac":
-                    unifrac_metric_name = "unweighted"
-                    encoder_type = "unifrac"
-                else:
-                    unifrac_metric_name = "faith_pd"
-                    encoder_type = "faith_pd"
-        
-        if lazy_unifrac:
-            logger.warning(
-                "WARNING: Lazy UniFrac computation computes distances per batch, which can be "
-                "very slow for large trees. Each batch may take several minutes. "
-                "For very large trees (>1M tips), upfront computation (without --lazy-unifrac) "
-                "may be faster overall despite the initial delay."
-            )
-
-        logger.info("Splitting data...")
+        # Get sample IDs from table for validation
         sample_ids = list(table_obj.ids(axis="sample"))
         logger.info(f"Total samples: {len(sample_ids)}")
+        
+        # Determine matrix format based on metric
+        matrix_format = "pairwise" if unifrac_metric == "unifrac" else "faith_pd"
+        
+        # Load the matrix
+        unifrac_distances = unifrac_loader.load_matrix(
+            unifrac_matrix,
+            sample_ids=sample_ids,
+            matrix_format=matrix_format,
+        )
+        
+        # Get actual sample IDs from loaded matrix (may be filtered to intersection)
+        if isinstance(unifrac_distances, DistanceMatrix):
+            matrix_sample_ids = list(unifrac_distances.ids)
+        elif isinstance(unifrac_distances, pd.Series):
+            matrix_sample_ids = list(unifrac_distances.index)
+        else:
+            # For numpy arrays, use original sample_ids (matrix should match)
+            matrix_sample_ids = sample_ids
+        
+        # Filter table to only include samples present in the matrix
+        if set(matrix_sample_ids) != set(sample_ids):
+            logger.info(
+                f"Filtering BIOM table to match matrix samples: "
+                f"{len(matrix_sample_ids)} samples (from {len(sample_ids)} original)"
+            )
+            # Filter table to only include samples in matrix
+            table_obj = table_obj.filter(matrix_sample_ids, axis="sample", inplace=False)
+            sample_ids = matrix_sample_ids
+        
+        if unifrac_metric == "unifrac":
+            unifrac_metric_name = "unweighted"
+            encoder_type = "unifrac"
+        else:
+            unifrac_metric_name = "faith_pd"
+            encoder_type = "faith_pd"
+        
+        logger.info(f"Loaded UniFrac matrix: {type(unifrac_distances).__name__}, shape: {getattr(unifrac_distances, 'shape', 'N/A')}")
+
+        logger.info("Splitting data...")
         train_ids, val_ids = train_test_split(sample_ids, test_size=test_size, random_state=seed)
         logger.info(f"Train samples: {len(train_ids)}, Validation samples: {len(val_ids)}")
-        
-        # Load pre-computed stripe matrix if provided
-        precomputed_stripe_matrix = None
-        precomputed_sample_ids = None
-        if precomputed_stripe and stripe_mode:
-            logger.info(f"Loading pre-computed stripe matrix from {precomputed_stripe}...")
-            stripe_data = np.load(precomputed_stripe, allow_pickle=True)
-            precomputed_stripe_matrix = stripe_data["stripe_distances"]
-            precomputed_sample_ids = stripe_data["sample_ids"].tolist()
-            reference_sample_ids = stripe_data["reference_sample_ids"].tolist()
-            logger.info(f"Loaded stripe matrix: shape {precomputed_stripe_matrix.shape}")
-            logger.info(f"Reference samples: {len(reference_sample_ids)}")
-            # Validate sample IDs match
-            if set(precomputed_sample_ids) != set(sample_ids):
-                missing = set(sample_ids) - set(precomputed_sample_ids)
-                extra = set(precomputed_sample_ids) - set(sample_ids)
-                if missing:
-                    logger.warning(f"Pre-computed matrix missing {len(missing)} samples from current table")
-                if extra:
-                    logger.warning(f"Pre-computed matrix has {len(extra)} extra samples not in current table")
-        else:
-            reference_sample_ids = None
-        
-        # Parse reference samples for stripe mode (initialize to None for pairwise mode)
-        if stripe_mode and not precomputed_stripe:
-            if reference_samples is not None:
-                # Try to parse as number first
-                try:
-                    num_ref = int(reference_samples)
-                    if num_ref <= 0:
-                        raise ValueError("Number of reference samples must be positive")
-                    if num_ref > len(sample_ids):
-                        logger.warning(f"Requested {num_ref} reference samples but only {len(sample_ids)} available. Using all samples.")
-                        reference_sample_ids = sample_ids.copy()
-                    else:
-                        # Randomly select reference samples
-                        import random
-                        if seed is not None:
-                            random.seed(seed)
-                        reference_sample_ids = random.sample(sample_ids, num_ref)
-                    logger.info(f"Selected {len(reference_sample_ids)} random samples as reference set")
-                except ValueError:
-                    # Not a number, treat as file path
-                    ref_path = Path(reference_samples)
-                    if not ref_path.exists():
-                        raise FileNotFoundError(f"Reference samples file not found: {reference_samples}")
-                    with open(ref_path, 'r') as f:
-                        reference_sample_ids = [line.strip() for line in f if line.strip()]
-                    if not reference_sample_ids:
-                        raise ValueError(f"Reference samples file is empty: {reference_samples}")
-                    # Validate all reference samples exist
-                    missing_ref = set(reference_sample_ids) - set(sample_ids)
-                    if missing_ref:
-                        raise ValueError(f"Reference sample IDs not found in table: {sorted(missing_ref)}")
-                    logger.info(f"Loaded {len(reference_sample_ids)} reference samples from file")
-            else:
-                # Auto-select: randomly pick 100 or all if < 100
-                import random
-                if seed is not None:
-                    random.seed(seed)
-                if len(sample_ids) <= 100:
-                    reference_sample_ids = sample_ids.copy()
-                else:
-                    reference_sample_ids = random.sample(sample_ids, 100)
-                logger.info(f"Auto-selected {len(reference_sample_ids)} random reference samples for stripe mode")
-            
-            # Set reference samples in unifrac_computer if using lazy mode
-            if lazy_unifrac and unifrac_computer is not None:
-                unifrac_computer.set_reference_samples(reference_sample_ids, table=table_obj)
-                logger.info(f"Set {len(reference_sample_ids)} reference samples in UniFracComputer")
 
         logger.info("Filtering tables for train/val splits...")
         train_table = table_obj.filter(train_ids, axis="sample", inplace=False)
@@ -493,24 +335,29 @@ def train(
         train_metadata = metadata_df[metadata_df["sample_id"].isin(train_ids)]
         val_metadata = metadata_df[metadata_df["sample_id"].isin(val_ids)]
 
-        if not lazy_unifrac:
-            train_distance_matrix = None
-            val_distance_matrix = None
-            if stripe_mode and precomputed_stripe and precomputed_stripe_matrix is not None:
-                # Extract stripe matrices for train/val splits
-                train_indices = [precomputed_sample_ids.index(sid) for sid in train_ids if sid in precomputed_sample_ids]
-                val_indices = [precomputed_sample_ids.index(sid) for sid in val_ids if sid in precomputed_sample_ids]
-                train_distance_matrix = precomputed_stripe_matrix[train_indices, :] if train_indices else None
-                val_distance_matrix = precomputed_stripe_matrix[val_indices, :] if val_indices else None
-                logger.info(f"Extracted stripe matrices: train {train_distance_matrix.shape if train_distance_matrix is not None else 'None'}, val {val_distance_matrix.shape if val_distance_matrix is not None else 'None'}")
-            elif unifrac_metric_name == "unweighted":
-                train_distance_matrix = (
-                    unifrac_distances.filter(train_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
-                )
-                val_distance_matrix = unifrac_distances.filter(val_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
-            elif unifrac_metric_name == "faith_pd":
-                train_distance_matrix = unifrac_distances.loc[train_ids] if isinstance(unifrac_distances, pd.Series) else None
-                val_distance_matrix = unifrac_distances.loc[val_ids] if isinstance(unifrac_distances, pd.Series) else None
+        # Extract train/val distance matrices
+        train_distance_matrix = None
+        val_distance_matrix = None
+        if unifrac_metric_name == "unweighted":
+            if isinstance(unifrac_distances, DistanceMatrix):
+                train_distance_matrix = unifrac_distances.filter(train_ids)
+                val_distance_matrix = unifrac_distances.filter(val_ids)
+            elif isinstance(unifrac_distances, np.ndarray):
+                train_indices = [sample_ids.index(sid) for sid in train_ids]
+                val_indices = [sample_ids.index(sid) for sid in val_ids]
+                train_distance_matrix = unifrac_distances[np.ix_(train_indices, train_indices)]
+                val_distance_matrix = unifrac_distances[np.ix_(val_indices, val_indices)]
+        elif unifrac_metric_name == "faith_pd":
+            if isinstance(unifrac_distances, pd.Series):
+                train_distance_matrix = unifrac_distances.loc[train_ids]
+                val_distance_matrix = unifrac_distances.loc[val_ids]
+            elif isinstance(unifrac_distances, np.ndarray):
+                train_indices = [sample_ids.index(sid) for sid in train_ids]
+                val_indices = [sample_ids.index(sid) for sid in val_ids]
+                train_distance_matrix = unifrac_distances[train_indices]
+                val_distance_matrix = unifrac_distances[val_indices]
+        
+        reference_sample_ids = None
 
         logger.info("Creating datasets...")
         train_dataset = ASVDataset(
@@ -521,10 +368,10 @@ def train(
             token_limit=token_limit,
             target_column=metadata_column,
             unifrac_metric=unifrac_metric_name,
-            lazy_unifrac=lazy_unifrac,
-            unifrac_computer=unifrac_computer if lazy_unifrac else None,
-            stripe_mode=stripe_mode,
-            reference_sample_ids=reference_sample_ids,
+            lazy_unifrac=False,
+            unifrac_computer=None,
+            stripe_mode=False,
+            reference_sample_ids=None,
         )
 
         val_dataset = ASVDataset(
@@ -535,10 +382,10 @@ def train(
             token_limit=token_limit,
             target_column=metadata_column,
             unifrac_metric=unifrac_metric_name,
-            lazy_unifrac=lazy_unifrac,
-            unifrac_computer=unifrac_computer if lazy_unifrac else None,
-            stripe_mode=stripe_mode,
-            reference_sample_ids=reference_sample_ids,
+            lazy_unifrac=False,
+            unifrac_computer=None,
+            stripe_mode=False,
+            reference_sample_ids=None,
         )
 
         train_collate = partial(
@@ -546,22 +393,22 @@ def train(
             token_limit=token_limit,
             unifrac_distances=train_distance_matrix,
             unifrac_metric=unifrac_metric_name,
-            unifrac_computer=unifrac_computer if lazy_unifrac else None,
-            lazy_unifrac=lazy_unifrac,
-            stripe_mode=stripe_mode,
-            reference_sample_ids=reference_sample_ids,
-            all_sample_ids=train_ids if not lazy_unifrac and stripe_mode else None,
+            unifrac_loader=unifrac_loader,
+            lazy_unifrac=False,
+            stripe_mode=False,
+            reference_sample_ids=None,
+            all_sample_ids=None,
         )
         val_collate = partial(
             collate_fn,
             token_limit=token_limit,
             unifrac_distances=val_distance_matrix,
             unifrac_metric=unifrac_metric_name,
-            unifrac_computer=unifrac_computer if lazy_unifrac else None,
-            lazy_unifrac=lazy_unifrac,
-            stripe_mode=stripe_mode,
-            reference_sample_ids=reference_sample_ids,
-            all_sample_ids=val_ids if not lazy_unifrac and stripe_mode else None,
+            unifrac_loader=unifrac_loader,
+            lazy_unifrac=False,
+            stripe_mode=False,
+            reference_sample_ids=None,
+            all_sample_ids=None,
         )
 
         train_loader = DataLoader(
@@ -679,7 +526,7 @@ def train(
 
 @cli.command()
 @click.option("--table", required=True, type=click.Path(exists=True), help="Path to BIOM table file")
-@click.option("--tree", required=True, type=click.Path(exists=True), help="Path to phylogenetic tree file (.nwk)")
+@click.option("--unifrac-matrix", required=True, type=click.Path(exists=True), help="Path to pre-computed UniFrac distance matrix (.npy, .h5, or .csv format)")
 @click.option("--output-dir", required=True, type=click.Path(), help="Output directory for checkpoints and logs")
 @click.option("--epochs", default=100, type=int, help="Number of training epochs")
 @click.option("--batch-size", default=8, type=int, help="Batch size")
@@ -694,7 +541,7 @@ def train(
 @click.option("--token-limit", default=1024, type=int, help="Maximum ASVs per sample")
 @click.option("--rarefy-depth", default=5000, type=int, help="Rarefaction depth")
 @click.option("--test-size", default=0.2, type=float, help="Validation split size")
-@click.option("--unifrac-metric", default="unifrac", type=click.Choice(["unifrac", "faith_pd"]), help="UniFrac metric")
+@click.option("--unifrac-metric", default="unifrac", type=click.Choice(["unifrac", "faith_pd"]), help="UniFrac metric type (unifrac for pairwise, faith_pd for per-sample values)")
 @click.option("--penalty", default=1.0, type=float, help="Weight for base/UniFrac loss")
 @click.option("--nuc-penalty", default=1.0, type=float, help="Weight for nucleotide loss")
 @click.option("--device", default="cuda", type=click.Choice(["cuda", "cpu"]), help="Device to use")
@@ -721,17 +568,9 @@ def train(
 @click.option(
     "--asv-chunk-size", default=None, type=int, help="Process ASVs in chunks of this size to reduce memory (None = process all)"
 )
-@click.option("--lazy-unifrac/--no-lazy-unifrac", default=True, help="Compute UniFrac distances on-the-fly (batch-wise) instead of upfront. Faster startup but slower first epoch. (default: True)")
-@click.option("--stripe-mode/--no-stripe-mode", default=True, help="Use stripe-based UniFrac distances instead of pairwise. More memory-efficient. (default: True)")
-@click.option("--reference-samples", default=None, type=str, help="Reference samples for stripe mode: path to file with sample IDs (one per line), or number (e.g., '100' for 100 randomly selected samples). If not specified, auto-selects 100 random samples or all if < 100.")
-@click.option("--precomputed-stripe", default=None, type=click.Path(exists=True), help="Path to pre-computed stripe distance matrix (.npy file from precompute_stripe_unifrac.py). If provided, loads this instead of computing distances.")
-@click.option("--unifrac-threads", default=None, type=int, help="Number of threads for UniFrac computation (default: all available CPU cores)")
-@click.option("--prune-tree", is_flag=True, help="Pre-prune tree to only include ASVs in BIOM table. Dramatically speeds up tree loading and UniFrac computation for large trees.")
-@click.option("--cache-unifrac", is_flag=True, help="Cache computed UniFrac distance matrix to disk for faster resume. Only applies to upfront computation (not lazy).")
-@click.option("--unifrac-cache-dir", default=None, type=str, help="Directory for UniFrac cache files (default: ~/.aam_cache/unifrac)")
 def pretrain(
     table: str,
-    tree: str,
+    unifrac_matrix: str,
     output_dir: str,
     epochs: int,
     batch_size: int,
@@ -761,14 +600,6 @@ def pretrain(
     mixed_precision: Optional[str],
     compile_model: bool,
     asv_chunk_size: Optional[int],
-    lazy_unifrac: bool,
-    stripe_mode: bool,
-    reference_samples: Optional[str],
-    precomputed_stripe: Optional[str],
-    unifrac_threads: Optional[int],
-    prune_tree: bool,
-    cache_unifrac: bool,
-    unifrac_cache_dir: Optional[str],
 ):
     """Pre-train SequenceEncoder on UniFrac and nucleotide prediction (self-supervised)."""
     try:
@@ -778,10 +609,10 @@ def pretrain(
         setup_logging(output_path)
         logger = logging.getLogger(__name__)
         logger.info("Starting SequenceEncoder pre-training")
-        logger.info(f"Arguments: table={table}, tree={tree}")
+        logger.info(f"Arguments: table={table}, unifrac_matrix={unifrac_matrix}")
 
         validate_file_path(table, "BIOM table")
-        validate_file_path(tree, "Phylogenetic tree")
+        validate_file_path(unifrac_matrix, "UniFrac matrix")
 
         validate_arguments(
             batch_size=batch_size,
@@ -802,229 +633,66 @@ def pretrain(
         table_obj = biom_loader.load_table(table)
         table_obj = biom_loader.rarefy(table_obj, depth=rarefy_depth, random_seed=seed)
 
-        # Use all available CPU cores for UniFrac computation (or user-specified)
-        import multiprocessing
-        if unifrac_threads is None:
-            num_threads = multiprocessing.cpu_count()
-        else:
-            num_threads = unifrac_threads
-        logger.info(f"Using {num_threads} threads for UniFrac computation")
-        unifrac_computer = UniFracComputer(num_threads=num_threads)
+        logger.info("Loading pre-computed UniFrac distance matrix...")
+        unifrac_loader = UniFracLoader()
         
-        if lazy_unifrac:
-            logger.info("Using lazy UniFrac computation (batch-wise, on-the-fly)")
-            logger.info("Setting up lazy computation (tree will be loaded per worker process)...")
-            pruned_cache_path = None
-            if prune_tree:
-                pruned_cache_path = str(Path(tree).with_suffix('.pruned.nwk'))
-            unifrac_computer.setup_lazy_computation(
-                table_obj,
-                tree,
-                prune_tree=prune_tree,
-                pruned_tree_cache=pruned_cache_path,
-            )
-            logger.info("Lazy computation setup complete")
-            # Warn if using multiple workers with lazy UniFrac (each worker loads tree)
-            if num_workers > 0:
-                logger.warning(
-                    f"Using {num_workers} DataLoader workers with lazy UniFrac. "
-                    f"Each worker will load the tree into memory. "
-                    f"Consider using --num-workers 0 if you encounter memory issues."
-                )
-            unifrac_distances = None
-            train_distance_matrix = None
-            val_distance_matrix = None
-            if unifrac_metric == "unifrac":
-                unifrac_metric_name = "unweighted"
-                encoder_type = "unifrac"
-                base_output_dim = None
-            else:
-                unifrac_metric_name = "faith_pd"
-                encoder_type = "faith_pd"
-                base_output_dim = 1
-        else:
-            # For upfront computation, also support tree pruning
-            if prune_tree:
-                logger.info("Pruning tree before upfront UniFrac computation...")
-                from aam.data.tree_pruner import load_or_prune_tree
-                pruned_cache_path = str(Path(tree).with_suffix('.pruned.nwk'))
-                pruned_tree = load_or_prune_tree(tree, table_obj, pruned_tree_path=pruned_cache_path)
-                tree = pruned_cache_path  # Use pruned tree for computation
-                logger.info(f"Using pruned tree: {pruned_cache_path}")
-            
-            # Check cache for distance matrix
-            unifrac_distances = None
-            if cache_unifrac and not lazy_unifrac:
-                from aam.data.unifrac_cache import (
-                    get_cache_key,
-                    get_cache_path,
-                    load_distance_matrix,
-                    save_distance_matrix,
-                )
-                cache_key = get_cache_key(
-                    table,
-                    tree,
-                    rarefy_depth=rarefy_depth,
-                    rarefy_seed=seed,
-                    metric="unweighted" if unifrac_metric == "unifrac" else "faith_pd",
-                )
-                cache_path = get_cache_path(unifrac_cache_dir, cache_key)
-                logger.info(f"Checking for cached distance matrix: {cache_path}")
-                cached_distances = load_distance_matrix(
-                    cache_path,
-                    metric="unweighted" if unifrac_metric == "unifrac" else "faith_pd",
-                )
-                if cached_distances is not None:
-                    logger.info("Using cached distance matrix (skipping computation)")
-                    unifrac_distances = cached_distances
-            
-            if unifrac_distances is None:
-                logger.info("Computing UniFrac distances upfront (full distance matrix)...")
-                if unifrac_metric == "unifrac":
-                    unifrac_distances = unifrac_computer.compute_unweighted(table_obj, tree)
-                    unifrac_metric_name = "unweighted"
-                    encoder_type = "unifrac"
-                    base_output_dim = None
-                else:
-                    unifrac_distances = unifrac_computer.compute_faith_pd(table_obj, tree)
-                    unifrac_metric_name = "faith_pd"
-                    encoder_type = "faith_pd"
-                    base_output_dim = 1
-                
-                # Save to cache if requested
-                if cache_unifrac:
-                    from aam.data.unifrac_cache import (
-                        get_cache_key,
-                        get_cache_path,
-                        save_distance_matrix,
-                    )
-                    cache_key = get_cache_key(
-                        table,
-                        tree,
-                        rarefy_depth=rarefy_depth,
-                        rarefy_seed=seed,
-                        metric=unifrac_metric_name,
-                    )
-                    cache_path = get_cache_path(unifrac_cache_dir, cache_key)
-                    save_distance_matrix(unifrac_distances, cache_path, metric=unifrac_metric_name)
-            else:
-                # Set metric names from cached data
-                if unifrac_metric == "unifrac":
-                    unifrac_metric_name = "unweighted"
-                    encoder_type = "unifrac"
-                    base_output_dim = None
-                else:
-                    unifrac_metric_name = "faith_pd"
-                    encoder_type = "faith_pd"
-                    base_output_dim = 1
-        
-        if lazy_unifrac:
-            logger.warning(
-                "WARNING: Lazy UniFrac computation computes distances per batch, which can be "
-                "very slow for large trees. Each batch may take several minutes. "
-                "For very large trees (>1M tips), upfront computation (without --lazy-unifrac) "
-                "may be faster overall despite the initial delay."
-            )
-
-        logger.info("Splitting data...")
+        # Get sample IDs from table for validation
         sample_ids = list(table_obj.ids(axis="sample"))
         logger.info(f"Total samples: {len(sample_ids)}")
+        
+        # Determine matrix format based on metric
+        matrix_format = "pairwise" if unifrac_metric == "unifrac" else "faith_pd"
+        
+        # Load the matrix
+        unifrac_distances = unifrac_loader.load_matrix(
+            unifrac_matrix,
+            sample_ids=sample_ids,
+            matrix_format=matrix_format,
+        )
+        
+        if unifrac_metric == "unifrac":
+            unifrac_metric_name = "unweighted"
+            encoder_type = "unifrac"
+            base_output_dim = None
+        else:
+            unifrac_metric_name = "faith_pd"
+            encoder_type = "faith_pd"
+            base_output_dim = 1
+        
+        logger.info(f"Loaded UniFrac matrix: {type(unifrac_distances).__name__}, shape: {getattr(unifrac_distances, 'shape', 'N/A')}")
+
+        logger.info("Splitting data...")
         train_ids, val_ids = train_test_split(sample_ids, test_size=test_size, random_state=seed)
         logger.info(f"Train samples: {len(train_ids)}, Validation samples: {len(val_ids)}")
-        
-        # Load pre-computed stripe matrix if provided
-        precomputed_stripe_matrix = None
-        precomputed_sample_ids = None
-        if precomputed_stripe and stripe_mode:
-            logger.info(f"Loading pre-computed stripe matrix from {precomputed_stripe}...")
-            stripe_data = np.load(precomputed_stripe, allow_pickle=True)
-            precomputed_stripe_matrix = stripe_data["stripe_distances"]
-            precomputed_sample_ids = stripe_data["sample_ids"].tolist()
-            reference_sample_ids = stripe_data["reference_sample_ids"].tolist()
-            logger.info(f"Loaded stripe matrix: shape {precomputed_stripe_matrix.shape}")
-            logger.info(f"Reference samples: {len(reference_sample_ids)}")
-            # Validate sample IDs match
-            if set(precomputed_sample_ids) != set(sample_ids):
-                missing = set(sample_ids) - set(precomputed_sample_ids)
-                extra = set(precomputed_sample_ids) - set(sample_ids)
-                if missing:
-                    logger.warning(f"Pre-computed matrix missing {len(missing)} samples from current table")
-                if extra:
-                    logger.warning(f"Pre-computed matrix has {len(extra)} extra samples not in current table")
-        else:
-            reference_sample_ids = None
-        
-        # Parse reference samples for stripe mode (initialize to None for pairwise mode)
-        if stripe_mode and not precomputed_stripe:
-            if reference_samples is not None:
-                # Try to parse as number first
-                try:
-                    num_ref = int(reference_samples)
-                    if num_ref <= 0:
-                        raise ValueError("Number of reference samples must be positive")
-                    if num_ref > len(sample_ids):
-                        logger.warning(f"Requested {num_ref} reference samples but only {len(sample_ids)} available. Using all samples.")
-                        reference_sample_ids = sample_ids.copy()
-                    else:
-                        # Randomly select reference samples
-                        import random
-                        if seed is not None:
-                            random.seed(seed)
-                        reference_sample_ids = random.sample(sample_ids, num_ref)
-                    logger.info(f"Selected {len(reference_sample_ids)} random samples as reference set")
-                except ValueError:
-                    # Not a number, treat as file path
-                    ref_path = Path(reference_samples)
-                    if not ref_path.exists():
-                        raise FileNotFoundError(f"Reference samples file not found: {reference_samples}")
-                    with open(ref_path, 'r') as f:
-                        reference_sample_ids = [line.strip() for line in f if line.strip()]
-                    if not reference_sample_ids:
-                        raise ValueError(f"Reference samples file is empty: {reference_samples}")
-                    # Validate all reference samples exist
-                    missing_ref = set(reference_sample_ids) - set(sample_ids)
-                    if missing_ref:
-                        raise ValueError(f"Reference sample IDs not found in table: {sorted(missing_ref)}")
-                    logger.info(f"Loaded {len(reference_sample_ids)} reference samples from file")
-            else:
-                # Auto-select: randomly pick 100 or all if < 100
-                import random
-                if seed is not None:
-                    random.seed(seed)
-                if len(sample_ids) <= 100:
-                    reference_sample_ids = sample_ids.copy()
-                else:
-                    reference_sample_ids = random.sample(sample_ids, 100)
-                logger.info(f"Auto-selected {len(reference_sample_ids)} random reference samples for stripe mode")
-            
-            # Set reference samples in unifrac_computer if using lazy mode
-            if lazy_unifrac and unifrac_computer is not None:
-                unifrac_computer.set_reference_samples(reference_sample_ids, table=table_obj)
-                logger.info(f"Set {len(reference_sample_ids)} reference samples in UniFracComputer")
 
         logger.info("Filtering tables for train/val splits...")
         train_table = table_obj.filter(train_ids, axis="sample", inplace=False)
         val_table = table_obj.filter(val_ids, axis="sample", inplace=False)
         logger.info("Table filtering complete")
 
-        if not lazy_unifrac:
-            train_distance_matrix = None
-            val_distance_matrix = None
-            if stripe_mode and precomputed_stripe and precomputed_stripe_matrix is not None:
-                # Extract stripe matrices for train/val splits
-                train_indices = [precomputed_sample_ids.index(sid) for sid in train_ids if sid in precomputed_sample_ids]
-                val_indices = [precomputed_sample_ids.index(sid) for sid in val_ids if sid in precomputed_sample_ids]
-                train_distance_matrix = precomputed_stripe_matrix[train_indices, :] if train_indices else None
-                val_distance_matrix = precomputed_stripe_matrix[val_indices, :] if val_indices else None
-                logger.info(f"Extracted stripe matrices: train {train_distance_matrix.shape if train_distance_matrix is not None else 'None'}, val {val_distance_matrix.shape if val_distance_matrix is not None else 'None'}")
-            elif unifrac_metric_name == "unweighted":
-                train_distance_matrix = (
-                    unifrac_distances.filter(train_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
-                )
-                val_distance_matrix = unifrac_distances.filter(val_ids) if isinstance(unifrac_distances, DistanceMatrix) else None
-            elif unifrac_metric_name == "faith_pd":
-                train_distance_matrix = unifrac_distances.loc[train_ids] if isinstance(unifrac_distances, pd.Series) else None
-                val_distance_matrix = unifrac_distances.loc[val_ids] if isinstance(unifrac_distances, pd.Series) else None
+        # Extract train/val distance matrices
+        train_distance_matrix = None
+        val_distance_matrix = None
+        if unifrac_metric_name == "unweighted":
+            if isinstance(unifrac_distances, DistanceMatrix):
+                train_distance_matrix = unifrac_distances.filter(train_ids)
+                val_distance_matrix = unifrac_distances.filter(val_ids)
+            elif isinstance(unifrac_distances, np.ndarray):
+                train_indices = [sample_ids.index(sid) for sid in train_ids]
+                val_indices = [sample_ids.index(sid) for sid in val_ids]
+                train_distance_matrix = unifrac_distances[np.ix_(train_indices, train_indices)]
+                val_distance_matrix = unifrac_distances[np.ix_(val_indices, val_indices)]
+        elif unifrac_metric_name == "faith_pd":
+            if isinstance(unifrac_distances, pd.Series):
+                train_distance_matrix = unifrac_distances.loc[train_ids]
+                val_distance_matrix = unifrac_distances.loc[val_ids]
+            elif isinstance(unifrac_distances, np.ndarray):
+                train_indices = [sample_ids.index(sid) for sid in train_ids]
+                val_indices = [sample_ids.index(sid) for sid in val_ids]
+                train_distance_matrix = unifrac_distances[train_indices]
+                val_distance_matrix = unifrac_distances[val_indices]
+        
+        reference_sample_ids = None
 
         logger.info("Creating datasets...")
         train_dataset = ASVDataset(
@@ -1035,10 +703,10 @@ def pretrain(
             token_limit=token_limit,
             target_column=None,
             unifrac_metric=unifrac_metric_name,
-            lazy_unifrac=lazy_unifrac,
-            unifrac_computer=unifrac_computer if lazy_unifrac else None,
-            stripe_mode=stripe_mode,
-            reference_sample_ids=reference_sample_ids,
+            lazy_unifrac=False,
+            unifrac_computer=None,
+            stripe_mode=False,
+            reference_sample_ids=None,
         )
 
         val_dataset = ASVDataset(
@@ -1049,10 +717,10 @@ def pretrain(
             token_limit=token_limit,
             target_column=None,
             unifrac_metric=unifrac_metric_name,
-            lazy_unifrac=lazy_unifrac,
-            unifrac_computer=unifrac_computer if lazy_unifrac else None,
-            stripe_mode=stripe_mode,
-            reference_sample_ids=reference_sample_ids,
+            lazy_unifrac=False,
+            unifrac_computer=None,
+            stripe_mode=False,
+            reference_sample_ids=None,
         )
 
         train_collate = partial(
@@ -1060,22 +728,22 @@ def pretrain(
             token_limit=token_limit,
             unifrac_distances=train_distance_matrix,
             unifrac_metric=unifrac_metric_name,
-            unifrac_computer=unifrac_computer if lazy_unifrac else None,
-            lazy_unifrac=lazy_unifrac,
-            stripe_mode=stripe_mode,
-            reference_sample_ids=reference_sample_ids,
-            all_sample_ids=train_ids if not lazy_unifrac and stripe_mode else None,
+            unifrac_loader=unifrac_loader,
+            lazy_unifrac=False,
+            stripe_mode=False,
+            reference_sample_ids=None,
+            all_sample_ids=None,
         )
         val_collate = partial(
             collate_fn,
             token_limit=token_limit,
             unifrac_distances=val_distance_matrix,
             unifrac_metric=unifrac_metric_name,
-            unifrac_computer=unifrac_computer if lazy_unifrac else None,
-            lazy_unifrac=lazy_unifrac,
-            stripe_mode=stripe_mode,
-            reference_sample_ids=reference_sample_ids,
-            all_sample_ids=val_ids if not lazy_unifrac and stripe_mode else None,
+            unifrac_loader=unifrac_loader,
+            lazy_unifrac=False,
+            stripe_mode=False,
+            reference_sample_ids=None,
+            all_sample_ids=None,
         )
 
         train_loader = DataLoader(
@@ -1179,14 +847,12 @@ def pretrain(
 @cli.command()
 @click.option("--model", required=True, type=click.Path(exists=True), help="Path to trained model checkpoint")
 @click.option("--table", required=True, type=click.Path(exists=True), help="Path to BIOM table file")
-@click.option("--tree", required=True, type=click.Path(exists=True), help="Path to phylogenetic tree file")
 @click.option("--output", required=True, type=click.Path(), help="Output file for predictions")
 @click.option("--batch-size", default=8, type=int, help="Batch size for inference")
 @click.option("--device", default="cuda", type=click.Choice(["cuda", "cpu"]), help="Device to use")
 def predict(
     model: str,
     table: str,
-    tree: str,
     output: str,
     batch_size: int,
     device: str,
@@ -1199,7 +865,6 @@ def predict(
 
         validate_file_path(model, "Model checkpoint")
         validate_file_path(table, "BIOM table")
-        validate_file_path(tree, "Phylogenetic tree")
 
         validate_arguments(batch_size=batch_size)
 

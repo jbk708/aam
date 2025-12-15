@@ -39,11 +39,16 @@ def sample_biom_file(temp_dir):
 
 
 @pytest.fixture
-def sample_tree_file(temp_dir):
-    """Create a sample tree file path."""
-    tree_file = temp_dir / "test.nwk"
-    tree_file.write_text("(A:0.1,B:0.2);")
-    return str(tree_file)
+def sample_unifrac_matrix_file(temp_dir):
+    """Create a sample UniFrac matrix file path."""
+    import numpy as np
+    matrix_file = temp_dir / "distances.npy"
+    # Create a simple 4x4 distance matrix
+    distances = np.random.rand(4, 4)
+    distances = (distances + distances.T) / 2  # Make symmetric
+    np.fill_diagonal(distances, 0.0)  # Diagonal is 0
+    np.save(matrix_file, distances)
+    return str(matrix_file)
 
 
 @pytest.fixture
@@ -52,6 +57,16 @@ def sample_metadata_file(temp_dir):
     metadata_file = temp_dir / "metadata.tsv"
     metadata_file.write_text("sample_id\ttarget\nsample1\t1.0\nsample2\t2.0\n")
     return str(metadata_file)
+
+
+@pytest.fixture
+def sample_tree_file(temp_dir):
+    """Create a sample tree file (Newick format)."""
+    tree_file = temp_dir / "test_tree.nwk"
+    # Create a simple Newick tree with a few tips
+    tree_str = "(ASV1:0.1,ASV2:0.1,ASV3:0.1);"
+    tree_file.write_text(tree_str)
+    return str(tree_file)
 
 
 @pytest.fixture
@@ -222,7 +237,7 @@ class TestCLICommands:
         assert result.exit_code != 0
 
     def test_train_command_file_validation(
-        self, runner, sample_biom_file, sample_tree_file, sample_metadata_file, sample_output_dir
+        self, runner, sample_biom_file, sample_unifrac_matrix_file, sample_metadata_file, sample_output_dir
     ):
         """Test train command file validation."""
         result = runner.invoke(
@@ -231,8 +246,8 @@ class TestCLICommands:
                 "train",
                 "--table",
                 "nonexistent.biom",
-                "--tree",
-                sample_tree_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
                 "--metadata",
                 sample_metadata_file,
                 "--metadata-column",
@@ -244,7 +259,7 @@ class TestCLICommands:
         assert result.exit_code != 0
 
     def test_train_command_batch_size_validation(
-        self, runner, sample_biom_file, sample_tree_file, sample_metadata_file, sample_output_dir
+        self, runner, sample_biom_file, sample_unifrac_matrix_file, sample_metadata_file, sample_output_dir
     ):
         """Test train command batch size validation."""
         result = runner.invoke(
@@ -253,8 +268,8 @@ class TestCLICommands:
                 "train",
                 "--table",
                 sample_biom_file,
-                "--tree",
-                sample_tree_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
                 "--metadata",
                 sample_metadata_file,
                 "--metadata-column",
@@ -268,7 +283,7 @@ class TestCLICommands:
         assert result.exit_code != 0
 
     def test_train_command_classifier_validation(
-        self, runner, sample_biom_file, sample_tree_file, sample_metadata_file, sample_output_dir
+        self, runner, sample_biom_file, sample_unifrac_matrix_file, sample_metadata_file, sample_output_dir
     ):
         """Test train command classifier validation."""
         result = runner.invoke(
@@ -277,8 +292,8 @@ class TestCLICommands:
                 "train",
                 "--table",
                 sample_biom_file,
-                "--tree",
-                sample_tree_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
                 "--metadata",
                 sample_metadata_file,
                 "--metadata-column",
@@ -303,7 +318,7 @@ class TestCLICommands:
         result = runner.invoke(cli, ["pretrain"])
         assert result.exit_code != 0
 
-    def test_pretrain_command_file_validation(self, runner, sample_biom_file, sample_tree_file, sample_output_dir):
+    def test_pretrain_command_file_validation(self, runner, sample_biom_file, sample_unifrac_matrix_file, sample_output_dir):
         """Test pretrain command file validation."""
         result = runner.invoke(
             cli,
@@ -311,15 +326,15 @@ class TestCLICommands:
                 "pretrain",
                 "--table",
                 "nonexistent.biom",
-                "--tree",
-                sample_tree_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
                 "--output-dir",
                 sample_output_dir,
             ],
         )
         assert result.exit_code != 0
 
-    def test_pretrain_command_batch_size_validation(self, runner, sample_biom_file, sample_tree_file, sample_output_dir):
+    def test_pretrain_command_batch_size_validation(self, runner, sample_biom_file, sample_unifrac_matrix_file, sample_output_dir):
         """Test pretrain command batch size validation."""
         result = runner.invoke(
             cli,
@@ -327,8 +342,8 @@ class TestCLICommands:
                 "pretrain",
                 "--table",
                 sample_biom_file,
-                "--tree",
-                sample_tree_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
                 "--output-dir",
                 sample_output_dir,
                 "--batch-size",
@@ -370,7 +385,7 @@ class TestCLICommands:
         result = runner.invoke(cli, ["predict"])
         assert result.exit_code != 0
 
-    def test_predict_command_file_validation(self, runner, sample_biom_file, sample_tree_file):
+    def test_predict_command_file_validation(self, runner, sample_biom_file):
         """Test predict command file validation."""
         result = runner.invoke(
             cli,
@@ -380,8 +395,6 @@ class TestCLICommands:
                 "nonexistent.pt",
                 "--table",
                 sample_biom_file,
-                "--tree",
-                sample_tree_file,
                 "--output",
                 "output.tsv",
             ],
@@ -403,7 +416,7 @@ class TestCLIIntegration:
     @patch("aam.cli.validate_file_path")
     @patch("aam.cli.validate_arguments")
     @patch("aam.data.biom_loader.BIOMLoader")
-    @patch("aam.data.unifrac.UniFracComputer")
+    @patch("aam.data.unifrac_loader.UniFracLoader")
     @patch("aam.data.dataset.ASVDataset")
     @patch("aam.models.sequence_predictor.SequencePredictor")
     @patch("aam.training.trainer.Trainer")
@@ -412,7 +425,7 @@ class TestCLIIntegration:
         mock_trainer,
         mock_model,
         mock_dataset,
-        mock_unifrac,
+        mock_unifrac_loader,
         mock_biom_loader,
         mock_validate_args,
         mock_validate_file,
@@ -421,7 +434,7 @@ class TestCLIIntegration:
         mock_setup_logging,
         runner,
         sample_biom_file,
-        sample_tree_file,
+        sample_unifrac_matrix_file,
         sample_metadata_file,
         sample_output_dir,
     ):
@@ -430,13 +443,20 @@ class TestCLIIntegration:
         mock_biom_loader_instance = MagicMock()
         mock_biom_loader.return_value = mock_biom_loader_instance
         mock_table = MagicMock()
+        mock_table.ids = MagicMock(return_value=["sample1", "sample2", "sample3", "sample4"])
         mock_biom_loader_instance.load_table.return_value = mock_table
         mock_biom_loader_instance.rarefy.return_value = mock_table
 
-        mock_unifrac_instance = MagicMock()
-        mock_unifrac.return_value = mock_unifrac_instance
-        mock_distance_matrix = MagicMock()
-        mock_unifrac_instance.compute_unweighted.return_value = mock_distance_matrix
+        mock_unifrac_loader_instance = MagicMock()
+        mock_unifrac_loader.return_value = mock_unifrac_loader_instance
+        from skbio import DistanceMatrix
+        import numpy as np
+        # Create a symmetric distance matrix (required by DistanceMatrix)
+        dist_data = np.random.rand(4, 4)
+        dist_data = (dist_data + dist_data.T) / 2  # Make symmetric
+        np.fill_diagonal(dist_data, 0)  # Diagonal must be 0
+        mock_distance_matrix = DistanceMatrix(dist_data, ids=["sample1", "sample2", "sample3", "sample4"])
+        mock_unifrac_loader_instance.load_matrix.return_value = mock_distance_matrix
 
         mock_dataset_instance = MagicMock()
         mock_dataset.return_value = mock_dataset_instance
@@ -453,8 +473,8 @@ class TestCLIIntegration:
                 "train",
                 "--table",
                 sample_biom_file,
-                "--tree",
-                sample_tree_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
                 "--metadata",
                 sample_metadata_file,
                 "--metadata-column",
@@ -480,7 +500,7 @@ class TestCLIIntegration:
     @patch("aam.cli.validate_file_path")
     @patch("aam.cli.validate_arguments")
     @patch("aam.data.biom_loader.BIOMLoader")
-    @patch("aam.data.unifrac.UniFracComputer")
+    @patch("aam.data.unifrac_loader.UniFracLoader")
     @patch("aam.data.dataset.ASVDataset")
     @patch("aam.models.sequence_encoder.SequenceEncoder")
     @patch("aam.training.trainer.Trainer")
@@ -489,7 +509,7 @@ class TestCLIIntegration:
         mock_trainer,
         mock_model,
         mock_dataset,
-        mock_unifrac,
+        mock_unifrac_loader,
         mock_biom_loader,
         mock_validate_args,
         mock_validate_file,
@@ -498,7 +518,7 @@ class TestCLIIntegration:
         mock_setup_logging,
         runner,
         sample_biom_file,
-        sample_tree_file,
+        sample_unifrac_matrix_file,
         sample_output_dir,
     ):
         """Test pretrain command integration with mocked components."""
@@ -517,11 +537,16 @@ class TestCLIIntegration:
         mock_biom_loader_instance.load_table.return_value = mock_table
         mock_biom_loader_instance.rarefy.return_value = mock_table
 
-        mock_unifrac_instance = MagicMock()
-        mock_unifrac.return_value = mock_unifrac_instance
-        mock_distance_matrix = MagicMock()
-        mock_unifrac_instance.compute_unweighted.return_value = mock_distance_matrix
-        mock_unifrac_instance.extract_batch_distances.return_value = torch.zeros(4, 4)
+        mock_unifrac_loader_instance = MagicMock()
+        mock_unifrac_loader.return_value = mock_unifrac_loader_instance
+        from skbio import DistanceMatrix
+        import numpy as np
+        # Create a symmetric distance matrix (required by DistanceMatrix)
+        dist_data = np.random.rand(4, 4)
+        dist_data = (dist_data + dist_data.T) / 2  # Make symmetric
+        np.fill_diagonal(dist_data, 0)  # Diagonal must be 0
+        mock_distance_matrix = DistanceMatrix(dist_data, ids=["sample1", "sample2", "sample3", "sample4"])
+        mock_unifrac_loader_instance.load_matrix.return_value = mock_distance_matrix
 
         mock_dataset_instance = MagicMock()
         mock_dataset.return_value = mock_dataset_instance
@@ -539,8 +564,8 @@ class TestCLIIntegration:
                 "pretrain",
                 "--table",
                 sample_biom_file,
-                "--tree",
-                sample_tree_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
                 "--output-dir",
                 sample_output_dir,
                 "--batch-size",
@@ -574,7 +599,6 @@ class TestCLIIntegration:
         mock_setup_device,
         runner,
         sample_biom_file,
-        sample_tree_file,
         temp_dir,
     ):
         """Test predict command integration with mocked components."""
@@ -619,8 +643,6 @@ class TestCLIIntegration:
                 str(model_file),
                 "--table",
                 sample_biom_file,
-                "--tree",
-                sample_tree_file,
                 "--output",
                 str(output_file),
             ],
@@ -652,7 +674,7 @@ class TestCLIIntegration:
     @patch("aam.cli.validate_file_path")
     @patch("aam.cli.validate_arguments")
     @patch("aam.cli.BIOMLoader")
-    @patch("aam.cli.UniFracComputer")
+    @patch("aam.cli.UniFracLoader")
     @patch("aam.cli.train_test_split")
     @patch("aam.cli.ASVDataset")
     @patch("aam.cli.DataLoader")
@@ -671,7 +693,7 @@ class TestCLIIntegration:
         mock_dataloader_class,
         mock_dataset_class,
         mock_train_test_split,
-        mock_unifrac_class,
+        mock_unifrac_loader_class,
         mock_biom_loader_class,
         mock_validate_args,
         mock_validate_file,
@@ -681,7 +703,7 @@ class TestCLIIntegration:
         mock_read_csv,
         runner,
         sample_biom_file,
-        sample_tree_file,
+        sample_unifrac_matrix_file,
         sample_metadata_file,
         sample_output_dir,
     ):
@@ -706,11 +728,16 @@ class TestCLIIntegration:
         mock_biom_loader_instance.load_table.return_value = mock_table
         mock_biom_loader_instance.rarefy.return_value = mock_table
 
-        mock_unifrac_instance = MagicMock()
-        mock_unifrac_class.return_value = mock_unifrac_instance
-        mock_distance_matrix = MagicMock()
-        mock_unifrac_instance.compute_unweighted.return_value = mock_distance_matrix
-        mock_unifrac_instance.extract_batch_distances.return_value = MagicMock()
+        mock_unifrac_loader_instance = MagicMock()
+        mock_unifrac_loader_class.return_value = mock_unifrac_loader_instance
+        from skbio import DistanceMatrix
+        import numpy as np
+        # Create a symmetric distance matrix (required by DistanceMatrix)
+        dist_data = np.random.rand(4, 4)
+        dist_data = (dist_data + dist_data.T) / 2  # Make symmetric
+        np.fill_diagonal(dist_data, 0)  # Diagonal must be 0
+        mock_distance_matrix = DistanceMatrix(dist_data, ids=["sample1", "sample2", "sample3", "sample4"])
+        mock_unifrac_loader_instance.load_matrix.return_value = mock_distance_matrix
 
         mock_train_ids = ["sample1", "sample2", "sample3"]
         mock_val_ids = ["sample4"]
@@ -749,8 +776,8 @@ class TestCLIIntegration:
                 "train",
                 "--table",
                 sample_biom_file,
-                "--tree",
-                sample_tree_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
                 "--metadata",
                 sample_metadata_file,
                 "--metadata-column",
@@ -761,15 +788,13 @@ class TestCLIIntegration:
                 "8",
                 "--epochs",
                 "1",
-                "--no-stripe-mode",
-                "--no-lazy-unifrac",
             ],
         )
 
         assert result.exit_code == 0
         assert mock_biom_loader_instance.load_table.called
         assert mock_biom_loader_instance.rarefy.called
-        assert mock_unifrac_instance.compute_unweighted.called
+        assert mock_unifrac_loader_instance.load_matrix.called
         assert mock_dataset_class.call_count == 2
         assert mock_model_class.called
         assert mock_trainer_instance.train.called
@@ -794,7 +819,6 @@ class TestCLIIntegration:
         mock_setup_device,
         runner,
         sample_biom_file,
-        sample_tree_file,
         temp_dir,
     ):
         """Test predict command with actual batch processing."""
@@ -870,8 +894,6 @@ class TestCLIIntegration:
                     str(model_file),
                     "--table",
                     sample_biom_file,
-                    "--tree",
-                    sample_tree_file,
                     "--output",
                     str(output_file),
                 ],
@@ -899,7 +921,6 @@ class TestCLIIntegration:
         mock_setup_device,
         runner,
         sample_biom_file,
-        sample_tree_file,
         temp_dir,
     ):
         """Test predict command with multi-class predictions."""
@@ -960,8 +981,6 @@ class TestCLIIntegration:
                     str(model_file),
                     "--table",
                     sample_biom_file,
-                    "--tree",
-                    sample_tree_file,
                     "--output",
                     str(output_file),
                 ],
@@ -1006,13 +1025,12 @@ class TestCLIIntegration:
                     str(model_file),
                     "--table",
                     sample_biom_file,
-                    "--tree",
-                    sample_tree_file,
                     "--output",
                     str(temp_dir / "output.tsv"),
                 ],
             )
 
+            assert result.exit_code == 0
             assert mock_model_class.called
 
     @patch("aam.cli.setup_device")
@@ -1042,8 +1060,8 @@ class TestCLIIntegration:
                 "train",
                 "--table",
                 sample_biom_file,
-                "--tree",
-                sample_tree_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
                 "--metadata",
                 sample_metadata_file,
                 "--metadata-column",
@@ -1085,11 +1103,9 @@ class TestCLIIntegration:
                 "predict",
                 "--model",
                 str(model_file),
-                "--table",
-                sample_biom_file,
-                "--tree",
-                sample_tree_file,
-                "--output",
+                    "--table",
+                    sample_biom_file,
+                    "--output",
                 str(temp_dir / "output.tsv"),
             ],
         )
@@ -1141,7 +1157,6 @@ class TestPretrainedEncoderLoading:
     @patch("aam.cli.validate_file_path")
     @patch("aam.cli.validate_arguments")
     @patch("aam.cli.BIOMLoader")
-    @patch("aam.cli.UniFracComputer")
     @patch("aam.cli.train_test_split")
     @patch("aam.cli.ASVDataset")
     @patch("aam.cli.DataLoader")
@@ -1164,7 +1179,6 @@ class TestPretrainedEncoderLoading:
         mock_dataloader_class,
         mock_dataset_class,
         mock_train_test_split,
-        mock_unifrac_class,
         mock_biom_loader_class,
         mock_validate_args,
         mock_validate_file,
@@ -1176,6 +1190,7 @@ class TestPretrainedEncoderLoading:
         sample_tree_file,
         sample_metadata_file,
         sample_output_dir,
+        sample_unifrac_matrix_file,
         temp_dir,
     ):
         """Test train command loads pretrained encoder when provided."""
@@ -1199,11 +1214,8 @@ class TestPretrainedEncoderLoading:
         mock_biom_loader_instance.load_table.return_value = mock_table
         mock_biom_loader_instance.rarefy.return_value = mock_table
 
-        mock_unifrac_instance = MagicMock()
-        mock_unifrac_class.return_value = mock_unifrac_instance
-        mock_distance_matrix = MagicMock()
-        mock_unifrac_instance.compute_unweighted.return_value = mock_distance_matrix
-        mock_unifrac_instance.extract_batch_distances.return_value = MagicMock()
+        # UniFracComputer is no longer used - pre-computed matrices are loaded via UniFracLoader
+        # Mock UniFracLoader instead if needed
 
         mock_train_ids = ["sample1", "sample2", "sample3"]
         mock_val_ids = ["sample4"]
@@ -1245,8 +1257,8 @@ class TestPretrainedEncoderLoading:
                 "train",
                 "--table",
                 sample_biom_file,
-                "--tree",
-                sample_tree_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
                 "--metadata",
                 sample_metadata_file,
                 "--metadata-column",
@@ -1259,8 +1271,6 @@ class TestPretrainedEncoderLoading:
                 "1",
                 "--pretrained-encoder",
                 str(pretrained_encoder_path),
-                "--no-stripe-mode",
-                "--no-lazy-unifrac",
             ],
         )
 
@@ -1277,7 +1287,6 @@ class TestPretrainedEncoderLoading:
     @patch("aam.cli.validate_file_path")
     @patch("aam.cli.validate_arguments")
     @patch("aam.cli.BIOMLoader")
-    @patch("aam.cli.UniFracComputer")
     @patch("aam.cli.train_test_split")
     @patch("aam.cli.ASVDataset")
     @patch("aam.cli.DataLoader")
@@ -1300,7 +1309,6 @@ class TestPretrainedEncoderLoading:
         mock_dataloader_class,
         mock_dataset_class,
         mock_train_test_split,
-        mock_unifrac_class,
         mock_biom_loader_class,
         mock_validate_args,
         mock_validate_file,
@@ -1312,6 +1320,7 @@ class TestPretrainedEncoderLoading:
         sample_tree_file,
         sample_metadata_file,
         sample_output_dir,
+        sample_unifrac_matrix_file,
         temp_dir,
     ):
         """Test train command with pretrained encoder and freeze_base option."""
@@ -1335,11 +1344,8 @@ class TestPretrainedEncoderLoading:
         mock_biom_loader_instance.load_table.return_value = mock_table
         mock_biom_loader_instance.rarefy.return_value = mock_table
 
-        mock_unifrac_instance = MagicMock()
-        mock_unifrac_class.return_value = mock_unifrac_instance
-        mock_distance_matrix = MagicMock()
-        mock_unifrac_instance.compute_unweighted.return_value = mock_distance_matrix
-        mock_unifrac_instance.extract_batch_distances.return_value = MagicMock()
+        # UniFracComputer is no longer used - pre-computed matrices are loaded via UniFracLoader
+        # Mock UniFracLoader instead if needed
 
         mock_train_ids = ["sample1", "sample2", "sample3"]
         mock_val_ids = ["sample4"]
@@ -1381,8 +1387,8 @@ class TestPretrainedEncoderLoading:
                 "train",
                 "--table",
                 sample_biom_file,
-                "--tree",
-                sample_tree_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
                 "--metadata",
                 sample_metadata_file,
                 "--metadata-column",
@@ -1411,7 +1417,6 @@ class TestPretrainedEncoderLoading:
     @patch("aam.cli.validate_file_path")
     @patch("aam.cli.validate_arguments")
     @patch("aam.cli.BIOMLoader")
-    @patch("aam.cli.UniFracComputer")
     @patch("aam.cli.train_test_split")
     @patch("aam.cli.ASVDataset")
     @patch("aam.cli.DataLoader")
@@ -1434,7 +1439,6 @@ class TestPretrainedEncoderLoading:
         mock_dataloader_class,
         mock_dataset_class,
         mock_train_test_split,
-        mock_unifrac_class,
         mock_biom_loader_class,
         mock_validate_args,
         mock_validate_file,
@@ -1469,11 +1473,8 @@ class TestPretrainedEncoderLoading:
         mock_biom_loader_instance.load_table.return_value = mock_table
         mock_biom_loader_instance.rarefy.return_value = mock_table
 
-        mock_unifrac_instance = MagicMock()
-        mock_unifrac_class.return_value = mock_unifrac_instance
-        mock_distance_matrix = MagicMock()
-        mock_unifrac_instance.compute_unweighted.return_value = mock_distance_matrix
-        mock_unifrac_instance.extract_batch_distances.return_value = MagicMock()
+        # UniFracComputer is no longer used - pre-computed matrices are loaded via UniFracLoader
+        # Mock UniFracLoader instead if needed
 
         mock_train_ids = ["sample1", "sample2", "sample3"]
         mock_val_ids = ["sample4"]
@@ -1504,8 +1505,8 @@ class TestPretrainedEncoderLoading:
                 "train",
                 "--table",
                 sample_biom_file,
-                "--tree",
-                sample_tree_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
                 "--metadata",
                 sample_metadata_file,
                 "--metadata-column",

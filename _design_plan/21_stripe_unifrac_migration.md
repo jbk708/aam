@@ -1,14 +1,19 @@
 # Stripe-Based UniFrac Migration Plan
 
-**Status:** 📋 Planning  
-**Priority:** HIGH  
+**Status:** ⚠️ **DEPRECATED** - This plan is obsolete as of PYT-11.4  
+**Priority:** N/A (Deprecated)  
 **Created:** 2025  
-**Related Branch:** `pyt-10.3.1-optimize-tree-pruning`  
-**Reference:** https://github.com/biocore/unifrac-binaries/blob/4c9644865f34d792e5987b690a10790ed9dafb61/src/api.hpp#L903
+**Deprecated:** 2025 (PYT-11.4)
 
-## Executive Summary
+## ⚠️ Deprecation Notice
 
-This document outlines the migration plan from pairwise UniFrac distance computation to stripe-based UniFrac computation. Stripe-based UniFrac computes distances for each sample against a reference set (stripe) rather than all pairwise combinations, which is more memory-efficient and potentially faster for large datasets.
+**This migration plan is obsolete as of PYT-11.4.** Stripe mode and all UniFrac computation functionality has been deprecated. Users should generate UniFrac matrices using unifrac-binaries or other external tools, then load pre-computed matrices using `UniFracLoader`. This document is kept for historical reference only.
+
+## Executive Summary (Historical)
+
+This document outlined the migration plan from pairwise UniFrac distance computation to stripe-based UniFrac computation. Stripe-based UniFrac computes distances for each sample against a reference set (stripe) rather than all pairwise combinations, which is more memory-efficient and potentially faster for large datasets.
+
+**Note:** This approach was superseded by PYT-11.4, which uses pre-computed matrices instead of on-the-fly computation.
 
 ## Current State (Pairwise UniFrac)
 

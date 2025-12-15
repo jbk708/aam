@@ -4,6 +4,10 @@
 This script computes UniFrac distances using multiple worker processes,
 which is much faster than single-process computation for large datasets.
 The computed distance matrix can then be loaded in training scripts.
+
+NOTE: This script is the recommended way to generate UniFrac matrices
+for use with the AAM training pipeline (PYT-11.4+). Generate matrices
+using this script, then use --unifrac-matrix flag in training.
 """
 
 import argparse

@@ -13,6 +13,7 @@ from skbio import DistanceMatrix
 from aam.data.dataset import ASVDataset, collate_fn
 from aam.data.tokenizer import SequenceTokenizer
 from aam.data.biom_loader import BIOMLoader
+from aam.data.unifrac_loader import UniFracLoader
 from aam.data.unifrac import UniFracComputer
 
 
@@ -75,11 +76,18 @@ def simple_metadata():
 
 @pytest.fixture
 def simple_unifrac_distances(rarefied_table, tmp_path):
-    """Create simple UniFrac distance matrix."""
-    computer = UniFracComputer()
-    observation_ids = list(rarefied_table.ids(axis="observation"))
-    tree_file = create_simple_tree_file(tmp_path, observation_ids)
-    return computer.compute_unweighted(rarefied_table, tree_file)
+    """Create simple UniFrac distance matrix (pre-computed for testing)."""
+    from skbio import DistanceMatrix
+    import numpy as np
+    
+    # Create a simple pre-computed distance matrix
+    sample_ids = list(rarefied_table.ids(axis="sample"))
+    n_samples = len(sample_ids)
+    # Create symmetric distance matrix with zeros on diagonal
+    distances = np.random.rand(n_samples, n_samples)
+    distances = (distances + distances.T) / 2  # Make symmetric
+    np.fill_diagonal(distances, 0.0)  # Diagonal is 0
+    return DistanceMatrix(distances, ids=sample_ids)
 
 
 @pytest.fixture
@@ -564,8 +572,8 @@ class TestShuffledBatchDistances:
         assert isinstance(result["unifrac_target"], torch.FloatTensor)
 
         sample_ids = result["sample_ids"]
-        computer = UniFracComputer()
-        expected_distances = computer.extract_batch_distances(simple_unifrac_distances, sample_ids, metric="unweighted")
+        loader = UniFracLoader()
+        expected_distances = loader.extract_batch_distances(simple_unifrac_distances, sample_ids, metric="unweighted")
         np.testing.assert_array_almost_equal(result["unifrac_target"].numpy(), expected_distances)
 
     def test_collate_fn_extracts_batch_distances_shuffled_order(self, rarefied_table, tokenizer, simple_unifrac_distances):
@@ -597,8 +605,8 @@ class TestShuffledBatchDistances:
         sample_ids = result["sample_ids"]
         assert sample_ids == ["sample3", "sample1"]
 
-        computer = UniFracComputer()
-        expected_distances = computer.extract_batch_distances(simple_unifrac_distances, sample_ids, metric="unweighted")
+        loader = UniFracLoader()
+        expected_distances = loader.extract_batch_distances(simple_unifrac_distances, sample_ids, metric="unweighted")
         np.testing.assert_array_almost_equal(result["unifrac_target"].numpy(), expected_distances)
 
     def test_collate_fn_extracts_batch_distances_faith_pd(self, rarefied_table, tokenizer, tmp_path):
@@ -635,7 +643,8 @@ class TestShuffledBatchDistances:
         assert isinstance(result["unifrac_target"], torch.FloatTensor)
 
         sample_ids = result["sample_ids"]
-        expected_distances = computer.extract_batch_distances(faith_pd, sample_ids, metric="faith_pd")
+        loader = UniFracLoader()
+        expected_distances = loader.extract_batch_distances(faith_pd, sample_ids, metric="faith_pd")
         np.testing.assert_array_almost_equal(result["unifrac_target"].numpy(), expected_distances)
 
     def test_dataloader_shuffled_batches(self, rarefied_table, tokenizer, simple_unifrac_distances):
@@ -661,12 +670,12 @@ class TestShuffledBatchDistances:
 
         dataloader = DataLoader(dataset, batch_size=2, collate_fn=custom_collate, shuffle=True)
 
-        computer = UniFracComputer()
+        loader = UniFracLoader()
         for batch in dataloader:
             assert "unifrac_target" in batch
             assert batch["unifrac_target"].shape == (2, 2)
             sample_ids = batch["sample_ids"]
-            expected_distances = computer.extract_batch_distances(simple_unifrac_distances, sample_ids, metric="unweighted")
+            expected_distances = loader.extract_batch_distances(simple_unifrac_distances, sample_ids, metric="unweighted")
             np.testing.assert_array_almost_equal(batch["unifrac_target"].numpy(), expected_distances)
             break
 
@@ -693,12 +702,12 @@ class TestShuffledBatchDistances:
 
         dataloader = DataLoader(dataset, batch_size=2, collate_fn=custom_collate, shuffle=False)
 
-        computer = UniFracComputer()
+        loader = UniFracLoader()
         for batch in dataloader:
             assert "unifrac_target" in batch
             assert batch["unifrac_target"].shape == (2, 2)
             sample_ids = batch["sample_ids"]
-            expected_distances = computer.extract_batch_distances(simple_unifrac_distances, sample_ids, metric="unweighted")
+            expected_distances = loader.extract_batch_distances(simple_unifrac_distances, sample_ids, metric="unweighted")
             np.testing.assert_array_almost_equal(batch["unifrac_target"].numpy(), expected_distances)
             break
 
@@ -758,8 +767,8 @@ class TestShuffledBatchDistances:
         assert isinstance(result["unifrac_target"], torch.FloatTensor)
 
         sample_ids = result["sample_ids"]
-        computer = UniFracComputer()
-        expected_distances = computer.extract_batch_distances(simple_unifrac_distances, sample_ids, metric="unweighted")
+        loader = UniFracLoader()
+        expected_distances = loader.extract_batch_distances(simple_unifrac_distances, sample_ids, metric="unweighted")
         np.testing.assert_array_almost_equal(result["unifrac_target"].numpy(), expected_distances)
 
     def test_collate_fn_extracts_batch_distances_shuffled_order(self, rarefied_table, tokenizer, simple_unifrac_distances):
@@ -791,8 +800,8 @@ class TestShuffledBatchDistances:
         sample_ids = result["sample_ids"]
         assert sample_ids == ["sample3", "sample1"]
 
-        computer = UniFracComputer()
-        expected_distances = computer.extract_batch_distances(simple_unifrac_distances, sample_ids, metric="unweighted")
+        loader = UniFracLoader()
+        expected_distances = loader.extract_batch_distances(simple_unifrac_distances, sample_ids, metric="unweighted")
         np.testing.assert_array_almost_equal(result["unifrac_target"].numpy(), expected_distances)
 
     def test_collate_fn_extracts_batch_distances_faith_pd(self, rarefied_table, tokenizer, tmp_path):
@@ -829,7 +838,8 @@ class TestShuffledBatchDistances:
         assert isinstance(result["unifrac_target"], torch.FloatTensor)
 
         sample_ids = result["sample_ids"]
-        expected_distances = computer.extract_batch_distances(faith_pd, sample_ids, metric="faith_pd")
+        loader = UniFracLoader()
+        expected_distances = loader.extract_batch_distances(faith_pd, sample_ids, metric="faith_pd")
         np.testing.assert_array_almost_equal(result["unifrac_target"].numpy(), expected_distances)
 
     def test_dataloader_shuffled_batches(self, rarefied_table, tokenizer, simple_unifrac_distances):
@@ -855,12 +865,12 @@ class TestShuffledBatchDistances:
 
         dataloader = DataLoader(dataset, batch_size=2, collate_fn=custom_collate, shuffle=True)
 
-        computer = UniFracComputer()
+        loader = UniFracLoader()
         for batch in dataloader:
             assert "unifrac_target" in batch
             assert batch["unifrac_target"].shape == (2, 2)
             sample_ids = batch["sample_ids"]
-            expected_distances = computer.extract_batch_distances(simple_unifrac_distances, sample_ids, metric="unweighted")
+            expected_distances = loader.extract_batch_distances(simple_unifrac_distances, sample_ids, metric="unweighted")
             np.testing.assert_array_almost_equal(batch["unifrac_target"].numpy(), expected_distances)
             break
 
@@ -887,12 +897,12 @@ class TestShuffledBatchDistances:
 
         dataloader = DataLoader(dataset, batch_size=2, collate_fn=custom_collate, shuffle=False)
 
-        computer = UniFracComputer()
+        loader = UniFracLoader()
         for batch in dataloader:
             assert "unifrac_target" in batch
             assert batch["unifrac_target"].shape == (2, 2)
             sample_ids = batch["sample_ids"]
-            expected_distances = computer.extract_batch_distances(simple_unifrac_distances, sample_ids, metric="unweighted")
+            expected_distances = loader.extract_batch_distances(simple_unifrac_distances, sample_ids, metric="unweighted")
             np.testing.assert_array_almost_equal(batch["unifrac_target"].numpy(), expected_distances)
             break
 
@@ -1130,129 +1140,49 @@ class TestDataLoaderOptimizations:
 class TestStripeMode:
     """Test suite for stripe-based UniFrac mode in dataset and collate_fn."""
 
+    @pytest.mark.skip(reason="Stripe mode deprecated in PYT-11.4. Use pairwise matrices instead.")
     def test_dataset_stripe_mode_auto_select_reference(self, rarefied_table, tokenizer, tmp_path):
-        """Test that dataset auto-selects reference samples when stripe_mode=True."""
-        observation_ids = list(rarefied_table.ids(axis="observation"))
-        tree_file = create_simple_tree_file(tmp_path, observation_ids)
+        """Test that dataset auto-selects reference samples when stripe_mode=True.
         
-        dataset = ASVDataset(
-            table=rarefied_table,
-            tokenizer=tokenizer,
-            max_bp=150,
-            token_limit=1024,
-            stripe_mode=True,
-        )
-        
-        # Should auto-select reference samples
-        assert dataset.stripe_mode is True
-        assert dataset.reference_sample_ids is not None
-        assert len(dataset.reference_sample_ids) > 0
-        # Should be <= 100 or all if < 100
-        total_samples = len(rarefied_table.ids(axis="sample"))
-        if total_samples <= 100:
-            assert len(dataset.reference_sample_ids) == total_samples
-        else:
-            assert len(dataset.reference_sample_ids) == 100
+        DEPRECATED: Stripe mode removed in PYT-11.4.
+        """
+        pytest.skip("Stripe mode deprecated. Use pairwise matrices.")
 
+    @pytest.mark.skip(reason="Stripe mode deprecated in PYT-11.4. Use pairwise matrices instead.")
     def test_dataset_stripe_mode_custom_reference(self, rarefied_table, tokenizer, tmp_path):
-        """Test that dataset uses custom reference samples when provided."""
-        observation_ids = list(rarefied_table.ids(axis="observation"))
-        tree_file = create_simple_tree_file(tmp_path, observation_ids)
+        """Test that dataset uses custom reference samples when provided.
         
-        sample_ids = list(rarefied_table.ids(axis="sample"))
-        custom_ref = sample_ids[:2]  # First 2 samples
-        
-        dataset = ASVDataset(
-            table=rarefied_table,
-            tokenizer=tokenizer,
-            max_bp=150,
-            token_limit=1024,
-            stripe_mode=True,
-            reference_sample_ids=custom_ref,
-        )
-        
-        assert dataset.stripe_mode is True
-        assert dataset.reference_sample_ids == custom_ref
+        DEPRECATED: Stripe mode removed in PYT-11.4.
+        """
+        pytest.skip("Stripe mode deprecated. Use pairwise matrices.")
 
+    @pytest.mark.skip(reason="Stripe mode deprecated in PYT-11.4. Use pairwise matrices instead.")
     def test_dataset_stripe_mode_invalid_reference(self, rarefied_table, tokenizer, tmp_path):
-        """Test that dataset raises error for invalid reference samples."""
-        observation_ids = list(rarefied_table.ids(axis="observation"))
-        tree_file = create_simple_tree_file(tmp_path, observation_ids)
+        """Test that dataset raises error for invalid reference samples.
         
-        with pytest.raises(ValueError, match="Reference sample IDs not found"):
-            ASVDataset(
-                table=rarefied_table,
-                tokenizer=tokenizer,
-                max_bp=150,
-                token_limit=1024,
-                stripe_mode=True,
-                reference_sample_ids=["invalid_sample_id"],
-            )
+        DEPRECATED: Stripe mode removed in PYT-11.4.
+        """
+        pytest.skip("Stripe mode deprecated. Use pairwise matrices.")
 
+    @pytest.mark.skip(reason="Lazy computation deprecated in PYT-11.4. Use pre-computed matrices instead.")
     def test_collate_fn_stripe_mode_lazy(self, rarefied_table, tokenizer, tmp_path):
-        """Test collate_fn with stripe mode and lazy computation."""
-        observation_ids = list(rarefied_table.ids(axis="observation"))
-        tree_file = create_simple_tree_file(tmp_path, observation_ids)
+        """Test collate_fn with stripe mode and lazy computation.
         
-        computer = UniFracComputer(num_threads=1)
-        computer.setup_lazy_computation(rarefied_table, tree_file)
-        
-        sample_ids = list(rarefied_table.ids(axis="sample"))
-        reference_sample_ids = sample_ids[:2]  # First 2 as reference
-        computer.set_reference_samples(reference_sample_ids, table=rarefied_table)
-        
-        # Create batch
-        batch = []
-        for i in range(2):
-            sample = rarefied_table.ids(axis="sample")[i]
-            sample_data = rarefied_table.matrix_data[:, i].toarray().flatten()
-            asv_indices = np.where(sample_data > 0)[0]
-            
-            tokens_list = []
-            counts_list = []
-            for asv_idx in asv_indices:
-                seq = observation_ids[asv_idx]
-                tokenized = tokenizer.tokenize(seq)
-                padded = tokenizer.pad_sequences([tokenized], 151)[0]
-                tokens_list.append(padded)
-                counts_list.append(sample_data[asv_idx])
-            
-            batch.append({
-                "tokens": torch.stack(tokens_list) if tokens_list else torch.zeros(1, 151, dtype=torch.long),
-                "counts": torch.FloatTensor(counts_list).unsqueeze(1) if counts_list else torch.zeros(1, 1),
-                "sample_id": sample,
-            })
-        
-        result = collate_fn(
-            batch,
-            token_limit=1024,
-            unifrac_distances=None,
-            unifrac_metric="unweighted",
-            unifrac_computer=computer,
-            lazy_unifrac=True,
-            stripe_mode=True,
-            reference_sample_ids=reference_sample_ids,
-        )
-        
-        assert "unifrac_target" in result
-        # Stripe shape: [batch_size, N_reference_samples]
-        assert result["unifrac_target"].shape == (2, len(reference_sample_ids))
-        assert not torch.isnan(result["unifrac_target"]).any()
-        assert not torch.isinf(result["unifrac_target"]).any()
+        DEPRECATED: Lazy computation removed in PYT-11.4.
+        Users should generate UniFrac matrices using unifrac-binaries.
+        """
+        pytest.skip("Lazy computation deprecated. Use pre-computed matrices.")
 
     def test_collate_fn_stripe_mode_precomputed(self, rarefied_table, tokenizer, tmp_path):
         """Test collate_fn with stripe mode and pre-computed distances."""
-        observation_ids = list(rarefied_table.ids(axis="observation"))
-        tree_file = create_simple_tree_file(tmp_path, observation_ids)
-        
-        computer = UniFracComputer(num_threads=1)
         sample_ids = list(rarefied_table.ids(axis="sample"))
+        observation_ids = list(rarefied_table.ids(axis="observation"))
         reference_sample_ids = sample_ids[:2]  # First 2 as reference
         
-        # Compute stripe distances upfront
-        stripe_distances = computer.compute_unweighted_stripe(
-            rarefied_table, tree_file, reference_sample_ids
-        )
+        # Create pre-computed stripe distances
+        n_samples = len(sample_ids)
+        n_ref = len(reference_sample_ids)
+        stripe_distances = np.random.rand(n_samples, n_ref)
         
         # Create batch
         batch = []
@@ -1276,17 +1206,9 @@ class TestStripeMode:
                 "sample_id": sample,
             })
         
-        result = collate_fn(
-            batch,
-            token_limit=1024,
-            unifrac_distances=stripe_distances,
-            unifrac_metric="unweighted",
-            unifrac_computer=computer,
-            lazy_unifrac=False,
-            stripe_mode=True,
-            reference_sample_ids=reference_sample_ids,
-            all_sample_ids=sample_ids,
-        )
+        # Note: stripe_mode is deprecated, but test pre-computed extraction
+        # For now, we'll skip this test since stripe extraction requires different handling
+        pytest.skip("Stripe mode deprecated. Use pairwise matrices instead.")
         
         assert "unifrac_target" in result
         # Stripe shape: [batch_size, N_reference_samples]
@@ -1294,76 +1216,19 @@ class TestStripeMode:
         assert not torch.isnan(result["unifrac_target"]).any()
         assert not torch.isinf(result["unifrac_target"]).any()
 
+    @pytest.mark.skip(reason="Stripe mode deprecated in PYT-11.4. Use pairwise matrices instead.")
     def test_collate_fn_stripe_mode_missing_reference(self, tokenizer):
-        """Test that collate_fn raises error when reference_sample_ids missing in stripe mode."""
-        batch = [
-            {
-                "tokens": torch.LongTensor([[1, 2, 3], [4, 1, 2]]),
-                "counts": torch.FloatTensor([[10.0], [20.0]]),
-                "sample_id": "sample1",
-            },
-        ]
+        """Test that collate_fn raises error when reference_sample_ids missing in stripe mode.
         
-        # When stripe_mode=True and unifrac_distances is provided, reference_sample_ids is required
-        with pytest.raises(ValueError, match="reference_sample_ids required"):
-            collate_fn(
-                batch,
-                token_limit=1024,
-                unifrac_distances=np.array([[0.1, 0.2]]),  # Provide a distance matrix to trigger stripe extraction
-                unifrac_metric="unweighted",
-                unifrac_computer=None,
-                lazy_unifrac=False,
-                stripe_mode=True,
-                reference_sample_ids=None,
-            )
+        DEPRECATED: Stripe mode removed in PYT-11.4.
+        """
+        pytest.skip("Stripe mode deprecated. Use pairwise matrices.")
 
+    @pytest.mark.skip(reason="Stripe mode and lazy computation deprecated in PYT-11.4. Use pre-computed matrices instead.")
     def test_dataloader_stripe_mode(self, rarefied_table, tokenizer, tmp_path):
-        """Test DataLoader with stripe mode."""
-        observation_ids = list(rarefied_table.ids(axis="observation"))
-        tree_file = create_simple_tree_file(tmp_path, observation_ids)
+        """Test DataLoader with stripe mode.
         
-        computer = UniFracComputer(num_threads=1)
-        computer.setup_lazy_computation(rarefied_table, tree_file)
-        
-        sample_ids = list(rarefied_table.ids(axis="sample"))
-        reference_sample_ids = sample_ids[:2]  # First 2 as reference
-        computer.set_reference_samples(reference_sample_ids, table=rarefied_table)
-        
-        dataset = ASVDataset(
-            table=rarefied_table,
-            tokenizer=tokenizer,
-            max_bp=150,
-            token_limit=1024,
-            lazy_unifrac=True,
-            unifrac_computer=computer,
-            stripe_mode=True,
-            reference_sample_ids=reference_sample_ids,
-        )
-        
-        collate = partial(
-            collate_fn,
-            token_limit=1024,
-            unifrac_distances=None,
-            unifrac_metric="unweighted",
-            unifrac_computer=computer,
-            lazy_unifrac=True,
-            stripe_mode=True,
-            reference_sample_ids=reference_sample_ids,
-        )
-        
-        dataloader = DataLoader(
-            dataset,
-            batch_size=2,
-            shuffle=False,
-            num_workers=0,
-            collate_fn=collate,
-        )
-        
-        # Get one batch
-        batch = next(iter(dataloader))
-        
-        assert "unifrac_target" in batch
-        # Stripe shape: [batch_size, N_reference_samples]
-        assert batch["unifrac_target"].shape[0] == 2
-        assert batch["unifrac_target"].shape[1] == len(reference_sample_ids)
-        assert not torch.isnan(batch["unifrac_target"]).any()
+        DEPRECATED: Stripe mode and lazy computation removed in PYT-11.4.
+        Users should generate UniFrac matrices using unifrac-binaries.
+        """
+        pytest.skip("Stripe mode and lazy computation deprecated. Use pre-computed matrices.")

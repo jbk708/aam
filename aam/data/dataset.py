@@ -11,7 +11,7 @@ from skbio import DistanceMatrix
 
 from aam.data.tokenizer import SequenceTokenizer
 from aam.data.biom_loader import BIOMLoader
-from aam.data.unifrac import UniFracComputer
+from aam.data.unifrac_loader import UniFracLoader
 
 
 def collate_fn(
@@ -19,9 +19,9 @@ def collate_fn(
     token_limit: int,
     unifrac_distances: Optional[Union[DistanceMatrix, pd.Series, np.ndarray]] = None,
     unifrac_metric: str = "unweighted",
-    unifrac_computer: Optional["UniFracComputer"] = None,
-    lazy_unifrac: bool = True,
-    stripe_mode: bool = True,
+    unifrac_loader: Optional["UniFracLoader"] = None,
+    lazy_unifrac: bool = False,
+    stripe_mode: bool = False,
     reference_sample_ids: Optional[List[str]] = None,
     all_sample_ids: Optional[List[str]] = None,
 ) -> Dict[str, torch.Tensor]:
@@ -32,11 +32,11 @@ def collate_fn(
         token_limit: Maximum number of ASVs per sample
         unifrac_distances: Optional full distance matrix/series/stripe matrix for batch extraction
         unifrac_metric: Type of UniFrac metric ("unweighted" or "faith_pd")
-        unifrac_computer: UniFracComputer instance for lazy computation
-        lazy_unifrac: If True, compute distances on-the-fly (default: True)
-        stripe_mode: If True, use stripe-based distances instead of pairwise (default: True)
-        reference_sample_ids: List of reference sample IDs for stripe mode
-        all_sample_ids: List of all sample IDs for stripe extraction (required if stripe_mode=True and not lazy)
+        unifrac_loader: UniFracLoader instance for batch extraction (optional, created if None)
+        lazy_unifrac: If True, compute distances on-the-fly (deprecated, should be False)
+        stripe_mode: If True, use stripe-based distances instead of pairwise (deprecated, should be False)
+        reference_sample_ids: List of reference sample IDs for stripe mode (deprecated)
+        all_sample_ids: List of all sample IDs for stripe extraction (deprecated)
 
     Returns:
         Batched dictionary with padded tensors
@@ -91,55 +91,11 @@ def collate_fn(
     if y_targets:
         result["y_target"] = torch.stack(y_targets)
 
-    if unifrac_distances is not None or (lazy_unifrac and unifrac_computer is not None):
-        if stripe_mode:
-            # Stripe-based computation
-            if lazy_unifrac and unifrac_computer is not None:
-                # Lazy stripe computation: compute distances on-the-fly for this batch
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.debug(f"Computing stripe UniFrac distances for batch: {sample_ids[:3]}... (batch size: {len(sample_ids)})")
-                if reference_sample_ids is None:
-                    raise ValueError("reference_sample_ids required for stripe mode")
-                if unifrac_metric == "unweighted":
-                    batch_distances = unifrac_computer.compute_batch_unweighted_stripe(
-                        sample_ids, reference_sample_ids=reference_sample_ids
-                    )
-                else:
-                    # Faith PD doesn't support stripe mode, fall back to pairwise
-                    logger.warning("Faith PD doesn't support stripe mode, falling back to pairwise computation")
-                    batch_distances = unifrac_computer.compute_batch_faith_pd(sample_ids)
-                logger.debug(f"Stripe batch distance computation complete")
-            else:
-                # Pre-computed stripe distances: extract from stripe matrix
-                if unifrac_computer is None:
-                    unifrac_computer = UniFracComputer()
-                if reference_sample_ids is None:
-                    raise ValueError("reference_sample_ids required for stripe mode")
-                if all_sample_ids is None:
-                    raise ValueError("all_sample_ids required for stripe extraction when not using lazy mode")
-                batch_distances = unifrac_computer.extract_batch_stripe_distances(
-                    unifrac_distances, sample_ids, 
-                    reference_sample_ids=reference_sample_ids,
-                    all_sample_ids=all_sample_ids
-                )
-        else:
-            # Pairwise computation (backward compatibility)
-            if lazy_unifrac and unifrac_computer is not None:
-                # Lazy computation: compute distances on-the-fly for this batch
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.debug(f"Computing UniFrac distances for batch: {sample_ids[:3]}... (batch size: {len(sample_ids)})")
-                if unifrac_metric == "unweighted":
-                    batch_distances = unifrac_computer.compute_batch_unweighted(sample_ids)
-                else:
-                    batch_distances = unifrac_computer.compute_batch_faith_pd(sample_ids)
-                logger.debug(f"Batch distance computation complete")
-            else:
-                # Pre-computed distances: extract from distance matrix
-                if unifrac_computer is None:
-                    unifrac_computer = UniFracComputer()
-                batch_distances = unifrac_computer.extract_batch_distances(unifrac_distances, sample_ids, metric=unifrac_metric)
+    if unifrac_distances is not None:
+        # Extract batch distances from pre-computed matrix
+        if unifrac_loader is None:
+            unifrac_loader = UniFracLoader()
+        batch_distances = unifrac_loader.extract_batch_distances(unifrac_distances, sample_ids, metric=unifrac_metric)
         
         # Validate extracted distances
         if np.any(np.isnan(batch_distances)):
@@ -173,7 +129,7 @@ class ASVDataset(Dataset):
         target_column: Optional[str] = None,
         unifrac_metric: str = "unweighted",
         lazy_unifrac: bool = True,
-        unifrac_computer: Optional[UniFracComputer] = None,
+        unifrac_computer: Optional[UniFracLoader] = None,
         stripe_mode: bool = True,
         reference_sample_ids: Optional[List[str]] = None,
     ):
@@ -189,7 +145,7 @@ class ASVDataset(Dataset):
             target_column: Column name in metadata for target values
             unifrac_metric: Type of UniFrac metric ("unweighted" or "faith_pd")
             lazy_unifrac: If True, compute distances on-the-fly instead of using pre-computed distances (default: True)
-            unifrac_computer: UniFracComputer instance for lazy computation (required if lazy_unifrac=True)
+            unifrac_computer: UniFracLoader instance (deprecated, not used)
             stripe_mode: If True, use stripe-based distances instead of pairwise (default: True)
             reference_sample_ids: List of reference sample IDs for stripe mode (required if stripe_mode=True)
         """
@@ -202,6 +158,7 @@ class ASVDataset(Dataset):
         self.target_column = target_column
         self.unifrac_metric = unifrac_metric
         self.lazy_unifrac = lazy_unifrac
+        # unifrac_computer is deprecated, kept for backward compatibility
         self.unifrac_computer = unifrac_computer
         self.stripe_mode = stripe_mode
         self.reference_sample_ids = reference_sample_ids
@@ -223,7 +180,7 @@ class ASVDataset(Dataset):
         
         if stripe_mode and reference_sample_ids is not None:
             # Validate reference samples exist in table
-            # Skip validation if using lazy_unifrac (unifrac_computer has full table)
+            # Skip validation if using lazy_unifrac (deprecated, always validate now)
             if not lazy_unifrac:
                 table_sample_ids = set(self.sample_ids)
                 missing_ref = set(reference_sample_ids) - table_sample_ids

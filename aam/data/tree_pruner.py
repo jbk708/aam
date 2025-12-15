@@ -1,5 +1,11 @@
-"""Tree pruning utilities for optimizing UniFrac computation."""
+"""Tree pruning utilities for optimizing UniFrac computation.
 
+DEPRECATED: This module is deprecated as of PYT-11.4. Tree pruning should be handled
+by unifrac-binaries or other external tools when generating UniFrac matrices.
+This module is kept for backward compatibility but will be removed in a future version.
+"""
+
+import warnings
 from typing import Set, Optional
 from pathlib import Path
 import logging
@@ -11,6 +17,15 @@ from skbio import TreeNode
 
 
 logger = logging.getLogger(__name__)
+
+# Deprecation warning
+warnings.warn(
+    "tree_pruner module is deprecated. Tree pruning should be handled by "
+    "unifrac-binaries or other external tools when generating UniFrac matrices. "
+    "This module will be removed in a future version.",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 
 def prune_tree_to_table(
