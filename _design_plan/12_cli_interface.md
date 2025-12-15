@@ -1,6 +1,6 @@
 # CLI Interface
 
-**Status:** ✅ Completed
+**Status:** ✅ Completed (Updated in PYT-11.4)
 
 ## Overview
 Command-line interface for training and inference. Implemented in `aam/cli.py`.
@@ -16,7 +16,14 @@ Command-line interface for training and inference. Implemented in `aam/cli.py`.
 - Memory optimization options (gradient accumulation, chunked processing)
 - TensorBoard logging integration
 - Reproducibility support (random seed)
+- **Pre-computed UniFrac matrices**: Uses `--unifrac-matrix` to load pre-generated matrices (PYT-11.4)
 
 ## Implementation
 - **CLI**: `aam/cli.py` using `click` framework
-- **Testing**: Comprehensive unit tests (28 tests + 10 integration tests passing)
+- **UniFrac Loading**: Uses `UniFracLoader` to load pre-computed matrices from disk
+- **Testing**: Comprehensive unit tests (updated for pre-computed matrices)
+
+## Changes in PYT-11.4
+- **Removed**: `--tree`, `--lazy-unifrac`, `--stripe-mode`, `--unifrac-threads`, `--prune-tree` flags
+- **Added**: `--unifrac-matrix` parameter (required for training/pretrain)
+- **Deprecated**: All UniFrac computation logic (users should generate matrices using unifrac-binaries)
