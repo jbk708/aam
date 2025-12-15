@@ -176,9 +176,16 @@ def compute_pairwise_distances(
     if normalize:
         # Apply sigmoid with scaling to bound distances to [0, 1]
         # scale parameter controls sensitivity: larger scale = more sensitive to distance changes
-        # sigmoid(scale * distance) maps distances to [0, 1]
+        # Use max distance as normalization factor, then apply sigmoid (prevents saturation)
         # Note: diagonal is already 0.0, sigmoid(0) = 0.5, so we need to handle diagonal separately
-        normalized_distances = torch.sigmoid(scale * distances)
+        max_dist = distances.max()
+        if max_dist > 0:
+            # Normalize by max distance, then apply sigmoid
+            normalized = distances / (max_dist * scale)
+            normalized_distances = torch.sigmoid(normalized)
+        else:
+            # All distances are 0, return zeros
+            normalized_distances = torch.zeros_like(distances)
         # Preserve diagonal as 0.0 (distance from sample to itself)
         eye_mask = torch.eye(distances.shape[0], device=distances.device, dtype=distances.dtype)
         normalized_distances = normalized_distances * (1.0 - eye_mask)
