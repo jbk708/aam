@@ -215,17 +215,27 @@ class UniFracLoader:
                         f"faith_pd, or matrix (unifrac-binaries format). Found: {keys}"
                     )
             
-        if sample_ids is not None:
-            self.validate_matrix_dimensions(matrix, sample_ids, matrix_format or "unweighted")
+        # Get sample IDs to use (from h5_sample_ids if available, otherwise from provided sample_ids)
+        ids_to_use = None
+        if hasattr(matrix, '_aam_sample_ids'):
+            ids_to_use = matrix._aam_sample_ids
+            # Remove the temporary attribute
+            delattr(matrix, '_aam_sample_ids')
+        elif sample_ids is not None:
+            ids_to_use = sample_ids
+        
+        # Validate dimensions if we have sample IDs
+        if ids_to_use is not None:
+            self.validate_matrix_dimensions(matrix, ids_to_use, matrix_format or "unweighted")
         
         if matrix_format == "faith_pd" or (matrix.ndim == 1 and matrix_format is None):
             # Handle both 1D and 2D arrays (2D with shape [N, 1])
             if matrix.ndim == 2 and matrix.shape[1] == 1:
                 matrix = matrix.flatten()
-            return pd.Series(matrix, index=sample_ids) if sample_ids is not None else pd.Series(matrix)
+            return pd.Series(matrix, index=ids_to_use) if ids_to_use is not None else pd.Series(matrix)
         elif matrix_format == "pairwise" or (matrix.ndim == 2 and matrix.shape[0] == matrix.shape[1] and matrix_format is None):
-            if sample_ids is not None:
-                return DistanceMatrix(matrix, ids=sample_ids)
+            if ids_to_use is not None:
+                return DistanceMatrix(matrix, ids=ids_to_use)
             return matrix
         else:
             return matrix
