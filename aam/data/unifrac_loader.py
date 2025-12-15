@@ -117,25 +117,70 @@ class UniFracLoader:
         sample_ids: Optional[List[str]],
         matrix_format: Optional[str],
     ) -> Union[np.ndarray, DistanceMatrix, pd.Series]:
-        """Load matrix from HDF5 file."""
+        """Load matrix from HDF5 file.
+        
+        Supports multiple HDF5 formats:
+        - AAM format: 'distances', 'stripe_distances', or 'faith_pd' keys
+        - unifrac-binaries (ssu) format: 'matrix' key (distance matrix)
+        """
         try:
             import h5py
         except ImportError:
             raise ImportError("h5py is required to load .h5 files. Install with: pip install h5py")
         
         with h5py.File(matrix_path, 'r') as f:
+            # Try AAM format keys first
             if 'distances' in f:
                 matrix = np.array(f['distances'])
             elif 'stripe_distances' in f:
                 matrix = np.array(f['stripe_distances'])
             elif 'faith_pd' in f:
                 matrix = np.array(f['faith_pd'])
+            # Try unifrac-binaries (ssu) format
+            elif 'matrix' in f:
+                matrix = np.array(f['matrix'])
+                # ssu stores sample IDs in 'order' key - use for validation/reordering if needed
+                h5_sample_ids = None
+                if 'order' in f:
+                    order_data = f['order']
+                    # Handle both string and bytes arrays
+                    if order_data.dtype.kind == 'S':  # String/bytes
+                        h5_sample_ids = [sid.decode('utf-8') for sid in order_data]
+                    else:
+                        h5_sample_ids = [str(sid) for sid in order_data]
+                    
+                    # If sample_ids provided, validate and potentially reorder matrix
+                    if sample_ids is not None:
+                        if set(h5_sample_ids) != set(sample_ids):
+                            missing = set(sample_ids) - set(h5_sample_ids)
+                            extra = set(h5_sample_ids) - set(sample_ids)
+                            if missing:
+                                raise ValueError(
+                                    f"Sample IDs in HDF5 file don't match expected IDs. "
+                                    f"Missing in HDF5: {sorted(missing)[:10]}{'...' if len(missing) > 10 else ''}"
+                                )
+                            if extra:
+                                logger.warning(
+                                    f"HDF5 file has {len(extra)} extra samples not in expected IDs. "
+                                    f"Will use only matching samples."
+                                )
+                        
+                        # Reorder matrix to match sample_ids order
+                        if len(h5_sample_ids) == len(sample_ids) and h5_sample_ids != sample_ids:
+                            id_to_idx = {sid: idx for idx, sid in enumerate(h5_sample_ids)}
+                            reorder_indices = [id_to_idx[sid] for sid in sample_ids if sid in id_to_idx]
+                            if len(reorder_indices) == len(sample_ids):
+                                matrix = matrix[np.ix_(reorder_indices, reorder_indices)]
+                                logger.info(f"Reordered HDF5 matrix to match provided sample IDs")
             else:
                 keys = list(f.keys())
                 if len(keys) == 1:
                     matrix = np.array(f[keys[0]])
                 else:
-                    raise ValueError(f"Multiple datasets in HDF5 file. Expected one of: distances, stripe_distances, faith_pd. Found: {keys}")
+                    raise ValueError(
+                        f"Multiple datasets in HDF5 file. Expected one of: distances, stripe_distances, "
+                        f"faith_pd, or matrix (unifrac-binaries format). Found: {keys}"
+                    )
             
         if sample_ids is not None:
             self.validate_matrix_dimensions(matrix, sample_ids, matrix_format or "unweighted")
