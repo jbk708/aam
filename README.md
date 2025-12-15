@@ -26,24 +26,24 @@ pip install -e ".[dev,docs,training]"
 
 ### Generating UniFrac Distance Matrices
 
-**Important:** AAM requires pre-computed UniFrac distance matrices. Generate them before training using [unifrac-binaries](https://github.com/biocore/unifrac-binaries/tree/main):
+**Important:** AAM requires pre-computed UniFrac distance matrices. Generate them before training using `ssu` from [unifrac-binaries](https://github.com/biocore/unifrac-binaries/tree/main) (already included in environment requirements):
 
 ```bash
-# Install unifrac-binaries (if not already installed)
-# See: https://github.com/biocore/unifrac-binaries/tree/main
-
 # Generate pairwise unweighted UniFrac distance matrix
-# Use float32 mode for memory efficiency (recommended)
-unifrac \
-  --input <biom_file> \
-  --tree <tree_file> \
-  --output <unifrac_matrix.npy> \
-  --mode unweighted \
-  --format numpy \
-  --dtype float32
+# Use unweighted_fp32 method for float32 precision (recommended for memory efficiency)
+ssu \
+  -i <biom_file> \
+  -t <tree_file> \
+  -m unweighted_fp32 \
+  -o <unifrac_matrix.h5> \
+  --format hdf5_fp32
 ```
 
-**Note:** `float32` mode is recommended and fully supported. It reduces memory usage by 50% compared to float64 while maintaining sufficient precision for training.
+**Note:** 
+- `unifrac-binaries` (providing the `ssu` command) is already included in the environment dependencies
+- `unweighted_fp32` method produces float32 precision, which is recommended and fully supported
+- Float32 reduces memory usage by 50% compared to float64 while maintaining sufficient precision for training
+- Output format `hdf5_fp32` is supported by AAM's UniFracLoader
 
 **Alternative formats:** You can also generate matrices using `scikit-bio` or other tools, then save in `.npy`, `.h5`, or `.csv` format. The matrix should be symmetric for pairwise UniFrac (shape `[N_samples, N_samples]`) or a vector for Faith PD (shape `[N_samples]`).
 
