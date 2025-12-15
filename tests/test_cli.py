@@ -60,6 +60,16 @@ def sample_metadata_file(temp_dir):
 
 
 @pytest.fixture
+def sample_tree_file(temp_dir):
+    """Create a sample tree file (Newick format)."""
+    tree_file = temp_dir / "test_tree.nwk"
+    # Create a simple Newick tree with a few tips
+    tree_str = "(ASV1:0.1,ASV2:0.1,ASV3:0.1);"
+    tree_file.write_text(tree_str)
+    return str(tree_file)
+
+
+@pytest.fixture
 def sample_output_dir(temp_dir):
     """Create a sample output directory."""
     output_dir = temp_dir / "output"
@@ -1150,7 +1160,6 @@ class TestPretrainedEncoderLoading:
     @patch("aam.cli.validate_file_path")
     @patch("aam.cli.validate_arguments")
     @patch("aam.cli.BIOMLoader")
-    @patch("aam.cli.UniFracComputer")
     @patch("aam.cli.train_test_split")
     @patch("aam.cli.ASVDataset")
     @patch("aam.cli.DataLoader")
@@ -1173,7 +1182,6 @@ class TestPretrainedEncoderLoading:
         mock_dataloader_class,
         mock_dataset_class,
         mock_train_test_split,
-        mock_unifrac_class,
         mock_biom_loader_class,
         mock_validate_args,
         mock_validate_file,
@@ -1208,11 +1216,8 @@ class TestPretrainedEncoderLoading:
         mock_biom_loader_instance.load_table.return_value = mock_table
         mock_biom_loader_instance.rarefy.return_value = mock_table
 
-        mock_unifrac_instance = MagicMock()
-        mock_unifrac_class.return_value = mock_unifrac_instance
-        mock_distance_matrix = MagicMock()
-        mock_unifrac_instance.compute_unweighted.return_value = mock_distance_matrix
-        mock_unifrac_instance.extract_batch_distances.return_value = MagicMock()
+        # UniFracComputer is no longer used - pre-computed matrices are loaded via UniFracLoader
+        # Mock UniFracLoader instead if needed
 
         mock_train_ids = ["sample1", "sample2", "sample3"]
         mock_val_ids = ["sample4"]
@@ -1286,7 +1291,6 @@ class TestPretrainedEncoderLoading:
     @patch("aam.cli.validate_file_path")
     @patch("aam.cli.validate_arguments")
     @patch("aam.cli.BIOMLoader")
-    @patch("aam.cli.UniFracComputer")
     @patch("aam.cli.train_test_split")
     @patch("aam.cli.ASVDataset")
     @patch("aam.cli.DataLoader")
@@ -1309,7 +1313,6 @@ class TestPretrainedEncoderLoading:
         mock_dataloader_class,
         mock_dataset_class,
         mock_train_test_split,
-        mock_unifrac_class,
         mock_biom_loader_class,
         mock_validate_args,
         mock_validate_file,
@@ -1344,11 +1347,8 @@ class TestPretrainedEncoderLoading:
         mock_biom_loader_instance.load_table.return_value = mock_table
         mock_biom_loader_instance.rarefy.return_value = mock_table
 
-        mock_unifrac_instance = MagicMock()
-        mock_unifrac_class.return_value = mock_unifrac_instance
-        mock_distance_matrix = MagicMock()
-        mock_unifrac_instance.compute_unweighted.return_value = mock_distance_matrix
-        mock_unifrac_instance.extract_batch_distances.return_value = MagicMock()
+        # UniFracComputer is no longer used - pre-computed matrices are loaded via UniFracLoader
+        # Mock UniFracLoader instead if needed
 
         mock_train_ids = ["sample1", "sample2", "sample3"]
         mock_val_ids = ["sample4"]
@@ -1420,7 +1420,6 @@ class TestPretrainedEncoderLoading:
     @patch("aam.cli.validate_file_path")
     @patch("aam.cli.validate_arguments")
     @patch("aam.cli.BIOMLoader")
-    @patch("aam.cli.UniFracComputer")
     @patch("aam.cli.train_test_split")
     @patch("aam.cli.ASVDataset")
     @patch("aam.cli.DataLoader")
@@ -1443,7 +1442,6 @@ class TestPretrainedEncoderLoading:
         mock_dataloader_class,
         mock_dataset_class,
         mock_train_test_split,
-        mock_unifrac_class,
         mock_biom_loader_class,
         mock_validate_args,
         mock_validate_file,
@@ -1478,11 +1476,8 @@ class TestPretrainedEncoderLoading:
         mock_biom_loader_instance.load_table.return_value = mock_table
         mock_biom_loader_instance.rarefy.return_value = mock_table
 
-        mock_unifrac_instance = MagicMock()
-        mock_unifrac_class.return_value = mock_unifrac_instance
-        mock_distance_matrix = MagicMock()
-        mock_unifrac_instance.compute_unweighted.return_value = mock_distance_matrix
-        mock_unifrac_instance.extract_batch_distances.return_value = MagicMock()
+        # UniFracComputer is no longer used - pre-computed matrices are loaded via UniFracLoader
+        # Mock UniFracLoader instead if needed
 
         mock_train_ids = ["sample1", "sample2", "sample3"]
         mock_val_ids = ["sample4"]
