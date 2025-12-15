@@ -456,94 +456,18 @@ Add support for distributed training using PyTorch's DistributedDataParallel (DD
 ## Phase 11: Critical Fixes
 
 ### PYT-11.2: Implement Reference Embedding Computation for Stripe Mode
-**Priority:** HIGH | **Effort:** Medium (4-6 hours) | **Status:** Not Started
+**Priority:** HIGH | **Effort:** Medium (4-6 hours) | **Status:** ❌ Cancelled
 
 **Description:**
-Implement reference embedding computation for stripe-based UniFrac training. Currently, stripe mode requires reference embeddings to compute stripe distances from batch embeddings, but this computation is not yet implemented, causing training to fail with a NotImplementedError.
+~~Implement reference embedding computation for stripe-based UniFrac training.~~ **CANCELLED** - This approach was scrapped in favor of using pre-generated UniFrac matrices from unifrac-binaries (see PYT-11.4).
 
-**Problem:**
-- Stripe mode is now the default (`--stripe-mode` is True by default)
-- Stripe mode computes distances from each batch sample to a fixed set of reference samples
-- The loss function needs reference embeddings `[num_reference_samples, embedding_dim]` to compute stripe distances
-- Currently, reference embeddings are not computed, causing training to fail with:
-  ```
-  NotImplementedError: Stripe mode requires reference embeddings, but computation is not yet implemented.
-  ```
-- Users must use `--no-stripe-mode` to train, which defeats the purpose of stripe mode
+**Reason for Cancellation:**
+- Parallelization of stripe computation in Python was problematic and inefficient
+- unifrac-binaries library already provides optimized, parallelized UniFrac computation
+- Better approach: Generate UniFrac matrices upfront using unifrac-binaries, then ingest pre-computed matrices
+- This eliminates the need for complex Python-level parallelization and reference embedding computation
 
-**Solution:**
-1. Compute reference embeddings once per epoch (or cache across epochs)
-2. Get reference sample data from dataset
-3. Run reference samples through model to get embeddings
-4. Cache reference embeddings and pass to loss function via targets dictionary
-5. Update trainer to handle reference embedding computation
-
-**Acceptance Criteria:**
-- [ ] Add method to compute reference embeddings from reference samples
-- [ ] Update `Trainer` to accept `reference_sample_ids` and dataset
-- [ ] Compute reference embeddings once per epoch (at start of epoch)
-- [ ] Cache reference embeddings for reuse throughout epoch
-- [ ] Pass reference embeddings to loss function via targets dictionary
-- [ ] Handle reference embeddings in both train and validation loops
-- [ ] Support reference embeddings with lazy UniFrac mode
-- [ ] Support reference embeddings with pre-computed stripe matrices
-- [ ] Add tests for reference embedding computation
-- [ ] Verify stripe mode training works end-to-end
-- [ ] Update documentation
-
-**Implementation Details:**
-
-1. **Update Trainer.__init__()**:
-   - Add `reference_sample_ids: Optional[List[str]] = None` parameter
-   - Add `train_dataset: Optional[Dataset] = None` parameter (for accessing reference samples)
-   - Store reference sample IDs and dataset
-
-2. **Add method to compute reference embeddings**:
-   ```python
-   def _compute_reference_embeddings(self, epoch: int = 0) -> torch.Tensor:
-       """Compute embeddings for reference samples.
-       
-       Returns:
-           Reference embeddings [num_reference_samples, embedding_dim]
-       """
-       # Get reference samples from dataset
-       # Run through model to get embeddings
-       # Return embeddings
-   ```
-
-3. **Update train_epoch()**:
-   - Compute reference embeddings at start of epoch (or use cached if available)
-   - Pass reference embeddings to loss function via targets dictionary
-   - Cache reference embeddings for reuse throughout epoch
-
-4. **Update validate_epoch()**:
-   - Compute reference embeddings (or reuse from training)
-   - Pass reference embeddings to loss function
-
-5. **Update CLI**:
-   - Pass `reference_sample_ids` to Trainer
-   - Pass `train_dataset` to Trainer (or extract from DataLoader)
-
-**Files to Modify:**
-- `aam/training/trainer.py` - Add reference embedding computation
-- `aam/cli.py` - Pass reference_sample_ids and dataset to Trainer
-- `tests/test_trainer.py` - Add tests for reference embedding computation
-- `tests/test_integration.py` - Add integration tests for stripe mode training
-
-**Dependencies:** PYT-11.3 (stripe mode dataset/collation - in progress)
-
-**Estimated Time:** 4-6 hours
-
-**Implementation Notes:**
-- Reference embeddings should be computed with model in eval mode (no gradients)
-- Reference embeddings can be cached across epochs (model changes slowly)
-- Need to handle reference samples that might not be in current split (train/val)
-- Reference embeddings should be on same device as model
-- Consider memory implications of storing reference embeddings
-
-**Related Tickets:**
-- PYT-11.3: Update Dataset and Collation for Stripe Mode (in progress)
-- See `_design_plan/21_stripe_unifrac_migration.md` for full migration plan
+**Related Ticket:** PYT-11.4 (new priority ticket for ingesting pre-generated matrices)
 
 ---
 
@@ -598,6 +522,113 @@ Fix UniFrac distance predictions that exceed 1.0. UniFrac distances are bounded 
 **Dependencies:** PYT-8.16b (completed)
 
 **Estimated Time:** 3-4 hours (actual: completed)
+
+---
+
+### PYT-11.4: Refactor CLI/Model to Ingest Pre-Generated UniFrac Matrices
+**Priority:** HIGH | **Effort:** Medium (4-6 hours) | **Status:** Not Started
+
+**Description:**
+Refactor the CLI and model to ingest pre-generated UniFrac distance matrices (pairwise or stripe format) computed by unifrac-binaries, removing all UniFrac computation logic from the Python codebase. This simplifies the codebase, improves performance, and leverages the optimized, parallelized unifrac-binaries library.
+
+**Problem:**
+- Current implementation attempts to compute UniFrac distances in Python, which is slow and complex
+- Parallelization in Python (ProcessPoolExecutor) is inefficient and problematic
+- unifrac-binaries library already provides optimized, parallelized UniFrac computation
+- Users should generate UniFrac matrices upfront using unifrac-binaries tools, then load them for training
+
+**Solution:**
+1. Remove all UniFrac computation logic from `aam/data/unifrac.py` (keep only loading/ingestion)
+2. Update CLI to accept pre-generated UniFrac matrices (pairwise or stripe format)
+3. Remove UniFrac computation flags (`--lazy-unifrac`, `--stripe-mode`, `--unifrac-threads`, etc.)
+4. Update dataset to load pre-computed matrices from disk
+5. Support both pairwise (full N×N) and stripe (N×M) matrix formats
+6. Update documentation to explain how to generate matrices using unifrac-binaries
+
+**Acceptance Criteria:**
+- [ ] Remove `UniFracComputer.compute_unweighted()` and related computation methods
+- [ ] Remove `UniFracComputer.compute_unweighted_stripe()` and related computation methods
+- [ ] Keep only matrix loading/ingestion functionality in `UniFracComputer`
+- [ ] Update CLI to accept `--unifrac-matrix` parameter (path to pre-computed matrix)
+- [ ] Support both pairwise (full matrix) and stripe matrix formats
+- [ ] Remove `--lazy-unifrac`, `--stripe-mode`, `--unifrac-threads`, `--prune-tree` flags (no longer needed)
+- [ ] Update dataset to load pre-computed matrices
+- [ ] Add validation to ensure matrix dimensions match sample IDs
+- [ ] Update documentation with instructions for generating matrices using unifrac-binaries
+- [ ] Add example scripts for generating matrices using unifrac-binaries
+- [ ] Update tests to use pre-computed matrices instead of computing on-the-fly
+- [ ] Remove all tests related to UniFrac computation (keep only loading tests)
+
+**Implementation Details:**
+
+1. **Simplify `UniFracComputer` class**:
+   - Remove all computation methods (`compute_unweighted`, `compute_unweighted_stripe`, etc.)
+   - Keep only loading/validation methods
+   - Rename to `UniFracLoader` or similar to reflect new purpose
+
+2. **Update CLI**:
+   - Replace `--lazy-unifrac` with `--unifrac-matrix` (required parameter)
+   - Remove `--stripe-mode`, `--unifrac-threads`, `--prune-tree` flags
+   - Remove `--reference-samples` flag (handled by matrix format)
+   - Add validation to check matrix file exists and is valid
+
+3. **Update Dataset**:
+   - Load pre-computed matrix from disk (numpy .npy or HDF5 format)
+   - Validate matrix dimensions match sample IDs
+   - Extract train/val splits from full matrix
+   - Support both pairwise (N×N) and stripe (N×M) formats
+
+4. **Matrix Format Support**:
+   - Pairwise: Full N×N distance matrix (numpy array)
+   - Stripe: N×M matrix where N=test samples, M=reference samples (numpy array)
+   - File formats: `.npy` (numpy), `.h5` (HDF5), or `.csv` (CSV with sample IDs)
+
+5. **Documentation**:
+   - Add instructions for generating matrices using unifrac-binaries CLI tools
+   - Provide example commands for both pairwise and stripe computation
+   - Explain matrix format requirements
+   - Add troubleshooting section
+
+**Files to Modify:**
+- `aam/data/unifrac.py` - Remove computation logic, keep only loading
+- `aam/cli.py` - Update to accept pre-computed matrices, remove computation flags
+- `aam/data/dataset.py` - Update to load pre-computed matrices
+- `tests/test_unifrac.py` - Update tests to use pre-computed matrices
+- `tests/test_cli.py` - Update CLI tests
+- `README.md` - Update documentation
+- Create `docs/unifrac_matrix_generation.md` - Guide for generating matrices
+
+**Files to Remove:**
+- `aam/data/tree_pruner.py` - No longer needed (tree pruning handled by unifrac-binaries)
+- Tests related to UniFrac computation (keep only loading tests)
+
+**Dependencies:** None
+
+**Estimated Time:** 4-6 hours
+
+**Benefits:**
+- **Simpler codebase**: Remove complex parallelization and computation logic
+- **Better performance**: Leverage optimized unifrac-binaries library
+- **Easier maintenance**: No need to maintain UniFrac computation code
+- **Better user experience**: Users generate matrices once, reuse for multiple training runs
+- **More flexible**: Users can use any tool to generate UniFrac matrices
+
+**Migration Path:**
+1. Users generate UniFrac matrices using unifrac-binaries CLI tools
+2. Users provide matrix path to training command
+3. Training loads pre-computed matrix and uses it directly
+
+**Example Usage:**
+```bash
+# Generate pairwise matrix using unifrac-binaries
+ssu -i table.biom -t tree.nwk -o distances.npy -m unweighted
+
+# Generate stripe matrix (if supported by unifrac-binaries)
+# (or use custom script to extract stripe from full matrix)
+
+# Train with pre-computed matrix
+python -m aam.cli train --table table.biom --unifrac-matrix distances.npy ...
+```
 
 ---
 
