@@ -35,7 +35,7 @@ class UniFracLoader:
         matrix_path: str,
         sample_ids: Optional[List[str]] = None,
         matrix_format: Optional[str] = None,
-    ) -> Union[np.ndarray, DistanceMatrix, pd.Series]:
+    ) -> Union[np.ndarray, DistanceMatrix, pd.Series, Tuple[Union[np.ndarray, DistanceMatrix, pd.Series], List[str]]]:
         """Load pre-computed UniFrac distance matrix from disk.
         
         Args:
@@ -151,27 +151,60 @@ class UniFracLoader:
                     
                     # If sample_ids provided, validate and potentially reorder matrix
                     if sample_ids is not None:
-                        if set(h5_sample_ids) != set(sample_ids):
-                            missing = set(sample_ids) - set(h5_sample_ids)
-                            extra = set(h5_sample_ids) - set(sample_ids)
+                        h5_set = set(h5_sample_ids)
+                        sample_set = set(sample_ids)
+                        
+                        if h5_set != sample_set:
+                            missing = sample_set - h5_set
+                            extra = h5_set - sample_set
+                            
                             if missing:
-                                raise ValueError(
-                                    f"Sample IDs in HDF5 file don't match expected IDs. "
-                                    f"Missing in HDF5: {sorted(missing)[:10]}{'...' if len(missing) > 10 else ''}"
+                                logger.warning(
+                                    f"HDF5 file missing {len(missing)} samples from BIOM table. "
+                                    f"Will use only samples present in both. "
+                                    f"Missing: {sorted(list(missing))[:5]}{'...' if len(missing) > 5 else ''}"
                                 )
+                            
                             if extra:
                                 logger.warning(
-                                    f"HDF5 file has {len(extra)} extra samples not in expected IDs. "
-                                    f"Will use only matching samples."
+                                    f"HDF5 file has {len(extra)} extra samples not in BIOM table. "
+                                    f"Will use only samples present in both."
                                 )
-                        
-                        # Reorder matrix to match sample_ids order
-                        if len(h5_sample_ids) == len(sample_ids) and h5_sample_ids != sample_ids:
-                            id_to_idx = {sid: idx for idx, sid in enumerate(h5_sample_ids)}
-                            reorder_indices = [id_to_idx[sid] for sid in sample_ids if sid in id_to_idx]
-                            if len(reorder_indices) == len(sample_ids):
+                            
+                            # Use intersection of sample IDs
+                            common_ids = sorted(list(h5_set & sample_set))
+                            if not common_ids:
+                                raise ValueError(
+                                    f"No common sample IDs between HDF5 file and BIOM table. "
+                                    f"HDF5 has {len(h5_set)} samples, BIOM has {len(sample_set)} samples."
+                                )
+                            
+                            logger.info(
+                                f"Using {len(common_ids)} samples present in both HDF5 and BIOM table "
+                                f"(out of {len(sample_set)} BIOM samples, {len(h5_set)} HDF5 samples)"
+                            )
+                            
+                            # Filter and reorder matrix to match common_ids
+                            h5_id_to_idx = {sid: idx for idx, sid in enumerate(h5_sample_ids)}
+                            reorder_indices = [h5_id_to_idx[sid] for sid in common_ids]
+                            matrix = matrix[np.ix_(reorder_indices, reorder_indices)]
+                            
+                            # Update h5_sample_ids to reflect filtered/reordered matrix
+                            h5_sample_ids = common_ids
+                        else:
+                            # Reorder matrix to match sample_ids order if needed
+                            if h5_sample_ids != sample_ids:
+                                id_to_idx = {sid: idx for idx, sid in enumerate(h5_sample_ids)}
+                                reorder_indices = [id_to_idx[sid] for sid in sample_ids]
                                 matrix = matrix[np.ix_(reorder_indices, reorder_indices)]
                                 logger.info(f"Reordered HDF5 matrix to match provided sample IDs")
+                                h5_sample_ids = sample_ids
+            
+            # Store the actual sample IDs used (for later retrieval if needed)
+            # This will be used when creating DistanceMatrix
+            if h5_sample_ids is not None:
+                # Store as attribute for later access
+                matrix._aam_sample_ids = h5_sample_ids
             else:
                 keys = list(f.keys())
                 if len(keys) == 1:

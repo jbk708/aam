@@ -295,6 +295,25 @@ def train(
             matrix_format=matrix_format,
         )
         
+        # Get actual sample IDs from loaded matrix (may be filtered to intersection)
+        if isinstance(unifrac_distances, DistanceMatrix):
+            matrix_sample_ids = list(unifrac_distances.ids)
+        elif isinstance(unifrac_distances, pd.Series):
+            matrix_sample_ids = list(unifrac_distances.index)
+        else:
+            # For numpy arrays, use original sample_ids (matrix should match)
+            matrix_sample_ids = sample_ids
+        
+        # Filter table to only include samples present in the matrix
+        if set(matrix_sample_ids) != set(sample_ids):
+            logger.info(
+                f"Filtering BIOM table to match matrix samples: "
+                f"{len(matrix_sample_ids)} samples (from {len(sample_ids)} original)"
+            )
+            # Filter table to only include samples in matrix
+            table_obj = table_obj.filter(matrix_sample_ids, axis="sample", inplace=False)
+            sample_ids = matrix_sample_ids
+        
         if unifrac_metric == "unifrac":
             unifrac_metric_name = "unweighted"
             encoder_type = "unifrac"
