@@ -199,14 +199,18 @@ class SequencePredictor(nn.Module):
         nuc_predictions = base_outputs.get("nuc_predictions")
         
         count_embeddings = self.count_encoder(base_embeddings, mask=asv_mask)
-        count_prediction = self.count_head(count_embeddings)
+        count_prediction = torch.sigmoid(self.count_head(count_embeddings))
         
         target_embeddings = self.target_encoder(base_embeddings, mask=asv_mask)
         pooled_target = self.target_pooling(target_embeddings, mask=asv_mask)
         target_prediction = self.target_head(pooled_target)
-        
+
         if self.is_classifier:
             target_prediction = nn.functional.log_softmax(target_prediction, dim=-1)
+        else:
+            # Bound regression output to [0, 1] using sigmoid
+            # This works with normalized targets and ensures stable training
+            target_prediction = torch.sigmoid(target_prediction)
         
         result = {
             "target_prediction": target_prediction,
