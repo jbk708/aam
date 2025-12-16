@@ -814,6 +814,121 @@ Remove sigmoid and use direct normalization:
 
 ---
 
+### PYT-11.7: Fix Metadata Loading to Handle Column Name Variations
+**Priority:** HIGH | **Effort:** Low (1-2 hours) | **Status:** ✅ Completed
+
+**Description:**
+Fix metadata loading in CLI to robustly handle column name variations (whitespace, encoding issues, BOM) and provide better error messages. Currently, the code fails with "Metadata file must have 'sample_id' column" even when the column exists but has whitespace or encoding issues.
+
+**Problem:**
+- CLI training command fails with: `ValueError: Metadata file must have 'sample_id' column`
+- Error occurs even when metadata file has `sample_id` column (visible in file)
+- Root cause: Column name check is strict and doesn't handle:
+  - Leading/trailing whitespace in column names
+  - BOM (Byte Order Mark) in UTF-8 files
+  - Encoding issues
+  - Case sensitivity (though less likely)
+- Poor error message doesn't show what columns were actually found
+- Blocks training workflow for users with metadata files that have minor formatting issues
+
+**Error Example:**
+```
+2025-12-16 10:29:25,503 - __main__ - ERROR - Training failed: Metadata file must have 'sample_id' column
+Traceback (most recent call last):
+  File "/home/jokirkland/repos/aam/aam/cli.py", line 291, in train
+    raise ValueError("Metadata file must have 'sample_id' column")
+ValueError: Metadata file must have 'sample_id' column
+```
+
+**Root Cause:**
+- Line 289 in `aam/cli.py`: `metadata_df = pd.read_csv(metadata, sep="\t")`
+- Line 290: `if "sample_id" not in metadata_df.columns:` - strict check
+- Column names may have whitespace: `" sample_id "` vs `"sample_id"`
+- No normalization of column names before check
+- No informative error message showing actual column names
+
+**Acceptance Criteria:**
+- [x] Strip whitespace from column names after loading metadata
+- [x] Handle BOM in UTF-8 files (pandas should handle this, but verify)
+- [x] Provide informative error message showing:
+  - Actual column names found in file
+  - Expected column name (`sample_id`)
+  - Suggestion to check for whitespace/encoding issues
+- [x] Update both `train` and `pretrain` commands (pretrain doesn't use metadata, but check for consistency)
+- [x] Add test cases for:
+  - Column name with leading/trailing whitespace
+  - Column name with BOM
+  - Missing `sample_id` column (should show helpful error)
+  - Normal case (should work as before)
+- [x] Verify existing tests still pass
+- [x] Update `aam/data/dataset.py` if it has similar checks (line 196)
+
+**Files to Modify:**
+- `aam/cli.py` - Update metadata loading to strip column names and improve error messages
+- `aam/data/dataset.py` - Update similar check at line 196 if present
+- `tests/test_cli.py` - Add tests for column name variations
+- `tests/test_dataset.py` - Add tests if dataset.py is modified
+
+**Implementation Details:**
+
+1. **Normalize Column Names:**
+   ```python
+   metadata_df = pd.read_csv(metadata, sep="\t")
+   # Strip whitespace from column names
+   metadata_df.columns = metadata_df.columns.str.strip()
+   ```
+
+2. **Improve Error Messages:**
+   ```python
+   if "sample_id" not in metadata_df.columns:
+       found_columns = list(metadata_df.columns)
+       raise ValueError(
+           f"Metadata file must have 'sample_id' column.\n"
+           f"Found columns: {found_columns}\n"
+           f"Expected: 'sample_id'\n"
+           f"Tip: Check for whitespace or encoding issues in column names."
+       )
+   ```
+
+3. **Handle BOM:**
+   - Pandas `read_csv` should handle BOM automatically with `encoding='utf-8-sig'`
+   - Consider adding explicit encoding parameter: `pd.read_csv(metadata, sep="\t", encoding='utf-8-sig')`
+
+**Expected Outcomes:**
+- Metadata files with whitespace in column names work correctly
+- Better error messages help users diagnose issues
+- No breaking changes to existing functionality
+- All tests pass
+
+**Dependencies:** None
+
+**Estimated Time:** 1-2 hours (actual: completed)
+
+**Implementation Notes:**
+- ✅ Updated `aam/cli.py` to strip whitespace from column names and use `encoding="utf-8-sig"` for BOM handling
+- ✅ Updated `aam/data/dataset.py` to strip whitespace from column names
+- ✅ Improved error messages to show found columns vs expected columns with helpful tips
+- ✅ Added comprehensive test suite (10 tests total):
+  - 5 tests in `tests/test_cli.py::TestMetadataLoading` for CLI metadata loading
+  - 5 tests in `tests/test_dataset.py::TestDatasetMetadataColumnHandling` for dataset metadata handling
+- ✅ All tests passing (10/10)
+- ✅ Handles leading whitespace, trailing whitespace, and both in column names
+- ✅ Backward compatible - normal metadata files continue to work
+- ✅ Error messages now show actual column names found, making debugging easier
+
+**Files Modified:**
+- ✅ `aam/cli.py` - Updated metadata loading with column name stripping and improved error messages
+- ✅ `aam/data/dataset.py` - Updated metadata handling with column name stripping and improved error messages
+- ✅ `tests/test_cli.py` - Added 5 comprehensive tests for metadata column name variations
+- ✅ `tests/test_dataset.py` - Added 5 comprehensive tests for dataset metadata column handling
+
+**Commits:**
+- `eb85134` - "PYT-11.7: Add tests for metadata column name handling"
+- `420f0ba` - "PYT-11.7: Implement metadata column name handling fix"
+- `27de54e` - "PYT-11.7: Fix metadata loading tests to use direct pandas testing"
+
+---
+
 ### PYT-11.6: Optimize Learning Rate Scheduling to Escape Local Minima
 **Priority:** HIGH | **Effort:** Medium (4-6 hours) | **Status:** ✅ Completed
 
