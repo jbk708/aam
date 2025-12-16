@@ -135,6 +135,9 @@ class ASVDataset(Dataset):
         normalize_targets: bool = False,
         target_min: Optional[float] = None,
         target_max: Optional[float] = None,
+        normalize_counts: bool = False,
+        count_min: Optional[float] = None,
+        count_max: Optional[float] = None,
     ):
         """Initialize ASVDataset.
 
@@ -154,6 +157,9 @@ class ASVDataset(Dataset):
             normalize_targets: If True, normalize target values to [0, 1] range (default: False)
             target_min: Minimum target value for normalization (computed from data if None)
             target_max: Maximum target value for normalization (computed from data if None)
+            normalize_counts: If True, normalize count values to [0, 1] range (default: False)
+            count_min: Minimum count value for normalization (computed from data if None)
+            count_max: Maximum count value for normalization (computed from data if None)
         """
         self.table = table
         self.metadata = metadata
@@ -203,6 +209,33 @@ class ASVDataset(Dataset):
         self.target_min = target_min
         self.target_max = target_max
         self.target_scale = None  # Computed as (target_max - target_min)
+
+        # Count normalization settings
+        self.normalize_counts = normalize_counts
+        self.count_min = count_min
+        self.count_max = count_max
+        self.count_scale = None  # Computed as (count_max - count_min)
+
+        # Compute count normalization parameters from BIOM table if normalizing
+        if normalize_counts:
+            # Get all non-zero counts from the table
+            matrix_data = table.matrix_data.toarray()
+            all_counts = matrix_data[matrix_data > 0]
+            if len(all_counts) > 0:
+                if self.count_min is None:
+                    self.count_min = float(all_counts.min())
+                if self.count_max is None:
+                    self.count_max = float(all_counts.max())
+                self.count_scale = self.count_max - self.count_min
+                # Avoid division by zero if all counts are the same
+                if self.count_scale == 0:
+                    self.count_scale = 1.0
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.warning(
+                        f"All count values are identical ({self.count_min}). "
+                        f"Count normalization will have no effect."
+                    )
 
         if metadata is not None and target_column is not None:
             metadata.columns = metadata.columns.str.strip()
@@ -275,6 +308,40 @@ class ASVDataset(Dataset):
         else:
             return float(normalized_values) * self.target_scale + self.target_min
 
+    def get_count_normalization_params(self) -> Optional[Dict[str, float]]:
+        """Get count normalization parameters.
+
+        Returns:
+            Dictionary with 'count_min', 'count_max', 'count_scale' if normalization
+            is enabled, None otherwise.
+        """
+        if self.normalize_counts and self.count_scale is not None:
+            return {
+                "count_min": self.count_min,
+                "count_max": self.count_max,
+                "count_scale": self.count_scale,
+            }
+        return None
+
+    def denormalize_counts(self, normalized_values: Union[torch.Tensor, np.ndarray, float]) -> Union[torch.Tensor, np.ndarray, float]:
+        """Denormalize count values back to original scale.
+
+        Args:
+            normalized_values: Normalized values in [0, 1] range
+
+        Returns:
+            Denormalized values in original count range
+        """
+        if not self.normalize_counts or self.count_scale is None:
+            return normalized_values
+
+        if isinstance(normalized_values, torch.Tensor):
+            return normalized_values * self.count_scale + self.count_min
+        elif isinstance(normalized_values, np.ndarray):
+            return normalized_values * self.count_scale + self.count_min
+        else:
+            return float(normalized_values) * self.count_scale + self.count_min
+
     def __getitem__(self, idx: int) -> Dict[str, Union[torch.Tensor, str]]:
         """Get a single sample from the dataset.
 
@@ -319,6 +386,10 @@ class ASVDataset(Dataset):
         
         tokens = torch.stack(tokens_list)
         counts = torch.FloatTensor(counts_list).unsqueeze(1)
+
+        # Apply count normalization if enabled
+        if self.normalize_counts and self.count_scale is not None:
+            counts = (counts - self.count_min) / self.count_scale
 
         result = {
             "tokens": tokens,

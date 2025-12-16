@@ -205,7 +205,7 @@ def cli():
 )
 @click.option("--compile-model", is_flag=True, help="Compile model with torch.compile() for optimization (PyTorch 2.0+)")
 @click.option("--gradient-checkpointing", is_flag=True, help="Use gradient checkpointing to reduce memory usage (30-50% reduction, slower training)")
-@click.option("--normalize-targets", is_flag=True, help="Normalize target values to [0, 1] range during training (recommended for regression tasks)")
+@click.option("--normalize-targets", is_flag=True, help="Normalize target and count values to [0, 1] range during training (recommended for regression tasks)")
 def train(
     table: str,
     unifrac_matrix: str,
@@ -401,6 +401,7 @@ def train(
             stripe_mode=False,
             reference_sample_ids=None,
             normalize_targets=normalize_targets,
+            normalize_counts=normalize_targets,  # Normalize counts along with targets
         )
 
         # Get normalization parameters from training set
@@ -410,6 +411,14 @@ def train(
                 f"Target normalization enabled: min={target_normalization_params['target_min']:.4f}, "
                 f"max={target_normalization_params['target_max']:.4f}, "
                 f"scale={target_normalization_params['target_scale']:.4f}"
+            )
+
+        count_normalization_params = train_dataset.get_count_normalization_params()
+        if count_normalization_params:
+            logger.info(
+                f"Count normalization enabled: min={count_normalization_params['count_min']:.4f}, "
+                f"max={count_normalization_params['count_max']:.4f}, "
+                f"scale={count_normalization_params['count_scale']:.4f}"
             )
 
         val_dataset = ASVDataset(
@@ -428,6 +437,10 @@ def train(
             # Use same normalization params as training set for consistency
             target_min=train_dataset.target_min if normalize_targets else None,
             target_max=train_dataset.target_max if normalize_targets else None,
+            normalize_counts=normalize_targets,  # Normalize counts along with targets
+            # Use same count normalization params as training set for consistency
+            count_min=train_dataset.count_min if normalize_targets else None,
+            count_max=train_dataset.count_max if normalize_targets else None,
         )
 
         train_collate = partial(
@@ -555,6 +568,7 @@ def train(
             mixed_precision=mixed_precision_normalized,
             compile_model=compile_model,
             target_normalization_params=target_normalization_params,
+            count_normalization_params=count_normalization_params,
         )
 
         if resume_from is not None:

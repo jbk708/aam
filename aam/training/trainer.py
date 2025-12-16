@@ -75,6 +75,7 @@ class Trainer:
         mixed_precision: Optional[str] = None,
         compile_model: bool = False,
         target_normalization_params: Optional[Dict[str, float]] = None,
+        count_normalization_params: Optional[Dict[str, float]] = None,
     ):
         """Initialize Trainer.
 
@@ -91,6 +92,8 @@ class Trainer:
             compile_model: Whether to compile model with torch.compile() for optimization
             target_normalization_params: Dict with 'target_min', 'target_max', 'target_scale' for
                 denormalizing predictions when computing metrics. If None, no denormalization is applied.
+            count_normalization_params: Dict with 'count_min', 'count_max', 'count_scale' for
+                denormalizing count predictions when computing metrics. If None, no denormalization is applied.
         """
         self.model = model.to(device)
 
@@ -117,6 +120,7 @@ class Trainer:
         self.mixed_precision = mixed_precision
         self.compile_model = compile_model
         self.target_normalization_params = target_normalization_params
+        self.count_normalization_params = count_normalization_params
         self.writer: Optional[SummaryWriter] = None
         self.log_histograms: bool = True
         self.histogram_frequency: int = 50
@@ -212,6 +216,22 @@ class Trainer:
         target_min = self.target_normalization_params["target_min"]
         target_scale = self.target_normalization_params["target_scale"]
         return values * target_scale + target_min
+
+    def _denormalize_counts(self, values: torch.Tensor) -> torch.Tensor:
+        """Denormalize count values back to original scale.
+
+        Args:
+            values: Normalized values (predictions or targets)
+
+        Returns:
+            Denormalized values in original count range
+        """
+        if self.count_normalization_params is None:
+            return values
+
+        count_min = self.count_normalization_params["count_min"]
+        count_scale = self.count_normalization_params["count_scale"]
+        return values * count_scale + count_min
 
     def _create_prediction_plot(
         self,
@@ -1079,7 +1099,11 @@ class Trainer:
                 count_pred = torch.cat(all_predictions["count_prediction"], dim=0)
                 count_true = torch.cat(all_targets["counts"], dim=0)
                 mask = torch.cat(all_targets["mask"], dim=0)
-                metrics = compute_count_metrics(count_pred, count_true, mask)
+                # Denormalize counts for metrics computation
+                # This ensures metrics (MAE, MSE) are in original count scale
+                count_pred_denorm = self._denormalize_counts(count_pred)
+                count_true_denorm = self._denormalize_counts(count_true)
+                metrics = compute_count_metrics(count_pred_denorm, count_true_denorm, mask)
                 avg_losses.update({f"count_{k}": v for k, v in metrics.items()})
 
         if return_predictions:
