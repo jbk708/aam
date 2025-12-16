@@ -464,14 +464,12 @@ class Trainer:
                 metrics["f1"],
             )
             plot_file = plots_dir / "prediction_plot_best.png"
-            plot_tag = "validation/prediction_plot"
         elif plot_type == "unifrac" or is_unifrac:
             if "r2" not in metrics:
                 return
             mae = metrics.get("mae")
             fig = self._create_unifrac_prediction_plot(predictions, targets, epoch, metrics["r2"], mae=mae)
             plot_file = plots_dir / "unifrac_plot_best.png"
-            plot_tag = "validation/unifrac_plot"
         elif plot_type == "count":
             # For count predictions, use count-specific metrics
             r2 = metrics.get("count_r2", metrics.get("r2"))
@@ -482,7 +480,6 @@ class Trainer:
                 predictions, targets, epoch, r2, mae=mae, title_prefix="Count"
             )
             plot_file = plots_dir / "count_plot_best.png"
-            plot_tag = "validation/count_plot"
         else:
             # Default: target prediction
             if "r2" not in metrics:
@@ -492,15 +489,14 @@ class Trainer:
                 predictions, targets, epoch, metrics["r2"], mae=mae, title_prefix="Target"
             )
             plot_file = plots_dir / "prediction_plot_best.png"
-            plot_tag = "validation/prediction_plot"
 
         if plot_file.exists():
             plot_file.unlink()
 
         fig.savefig(plot_file, dpi=100, bbox_inches="tight")
 
-        if self.writer is not None:
-            self.writer.add_figure(plot_tag, fig, epoch)
+        # Note: TensorBoard logging is handled by _log_figures_to_tensorboard at every epoch
+        # to avoid duplicate figure entries
 
         plt.close(fig)
 
