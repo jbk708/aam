@@ -1341,10 +1341,14 @@ def create_scheduler(
 
     Args:
         optimizer: Optimizer to schedule
-        scheduler_type: Type of scheduler ('warmup_cosine', 'cosine', 'plateau', 'onecycle')
+        scheduler_type: Type of scheduler ('warmup_cosine', 'cosine', 'cosine_restarts', 'plateau', 'onecycle')
         num_warmup_steps: Number of warmup steps (for warmup_cosine)
         num_training_steps: Total number of training steps
         **kwargs: Additional scheduler-specific parameters
+            - For 'cosine_restarts': T_0 (initial restart period), T_mult (restart period multiplier), eta_min (min LR)
+            - For 'cosine': T_max (max iterations), eta_min (min LR)
+            - For 'plateau': mode, factor, patience
+            - For 'onecycle': max_lr, pct_start
 
     Returns:
         Learning rate scheduler instance
@@ -1356,6 +1360,13 @@ def create_scheduler(
         T_max = kwargs.get("T_max", num_training_steps)
         eta_min = kwargs.get("eta_min", 0.0)
         return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=T_max, eta_min=eta_min)
+    elif scheduler_type == "cosine_restarts":
+        T_0 = kwargs.get("T_0", num_training_steps // 4)
+        T_mult = kwargs.get("T_mult", 2)
+        eta_min = kwargs.get("eta_min", 0.0)
+        return torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+            optimizer, T_0=T_0, T_mult=T_mult, eta_min=eta_min
+        )
     elif scheduler_type == "plateau":
         mode = kwargs.get("mode", "min")
         factor = kwargs.get("factor", 0.5)
@@ -1369,7 +1380,7 @@ def create_scheduler(
         )
     else:
         raise ValueError(
-            f"Unknown scheduler type: {scheduler_type}. Must be one of: 'warmup_cosine', 'cosine', 'plateau', 'onecycle'"
+            f"Unknown scheduler type: {scheduler_type}. Must be one of: 'warmup_cosine', 'cosine', 'cosine_restarts', 'plateau', 'onecycle'"
         )
 
 
