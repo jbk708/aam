@@ -815,7 +815,12 @@ Remove sigmoid and use direct normalization:
 ---
 
 ### PYT-11.6: Optimize Learning Rate Scheduling to Escape Local Minima
-**Priority:** HIGH | **Effort:** Medium (4-6 hours) | **Status:** Not Started
+**Priority:** HIGH | **Effort:** Medium (4-6 hours) | **Status:** In Progress
+
+**Sub-tickets:**
+- ✅ **PYT-11.6.1**: Add CosineAnnealingWarmRestarts scheduler - **Completed** (merged in PR #51)
+- ✅ **PYT-11.6.2**: Enhance ReduceLROnPlateau with aggressive defaults - **Completed** (factor=0.3, patience=5, additional params)
+- 🔄 **PYT-11.6.3**: Add learning rate finder utility - **In Progress**
 
 **Description:**
 Address learning rate optimization issues where training hits local minima around epoch 34. Implement improved learning rate schedulers and/or better optimizers to help escape local minima and improve convergence.
@@ -840,8 +845,8 @@ Address learning rate optimization issues where training hits local minima aroun
 4. Add plateau detection and automatic learning rate adjustment
 
 **Acceptance Criteria:**
-- [ ] Implement at least 2-3 new learning rate schedulers
-- [ ] Add learning rate finder utility (optional but recommended)
+- [x] Implement at least 2-3 new learning rate schedulers (✅ CosineAnnealingWarmRestarts, ✅ Aggressive ReduceLROnPlateau)
+- [ ] Add learning rate finder utility (optional but recommended) - **In Progress**
 - [ ] Add plateau detection mechanism
 - [ ] Add CLI options for new schedulers/optimizers
 - [ ] Test that new schedulers help escape local minima
@@ -870,8 +875,23 @@ Address learning rate optimization issues where training hits local minima aroun
 **Estimated Time:** 4-6 hours
 
 **Implementation Notes:**
-- Start with scheduler improvements as they're easier to implement
-- Learning rate finder can help identify optimal initial LR
+
+**PYT-11.6.1 (✅ Completed):**
+- Added CosineAnnealingWarmRestarts scheduler to `create_scheduler()`
+- Supports T_0 (initial restart period), T_mult (restart multiplier), eta_min (min LR)
+- Default T_0 = num_training_steps // 4 for reasonable restart frequency
+- Helps escape local minima with periodic warm restarts
+- Merged in PR #51
+
+**PYT-11.6.2 (✅ Completed):**
+- Enhanced ReduceLROnPlateau with aggressive defaults (factor=0.3, patience=5)
+- Added support for additional parameters: min_lr, threshold, threshold_mode, cooldown, eps
+- More aggressive LR reduction helps escape local minima faster
+- Comprehensive tests added
+
+**PYT-11.6.3 (🔄 In Progress):**
+- Learning rate finder utility to help identify optimal initial LR
+- Should implement LR range test similar to fastai's approach
 - Plateau detection should be configurable (patience, factor, min_lr)
 - Consider adding TensorBoard logging for learning rate curves
 
