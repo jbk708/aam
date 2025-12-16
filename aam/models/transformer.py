@@ -75,13 +75,11 @@ class TransformerEncoder(nn.Module):
             src_key_padding_mask = (mask == 0)
 
         if self.gradient_checkpointing and self.training:
-            def create_custom_forward(module):
-                def custom_forward(*inputs):
-                    return module(*inputs)
-                return custom_forward
+            def custom_forward(embeddings, src_key_padding_mask):
+                return self.encoder(embeddings, src_key_padding_mask=src_key_padding_mask)
             
             output = checkpoint(
-                create_custom_forward(self.encoder),
+                custom_forward,
                 embeddings,
                 src_key_padding_mask,
                 use_reentrant=False,

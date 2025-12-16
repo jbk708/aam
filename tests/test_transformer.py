@@ -266,10 +266,11 @@ class TestTransformerEncoder:
         assert encoder.gradient_checkpointing is False
 
     def test_gradient_checkpointing_eval_mode_same_output(self):
-        """Test that checkpointing produces same output in eval mode."""
+        """Test that checkpointing produces same output in eval mode (checkpointing disabled in eval)."""
         embeddings = torch.randn(2, 10, 64)
         mask = torch.ones(2, 10, dtype=torch.long)
         
+        # Create one encoder and copy its weights to another
         encoder_no_checkpoint = TransformerEncoder(
             num_layers=2,
             num_heads=4,
@@ -283,13 +284,13 @@ class TestTransformerEncoder:
             gradient_checkpointing=True,
         )
         
-        # Set same random seed for both
-        torch.manual_seed(42)
-        encoder_no_checkpoint.eval()
-        output_no_checkpoint = encoder_no_checkpoint(embeddings, mask=mask)
+        # Copy weights to ensure same initialization
+        encoder_checkpoint.load_state_dict(encoder_no_checkpoint.state_dict())
         
-        torch.manual_seed(42)
+        encoder_no_checkpoint.eval()
         encoder_checkpoint.eval()
+        
+        output_no_checkpoint = encoder_no_checkpoint(embeddings, mask=mask)
         output_checkpoint = encoder_checkpoint(embeddings, mask=mask)
         
         # In eval mode, checkpointing should not be used, so outputs should be identical
