@@ -9,21 +9,33 @@ from aam.training.losses import MultiTaskLoss
 
 @pytest.fixture
 def loss_fn():
-    """Create a MultiTaskLoss instance."""
-    return MultiTaskLoss(penalty=1.0, nuc_penalty=1.0)
+    """Create a MultiTaskLoss instance with MSE loss (for backward compatibility)."""
+    return MultiTaskLoss(penalty=1.0, nuc_penalty=1.0, target_loss_type="mse")
+
+
+@pytest.fixture
+def loss_fn_huber():
+    """Create a MultiTaskLoss instance with Huber loss (default)."""
+    return MultiTaskLoss(penalty=1.0, nuc_penalty=1.0, target_loss_type="huber")
+
+
+@pytest.fixture
+def loss_fn_mae():
+    """Create a MultiTaskLoss instance with MAE loss."""
+    return MultiTaskLoss(penalty=1.0, nuc_penalty=1.0, target_loss_type="mae")
 
 
 @pytest.fixture
 def loss_fn_weighted():
     """Create a MultiTaskLoss instance with custom weights."""
-    return MultiTaskLoss(penalty=2.0, nuc_penalty=0.5)
+    return MultiTaskLoss(penalty=2.0, nuc_penalty=0.5, target_loss_type="mse")
 
 
 @pytest.fixture
 def loss_fn_classifier():
     """Create a MultiTaskLoss instance with class weights."""
     class_weights = torch.tensor([0.5, 1.0, 2.0])
-    return MultiTaskLoss(penalty=1.0, nuc_penalty=1.0, class_weights=class_weights)
+    return MultiTaskLoss(penalty=1.0, nuc_penalty=1.0, class_weights=class_weights, target_loss_type="mse")
 
 
 class TestTargetLoss:
@@ -86,6 +98,102 @@ class TestTargetLoss:
         assert loss.item() >= 0
         expected_loss = nn.functional.nll_loss(target_pred, target_true, weight=loss_fn_classifier.class_weights)
         assert torch.allclose(loss, expected_loss)
+
+
+class TestLossTypes:
+    """Test different loss type configurations."""
+
+    def test_default_loss_type_is_huber(self):
+        """Test that default loss type is huber."""
+        loss_fn = MultiTaskLoss()
+        assert loss_fn.target_loss_type == "huber"
+
+    def test_mse_loss_type(self):
+        """Test MSE loss computation."""
+        loss_fn = MultiTaskLoss(target_loss_type="mse")
+        target_pred = torch.tensor([[0.5], [0.8]])
+        target_true = torch.tensor([[0.3], [0.9]])
+
+        loss = loss_fn.compute_target_loss(target_pred, target_true, is_classifier=False)
+
+        expected = nn.functional.mse_loss(target_pred, target_true)
+        assert torch.allclose(loss, expected)
+
+    def test_mae_loss_type(self, loss_fn_mae):
+        """Test MAE (L1) loss computation."""
+        target_pred = torch.tensor([[0.5], [0.8]])
+        target_true = torch.tensor([[0.3], [0.9]])
+
+        loss = loss_fn_mae.compute_target_loss(target_pred, target_true, is_classifier=False)
+
+        expected = nn.functional.l1_loss(target_pred, target_true)
+        assert torch.allclose(loss, expected)
+
+    def test_huber_loss_type(self, loss_fn_huber):
+        """Test Huber (smooth L1) loss computation."""
+        target_pred = torch.tensor([[0.5], [0.8]])
+        target_true = torch.tensor([[0.3], [0.9]])
+
+        loss = loss_fn_huber.compute_target_loss(target_pred, target_true, is_classifier=False)
+
+        expected = nn.functional.smooth_l1_loss(target_pred, target_true, beta=1.0)
+        assert torch.allclose(loss, expected)
+
+    def test_huber_loss_for_small_errors_like_mse(self):
+        """Test that Huber loss behaves like MSE for small errors (|error| < beta)."""
+        loss_fn_huber = MultiTaskLoss(target_loss_type="huber")
+        loss_fn_mse = MultiTaskLoss(target_loss_type="mse")
+
+        # Small errors (within beta=1.0)
+        target_pred = torch.tensor([[0.5]])
+        target_true = torch.tensor([[0.6]])  # error = 0.1
+
+        loss_huber = loss_fn_huber.compute_target_loss(target_pred, target_true, is_classifier=False)
+        loss_mse = loss_fn_mse.compute_target_loss(target_pred, target_true, is_classifier=False)
+
+        # For small errors, Huber ≈ 0.5 * MSE (due to smooth_l1 definition)
+        # smooth_l1(x) = 0.5 * x^2 / beta for |x| < beta
+        assert loss_huber.item() < loss_mse.item()  # Huber should be smaller
+
+    def test_huber_loss_for_large_errors_like_mae(self):
+        """Test that Huber loss behaves like MAE for large errors (|error| > beta)."""
+        loss_fn_huber = MultiTaskLoss(target_loss_type="huber")
+        loss_fn_mae = MultiTaskLoss(target_loss_type="mae")
+
+        # Large errors (beyond beta=1.0)
+        target_pred = torch.tensor([[0.0]])
+        target_true = torch.tensor([[5.0]])  # error = 5.0
+
+        loss_huber = loss_fn_huber.compute_target_loss(target_pred, target_true, is_classifier=False)
+        loss_mae = loss_fn_mae.compute_target_loss(target_pred, target_true, is_classifier=False)
+
+        # For large errors, Huber ≈ MAE - 0.5 * beta (due to smooth_l1 definition)
+        # The difference should be small relative to the MAE loss
+        diff = abs(loss_huber.item() - loss_mae.item())
+        assert diff < 1.0  # Should be close (within beta/2)
+
+    def test_invalid_loss_type_raises_error(self):
+        """Test that invalid loss type raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid target_loss_type"):
+            MultiTaskLoss(target_loss_type="invalid")
+
+    def test_loss_type_does_not_affect_classification(self):
+        """Test that loss type doesn't affect classification (always uses NLL)."""
+        loss_fn_mse = MultiTaskLoss(target_loss_type="mse")
+        loss_fn_huber = MultiTaskLoss(target_loss_type="huber")
+        loss_fn_mae = MultiTaskLoss(target_loss_type="mae")
+
+        target_pred = torch.randn(4, 3)
+        target_pred = nn.functional.log_softmax(target_pred, dim=-1)
+        target_true = torch.randint(0, 3, (4,))
+
+        loss_mse = loss_fn_mse.compute_target_loss(target_pred, target_true, is_classifier=True)
+        loss_huber = loss_fn_huber.compute_target_loss(target_pred, target_true, is_classifier=True)
+        loss_mae = loss_fn_mae.compute_target_loss(target_pred, target_true, is_classifier=True)
+
+        # All should be equal (using NLL loss for classification)
+        assert torch.allclose(loss_mse, loss_huber)
+        assert torch.allclose(loss_huber, loss_mae)
 
 
 class TestCountLoss:

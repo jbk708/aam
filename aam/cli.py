@@ -206,6 +206,7 @@ def cli():
 @click.option("--compile-model", is_flag=True, help="Compile model with torch.compile() for optimization (PyTorch 2.0+)")
 @click.option("--gradient-checkpointing", is_flag=True, help="Use gradient checkpointing to reduce memory usage (30-50% reduction, slower training)")
 @click.option("--normalize-targets", is_flag=True, help="Normalize target and count values to [0, 1] range during training (recommended for regression tasks)")
+@click.option("--loss-type", type=click.Choice(["mse", "mae", "huber"]), default="huber", help="Loss function for regression targets: mse, mae, or huber (default)")
 def train(
     table: str,
     unifrac_matrix: str,
@@ -252,6 +253,7 @@ def train(
     compile_model: bool,
     gradient_checkpointing: bool,
     normalize_targets: bool,
+    loss_type: str,
 ):
     """Train AAM model on microbial sequencing data."""
     try:
@@ -522,7 +524,13 @@ def train(
             weights_list = [float(w) for w in class_weights.split(",")]
             class_weights_tensor = torch.tensor(weights_list)
 
-        loss_fn = MultiTaskLoss(penalty=penalty, nuc_penalty=nuc_penalty, class_weights=class_weights_tensor)
+        loss_fn = MultiTaskLoss(
+            penalty=penalty,
+            nuc_penalty=nuc_penalty,
+            class_weights=class_weights_tensor,
+            target_loss_type=loss_type,
+        )
+        logger.info(f"Using {loss_type} loss for regression targets")
 
         effective_batches_per_epoch = len(train_loader) // gradient_accumulation_steps
         num_training_steps = effective_batches_per_epoch * epochs
@@ -879,7 +887,12 @@ def pretrain(
             gradient_checkpointing=gradient_checkpointing,
         )
 
-        loss_fn = MultiTaskLoss(penalty=penalty, nuc_penalty=nuc_penalty, class_weights=None)
+        loss_fn = MultiTaskLoss(
+            penalty=penalty,
+            nuc_penalty=nuc_penalty,
+            class_weights=None,
+            target_loss_type="huber",  # Default for pretraining (not used, but consistent)
+        )
 
         num_training_steps = len(train_loader) * epochs
         optimizer_obj = create_optimizer(model, optimizer_type=optimizer, lr=lr, weight_decay=weight_decay, freeze_base=False)

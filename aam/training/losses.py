@@ -194,11 +194,14 @@ def compute_pairwise_distances(
 class MultiTaskLoss(nn.Module):
     """Multi-task loss computation for AAM model."""
 
+    VALID_LOSS_TYPES = ("mse", "mae", "huber")
+
     def __init__(
         self,
         penalty: float = 1.0,
         nuc_penalty: float = 1.0,
         class_weights: Optional[torch.Tensor] = None,
+        target_loss_type: str = "huber",
     ):
         """Initialize MultiTaskLoss.
 
@@ -206,10 +209,18 @@ class MultiTaskLoss(nn.Module):
             penalty: Weight for base loss (UniFrac)
             nuc_penalty: Weight for nucleotide loss
             class_weights: Optional class weights for classification (registered as buffer)
+            target_loss_type: Loss type for regression targets ('mse', 'mae', 'huber'). Default: 'huber'
         """
         super().__init__()
         self.penalty = penalty
         self.nuc_penalty = nuc_penalty
+
+        if target_loss_type not in self.VALID_LOSS_TYPES:
+            raise ValueError(
+                f"Invalid target_loss_type: {target_loss_type}. "
+                f"Must be one of: {self.VALID_LOSS_TYPES}"
+            )
+        self.target_loss_type = target_loss_type
 
         if class_weights is not None:
             self.register_buffer("class_weights", class_weights)
@@ -222,7 +233,10 @@ class MultiTaskLoss(nn.Module):
         target_true: torch.Tensor,
         is_classifier: bool = False,
     ) -> torch.Tensor:
-        """Compute target loss (MSE for regression, NLL for classification).
+        """Compute target loss based on configured loss type.
+
+        For classification: NLL loss
+        For regression: MSE, MAE, or Huber loss based on target_loss_type
 
         Args:
             target_pred: Predicted targets [batch_size, out_dim]
@@ -235,7 +249,17 @@ class MultiTaskLoss(nn.Module):
         if is_classifier:
             return nn.functional.nll_loss(target_pred, target_true, weight=self.class_weights)
         else:
-            return nn.functional.mse_loss(target_pred, target_true)
+            if self.target_loss_type == "mse":
+                return nn.functional.mse_loss(target_pred, target_true)
+            elif self.target_loss_type == "mae":
+                return nn.functional.l1_loss(target_pred, target_true)
+            elif self.target_loss_type == "huber":
+                # Huber loss (smooth L1): MSE for small errors, MAE for large errors
+                # beta=1.0 is the threshold where it transitions from MSE to MAE
+                return nn.functional.smooth_l1_loss(target_pred, target_true, beta=1.0)
+            else:
+                # Fallback to MSE (shouldn't happen due to validation in __init__)
+                return nn.functional.mse_loss(target_pred, target_true)
 
     def compute_count_loss(
         self,
