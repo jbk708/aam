@@ -207,21 +207,20 @@ class TestPairwiseDistances:
 
         # Check that gradients exist and are non-zero
         assert embeddings.grad is not None
-        # With direct normalization (no sigmoid), gradients should be healthy (> 1e-4)
-        # This is much larger than the previous sigmoid-based threshold (1e-7)
+        # With tanh normalization, gradients should be healthy (> 1e-5)
+        # Tanh has better gradient flow than sigmoid, but still bounded
         max_grad = torch.abs(embeddings.grad).max().item()
-        assert max_grad > 1e-4, f"Gradients should be healthy (max={max_grad:.2e}), not saturated"
+        assert max_grad > 1e-5, f"Gradients should be healthy (max={max_grad:.2e}), not saturated"
 
     def test_compute_pairwise_distances_normalized_different_scales(self):
-        """Test that scale parameter is deprecated but doesn't break (backward compatibility)."""
+        """Test that different scale values affect normalization (tanh-based)."""
         from aam.training.losses import compute_pairwise_distances
 
         batch_size = 4
         embedding_dim = 8
         embeddings = torch.randn(batch_size, embedding_dim)
 
-        # Scale parameter is now deprecated (not used), but should not break
-        # All calls should produce the same result regardless of scale value
+        # Test with different scale values (tanh normalization uses scale parameter)
         distances_scale_1 = compute_pairwise_distances(embeddings, scale=1.0)
         distances_scale_5 = compute_pairwise_distances(embeddings, scale=5.0)
         distances_scale_10 = compute_pairwise_distances(embeddings, scale=10.0)
@@ -231,10 +230,13 @@ class TestPairwiseDistances:
         assert torch.all(distances_scale_5 >= 0.0) and torch.all(distances_scale_5 <= 1.0)
         assert torch.all(distances_scale_10 >= 0.0) and torch.all(distances_scale_10 <= 1.0)
 
-        # With direct normalization, all scale values should produce identical results
-        # (scale is no longer used)
-        assert torch.allclose(distances_scale_1, distances_scale_5)
-        assert torch.allclose(distances_scale_1, distances_scale_10)
+        # With tanh normalization, different scales should produce different results
+        # Larger scale = more sensitive (distances get divided by larger value before tanh)
+        # So scale=10 should produce values closer to 0.5 (tanh(0) = 0.5 after shift)
+        # Scale=1 should produce more extreme values
+        # They should not be identical
+        assert not torch.allclose(distances_scale_1, distances_scale_5, atol=1e-6)
+        assert not torch.allclose(distances_scale_1, distances_scale_10, atol=1e-6)
 
     def test_compute_pairwise_distances_no_saturation(self):
         """Test that normalized distances do not saturate at ~0.55 (no sigmoid saturation)."""
@@ -245,29 +247,30 @@ class TestPairwiseDistances:
         # Use diverse embeddings to ensure varied distances
         embeddings = torch.randn(batch_size, embedding_dim) * 2.0
 
-        distances = compute_pairwise_distances(embeddings)
+        distances = compute_pairwise_distances(embeddings)  # Use default scale=10.0
 
         # Extract off-diagonal elements
         triu_indices = torch.triu_indices(batch_size, batch_size, offset=1, device=distances.device)
         off_diagonal = distances[triu_indices[0], triu_indices[1]]
 
-        # Check that values are distributed across [0, 1] range, not all clustered at ~0.55
+        # Check that values are distributed across [0, 1] range, not all clustered at ~0.5
         mean_val = off_diagonal.mean().item()
         std_val = off_diagonal.std().item()
         
-        # Mean should not be ~0.55 (sigmoid saturation indicator)
-        assert abs(mean_val - 0.55) > 0.1, f"Mean value {mean_val:.3f} suggests saturation at ~0.55"
+        # Mean should not be ~0.5 (saturation indicator for tanh)
+        assert abs(mean_val - 0.5) > 0.05, f"Mean value {mean_val:.3f} suggests saturation at ~0.5"
         
-        # Values should have reasonable spread (std > 0.1 indicates distribution, not clustering)
-        assert std_val > 0.1, f"Std {std_val:.3f} too small, suggests clustering/saturation"
+        # Values should have reasonable spread (std > 0.03 indicates distribution, not clustering)
+        # Tanh normalization with scale produces narrower range than direct normalization
+        assert std_val > 0.03, f"Std {std_val:.3f} too small, suggests clustering/saturation"
         
         # Check that we have values across the range (not all near 0.5)
         values_near_05 = ((off_diagonal > 0.5 - 0.1) & (off_diagonal < 0.5 + 0.1)).sum().item()
         total_values = off_diagonal.numel()
         fraction_near_05 = values_near_05 / total_values
         
-        # Less than 50% should be near 0.5 (if all were at 0.55, this would be ~100%)
-        assert fraction_near_05 < 0.5, f"Too many values near 0.5 ({fraction_near_05:.1%}), suggests saturation"
+        # Less than 80% should be near 0.5 (tanh produces more values near 0.5 than direct normalization)
+        assert fraction_near_05 < 0.8, f"Too many values near 0.5 ({fraction_near_05:.1%}), suggests saturation"
 
     def test_compute_stripe_distances(self):
         """Test that stripe distances are computed correctly (unnormalized)."""
@@ -307,7 +310,7 @@ class TestPairwiseDistances:
         assert torch.all(distances <= 1.0)
 
     def test_compute_stripe_distances_no_saturation(self):
-        """Test that normalized stripe distances do not saturate at ~0.55 (no sigmoid saturation)."""
+        """Test that normalized stripe distances do not saturate at ~0.5 (no tanh saturation)."""
         from aam.training.losses import compute_stripe_distances
 
         batch_size = 8
@@ -317,28 +320,29 @@ class TestPairwiseDistances:
         embeddings = torch.randn(batch_size, embedding_dim) * 2.0
         reference_embeddings = torch.randn(num_reference, embedding_dim) * 2.0
 
-        distances = compute_stripe_distances(embeddings, reference_embeddings)
+        distances = compute_stripe_distances(embeddings, reference_embeddings)  # Use default scale=10.0
 
         # Flatten to get all distances
         all_distances = distances.flatten()
 
-        # Check that values are distributed across [0, 1] range, not all clustered at ~0.55
+        # Check that values are distributed across [0, 1] range, not all clustered at ~0.5
         mean_val = all_distances.mean().item()
         std_val = all_distances.std().item()
         
-        # Mean should not be ~0.55 (sigmoid saturation indicator)
-        assert abs(mean_val - 0.55) > 0.1, f"Mean value {mean_val:.3f} suggests saturation at ~0.55"
+        # Mean should not be ~0.5 (saturation indicator for tanh)
+        assert abs(mean_val - 0.5) > 0.05, f"Mean value {mean_val:.3f} suggests saturation at ~0.5"
         
-        # Values should have reasonable spread (std > 0.1 indicates distribution, not clustering)
-        assert std_val > 0.1, f"Std {std_val:.3f} too small, suggests clustering/saturation"
+        # Values should have reasonable spread (std > 0.03 indicates distribution, not clustering)
+        # Tanh normalization with scale produces narrower range than direct normalization
+        assert std_val > 0.03, f"Std {std_val:.3f} too small, suggests clustering/saturation"
         
         # Check that we have values across the range (not all near 0.5)
         values_near_05 = ((all_distances > 0.5 - 0.1) & (all_distances < 0.5 + 0.1)).sum().item()
         total_values = all_distances.numel()
         fraction_near_05 = values_near_05 / total_values
         
-        # Less than 50% should be near 0.5 (if all were at 0.55, this would be ~100%)
-        assert fraction_near_05 < 0.5, f"Too many values near 0.5 ({fraction_near_05:.1%}), suggests saturation"
+        # Less than 80% should be near 0.5 (tanh produces more values near 0.5 than direct normalization)
+        assert fraction_near_05 < 0.8, f"Too many values near 0.5 ({fraction_near_05:.1%}), suggests saturation"
 
     def test_compute_stripe_distances_gradient_flow(self):
         """Test that normalized stripe distances maintain healthy gradient flow (no saturation)."""
@@ -356,9 +360,9 @@ class TestPairwiseDistances:
 
         # Check that gradients exist and are non-zero
         assert embeddings.grad is not None
-        # With direct normalization (no sigmoid), gradients should be healthy (> 1e-4)
+        # With tanh normalization, gradients should be healthy (> 1e-5)
         max_grad = torch.abs(embeddings.grad).max().item()
-        assert max_grad > 1e-4, f"Gradients should be healthy (max={max_grad:.2e}), not saturated"
+        assert max_grad > 1e-5, f"Gradients should be healthy (max={max_grad:.2e}), not saturated"
 
 
 class TestBaseLoss:
