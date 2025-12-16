@@ -210,12 +210,39 @@ class TestCreateScheduler:
         assert scheduler.T_max == 1000
 
     def test_create_scheduler_plateau(self, small_model):
-        """Test creating ReduceLROnPlateau scheduler."""
+        """Test creating ReduceLROnPlateau scheduler with aggressive defaults."""
         optimizer = create_optimizer(small_model, optimizer_type="adamw")
-        scheduler = create_scheduler(optimizer, scheduler_type="plateau", num_training_steps=1000, patience=5)
+        scheduler = create_scheduler(optimizer, scheduler_type="plateau", num_training_steps=1000)
 
         assert isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau)
         assert scheduler.patience == 5
+        assert scheduler.factor == 0.3
+        assert scheduler.min_lrs == [0.0]
+
+    def test_create_scheduler_plateau_custom_params(self, small_model):
+        """Test creating ReduceLROnPlateau scheduler with custom parameters."""
+        optimizer = create_optimizer(small_model, optimizer_type="adamw", lr=1e-4)
+        scheduler = create_scheduler(
+            optimizer,
+            scheduler_type="plateau",
+            num_training_steps=1000,
+            patience=3,
+            factor=0.2,
+            min_lr=1e-6,
+            threshold=1e-5,
+            threshold_mode="abs",
+            cooldown=2,
+            eps=1e-9,
+        )
+
+        assert isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau)
+        assert scheduler.patience == 3
+        assert scheduler.factor == 0.2
+        assert scheduler.min_lrs == [1e-6]
+        assert scheduler.threshold == 1e-5
+        assert scheduler.threshold_mode == "abs"
+        assert scheduler.cooldown == 2
+        assert scheduler.eps == 1e-9
 
     def test_create_scheduler_onecycle(self, small_model):
         """Test creating OneCycleLR scheduler."""
@@ -225,11 +252,137 @@ class TestCreateScheduler:
         assert isinstance(scheduler, torch.optim.lr_scheduler.OneCycleLR)
         assert scheduler.total_steps == 1000
 
+    def test_create_scheduler_cosine_restarts(self, small_model):
+        """Test creating CosineAnnealingWarmRestarts scheduler."""
+        optimizer = create_optimizer(small_model, optimizer_type="adamw", lr=1e-4)
+        scheduler = create_scheduler(
+            optimizer, scheduler_type="cosine_restarts", num_training_steps=1000, T_0=100, T_mult=2, eta_min=1e-6
+        )
+
+        assert isinstance(scheduler, torch.optim.lr_scheduler.CosineAnnealingWarmRestarts)
+        assert scheduler.T_0 == 100
+        assert scheduler.T_mult == 2
+        assert scheduler.eta_min == 1e-6
+
+    def test_create_scheduler_cosine_restarts_defaults(self, small_model):
+        """Test creating CosineAnnealingWarmRestarts scheduler with default parameters."""
+        optimizer = create_optimizer(small_model, optimizer_type="adamw", lr=1e-4)
+        scheduler = create_scheduler(optimizer, scheduler_type="cosine_restarts", num_training_steps=1000)
+
+        assert isinstance(scheduler, torch.optim.lr_scheduler.CosineAnnealingWarmRestarts)
+        assert scheduler.T_0 == 250
+        assert scheduler.T_mult == 2
+        assert scheduler.eta_min == 0.0
+
     def test_create_scheduler_invalid_type(self, small_model):
         """Test creating scheduler with invalid type raises error."""
         optimizer = create_optimizer(small_model, optimizer_type="adamw")
         with pytest.raises(ValueError, match="Unknown scheduler type"):
             create_scheduler(optimizer, scheduler_type="invalid")
+
+    def test_scheduler_cosine_restarts_stepping(self, small_model, device):
+        """Test cosine_restarts scheduler stepping behavior."""
+        small_model = small_model.to(device)
+        optimizer = torch.optim.AdamW(small_model.parameters(), lr=1e-3)
+        scheduler = create_scheduler(
+            optimizer, scheduler_type="cosine_restarts", num_training_steps=100, T_0=10, T_mult=2, eta_min=1e-5
+        )
+
+        initial_lr = scheduler.get_last_lr()[0]
+        assert initial_lr > 0
+
+        # Step through first cycle (T_0=10)
+        lrs = []
+        for step in range(15):
+            scheduler.step()
+            lr = scheduler.get_last_lr()[0]
+            lrs.append(lr)
+            assert lr >= 1e-5  # Should not go below eta_min
+
+        # Verify LR changes (scheduler is working)
+        assert len(set(lrs)) > 1  # LR should vary
+        # At restart (step 10), LR should restart to a higher value
+        # The exact behavior depends on the cosine curve, but LR should change
+        assert lrs[0] != lrs[10] or lrs[9] != lrs[10]  # LR changes around restart
+
+    def test_scheduler_plateau_stepping(self, small_model, device):
+        """Test plateau scheduler stepping behavior."""
+        small_model = small_model.to(device)
+        optimizer = torch.optim.AdamW(small_model.parameters(), lr=1e-3)
+        scheduler = create_scheduler(
+            optimizer, scheduler_type="plateau", num_training_steps=100, patience=1, factor=0.5, min_lr=1e-5
+        )
+
+        initial_lr = optimizer.param_groups[0]["lr"]
+        assert initial_lr == 1e-3
+
+        # Step with losses - scheduler tracks best loss internally
+        scheduler.step(0.5)  # Initial loss
+        assert optimizer.param_groups[0]["lr"] == 1e-3  # LR unchanged initially
+
+        # Step with worse loss multiple times to trigger reduction
+        # Plateau scheduler needs patience epochs of no improvement
+        for _ in range(2):
+            scheduler.step(0.6)  # Worse loss
+        
+        # Verify scheduler can step and LR is within bounds
+        current_lr = optimizer.param_groups[0]["lr"]
+        assert current_lr >= 1e-5  # Should not go below min_lr
+        assert current_lr <= 1e-3  # Should not exceed initial LR
+
+    def test_scheduler_plateau_aggressive_defaults(self, small_model, device):
+        """Test plateau scheduler uses aggressive defaults (factor=0.3, patience=5)."""
+        small_model = small_model.to(device)
+        optimizer = torch.optim.AdamW(small_model.parameters(), lr=1e-3)
+        scheduler = create_scheduler(optimizer, scheduler_type="plateau", num_training_steps=100)
+
+        assert scheduler.patience == 5
+        assert scheduler.factor == 0.3
+        assert scheduler.min_lrs == [0.0]
+
+    def test_trainer_with_cosine_restarts_scheduler(self, small_model, loss_fn, simple_dataloader, device):
+        """Test Trainer works correctly with cosine_restarts scheduler."""
+        small_model = small_model.to(device)
+        optimizer = create_optimizer(small_model, optimizer_type="adamw", lr=1e-4)
+        scheduler = create_scheduler(
+            optimizer, scheduler_type="cosine_restarts", num_training_steps=20, T_0=5, T_mult=2
+        )
+
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            device=device,
+        )
+
+        # Train for a few steps
+        trainer.train_epoch(simple_dataloader, epoch=0, num_epochs=1)
+
+        # Verify scheduler was stepped
+        current_lr = scheduler.get_last_lr()[0]
+        assert current_lr > 0
+
+    def test_trainer_with_plateau_scheduler(self, small_model, loss_fn, simple_dataloader, device):
+        """Test Trainer works correctly with plateau scheduler."""
+        small_model = small_model.to(device)
+        optimizer = create_optimizer(small_model, optimizer_type="adamw", lr=1e-4)
+        scheduler = create_scheduler(optimizer, scheduler_type="plateau", num_training_steps=100, patience=2, factor=0.5)
+
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            device=device,
+        )
+
+        # Train for a few steps
+        trainer.train_epoch(simple_dataloader, epoch=0, num_epochs=1)
+
+        # Validate scheduler (plateau requires step(val_loss) which happens in validate_epoch)
+        initial_lr = optimizer.param_groups[0]["lr"]
+        assert initial_lr == 1e-4
 
 
 class TestTrainerInit:

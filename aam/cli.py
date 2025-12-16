@@ -188,9 +188,15 @@ def cli():
 @click.option(
     "--scheduler",
     default="warmup_cosine",
-    type=click.Choice(["warmup_cosine", "cosine", "plateau", "onecycle"]),
-    help="Learning rate scheduler type",
+    type=click.Choice(["warmup_cosine", "cosine", "cosine_restarts", "plateau", "onecycle"]),
+    help="Learning rate scheduler type (warmup_cosine: warmup+cosine decay, cosine: cosine annealing, cosine_restarts: cosine with warm restarts, plateau: reduce on plateau, onecycle: one cycle policy)",
 )
+@click.option("--scheduler-t0", default=None, type=int, help="Initial restart period for cosine_restarts scheduler (default: num_training_steps // 4)")
+@click.option("--scheduler-t-mult", default=None, type=int, help="Restart period multiplier for cosine_restarts scheduler (default: 2)")
+@click.option("--scheduler-eta-min", default=None, type=float, help="Minimum learning rate for cosine/cosine_restarts schedulers (default: 0.0)")
+@click.option("--scheduler-patience", default=None, type=int, help="Patience for plateau scheduler (epochs to wait before reducing LR, default: 5)")
+@click.option("--scheduler-factor", default=None, type=float, help="LR reduction factor for plateau scheduler (default: 0.3)")
+@click.option("--scheduler-min-lr", default=None, type=float, help="Minimum learning rate for plateau scheduler (default: 0.0)")
 @click.option(
     "--mixed-precision",
     default=None,
@@ -235,6 +241,12 @@ def train(
     max_grad_norm: Optional[float],
     optimizer: str,
     scheduler: str,
+    scheduler_t0: Optional[int],
+    scheduler_t_mult: Optional[int],
+    scheduler_eta_min: Optional[float],
+    scheduler_patience: Optional[int],
+    scheduler_factor: Optional[float],
+    scheduler_min_lr: Optional[float],
     mixed_precision: Optional[str],
     compile_model: bool,
     gradient_checkpointing: bool,
@@ -476,8 +488,28 @@ def train(
         optimizer_obj = create_optimizer(
             model, optimizer_type=optimizer, lr=lr, weight_decay=weight_decay, freeze_base=freeze_base
         )
+        # Build scheduler kwargs based on scheduler type and provided options
+        scheduler_kwargs = {}
+        if scheduler == "cosine_restarts":
+            if scheduler_t0 is not None:
+                scheduler_kwargs["T_0"] = scheduler_t0
+            if scheduler_t_mult is not None:
+                scheduler_kwargs["T_mult"] = scheduler_t_mult
+            if scheduler_eta_min is not None:
+                scheduler_kwargs["eta_min"] = scheduler_eta_min
+        elif scheduler == "cosine":
+            if scheduler_eta_min is not None:
+                scheduler_kwargs["eta_min"] = scheduler_eta_min
+        elif scheduler == "plateau":
+            if scheduler_patience is not None:
+                scheduler_kwargs["patience"] = scheduler_patience
+            if scheduler_factor is not None:
+                scheduler_kwargs["factor"] = scheduler_factor
+            if scheduler_min_lr is not None:
+                scheduler_kwargs["min_lr"] = scheduler_min_lr
+        
         scheduler_obj = create_scheduler(
-            optimizer_obj, scheduler_type=scheduler, num_warmup_steps=warmup_steps, num_training_steps=num_training_steps
+            optimizer_obj, scheduler_type=scheduler, num_warmup_steps=warmup_steps, num_training_steps=num_training_steps, **scheduler_kwargs
         )
 
         # Normalize mixed_precision: "none" -> None
@@ -558,9 +590,15 @@ def train(
 @click.option(
     "--scheduler",
     default="warmup_cosine",
-    type=click.Choice(["warmup_cosine", "cosine", "plateau", "onecycle"]),
-    help="Learning rate scheduler type",
+    type=click.Choice(["warmup_cosine", "cosine", "cosine_restarts", "plateau", "onecycle"]),
+    help="Learning rate scheduler type (warmup_cosine: warmup+cosine decay, cosine: cosine annealing, cosine_restarts: cosine with warm restarts, plateau: reduce on plateau, onecycle: one cycle policy)",
 )
+@click.option("--scheduler-t0", default=None, type=int, help="Initial restart period for cosine_restarts scheduler (default: num_training_steps // 4)")
+@click.option("--scheduler-t-mult", default=None, type=int, help="Restart period multiplier for cosine_restarts scheduler (default: 2)")
+@click.option("--scheduler-eta-min", default=None, type=float, help="Minimum learning rate for cosine/cosine_restarts schedulers (default: 0.0)")
+@click.option("--scheduler-patience", default=None, type=int, help="Patience for plateau scheduler (epochs to wait before reducing LR, default: 5)")
+@click.option("--scheduler-factor", default=None, type=float, help="LR reduction factor for plateau scheduler (default: 0.3)")
+@click.option("--scheduler-min-lr", default=None, type=float, help="Minimum learning rate for plateau scheduler (default: 0.0)")
 @click.option(
     "--mixed-precision",
     default=None,
@@ -601,6 +639,12 @@ def pretrain(
     max_grad_norm: Optional[float],
     optimizer: str,
     scheduler: str,
+    scheduler_t0: Optional[int],
+    scheduler_t_mult: Optional[int],
+    scheduler_eta_min: Optional[float],
+    scheduler_patience: Optional[int],
+    scheduler_factor: Optional[float],
+    scheduler_min_lr: Optional[float],
     mixed_precision: Optional[str],
     compile_model: bool,
     gradient_checkpointing: bool,
@@ -796,8 +840,28 @@ def pretrain(
 
         num_training_steps = len(train_loader) * epochs
         optimizer_obj = create_optimizer(model, optimizer_type=optimizer, lr=lr, weight_decay=weight_decay, freeze_base=False)
+        # Build scheduler kwargs based on scheduler type and provided options
+        scheduler_kwargs = {}
+        if scheduler == "cosine_restarts":
+            if scheduler_t0 is not None:
+                scheduler_kwargs["T_0"] = scheduler_t0
+            if scheduler_t_mult is not None:
+                scheduler_kwargs["T_mult"] = scheduler_t_mult
+            if scheduler_eta_min is not None:
+                scheduler_kwargs["eta_min"] = scheduler_eta_min
+        elif scheduler == "cosine":
+            if scheduler_eta_min is not None:
+                scheduler_kwargs["eta_min"] = scheduler_eta_min
+        elif scheduler == "plateau":
+            if scheduler_patience is not None:
+                scheduler_kwargs["patience"] = scheduler_patience
+            if scheduler_factor is not None:
+                scheduler_kwargs["factor"] = scheduler_factor
+            if scheduler_min_lr is not None:
+                scheduler_kwargs["min_lr"] = scheduler_min_lr
+        
         scheduler_obj = create_scheduler(
-            optimizer_obj, scheduler_type=scheduler, num_warmup_steps=warmup_steps, num_training_steps=num_training_steps
+            optimizer_obj, scheduler_type=scheduler, num_warmup_steps=warmup_steps, num_training_steps=num_training_steps, **scheduler_kwargs
         )
 
         # Normalize mixed_precision: "none" -> None
