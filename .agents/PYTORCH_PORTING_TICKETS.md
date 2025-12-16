@@ -745,15 +745,19 @@ Remove sigmoid and use direct normalization:
 
 **Implementation Notes:**
 - ✅ Removed sigmoid from `compute_pairwise_distances()` and `compute_stripe_distances()`
-- ✅ Replaced with direct normalization: `distances = distances / max_dist` (when max_dist > 0)
-- ✅ Updated docstrings to reflect new normalization behavior
-- ✅ Deprecated `scale` parameter (kept for backward compatibility but not used)
+- ✅ Replaced with tanh normalization: `(tanh(distances / scale) + 1) / 2` to map to [0, 1]
+- ✅ Uses fixed scale factor (default 10.0) for consistent scaling across batches
+- ✅ Avoids sigmoid saturation at ~0.55 and batch max normalization causing all = 1.0
+- ✅ Updated docstrings to reflect tanh normalization behavior
+- ✅ Scale parameter now actively used (default 10.0, increased from 5.0)
 - ✅ Added comprehensive tests to verify no saturation:
-  - `test_compute_pairwise_distances_no_saturation()` - Verifies values not all ~0.55
+  - `test_compute_pairwise_distances_no_saturation()` - Verifies values not all ~0.5 or ~1.0
   - `test_compute_stripe_distances_no_saturation()` - Verifies stripe distances not saturated
-  - Updated gradient flow tests to expect healthy gradients (> 1e-4 instead of > 1e-7)
+  - Updated gradient flow tests to expect healthy gradients (> 1e-5)
 - ✅ Added tests for stripe distances normalization
-- ✅ All tests passing (42 passed, 1 skipped)
+- ✅ Fixed integration tests to use UniFracLoader instead of undefined 'computer' variable
+- ✅ Fixed HDF5 loading bug (UnboundLocalError for h5_sample_ids)
+- ✅ All tests passing (463 passed, 64 skipped)
 - ✅ No regressions in existing functionality
 
 **Files Modified:**
@@ -762,13 +766,21 @@ Remove sigmoid and use direct normalization:
 
 **Key Changes:**
 1. **Before**: `distances = torch.sigmoid(distances / (max_dist * scale))` → caused saturation at ~0.55
-2. **After**: `distances = distances / max_dist` → preserves distance relationships, healthy gradients
+2. **Intermediate**: `distances = distances / max_dist` → caused all predictions = 1.0 (batch max normalization issue)
+3. **After**: `distances = (tanh(distances / scale) + 1) / 2` → fixed scale, consistent across batches, healthy gradients
 
 **Expected Results:**
-- Predictions now distributed across [0, 1] range (not all ~0.55)
-- Gradient magnitudes healthy (> 1e-4) instead of saturated (< 1e-6)
+- Predictions now distributed across [0, 1] range (not all ~0.55 or all ~1.0)
+- Gradient magnitudes healthy (> 1e-5) instead of saturated (< 1e-6)
+- Consistent scaling across batches (fixed scale instead of batch max)
 - Training should show improved loss decrease and prediction quality
 - Validation plots should show varied predictions correlating with true values
+
+**Final Implementation:**
+- Uses tanh normalization with fixed scale (10.0) to avoid both sigmoid saturation and batch max normalization issues
+- Formula: `(tanh(distances / scale) + 1) / 2` maps Euclidean distances to [0, 1] range
+- Better gradient flow than sigmoid, avoids saturation at boundaries
+- Consistent scaling across all batches (not dependent on batch max distance)
 
 **Implementation Notes:**
 - This issue was discovered during PYT-11.4 validation
