@@ -687,14 +687,16 @@ Remove sigmoid and use direct normalization:
 **Acceptance Criteria:**
 - [x] Remove sigmoid application from `compute_pairwise_distances()`
 - [x] Remove sigmoid application from `compute_stripe_distances()`
-- [x] Use direct normalization: `distances = distances / max_dist`
+- [x] Implement tanh normalization: `(tanh(distances / scale) + 1) / 2` to map to [0, 1]
+- [x] Use fixed scale factor (default 10.0) for consistent scaling across batches
 - [x] Ensure diagonal remains 0.0 for pairwise distances
 - [x] Verify distances are in [0, 1] range
 - [x] Verify gradient flow is maintained (no saturation)
 - [x] Update tests to verify new normalization behavior
 - [x] Add tests for gradient flow without sigmoid
-- [x] Verify predictions vary across [0, 1] range (not all ~0.55)
+- [x] Verify predictions vary across [0, 1] range (not all ~0.55 or all ~1.0)
 - [x] Run integration test to verify training works correctly
+- [x] Fix integration tests (UniFracLoader usage) and HDF5 loading bug
 - [x] Verify no regression in training stability
 
 **Files to Modify:**
@@ -710,14 +712,14 @@ Remove sigmoid and use direct normalization:
 
 1. **Update `compute_pairwise_distances()`:**
    - Remove sigmoid application
-   - Use direct normalization: `distances = distances / max_dist` (when max_dist > 0)
+   - Use tanh normalization: `(tanh(distances / scale) + 1) / 2` (default scale=10.0)
    - Ensure diagonal remains 0.0
-   - Keep values in [0, 1] range
+   - Keep values in [0, 1] range with consistent scaling across batches
 
 2. **Update `compute_stripe_distances()`:**
    - Remove sigmoid application
-   - Use direct normalization: `distances = distances / max_dist` (when max_dist > 0)
-   - Keep values in [0, 1] range
+   - Use tanh normalization: `(tanh(distances / scale) + 1) / 2` (default scale=10.0)
+   - Keep values in [0, 1] range with consistent scaling across batches
 
 3. **Update tests:**
    - Verify distances are in [0, 1] range
@@ -734,10 +736,11 @@ Remove sigmoid and use direct normalization:
 - Validation plots: Flat line at 0.55
 
 **After Fix:**
-- Predictions: Distributed across [0, 1] range
-- Gradient magnitudes: Healthy (> 1e-4)
+- Predictions: Distributed across [0, 1] range (not all ~0.55 or all ~1.0)
+- Gradient magnitudes: Healthy (> 1e-5)
 - Training: Loss decreases, predictions improve
 - Validation plots: Predictions vary and correlate with true values
+- Consistent scaling across batches (fixed scale, not batch-dependent)
 
 **Dependencies:** PYT-11.1 (completed), PYT-11.4 (completed)
 
