@@ -929,6 +929,100 @@ ValueError: Metadata file must have 'sample_id' column
 
 ---
 
+### PYT-11.8: Fix Regressor Output Bounds for Dynamic Range in CLI Training
+**Priority:** CRITICAL | **Effort:** Medium (3-4 hours) | **Status:** Not Started
+
+**Description:**
+Fix the regressor output in `cli.train` to support dynamic range predictions instead of being constrained to [0,1] bounds inherited from pre-training. Currently, when using a pretrained encoder, the target regressor predictions are constrained to [0,1] range, but for regression tasks the output range must be dynamic and match the actual target value distribution.
+
+**Problem:**
+- When using `--pretrained-encoder` with `cli.train` for regression tasks, target predictions are constrained to [0,1] range
+- Pre-training uses [0,1] bounds for UniFrac distances (which are naturally bounded)
+- This constraint is incorrectly applied to the target regressor, which should have dynamic range
+- Regression targets can have any range (e.g., PMI predictions might be 0-1000 days, temperature might be -50 to 50°C)
+- Constraining regression outputs to [0,1] prevents the model from learning meaningful predictions for real-world regression tasks
+
+**Root Cause:**
+- Pre-training (`cli.pretrain`) trains SequenceEncoder with UniFrac distances bounded to [0,1]
+- When pretrained encoder is loaded into SequencePredictor for `cli.train`, the target_head regressor may be:
+  - Inheriting constraints from the pretrained encoder architecture
+  - Using normalized embeddings that constrain output range
+  - Having initialization or weight constraints that limit output range
+- The target_head in SequencePredictor is a simple linear layer, but embeddings or other factors may be constraining outputs
+
+**Error Example:**
+- Regression task with target values in range [0, 1000]
+- Model predictions are constrained to [0, 1] range
+- Loss cannot properly optimize because predictions cannot reach true target values
+- Model performance is severely limited
+
+**Acceptance Criteria:**
+- [ ] Investigate where [0,1] constraint is being applied to target predictions in regression mode
+- [ ] Identify if constraint comes from:
+  - Pretrained encoder embeddings normalization
+  - Target head initialization
+  - Forward pass constraints (sigmoid/clamp)
+  - Loss function constraints
+- [ ] Remove [0,1] constraint from target regressor when `is_classifier=False`
+- [ ] Ensure target predictions can have dynamic range matching target distribution
+- [ ] Verify pretrained encoder loading doesn't impose constraints on target_head
+- [ ] Add test cases for:
+  - Regression with targets outside [0,1] range (e.g., [0, 1000])
+  - Pretrained encoder with regression task
+  - Normal regression without pretrained encoder (regression test)
+- [ ] Verify existing classification mode still works (should use log_softmax, not affected)
+- [ ] Update documentation if needed
+
+**Files to Investigate/Modify:**
+- `aam/models/sequence_predictor.py` - Check target_head and forward pass
+- `aam/models/sequence_encoder.py` - Check if embeddings are normalized/constrained
+- `aam/training/trainer.py` - Check load_pretrained_encoder function
+- `aam/cli.py` - Verify model initialization and pretrained encoder loading
+- `aam/training/losses.py` - Check if loss function constrains predictions
+- `tests/test_sequence_predictor.py` - Add tests for dynamic range regression
+- `tests/test_cli.py` - Add integration tests
+
+**Implementation Details:**
+
+1. **Investigation Phase:**
+   - Check if target_head has any activation functions (should be none for regression)
+   - Check if embeddings from pretrained encoder are normalized
+   - Check if there's any clamping in forward pass
+   - Check if loss function applies constraints
+   - Verify pretrained encoder state dict doesn't include target_head weights
+
+2. **Fix Options:**
+   - **Option A**: Ensure target_head is always initialized fresh (not from pretrained encoder)
+   - **Option B**: Remove any normalization/constraints on embeddings used for target prediction
+   - **Option C**: Add explicit check to prevent [0,1] constraints in regression mode
+   - **Option D**: Normalize/denormalize targets if needed, but keep model output unbounded
+
+3. **Testing:**
+   - Test regression with targets in [0, 1000] range
+   - Test regression with targets in [-50, 50] range
+   - Test with and without pretrained encoder
+   - Verify predictions can exceed [0,1] range when appropriate
+
+**Expected Outcomes:**
+- Target regressor outputs have dynamic range matching target distribution
+- Pretrained encoder can be used without constraining regression outputs
+- Classification mode unaffected (still uses log_softmax)
+- Model can learn meaningful predictions for any target range
+
+**Dependencies:** None
+
+**Estimated Time:** 3-4 hours
+
+**Implementation Notes:**
+- This is a critical bug that prevents proper regression training
+- Need to carefully distinguish between:
+  - UniFrac/base predictions (should be [0,1] for UniFrac)
+  - Target regression predictions (should be dynamic)
+  - Target classification predictions (should use log_softmax)
+- May need to add explicit mode checking in forward pass
+
+---
+
 ### PYT-11.6: Optimize Learning Rate Scheduling to Escape Local Minima
 **Priority:** HIGH | **Effort:** Medium (4-6 hours) | **Status:** ✅ Completed
 
