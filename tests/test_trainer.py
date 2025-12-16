@@ -1366,12 +1366,17 @@ class TestPredictionPlots:
             device=device,
         )
 
-        results, predictions, targets = trainer.validate_epoch(simple_dataloader, compute_metrics=True, return_predictions=True)
+        results, predictions_dict, targets_dict = trainer.validate_epoch(simple_dataloader, compute_metrics=True, return_predictions=True)
 
         assert "total_loss" in results
-        assert predictions is not None
-        assert targets is not None
-        assert predictions.shape[0] == targets.shape[0]
+        assert isinstance(predictions_dict, dict)
+        assert isinstance(targets_dict, dict)
+        # Check that at least one prediction type is present
+        assert len(predictions_dict) > 0
+        # Verify matching shapes for each prediction type
+        for key in predictions_dict:
+            assert key in targets_dict
+            assert predictions_dict[key].shape[0] == targets_dict[key].shape[0]
 
     def test_validate_epoch_no_predictions_when_false(self, small_predictor, loss_fn, simple_dataloader, device):
         """Test that validate_epoch doesn't return predictions when return_predictions=False."""
@@ -1402,10 +1407,10 @@ class TestPredictionPlots:
         targets = predictions + torch.randn(50, 1).to(device) * 0.1
         metrics = {"r2": 0.95, "mse": 0.05}
 
-        trainer._save_prediction_plots(predictions, targets, epoch=5, metrics=metrics, checkpoint_dir=str(checkpoint_dir))
+        trainer._save_prediction_plots(predictions, targets, epoch=5, metrics=metrics, checkpoint_dir=str(checkpoint_dir), plot_type="target")
 
         plots_dir = checkpoint_dir / "plots"
-        plot_file = plots_dir / "pred_vs_actual_best.png"
+        plot_file = plots_dir / "target_pred_vs_actual_best.png"
         assert plot_file.exists()
 
     def test_save_prediction_plots_classification(self, loss_fn, device, tmp_path):
@@ -1448,10 +1453,10 @@ class TestPredictionPlots:
         targets = torch.randint(0, 3, (50,)).to(device)
         metrics = {"accuracy": 0.85, "precision": 0.82, "recall": 0.80, "f1": 0.81}
 
-        trainer._save_prediction_plots(predictions, targets, epoch=5, metrics=metrics, checkpoint_dir=str(checkpoint_dir))
+        trainer._save_prediction_plots(predictions, targets, epoch=5, metrics=metrics, checkpoint_dir=str(checkpoint_dir), plot_type="target")
 
         plots_dir = checkpoint_dir / "plots"
-        plot_file = plots_dir / "pred_vs_actual_best.png"
+        plot_file = plots_dir / "target_pred_vs_actual_best.png"
         assert plot_file.exists()
 
     def test_train_with_plots_regression(self, small_predictor, loss_fn, simple_dataloader, device, tmp_path):
@@ -1475,8 +1480,9 @@ class TestPredictionPlots:
         )
 
         plots_dir = checkpoint_dir / "plots"
-        plot_file = plots_dir / "pred_vs_actual_best.png"
-        assert plot_file.exists()
+        # Check for any prediction plot (target, unifrac, or count)
+        plot_files = list(plots_dir.glob("*_pred_vs_actual_best.png")) if plots_dir.exists() else []
+        assert len(plot_files) > 0, f"Expected at least one prediction plot, found: {plot_files}"
 
     def test_train_without_plots(self, small_predictor, loss_fn, simple_dataloader, device, tmp_path):
         """Test training without plot generation."""
@@ -1548,8 +1554,9 @@ class TestPredictionPlots:
         )
 
         plots_dir = checkpoint_dir / "plots"
-        plot_file = plots_dir / "pred_vs_actual_best.png"
-        assert plot_file.exists()
+        # Check for any prediction plot (target, unifrac, or count)
+        plot_files = list(plots_dir.glob("*_pred_vs_actual_best.png")) if plots_dir.exists() else []
+        assert len(plot_files) > 0, f"Expected at least one prediction plot, found: {plot_files}"
 
 
 class TestMixedPrecision:
