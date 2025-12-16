@@ -95,7 +95,7 @@ python -m aam.cli predict \
 - `--freeze-base`: Freeze base model parameters (faster training)
 - `--classifier`: Use classification mode (requires `--out-dim > 1`)
 - `--optimizer`: Optimizer type - 'adamw' (default), 'adam', or 'sgd'
-- `--scheduler`: Learning rate scheduler - 'warmup_cosine' (default), 'cosine', 'plateau', or 'onecycle'
+- `--scheduler`: Learning rate scheduler - 'warmup_cosine' (default), 'cosine', 'cosine_restarts', 'plateau', or 'onecycle'
 - `--lr`: Learning rate (default: 1e-4)
 - `--warmup-steps`: Warmup steps for warmup_cosine scheduler (default: 10000)
 - `--weight-decay`: Weight decay for optimizers (default: 0.01)
@@ -130,12 +130,50 @@ See `python -m aam.cli <command> --help` for full options.
 ### Optimizer and Scheduler
 
 **Optimizers:** `adamw` (default, recommended), `adam`, `sgd`  
-**Schedulers:** `warmup_cosine` (default), `cosine`, `plateau`, `onecycle`
+**Schedulers:** `warmup_cosine` (default), `cosine`, `cosine_restarts`, `plateau`, `onecycle`
+
+**Scheduler-Specific Parameters:**
+- `--scheduler-t0`: Initial restart period for `cosine_restarts` (default: num_training_steps // 4)
+- `--scheduler-t-mult`: Restart period multiplier for `cosine_restarts` (default: 2)
+- `--scheduler-eta-min`: Minimum learning rate for `cosine`/`cosine_restarts` (default: 0.0)
+- `--scheduler-patience`: Patience for `plateau` scheduler (epochs to wait before reducing LR, default: 5)
+- `--scheduler-factor`: LR reduction factor for `plateau` (default: 0.3)
+- `--scheduler-min-lr`: Minimum learning rate for `plateau` (default: 0.0)
 
 **Recommendations:**
-- **Pretraining**: `adamw` + `warmup_cosine` (default)
-- **Fine-tuning**: `adamw` + `plateau` for adaptive LR reduction
-- **Fast experimentation**: `adamw` + `onecycle`
+
+**For Pretraining:**
+- `adamw` + `warmup_cosine` (default) - Good for stable training with gradual decay
+- `adamw` + `cosine_restarts` - Helps escape local minima with periodic warm restarts
+  - Use when training stagnates around mid-epochs (e.g., epoch 34)
+  - Example: `--scheduler cosine_restarts --scheduler-t0 10000 --scheduler-t-mult 2`
+
+**For Fine-tuning:**
+- `adamw` + `plateau` - Adaptive LR reduction when validation loss plateaus (aggressive defaults: patience=5, factor=0.3)
+  - Automatically reduces LR when loss stops improving
+  - Good for fine-tuning when you want adaptive learning rate adjustment
+  - Example: `--scheduler plateau --scheduler-patience 5 --scheduler-factor 0.3`
+- `adamw` + `cosine_restarts` - Escapes local minima during fine-tuning
+  - Useful when fine-tuning gets stuck in suboptimal solutions
+
+**For Fast Experimentation:**
+- `adamw` + `onecycle` - Single cycle with peak LR in middle of training
+  - Good for quick hyperparameter searches
+
+**Escaping Local Minima:**
+If training stagnates (e.g., around epoch 34), try:
+1. **`cosine_restarts`** - Periodic warm restarts help escape local minima
+   ```bash
+   --scheduler cosine_restarts --scheduler-t0 10000 --scheduler-t-mult 2
+   ```
+2. **`plateau` with aggressive settings** - Faster LR reduction when loss plateaus
+   ```bash
+   --scheduler plateau --scheduler-patience 3 --scheduler-factor 0.2
+   ```
+3. **Combine with higher initial LR** - Sometimes a higher learning rate helps escape minima
+   ```bash
+   --lr 2e-4 --scheduler cosine_restarts
+   ```
 
 ### Memory Optimization
 
