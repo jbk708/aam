@@ -463,15 +463,15 @@ class Trainer:
                 metrics["recall"],
                 metrics["f1"],
             )
-            plot_file = plots_dir / "target_pred_vs_actual_best.png"
-            plot_tag = "validation/target_prediction_plot"
+            plot_file = plots_dir / "prediction_plot_best.png"
+            plot_tag = "validation/prediction_plot"
         elif plot_type == "unifrac" or is_unifrac:
             if "r2" not in metrics:
                 return
             mae = metrics.get("mae")
             fig = self._create_unifrac_prediction_plot(predictions, targets, epoch, metrics["r2"], mae=mae)
-            plot_file = plots_dir / "unifrac_pred_vs_actual_best.png"
-            plot_tag = "validation/unifrac_prediction_plot"
+            plot_file = plots_dir / "unifrac_plot_best.png"
+            plot_tag = "validation/unifrac_plot"
         elif plot_type == "count":
             # For count predictions, use count-specific metrics
             r2 = metrics.get("count_r2", metrics.get("r2"))
@@ -481,8 +481,8 @@ class Trainer:
             fig = self._create_prediction_plot(
                 predictions, targets, epoch, r2, mae=mae, title_prefix="Count"
             )
-            plot_file = plots_dir / "count_pred_vs_actual_best.png"
-            plot_tag = "validation/count_prediction_plot"
+            plot_file = plots_dir / "count_plot_best.png"
+            plot_tag = "validation/count_plot"
         else:
             # Default: target prediction
             if "r2" not in metrics:
@@ -491,8 +491,8 @@ class Trainer:
             fig = self._create_prediction_plot(
                 predictions, targets, epoch, metrics["r2"], mae=mae, title_prefix="Target"
             )
-            plot_file = plots_dir / "target_pred_vs_actual_best.png"
-            plot_tag = "validation/target_prediction_plot"
+            plot_file = plots_dir / "prediction_plot_best.png"
+            plot_tag = "validation/prediction_plot"
 
         if plot_file.exists():
             plot_file.unlink()
@@ -524,7 +524,7 @@ class Trainer:
 
         is_classifier = self._get_is_classifier()
 
-        # Log target prediction figure
+        # Log target prediction figure (as "prediction_plot")
         if "target" in predictions_dict:
             if is_classifier:
                 if all(k in metrics for k in ["accuracy", "precision", "recall", "f1"]):
@@ -537,7 +537,7 @@ class Trainer:
                         metrics["recall"],
                         metrics["f1"],
                     )
-                    self.writer.add_figure("validation/target_prediction", fig, epoch)
+                    self.writer.add_figure("validation/prediction_plot", fig, epoch)
                     plt.close(fig)
             else:
                 if "r2" in metrics:
@@ -549,10 +549,10 @@ class Trainer:
                         mae=metrics.get("mae"),
                         title_prefix="Target",
                     )
-                    self.writer.add_figure("validation/target_prediction", fig, epoch)
+                    self.writer.add_figure("validation/prediction_plot", fig, epoch)
                     plt.close(fig)
 
-        # Log UniFrac prediction figure
+        # Log UniFrac prediction figure (as "unifrac_plot")
         if "unifrac" in predictions_dict:
             r2 = metrics.get("r2") if "target" not in predictions_dict else None
             # For fine-tuning, unifrac metrics might not be in the main metrics
@@ -578,10 +578,10 @@ class Trainer:
                     r2,
                     mae=mae,
                 )
-                self.writer.add_figure("validation/unifrac_prediction", fig, epoch)
+                self.writer.add_figure("validation/unifrac_plot", fig, epoch)
                 plt.close(fig)
 
-        # Log count prediction figure
+        # Log count prediction figure (as "count_plot")
         if "count" in predictions_dict:
             r2 = metrics.get("count_r2")
             mae = metrics.get("count_mae")
@@ -594,7 +594,7 @@ class Trainer:
                     mae=mae,
                     title_prefix="Count",
                 )
-                self.writer.add_figure("validation/count_prediction", fig, epoch)
+                self.writer.add_figure("validation/count_plot", fig, epoch)
                 plt.close(fig)
 
     def _log_to_tensorboard(self, epoch: int, train_losses: Dict[str, float], val_results: Optional[Dict[str, float]] = None):

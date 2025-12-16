@@ -1410,7 +1410,7 @@ class TestPredictionPlots:
         trainer._save_prediction_plots(predictions, targets, epoch=5, metrics=metrics, checkpoint_dir=str(checkpoint_dir), plot_type="target")
 
         plots_dir = checkpoint_dir / "plots"
-        plot_file = plots_dir / "target_pred_vs_actual_best.png"
+        plot_file = plots_dir / "prediction_plot_best.png"
         assert plot_file.exists()
 
     def test_save_prediction_plots_classification(self, loss_fn, device, tmp_path):
@@ -1456,7 +1456,7 @@ class TestPredictionPlots:
         trainer._save_prediction_plots(predictions, targets, epoch=5, metrics=metrics, checkpoint_dir=str(checkpoint_dir), plot_type="target")
 
         plots_dir = checkpoint_dir / "plots"
-        plot_file = plots_dir / "target_pred_vs_actual_best.png"
+        plot_file = plots_dir / "prediction_plot_best.png"
         assert plot_file.exists()
 
     def test_train_with_plots_regression(self, small_predictor, loss_fn, simple_dataloader, device, tmp_path):
@@ -1480,8 +1480,8 @@ class TestPredictionPlots:
         )
 
         plots_dir = checkpoint_dir / "plots"
-        # Check for any prediction plot (target, unifrac, or count)
-        plot_files = list(plots_dir.glob("*_pred_vs_actual_best.png")) if plots_dir.exists() else []
+        # Check for any prediction plot (prediction_plot, unifrac_plot, or count_plot)
+        plot_files = list(plots_dir.glob("*_plot_best.png")) if plots_dir.exists() else []
         assert len(plot_files) > 0, f"Expected at least one prediction plot, found: {plot_files}"
 
     def test_train_without_plots(self, small_predictor, loss_fn, simple_dataloader, device, tmp_path):
@@ -1554,8 +1554,8 @@ class TestPredictionPlots:
         )
 
         plots_dir = checkpoint_dir / "plots"
-        # Check for any prediction plot (target, unifrac, or count)
-        plot_files = list(plots_dir.glob("*_pred_vs_actual_best.png")) if plots_dir.exists() else []
+        # Check for any prediction plot (prediction_plot, unifrac_plot, or count_plot)
+        plot_files = list(plots_dir.glob("*_plot_best.png")) if plots_dir.exists() else []
         assert len(plot_files) > 0, f"Expected at least one prediction plot, found: {plot_files}"
 
 
