@@ -504,6 +504,99 @@ class Trainer:
 
         plt.close(fig)
 
+    def _log_figures_to_tensorboard(
+        self,
+        epoch: int,
+        predictions_dict: Dict[str, torch.Tensor],
+        targets_dict: Dict[str, torch.Tensor],
+        metrics: Dict[str, float],
+    ) -> None:
+        """Log prediction figures to TensorBoard at every epoch.
+
+        Args:
+            epoch: Current epoch number
+            predictions_dict: Dictionary of predictions by type (target, unifrac, count)
+            targets_dict: Dictionary of targets by type
+            metrics: Metrics dictionary
+        """
+        if self.writer is None:
+            return
+
+        is_classifier = self._get_is_classifier()
+
+        # Log target prediction figure
+        if "target" in predictions_dict:
+            if is_classifier:
+                if all(k in metrics for k in ["accuracy", "precision", "recall", "f1"]):
+                    fig = self._create_confusion_matrix_plot(
+                        predictions_dict["target"],
+                        targets_dict["target"],
+                        epoch,
+                        metrics["accuracy"],
+                        metrics["precision"],
+                        metrics["recall"],
+                        metrics["f1"],
+                    )
+                    self.writer.add_figure("validation/target_prediction", fig, epoch)
+                    plt.close(fig)
+            else:
+                if "r2" in metrics:
+                    fig = self._create_prediction_plot(
+                        predictions_dict["target"],
+                        targets_dict["target"],
+                        epoch,
+                        metrics["r2"],
+                        mae=metrics.get("mae"),
+                        title_prefix="Target",
+                    )
+                    self.writer.add_figure("validation/target_prediction", fig, epoch)
+                    plt.close(fig)
+
+        # Log UniFrac prediction figure
+        if "unifrac" in predictions_dict:
+            r2 = metrics.get("r2") if "target" not in predictions_dict else None
+            # For fine-tuning, unifrac metrics might not be in the main metrics
+            if r2 is None:
+                # Compute R² for unifrac predictions
+                from sklearn.metrics import r2_score
+                try:
+                    pred_np = predictions_dict["unifrac"].cpu().numpy().flatten()
+                    true_np = targets_dict["unifrac"].cpu().numpy().flatten()
+                    r2 = r2_score(true_np, pred_np)
+                    mae = float(np.abs(pred_np - true_np).mean())
+                except Exception:
+                    r2 = None
+                    mae = None
+            else:
+                mae = metrics.get("mae")
+
+            if r2 is not None:
+                fig = self._create_unifrac_prediction_plot(
+                    predictions_dict["unifrac"],
+                    targets_dict["unifrac"],
+                    epoch,
+                    r2,
+                    mae=mae,
+                )
+                self.writer.add_figure("validation/unifrac_prediction", fig, epoch)
+                plt.close(fig)
+
+        # Log count prediction figure
+        if "count" in predictions_dict:
+            r2 = metrics.get("count_r2")
+            mae = metrics.get("count_mae")
+            if r2 is not None:
+                fig = self._create_prediction_plot(
+                    predictions_dict["count"],
+                    targets_dict["count"],
+                    epoch,
+                    r2,
+                    mae=mae,
+                    title_prefix="Count",
+                )
+                self.writer.add_figure("validation/count_prediction", fig, epoch)
+                plt.close(fig)
+
     def _log_to_tensorboard(self, epoch: int, train_losses: Dict[str, float], val_results: Optional[Dict[str, float]] = None):
         """Log metrics to TensorBoard.
 
@@ -1285,7 +1378,8 @@ class Trainer:
 
                 val_results = None
                 if val_loader is not None:
-                    return_predictions = save_plots
+                    # Return predictions if saving plots or logging to TensorBoard
+                    return_predictions = save_plots or self.writer is not None
                     val_output = self.validate_epoch(
                         val_loader,
                         compute_metrics=True,
@@ -1301,6 +1395,12 @@ class Trainer:
                         val_targets_dict = {}
                     val_loss = val_results["total_loss"]
                     history["val_loss"].append(val_loss)
+
+                    # Log prediction figures to TensorBoard at every epoch
+                    if self.writer is not None and val_predictions_dict:
+                        self._log_figures_to_tensorboard(
+                            epoch, val_predictions_dict, val_targets_dict, val_results
+                        )
 
                     if val_loss < best_val_loss:
                         best_val_loss = val_loss
