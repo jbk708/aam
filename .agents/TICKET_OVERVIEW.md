@@ -1,23 +1,17 @@
 # Ticket Overview - Outstanding Work
 
-**Last Updated:** 2025-01-XX  
+**Last Updated:** 2025-12-16
 **Status:** Active tracking of all outstanding tickets
 
 ## Quick Summary
 
-- **Total Outstanding Tickets:** 18 tickets
-- **Total Estimated Time:** ~115-145 hours
-- **Completed Phases:** Phase 8, Phase 9, Phase 10 (4/7 complete), Phase 11 (3/4 complete)
+- **Total Outstanding Tickets:** 16 tickets
+- **Total Estimated Time:** ~105-135 hours
+- **Completed Phases:** Phase 8, Phase 9, Phase 10 (6/7 complete), Phase 11 (✅ All Complete)
 
 ## Outstanding Tickets by Priority
 
-### HIGH Priority (1 ticket)
-- **PYT-11.6**: Optimize Learning Rate Scheduling to Escape Local Minima (4-6 hours)
-  - Training hitting local minima around epoch 34
-  - Need better schedulers/optimizers to escape local minima
-  - High priority for training improvement
-
-### MEDIUM Priority (3 tickets)
+### MEDIUM Priority (2 tickets)
 
 **Phase 10: Performance Optimizations**
 1. **PYT-10.5**: Optimize Attention Computation (4-6 hours)
@@ -28,7 +22,7 @@
    - Linear scaling with number of GPUs
    - Very high impact, high effort (requires hardware)
 
-### LOW Priority (15 tickets)
+### LOW Priority (14 tickets)
 
 **Phase 12: Additional Performance Optimizations (3 tickets)**
 - PYT-12.1: Implement FSDP (12-16 hours)
@@ -60,7 +54,7 @@
 
 ## Recently Completed
 
-### Phase 11: Critical Fixes
+### Phase 11: Critical Fixes (✅ All Complete)
 - ✅ **PYT-11.1**: Fix UniFrac Distance Predictions Exceeding 1.0
   - Implemented sigmoid normalization in `compute_pairwise_distances()`
   - All distances now bounded to [0, 1] range
@@ -72,14 +66,35 @@
   - Removed all computation-related flags and logic
   - Deprecated computation methods with warnings
   - Comprehensive test suite (21 tests, all passing)
-  - All existing tests updated to use pre-computed matrices
 
 - ✅ **PYT-11.5**: Fix Sigmoid Saturation in UniFrac Distance Normalization
   - Replaced sigmoid with tanh normalization to avoid saturation at ~0.55
   - Fixed batch max normalization issue causing all predictions = 1.0
   - All tests passing, no regressions
 
-### Phase 10: Performance Optimizations
+- ✅ **PYT-11.6**: Optimize Learning Rate Scheduling to Escape Local Minima
+  - Added CosineAnnealingWarmRestarts scheduler
+  - Enhanced ReduceLROnPlateau with aggressive defaults
+  - Added learning rate finder utility
+  - Comprehensive documentation in README
+
+- ✅ **PYT-11.7**: Fix Metadata Loading to Handle Column Name Variations
+  - Strip whitespace from column names
+  - Handle BOM in UTF-8 files
+  - Improved error messages
+
+- ✅ **PYT-11.8**: Fix Regressor Output Bounds for Dynamic Range
+  - Added sigmoid to target_head output for bounded [0,1] predictions
+  - Works with target normalization (PYT-11.9)
+
+- ✅ **PYT-11.9**: Implement Target Normalization to Match TensorFlow Architecture
+  - Target normalization to [0, 1] range with `--normalize-targets` flag
+  - Count normalization with sigmoid bounding
+  - Added `--loss-type` flag (mse/mae/huber, default: huber)
+  - Added MAE to validation prediction plots
+  - TensorBoard logging for prediction/count/unifrac plots
+
+### Phase 10: Performance Optimizations (6/7 Complete)
 - ✅ **PYT-10.1**: Implement Mixed Precision Training (FP16/BF16)
 - ✅ **PYT-10.2**: Implement Model Compilation (`torch.compile()`)
 - ✅ **PYT-10.2.1**: Fix Dependencies to Enable Model Compilation
@@ -89,26 +104,22 @@
 
 ## Recommended Next Steps
 
-### Immediate (Next Sprint)
-1. **PYT-11.6**: Optimize Learning Rate Scheduling - HIGH PRIORITY - Address local minima issue
-
 ### Short-Term (Next 2-3 Sprints)
-3. **PYT-10.5**: Optimize Attention Computation
-4. **PYT-12.3**: Implement Caching Mechanisms - Speed up repeated computations
+1. **PYT-10.5**: Optimize Attention Computation
+2. **PYT-12.3**: Implement Caching Mechanisms - Speed up repeated computations
 
 ### Medium-Term (Future Sprints)
-5. **PYT-10.6**: Implement Multi-GPU Training (if hardware available)
-6. **PYT-13.1**: Add Attention Visualization Tools - Improve interpretability
-7. **PYT-15.1**: Integrate Experiment Tracking - Better experiment management
+3. **PYT-10.6**: Implement Multi-GPU Training (if hardware available)
+4. **PYT-13.1**: Add Attention Visualization Tools - Improve interpretability
+5. **PYT-15.1**: Integrate Experiment Tracking - Better experiment management
 
 ### Long-Term (Research/Exploration)
-8. **PYT-12.1**: Implement FSDP - For very large models
-9. **PYT-17.1-17.4**: Documentation and Deployment - Production readiness
+6. **PYT-12.1**: Implement FSDP - For very large models
+7. **PYT-17.1-17.4**: Documentation and Deployment - Production readiness
 
 ## Notes
 
-- All Phase 8 and Phase 9 tickets are complete
-- Phase 10 focuses on performance optimizations (see `_design_plan/20_optimization_plan.md`)
-- Phase 11 critical fixes are complete
+- All Phase 8, Phase 9, and Phase 11 tickets are complete
+- Phase 10 performance optimizations nearly complete (6/7 done)
 - Phases 12-17 are enhancements from `_design_plan/FUTURE_WORK.md`
 - See `.agents/PYTORCH_PORTING_TICKETS.md` for detailed ticket descriptions

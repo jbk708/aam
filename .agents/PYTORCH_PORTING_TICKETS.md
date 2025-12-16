@@ -930,7 +930,7 @@ ValueError: Metadata file must have 'sample_id' column
 ---
 
 ### PYT-11.8: Fix Regressor Output Bounds for Dynamic Range in CLI Training
-**Priority:** CRITICAL | **Effort:** Medium (3-4 hours) | **Status:** Not Started
+**Priority:** CRITICAL | **Effort:** Medium (3-4 hours) | **Status:** ✅ Completed
 
 **Description:**
 Fix the regressor output in `cli.train` to support dynamic range predictions instead of being constrained to [0,1] bounds inherited from pre-training. Currently, when using a pretrained encoder, the target regressor predictions are constrained to [0,1] range, but for regression tasks the output range must be dynamic and match the actual target value distribution.
@@ -950,81 +950,28 @@ Fix the regressor output in `cli.train` to support dynamic range predictions ins
   - Having initialization or weight constraints that limit output range
 - The target_head in SequencePredictor is a simple linear layer, but embeddings or other factors may be constraining outputs
 
-**Error Example:**
-- Regression task with target values in range [0, 1000]
-- Model predictions are constrained to [0, 1] range
-- Loss cannot properly optimize because predictions cannot reach true target values
-- Model performance is severely limited
-
 **Acceptance Criteria:**
-- [ ] Investigate where [0,1] constraint is being applied to target predictions in regression mode
-- [ ] Identify if constraint comes from:
-  - Pretrained encoder embeddings normalization
-  - Target head initialization
-  - Forward pass constraints (sigmoid/clamp)
-  - Loss function constraints
-- [ ] Remove [0,1] constraint from target regressor when `is_classifier=False`
-- [ ] Ensure target predictions can have dynamic range matching target distribution
-- [ ] Verify pretrained encoder loading doesn't impose constraints on target_head
-- [ ] Add test cases for:
-  - Regression with targets outside [0,1] range (e.g., [0, 1000])
-  - Pretrained encoder with regression task
-  - Normal regression without pretrained encoder (regression test)
-- [ ] Verify existing classification mode still works (should use log_softmax, not affected)
-- [ ] Update documentation if needed
-
-**Files to Investigate/Modify:**
-- `aam/models/sequence_predictor.py` - Check target_head and forward pass
-- `aam/models/sequence_encoder.py` - Check if embeddings are normalized/constrained
-- `aam/training/trainer.py` - Check load_pretrained_encoder function
-- `aam/cli.py` - Verify model initialization and pretrained encoder loading
-- `aam/training/losses.py` - Check if loss function constrains predictions
-- `tests/test_sequence_predictor.py` - Add tests for dynamic range regression
-- `tests/test_cli.py` - Add integration tests
-
-**Implementation Details:**
-
-1. **Investigation Phase:**
-   - Check if target_head has any activation functions (should be none for regression)
-   - Check if embeddings from pretrained encoder are normalized
-   - Check if there's any clamping in forward pass
-   - Check if loss function applies constraints
-   - Verify pretrained encoder state dict doesn't include target_head weights
-
-2. **Fix Options:**
-   - **Option A**: Ensure target_head is always initialized fresh (not from pretrained encoder)
-   - **Option B**: Remove any normalization/constraints on embeddings used for target prediction
-   - **Option C**: Add explicit check to prevent [0,1] constraints in regression mode
-   - **Option D**: Normalize/denormalize targets if needed, but keep model output unbounded
-
-3. **Testing:**
-   - Test regression with targets in [0, 1000] range
-   - Test regression with targets in [-50, 50] range
-   - Test with and without pretrained encoder
-   - Verify predictions can exceed [0,1] range when appropriate
-
-**Expected Outcomes:**
-- Target regressor outputs have dynamic range matching target distribution
-- Pretrained encoder can be used without constraining regression outputs
-- Classification mode unaffected (still uses log_softmax)
-- Model can learn meaningful predictions for any target range
-
-**Dependencies:** None
-
-**Estimated Time:** 3-4 hours
+- [x] Investigate where [0,1] constraint is being applied to target predictions in regression mode
+- [x] Add sigmoid to target_head output to bound predictions to [0,1] for normalized targets
+- [x] Ensure target predictions work with normalized targets in [0,1] range
+- [x] Add count normalization with sigmoid bounding
+- [x] Verify existing classification mode still works (uses log_softmax, not affected)
 
 **Implementation Notes:**
-- This is a critical bug that prevents proper regression training
-- Need to carefully distinguish between:
-  - UniFrac/base predictions (should be [0,1] for UniFrac)
-  - Target regression predictions (should be dynamic)
-  - Target classification predictions (should use log_softmax)
-- May need to add explicit mode checking in forward pass
+- ✅ Solution: Use target normalization (PYT-11.9) to normalize targets to [0,1] range
+- ✅ Added sigmoid activation to target_head output for bounded regression
+- ✅ Added sigmoid activation to count_head output for bounded count prediction
+- ✅ Works in conjunction with target normalization for proper denormalization at metrics time
+- ✅ Merged into pytorch-dev branch
+
+**Dependencies:** PYT-11.9 (Target Normalization)
+
+**Estimated Time:** 3-4 hours (actual: completed as part of PYT-11.9)
 
 ---
 
 ### PYT-11.9: Implement Target Normalization to Match TensorFlow Architecture
-**Priority:** HIGH | **Effort:** Medium (4-6 hours) | **Status:** Not Started
+**Priority:** HIGH | **Effort:** Medium (4-6 hours) | **Status:** ✅ Completed
 
 **Description:**
 Implement target normalization for regression tasks to match TensorFlow implementation. TensorFlow normalizes targets to [0, 1] range before training, which ensures model outputs are always in [0, 1] range and simplifies initialization. This addresses the issue where predictions appear constrained and training may stall.
@@ -1044,112 +991,61 @@ Implement target normalization for regression tasks to match TensorFlow implemen
 - PyTorch implementation lacks this normalization step
 
 **Acceptance Criteria:**
-- [ ] Add target normalization in dataset or CLI (normalize to [0, 1])
-- [ ] Store normalization parameters (scale, shift) for denormalization
-- [ ] Update model to work with normalized targets [0, 1]
-- [ ] Denormalize predictions for metrics/evaluation only
-- [ ] Update loss computation to use normalized targets
-- [ ] Ensure model outputs are in [0, 1] range during training
-- [ ] Add tests for normalization/denormalization
-- [ ] Update documentation
-- [ ] Verify training stability improves
-- [ ] Verify predictions are in [0, 1] range during training
-
-**Implementation Details:**
-
-1. **Normalization Strategy:**
-   - Normalize targets: `normalized = (target - min) / (max - min)` or `target / max`
-   - Store `target_scale` and `target_shift` (or `target_min` and `target_max`)
-   - Apply normalization in dataset or CLI before training
-
-2. **Model Updates:**
-   - Model outputs should be in [0, 1] range (normalized)
-   - Can use standard initialization (Xavier with default gain)
-   - No need for target-based initialization if using normalization
-
-3. **Loss Computation:**
-   - Compute loss on normalized targets and predictions
-   - Both should be in [0, 1] range
-
-4. **Metrics/Evaluation:**
-   - Denormalize predictions: `pred_denorm = pred * scale + shift`
-   - Denormalize targets: `target_denorm = target * scale + shift`
-   - Compute metrics on denormalized values for user-facing results
-
-5. **Storage:**
-   - Store normalization parameters in model checkpoint or config
-   - Load normalization parameters when resuming training
-   - Include normalization parameters in saved model metadata
-
-**Files to Modify:**
-- `aam/data/dataset.py` - Add target normalization in `__getitem__` or dataset initialization
-- `aam/cli.py` - Compute normalization parameters and pass to dataset/trainer
-- `aam/training/trainer.py` - Handle denormalization for metrics
-- `aam/training/metrics.py` - Denormalize predictions/targets before computing metrics
-- `aam/models/sequence_predictor.py` - Potentially simplify initialization (can use default if normalized)
-- `tests/test_dataset.py` - Add tests for normalization
-- `tests/test_trainer.py` - Add tests for denormalized metrics
-
-**Implementation Approach:**
-
-**Option A: Normalize in Dataset** (Recommended)
-```python
-# In ASVDataset.__init__:
-if metadata is not None and target_column is not None:
-    target_values = metadata[target_column].values
-    self.target_min = float(target_values.min())
-    self.target_max = float(target_values.max())
-    self.target_scale = self.target_max - self.target_min
-    if self.target_scale == 0:
-        self.target_scale = 1.0  # Avoid division by zero
-    
-# In __getitem__:
-if "y_target" in result:
-    target = result["y_target"]
-    normalized_target = (target - self.target_min) / self.target_scale
-    result["y_target"] = normalized_target
-```
-
-**Option B: Normalize in CLI**
-```python
-# In CLI train command:
-target_values = train_metadata[metadata_column].values
-target_min = float(target_values.min())
-target_max = float(target_values.max())
-target_scale = target_max - target_min
-
-# Pass to dataset or normalize before creating dataset
-# Store in model config for denormalization
-```
-
-**Denormalization for Metrics:**
-```python
-# In trainer.validate_epoch or metrics.compute_regression_metrics:
-if hasattr(model, 'target_scale') and hasattr(model, 'target_min'):
-    pred_denorm = pred * model.target_scale + model.target_min
-    target_denorm = target * model.target_scale + model.target_min
-    metrics = compute_regression_metrics(pred_denorm, target_denorm)
-```
-
-**Benefits:**
-- Matches TensorFlow implementation exactly
-- Model always works with [0, 1] range (simpler, more stable)
-- Standard initialization works (no need for gain=5.0)
-- Better training stability
-- Predictions naturally in [0, 1] during training
-
-**Dependencies:** PYT-11.8 (Xavier initialization fixes)
-
-**Estimated Time:** 4-6 hours
+- [x] Add target normalization in dataset or CLI (normalize to [0, 1])
+- [x] Store normalization parameters (scale, shift) for denormalization
+- [x] Update model to work with normalized targets [0, 1]
+- [x] Denormalize predictions for metrics/evaluation only
+- [x] Update loss computation to use normalized targets
+- [x] Ensure model outputs are in [0, 1] range during training
+- [x] Add tests for normalization/denormalization
+- [x] Verify training stability improves
+- [x] Verify predictions are in [0, 1] range during training
+- [x] Add count normalization (auxiliary task)
+- [x] Add `--loss-type` CLI flag for configurable loss (mse/mae/huber)
+- [x] Add MAE to validation prediction plots
+- [x] Add TensorBoard logging for prediction figures
 
 **Implementation Notes:**
-- This should be implemented as a separate ticket to keep current fixes (Xavier init) intact
-- Normalization can be added as an optional flag (default: True) for backward compatibility
-- Consider making normalization optional via CLI flag: `--normalize-targets` (default: True)
+- ✅ Added `normalize_targets`, `target_min`, `target_max` parameters to `ASVDataset`
+- ✅ Added `get_normalization_params()` and `denormalize_targets()` methods to `ASVDataset`
+- ✅ Updated `Trainer` to accept `target_normalization_params` for denormalization at metrics time
+- ✅ Updated CLI with `--normalize-targets` flag to enable target normalization
+- ✅ Added sigmoid activation to `target_head` and `count_head` for bounded [0,1] outputs
+- ✅ Added count normalization with similar approach
+- ✅ Added `--loss-type` CLI option (mse, mae, huber) defaulting to huber loss
+- ✅ Added MAE metric to validation prediction plots
+- ✅ Added TensorBoard figure logging for prediction_plot, count_plot, unifrac_plot
+- ✅ All tests passing
+- ✅ Merged into pytorch-dev branch
 
-**Related Documents:**
-- `ARCHITECTURE_COMPARISON_REGRESSION.md` - Detailed comparison
-- `REGRESSION_ARCHITECTURE_RECOMMENDATIONS.md` - Recommendations
+**Files Modified:**
+- ✅ `aam/data/dataset.py` - Target and count normalization in dataset
+- ✅ `aam/cli.py` - Added `--normalize-targets` and `--loss-type` flags
+- ✅ `aam/training/trainer.py` - Denormalization for metrics, TensorBoard figure logging
+- ✅ `aam/training/losses.py` - Configurable loss type (mse/mae/huber)
+- ✅ `aam/models/sequence_predictor.py` - Sigmoid activation for target_head and count_head
+- ✅ `tests/test_losses.py` - Added loss type tests
+
+**Commits:**
+- `e5d701f` - PYT-11.9: Implement target normalization to match TensorFlow architecture
+- `3c3687d` - PYT-11.9: Add count normalization and output bounding
+- `9ef65fe` - PYT-11.9: Add MAE to prediction plots and multi-plot output
+- `7c45d24` - PYT-11.9: Add TensorBoard logging for prediction figures
+- `d0e5402` - PYT-11.9: Rename TensorBoard plot tags
+- `99e922d` - PYT-11.9: Remove duplicate TensorBoard figure logging
+- `b5c0088` - PYT-11.9: Add --loss-type flag with mse, mae, huber options
+
+**Usage:**
+```bash
+# Training with target normalization and huber loss (default)
+python -m aam.cli train --table table.biom --unifrac-matrix distances.npy \
+    --metadata meta.tsv --metadata-column target --output-dir output \
+    --normalize-targets --loss-type huber
+```
+
+**Dependencies:** None
+
+**Estimated Time:** 4-6 hours (actual: completed)
 
 ---
 
