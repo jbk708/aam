@@ -252,6 +252,28 @@ class TestCreateScheduler:
         assert isinstance(scheduler, torch.optim.lr_scheduler.OneCycleLR)
         assert scheduler.total_steps == 1000
 
+    def test_create_scheduler_cosine_restarts(self, small_model):
+        """Test creating CosineAnnealingWarmRestarts scheduler."""
+        optimizer = create_optimizer(small_model, optimizer_type="adamw", lr=1e-4)
+        scheduler = create_scheduler(
+            optimizer, scheduler_type="cosine_restarts", num_training_steps=1000, T_0=100, T_mult=2, eta_min=1e-6
+        )
+
+        assert isinstance(scheduler, torch.optim.lr_scheduler.CosineAnnealingWarmRestarts)
+        assert scheduler.T_0 == 100
+        assert scheduler.T_mult == 2
+        assert scheduler.eta_min == 1e-6
+
+    def test_create_scheduler_cosine_restarts_defaults(self, small_model):
+        """Test creating CosineAnnealingWarmRestarts scheduler with default parameters."""
+        optimizer = create_optimizer(small_model, optimizer_type="adamw", lr=1e-4)
+        scheduler = create_scheduler(optimizer, scheduler_type="cosine_restarts", num_training_steps=1000)
+
+        assert isinstance(scheduler, torch.optim.lr_scheduler.CosineAnnealingWarmRestarts)
+        assert scheduler.T_0 == 250
+        assert scheduler.T_mult == 2
+        assert scheduler.eta_min == 0.0
+
     def test_create_scheduler_invalid_type(self, small_model):
         """Test creating scheduler with invalid type raises error."""
         optimizer = create_optimizer(small_model, optimizer_type="adamw")
