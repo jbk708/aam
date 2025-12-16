@@ -30,6 +30,7 @@ class SampleSequenceEncoder(nn.Module):
         sample_activation: str = "gelu",
         predict_nucleotides: bool = False,
         asv_chunk_size: Optional[int] = None,
+        gradient_checkpointing: bool = False,
     ):
         """Initialize SampleSequenceEncoder.
 
@@ -50,6 +51,7 @@ class SampleSequenceEncoder(nn.Module):
             sample_activation: Activation function for sample-level transformer ('gelu' or 'relu')
             predict_nucleotides: Whether to include nucleotide prediction head
             asv_chunk_size: Process ASVs in chunks of this size to reduce memory (None = process all)
+            gradient_checkpointing: Whether to use gradient checkpointing to save memory
         """
         super().__init__()
         
@@ -68,6 +70,7 @@ class SampleSequenceEncoder(nn.Module):
             activation=asv_activation,
             predict_nucleotides=predict_nucleotides,
             asv_chunk_size=asv_chunk_size,
+            gradient_checkpointing=gradient_checkpointing,
         )
         
         self.sample_position_embedding = PositionEmbedding(
@@ -85,6 +88,7 @@ class SampleSequenceEncoder(nn.Module):
             intermediate_size=sample_intermediate_size,
             dropout=sample_dropout,
             activation=sample_activation,
+            gradient_checkpointing=gradient_checkpointing,
         )
 
     def forward(

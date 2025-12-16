@@ -198,6 +198,7 @@ def cli():
     help="Mixed precision training mode (fp16, bf16, or none)",
 )
 @click.option("--compile-model", is_flag=True, help="Compile model with torch.compile() for optimization (PyTorch 2.0+)")
+@click.option("--gradient-checkpointing", is_flag=True, help="Use gradient checkpointing to reduce memory usage (30-50% reduction, slower training)")
 def train(
     table: str,
     unifrac_matrix: str,
@@ -236,6 +237,7 @@ def train(
     scheduler: str,
     mixed_precision: Optional[str],
     compile_model: bool,
+    gradient_checkpointing: bool,
 ):
     """Train AAM model on microbial sequencing data."""
     try:
@@ -454,6 +456,7 @@ def train(
             is_classifier=classifier,
             freeze_base=freeze_base,
             predict_nucleotides=True,
+            gradient_checkpointing=gradient_checkpointing,
         )
 
         if pretrained_encoder is not None:
@@ -565,6 +568,7 @@ def train(
     help="Mixed precision training mode (fp16, bf16, or none)",
 )
 @click.option("--compile-model", is_flag=True, help="Compile model with torch.compile() for optimization (PyTorch 2.0+)")
+@click.option("--gradient-checkpointing", is_flag=True, help="Use gradient checkpointing to reduce memory usage (30-50% reduction, slower training)")
 @click.option(
     "--asv-chunk-size", default=None, type=int, help="Process ASVs in chunks of this size to reduce memory (None = process all)"
 )
@@ -599,6 +603,7 @@ def pretrain(
     scheduler: str,
     mixed_precision: Optional[str],
     compile_model: bool,
+    gradient_checkpointing: bool,
     asv_chunk_size: Optional[int],
 ):
     """Pre-train SequenceEncoder on UniFrac and nucleotide prediction (self-supervised)."""
@@ -784,6 +789,7 @@ def pretrain(
             base_output_dim=base_output_dim,
             predict_nucleotides=True,
             asv_chunk_size=asv_chunk_size,
+            gradient_checkpointing=gradient_checkpointing,
         )
 
         loss_fn = MultiTaskLoss(penalty=penalty, nuc_penalty=nuc_penalty, class_weights=None)

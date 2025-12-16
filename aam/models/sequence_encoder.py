@@ -37,6 +37,7 @@ class SequenceEncoder(nn.Module):
         encoder_type: str = "unifrac",
         predict_nucleotides: bool = False,
         asv_chunk_size: Optional[int] = None,
+        gradient_checkpointing: bool = False,
     ):
         """Initialize SequenceEncoder.
 
@@ -64,6 +65,7 @@ class SequenceEncoder(nn.Module):
             encoder_type: Type of encoder ('unifrac', 'taxonomy', 'faith_pd', 'combined')
             predict_nucleotides: Whether to include nucleotide prediction head
             asv_chunk_size: Process ASVs in chunks of this size to reduce memory (None = process all)
+            gradient_checkpointing: Whether to use gradient checkpointing to save memory
         """
         super().__init__()
         
@@ -89,6 +91,7 @@ class SequenceEncoder(nn.Module):
             sample_activation=sample_activation,
             predict_nucleotides=predict_nucleotides,
             asv_chunk_size=asv_chunk_size,
+            gradient_checkpointing=gradient_checkpointing,
         )
         
         if encoder_intermediate_size is None:
@@ -101,6 +104,7 @@ class SequenceEncoder(nn.Module):
             intermediate_size=encoder_intermediate_size,
             dropout=encoder_dropout,
             activation=encoder_activation,
+            gradient_checkpointing=gradient_checkpointing,
         )
         
         self.attention_pooling = AttentionPooling(hidden_dim=embedding_dim)

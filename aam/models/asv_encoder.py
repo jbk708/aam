@@ -24,6 +24,7 @@ class ASVEncoder(nn.Module):
         activation: str = "gelu",
         predict_nucleotides: bool = False,
         asv_chunk_size: Optional[int] = None,
+        gradient_checkpointing: bool = False,
     ):
         """Initialize ASVEncoder.
 
@@ -38,6 +39,7 @@ class ASVEncoder(nn.Module):
             activation: Activation function ('gelu' or 'relu')
             predict_nucleotides: Whether to include nucleotide prediction head
             asv_chunk_size: Process ASVs in chunks of this size (None = process all at once)
+            gradient_checkpointing: Whether to use gradient checkpointing to save memory
         """
         super().__init__()
         
@@ -59,6 +61,7 @@ class ASVEncoder(nn.Module):
             intermediate_size=intermediate_size,
             dropout=dropout,
             activation=activation,
+            gradient_checkpointing=gradient_checkpointing,
         )
         self.attention_pooling = AttentionPooling(hidden_dim=embedding_dim)
         
