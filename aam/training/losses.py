@@ -32,19 +32,19 @@ def compute_stripe_distances(
     embeddings: torch.Tensor,
     reference_embeddings: torch.Tensor,
     normalize: bool = True,
-    scale: float = 5.0,
+    scale: float = 10.0,
 ) -> torch.Tensor:
     """Compute stripe Euclidean distances from embeddings to reference embeddings.
 
     Args:
         embeddings: Sample embeddings [batch_size, embedding_dim]
         reference_embeddings: Reference sample embeddings [num_reference_samples, embedding_dim]
-        normalize: If True, normalize distances to [0, 1] using sigmoid (default: True)
-        scale: Scaling factor for sigmoid normalization (default: 5.0)
+        normalize: If True, normalize distances to [0, 1] using tanh with fixed scale (default: True)
+        scale: Scaling factor for normalization (default: 5.0). Larger values make normalization more sensitive.
 
     Returns:
         Stripe distance matrix [batch_size, num_reference_samples]
-        If normalize=True, distances are bounded to [0, 1]
+        If normalize=True, distances are bounded to [0, 1] using tanh normalization
     """
     # Check for NaN or Inf in embeddings
     if torch.any(torch.isnan(embeddings)):
@@ -81,14 +81,13 @@ def compute_stripe_distances(
 
     # Normalize distances to [0, 1] if requested (for UniFrac distances)
     if normalize:
-        # Apply sigmoid with scaling to bound distances to [0, 1]
-        # scale parameter controls sensitivity: larger scale = more sensitive to distance changes
-        # Use max distance as normalization factor, then apply sigmoid
-        max_dist = distances.max()
-        if max_dist > 0:
-            # Normalize by max distance, then apply sigmoid
-            normalized = distances / (max_dist * scale)
-            distances = torch.sigmoid(normalized)
+        # Use tanh normalization with fixed scale to bound distances to [0, 1]
+        # This avoids sigmoid saturation while maintaining consistent scaling across batches
+        # Formula: (tanh(distances / scale) + 1) / 2 maps to [0, 1] with better gradient flow
+        if distances.max() > 0:
+            # Normalize using tanh: maps to [-1, 1], then shift to [0, 1]
+            normalized = distances / scale
+            distances = (torch.tanh(normalized) + 1.0) / 2.0
         else:
             # All distances are 0, return zeros
             distances = torch.zeros_like(distances)
@@ -99,18 +98,18 @@ def compute_stripe_distances(
 def compute_pairwise_distances(
     embeddings: torch.Tensor,
     normalize: bool = True,
-    scale: float = 5.0,
+    scale: float = 10.0,
 ) -> torch.Tensor:
     """Compute pairwise Euclidean distances from embeddings.
 
     Args:
         embeddings: Sample embeddings [batch_size, embedding_dim]
-        normalize: If True, normalize distances to [0, 1] using sigmoid (default: True)
-        scale: Scaling factor for sigmoid normalization (default: 5.0)
+        normalize: If True, normalize distances to [0, 1] using tanh with fixed scale (default: True)
+        scale: Scaling factor for normalization (default: 5.0). Larger values make normalization more sensitive.
 
     Returns:
         Pairwise distance matrix [batch_size, batch_size]
-        If normalize=True, distances are bounded to [0, 1]
+        If normalize=True, distances are bounded to [0, 1] using tanh normalization
     """
     # Check for NaN or Inf in embeddings
     if torch.any(torch.isnan(embeddings)):
@@ -174,15 +173,13 @@ def compute_pairwise_distances(
 
     # Normalize distances to [0, 1] if requested (for UniFrac distances)
     if normalize:
-        # Apply sigmoid with scaling to bound distances to [0, 1]
-        # scale parameter controls sensitivity: larger scale = more sensitive to distance changes
-        # Use max distance as normalization factor, then apply sigmoid (prevents saturation)
-        # Note: diagonal is already 0.0, sigmoid(0) = 0.5, so we need to handle diagonal separately
-        max_dist = distances.max()
-        if max_dist > 0:
-            # Normalize by max distance, then apply sigmoid
-            normalized = distances / (max_dist * scale)
-            normalized_distances = torch.sigmoid(normalized)
+        # Use tanh normalization with fixed scale to bound distances to [0, 1]
+        # This avoids sigmoid saturation while maintaining consistent scaling across batches
+        # Formula: (tanh(distances / scale) + 1) / 2 maps to [0, 1] with better gradient flow
+        if distances.max() > 0:
+            # Normalize using tanh: maps to [-1, 1], then shift to [0, 1]
+            normalized = distances / scale
+            normalized_distances = (torch.tanh(normalized) + 1.0) / 2.0
         else:
             # All distances are 0, return zeros
             normalized_distances = torch.zeros_like(distances)

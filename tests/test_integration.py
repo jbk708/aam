@@ -571,6 +571,9 @@ class TestEndToEnd:
             device=device,
         )
 
+        # Create UniFracLoader to extract batch distances
+        unifrac_loader = UniFracLoader()
+
         initial_loss = None
         for i, batch in enumerate(dataloader):
             if i >= 2:
@@ -579,7 +582,7 @@ class TestEndToEnd:
             tokens = batch["tokens"].to(device)
             sample_ids = batch["sample_ids"]
 
-            batch_distances = computer.extract_batch_distances(unifrac_distances, sample_ids, metric="unweighted")
+            batch_distances = unifrac_loader.extract_batch_distances(unifrac_distances, sample_ids, metric="unweighted")
             base_targets = torch.FloatTensor(batch_distances).to(device)
 
             model.train()
@@ -656,6 +659,9 @@ class TestEndToEnd:
             device=device,
         )
 
+        # Create UniFracLoader to extract batch distances
+        unifrac_loader = UniFracLoader()
+
         losses = []
         for i, batch in enumerate(dataloader):
             if i >= 5:
@@ -664,7 +670,7 @@ class TestEndToEnd:
             tokens = batch["tokens"].to(device)
             sample_ids = batch["sample_ids"]
 
-            batch_distances = computer.extract_batch_distances(unifrac_distances, sample_ids, metric="unweighted")
+            batch_distances = unifrac_loader.extract_batch_distances(unifrac_distances, sample_ids, metric="unweighted")
             base_targets = torch.FloatTensor(batch_distances).to(device)
 
             model.train()

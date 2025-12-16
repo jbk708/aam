@@ -128,6 +128,9 @@ class UniFracLoader:
         except ImportError:
             raise ImportError("h5py is required to load .h5 files. Install with: pip install h5py")
         
+        # Initialize h5_sample_ids to None (will be set if found in HDF5 file)
+        h5_sample_ids = None
+        
         with h5py.File(matrix_path, 'r') as f:
             # Try AAM format keys first
             if 'distances' in f:
@@ -140,7 +143,6 @@ class UniFracLoader:
             elif 'matrix' in f:
                 matrix = np.array(f['matrix'])
                 # ssu stores sample IDs in 'order' key - use for validation/reordering if needed
-                h5_sample_ids = None
                 if 'order' in f:
                     order_data = f['order']
                     # Handle different data types in order array
