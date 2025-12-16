@@ -1023,6 +1023,136 @@ Fix the regressor output in `cli.train` to support dynamic range predictions ins
 
 ---
 
+### PYT-11.9: Implement Target Normalization to Match TensorFlow Architecture
+**Priority:** HIGH | **Effort:** Medium (4-6 hours) | **Status:** Not Started
+
+**Description:**
+Implement target normalization for regression tasks to match TensorFlow implementation. TensorFlow normalizes targets to [0, 1] range before training, which ensures model outputs are always in [0, 1] range and simplifies initialization. This addresses the issue where predictions appear constrained and training may stall.
+
+**Problem:**
+- Current PyTorch implementation uses raw target values (no normalization)
+- TensorFlow implementation normalizes targets to [0, 1] before training
+- Model outputs in TensorFlow are always in [0, 1] range (normalized)
+- Predictions may appear constrained or training may stall without normalization
+- Initialization fixes (Xavier gain=5.0, target-based init) help but don't match TensorFlow architecture
+
+**Root Cause:**
+- TensorFlow normalizes targets: `target_data = (target_data - shift) / scale` where `scale = max(target_data)`
+- Model always works with [0, 1] range internally
+- Loss computed on normalized values
+- Denormalization only for metrics: `y_pred * scale + shift`
+- PyTorch implementation lacks this normalization step
+
+**Acceptance Criteria:**
+- [ ] Add target normalization in dataset or CLI (normalize to [0, 1])
+- [ ] Store normalization parameters (scale, shift) for denormalization
+- [ ] Update model to work with normalized targets [0, 1]
+- [ ] Denormalize predictions for metrics/evaluation only
+- [ ] Update loss computation to use normalized targets
+- [ ] Ensure model outputs are in [0, 1] range during training
+- [ ] Add tests for normalization/denormalization
+- [ ] Update documentation
+- [ ] Verify training stability improves
+- [ ] Verify predictions are in [0, 1] range during training
+
+**Implementation Details:**
+
+1. **Normalization Strategy:**
+   - Normalize targets: `normalized = (target - min) / (max - min)` or `target / max`
+   - Store `target_scale` and `target_shift` (or `target_min` and `target_max`)
+   - Apply normalization in dataset or CLI before training
+
+2. **Model Updates:**
+   - Model outputs should be in [0, 1] range (normalized)
+   - Can use standard initialization (Xavier with default gain)
+   - No need for target-based initialization if using normalization
+
+3. **Loss Computation:**
+   - Compute loss on normalized targets and predictions
+   - Both should be in [0, 1] range
+
+4. **Metrics/Evaluation:**
+   - Denormalize predictions: `pred_denorm = pred * scale + shift`
+   - Denormalize targets: `target_denorm = target * scale + shift`
+   - Compute metrics on denormalized values for user-facing results
+
+5. **Storage:**
+   - Store normalization parameters in model checkpoint or config
+   - Load normalization parameters when resuming training
+   - Include normalization parameters in saved model metadata
+
+**Files to Modify:**
+- `aam/data/dataset.py` - Add target normalization in `__getitem__` or dataset initialization
+- `aam/cli.py` - Compute normalization parameters and pass to dataset/trainer
+- `aam/training/trainer.py` - Handle denormalization for metrics
+- `aam/training/metrics.py` - Denormalize predictions/targets before computing metrics
+- `aam/models/sequence_predictor.py` - Potentially simplify initialization (can use default if normalized)
+- `tests/test_dataset.py` - Add tests for normalization
+- `tests/test_trainer.py` - Add tests for denormalized metrics
+
+**Implementation Approach:**
+
+**Option A: Normalize in Dataset** (Recommended)
+```python
+# In ASVDataset.__init__:
+if metadata is not None and target_column is not None:
+    target_values = metadata[target_column].values
+    self.target_min = float(target_values.min())
+    self.target_max = float(target_values.max())
+    self.target_scale = self.target_max - self.target_min
+    if self.target_scale == 0:
+        self.target_scale = 1.0  # Avoid division by zero
+    
+# In __getitem__:
+if "y_target" in result:
+    target = result["y_target"]
+    normalized_target = (target - self.target_min) / self.target_scale
+    result["y_target"] = normalized_target
+```
+
+**Option B: Normalize in CLI**
+```python
+# In CLI train command:
+target_values = train_metadata[metadata_column].values
+target_min = float(target_values.min())
+target_max = float(target_values.max())
+target_scale = target_max - target_min
+
+# Pass to dataset or normalize before creating dataset
+# Store in model config for denormalization
+```
+
+**Denormalization for Metrics:**
+```python
+# In trainer.validate_epoch or metrics.compute_regression_metrics:
+if hasattr(model, 'target_scale') and hasattr(model, 'target_min'):
+    pred_denorm = pred * model.target_scale + model.target_min
+    target_denorm = target * model.target_scale + model.target_min
+    metrics = compute_regression_metrics(pred_denorm, target_denorm)
+```
+
+**Benefits:**
+- Matches TensorFlow implementation exactly
+- Model always works with [0, 1] range (simpler, more stable)
+- Standard initialization works (no need for gain=5.0)
+- Better training stability
+- Predictions naturally in [0, 1] during training
+
+**Dependencies:** PYT-11.8 (Xavier initialization fixes)
+
+**Estimated Time:** 4-6 hours
+
+**Implementation Notes:**
+- This should be implemented as a separate ticket to keep current fixes (Xavier init) intact
+- Normalization can be added as an optional flag (default: True) for backward compatibility
+- Consider making normalization optional via CLI flag: `--normalize-targets` (default: True)
+
+**Related Documents:**
+- `ARCHITECTURE_COMPARISON_REGRESSION.md` - Detailed comparison
+- `REGRESSION_ARCHITECTURE_RECOMMENDATIONS.md` - Recommendations
+
+---
+
 ### PYT-11.6: Optimize Learning Rate Scheduling to Escape Local Minima
 **Priority:** HIGH | **Effort:** Medium (4-6 hours) | **Status:** ✅ Completed
 
