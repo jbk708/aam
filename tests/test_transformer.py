@@ -245,3 +245,117 @@ class TestTransformerEncoder:
         )
         result = transformer_encoder(embeddings, mask=mask)
         assert result.shape == (3, 10, 64)
+
+    def test_gradient_checkpointing_init(self):
+        """Test that gradient checkpointing can be enabled."""
+        encoder = TransformerEncoder(
+            num_layers=2,
+            num_heads=4,
+            hidden_dim=64,
+            gradient_checkpointing=True,
+        )
+        assert encoder.gradient_checkpointing is True
+
+    def test_gradient_checkpointing_disabled_by_default(self):
+        """Test that gradient checkpointing is disabled by default."""
+        encoder = TransformerEncoder(
+            num_layers=2,
+            num_heads=4,
+            hidden_dim=64,
+        )
+        assert encoder.gradient_checkpointing is False
+
+    def test_gradient_checkpointing_eval_mode_same_output(self):
+        """Test that checkpointing produces same output in eval mode."""
+        embeddings = torch.randn(2, 10, 64)
+        mask = torch.ones(2, 10, dtype=torch.long)
+        
+        encoder_no_checkpoint = TransformerEncoder(
+            num_layers=2,
+            num_heads=4,
+            hidden_dim=64,
+            gradient_checkpointing=False,
+        )
+        encoder_checkpoint = TransformerEncoder(
+            num_layers=2,
+            num_heads=4,
+            hidden_dim=64,
+            gradient_checkpointing=True,
+        )
+        
+        # Set same random seed for both
+        torch.manual_seed(42)
+        encoder_no_checkpoint.eval()
+        output_no_checkpoint = encoder_no_checkpoint(embeddings, mask=mask)
+        
+        torch.manual_seed(42)
+        encoder_checkpoint.eval()
+        output_checkpoint = encoder_checkpoint(embeddings, mask=mask)
+        
+        # In eval mode, checkpointing should not be used, so outputs should be identical
+        assert torch.allclose(output_no_checkpoint, output_checkpoint, atol=1e-5)
+
+    def test_gradient_checkpointing_training_mode_gradients(self):
+        """Test that gradients flow correctly with checkpointing in training mode."""
+        embeddings = torch.randn(2, 10, 64, requires_grad=True)
+        mask = torch.ones(2, 10, dtype=torch.long)
+        
+        encoder = TransformerEncoder(
+            num_layers=2,
+            num_heads=4,
+            hidden_dim=64,
+            gradient_checkpointing=True,
+        )
+        encoder.train()
+        
+        output = encoder(embeddings, mask=mask)
+        loss = output.sum()
+        loss.backward()
+        
+        # Check that gradients exist
+        assert embeddings.grad is not None
+        assert not torch.isnan(embeddings.grad).any()
+        assert not torch.isinf(embeddings.grad).any()
+        
+        # Check that model parameters have gradients
+        for param in encoder.parameters():
+            if param.requires_grad:
+                assert param.grad is not None
+                assert not torch.isnan(param.grad).any()
+                assert not torch.isinf(param.grad).any()
+
+    def test_gradient_checkpointing_with_mask(self):
+        """Test gradient checkpointing works correctly with mask."""
+        embeddings = torch.randn(2, 10, 64, requires_grad=True)
+        mask = torch.tensor([[1, 1, 1, 1, 1, 0, 0, 0, 0, 0], [1, 1, 1, 0, 0, 0, 0, 0, 0, 0]])
+        
+        encoder = TransformerEncoder(
+            num_layers=2,
+            num_heads=4,
+            hidden_dim=64,
+            gradient_checkpointing=True,
+        )
+        encoder.train()
+        
+        output = encoder(embeddings, mask=mask)
+        loss = output.sum()
+        loss.backward()
+        
+        assert embeddings.grad is not None
+        assert not torch.isnan(embeddings.grad).any()
+
+    def test_gradient_checkpointing_output_shape(self):
+        """Test that checkpointing produces correct output shape."""
+        embeddings = torch.randn(2, 10, 64)
+        mask = torch.ones(2, 10, dtype=torch.long)
+        
+        encoder = TransformerEncoder(
+            num_layers=2,
+            num_heads=4,
+            hidden_dim=64,
+            gradient_checkpointing=True,
+        )
+        encoder.train()
+        
+        output = encoder(embeddings, mask=mask)
+        assert output.shape == embeddings.shape

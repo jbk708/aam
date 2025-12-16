@@ -393,3 +393,77 @@ class TestSequenceEncoder:
         # Verify sigmoid behavior (continuous values, not hard-clipped)
         unique_values = torch.unique(unifrac_pred)
         assert len(unique_values) > 2, "Sigmoid should produce continuous values"
+
+    def test_gradient_checkpointing_init(self):
+        """Test that gradient checkpointing can be enabled."""
+        encoder = SequenceEncoder(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            asv_num_layers=2,
+            asv_num_heads=4,
+            sample_num_layers=2,
+            sample_num_heads=4,
+            encoder_num_layers=2,
+            encoder_num_heads=4,
+            encoder_type="faith_pd",
+            gradient_checkpointing=True,
+        )
+        assert encoder.sample_encoder.asv_encoder.transformer.gradient_checkpointing is True
+        assert encoder.sample_encoder.sample_transformer.gradient_checkpointing is True
+        assert encoder.encoder_transformer.gradient_checkpointing is True
+
+    def test_gradient_checkpointing_disabled_by_default(self, sequence_encoder):
+        """Test that gradient checkpointing is disabled by default."""
+        assert sequence_encoder.sample_encoder.asv_encoder.transformer.gradient_checkpointing is False
+        assert sequence_encoder.sample_encoder.sample_transformer.gradient_checkpointing is False
+        assert sequence_encoder.encoder_transformer.gradient_checkpointing is False
+
+    def test_gradient_checkpointing_training_mode_gradients(self, sample_tokens):
+        """Test that gradients flow correctly with checkpointing in training mode."""
+        encoder = SequenceEncoder(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            asv_num_layers=2,
+            asv_num_heads=4,
+            sample_num_layers=2,
+            sample_num_heads=4,
+            encoder_num_layers=2,
+            encoder_num_heads=4,
+            encoder_type="faith_pd",
+            gradient_checkpointing=True,
+        )
+        encoder.train()
+        
+        result = encoder(sample_tokens)
+        loss = result["base_prediction"].sum()
+        loss.backward()
+        
+        # Check that model parameters have gradients
+        for param in encoder.parameters():
+            if param.requires_grad:
+                assert param.grad is not None
+                assert not torch.isnan(param.grad).any()
+                assert not torch.isinf(param.grad).any()
+
+    def test_gradient_checkpointing_output_shape(self, sample_tokens):
+        """Test that checkpointing produces correct output shape."""
+        encoder = SequenceEncoder(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            asv_num_layers=2,
+            asv_num_heads=4,
+            sample_num_layers=2,
+            sample_num_heads=4,
+            encoder_num_layers=2,
+            encoder_num_heads=4,
+            encoder_type="faith_pd",
+            gradient_checkpointing=True,
+        )
+        encoder.train()
+        
+        result = encoder(sample_tokens)
+        assert "base_prediction" in result
+        assert result["base_prediction"].shape[0] == sample_tokens.shape[0]
