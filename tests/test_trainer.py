@@ -210,12 +210,39 @@ class TestCreateScheduler:
         assert scheduler.T_max == 1000
 
     def test_create_scheduler_plateau(self, small_model):
-        """Test creating ReduceLROnPlateau scheduler."""
+        """Test creating ReduceLROnPlateau scheduler with aggressive defaults."""
         optimizer = create_optimizer(small_model, optimizer_type="adamw")
-        scheduler = create_scheduler(optimizer, scheduler_type="plateau", num_training_steps=1000, patience=5)
+        scheduler = create_scheduler(optimizer, scheduler_type="plateau", num_training_steps=1000)
 
         assert isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau)
         assert scheduler.patience == 5
+        assert scheduler.factor == 0.3
+        assert scheduler.min_lrs == [0.0]
+
+    def test_create_scheduler_plateau_custom_params(self, small_model):
+        """Test creating ReduceLROnPlateau scheduler with custom parameters."""
+        optimizer = create_optimizer(small_model, optimizer_type="adamw", lr=1e-4)
+        scheduler = create_scheduler(
+            optimizer,
+            scheduler_type="plateau",
+            num_training_steps=1000,
+            patience=3,
+            factor=0.2,
+            min_lr=1e-6,
+            threshold=1e-5,
+            threshold_mode="abs",
+            cooldown=2,
+            eps=1e-9,
+        )
+
+        assert isinstance(scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau)
+        assert scheduler.patience == 3
+        assert scheduler.factor == 0.2
+        assert scheduler.min_lrs == [1e-6]
+        assert scheduler.threshold == 1e-5
+        assert scheduler.threshold_mode == "abs"
+        assert scheduler.cooldown == 2
+        assert scheduler.eps == 1e-9
 
     def test_create_scheduler_onecycle(self, small_model):
         """Test creating OneCycleLR scheduler."""
