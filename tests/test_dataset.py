@@ -1232,3 +1232,81 @@ class TestStripeMode:
         Users should generate UniFrac matrices using unifrac-binaries.
         """
         pytest.skip("Stripe mode and lazy computation deprecated. Use pre-computed matrices.")
+
+
+class TestDatasetMetadataColumnHandling:
+    """Tests for metadata column name handling in ASVDataset."""
+
+    def test_dataset_with_whitespace_in_sample_id_column(self, rarefied_table, tokenizer):
+        """Test that dataset handles whitespace in sample_id column name."""
+        metadata = pd.DataFrame(
+            {
+                " sample_id ": ["sample1", "sample2", "sample3"],
+                "target": [1.0, 2.0, 3.0],
+            }
+        )
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            metadata=metadata,
+            target_column="target",
+        )
+        assert len(dataset) > 0
+
+    def test_dataset_with_missing_sample_id_column(self, rarefied_table, tokenizer):
+        """Test that dataset raises helpful error when sample_id column missing."""
+        metadata = pd.DataFrame(
+            {
+                "id": ["sample1", "sample2", "sample3"],
+                "target": [1.0, 2.0, 3.0],
+            }
+        )
+        with pytest.raises(ValueError, match="sample_id"):
+            ASVDataset(
+                table=rarefied_table,
+                tokenizer=tokenizer,
+                metadata=metadata,
+                target_column="target",
+            )
+
+    def test_dataset_with_trailing_whitespace_in_sample_id_column(self, rarefied_table, tokenizer):
+        """Test that dataset handles trailing whitespace in sample_id column name."""
+        metadata = pd.DataFrame(
+            {
+                "sample_id ": ["sample1", "sample2", "sample3"],
+                "target": [1.0, 2.0, 3.0],
+            }
+        )
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            metadata=metadata,
+            target_column="target",
+        )
+        assert len(dataset) > 0
+
+    def test_dataset_with_leading_whitespace_in_sample_id_column(self, rarefied_table, tokenizer):
+        """Test that dataset handles leading whitespace in sample_id column name."""
+        metadata = pd.DataFrame(
+            {
+                " sample_id": ["sample1", "sample2", "sample3"],
+                "target": [1.0, 2.0, 3.0],
+            }
+        )
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            metadata=metadata,
+            target_column="target",
+        )
+        assert len(dataset) > 0
+
+    def test_dataset_with_normal_sample_id_column(self, rarefied_table, tokenizer, simple_metadata):
+        """Test that dataset works with normal sample_id column (regression test)."""
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            metadata=simple_metadata,
+            target_column="target",
+        )
+        assert len(dataset) > 0
