@@ -2,6 +2,7 @@
 
 import torch
 import torch.nn as nn
+from torch.utils.checkpoint import checkpoint
 
 
 class TransformerEncoder(nn.Module):
@@ -15,6 +16,7 @@ class TransformerEncoder(nn.Module):
         intermediate_size: int = None,
         dropout: float = 0.1,
         activation: str = "gelu",
+        gradient_checkpointing: bool = False,
     ):
         """Initialize TransformerEncoder.
 
@@ -25,6 +27,7 @@ class TransformerEncoder(nn.Module):
             intermediate_size: FFN intermediate size (defaults to 4 * hidden_dim)
             dropout: Dropout rate
             activation: Activation function ('gelu' or 'relu')
+            gradient_checkpointing: Whether to use gradient checkpointing to save memory
         """
         super().__init__()
         if intermediate_size is None:
@@ -53,6 +56,7 @@ class TransformerEncoder(nn.Module):
             enable_nested_tensor=False,
         )
         self.norm = nn.LayerNorm(hidden_dim, eps=1e-6)
+        self.gradient_checkpointing = gradient_checkpointing
 
     def forward(
         self, embeddings: torch.Tensor, mask: torch.Tensor = None
@@ -70,7 +74,19 @@ class TransformerEncoder(nn.Module):
         if mask is not None:
             src_key_padding_mask = (mask == 0)
 
-        output = self.encoder(embeddings, src_key_padding_mask=src_key_padding_mask)
+        if self.gradient_checkpointing and self.training:
+            def custom_forward(embeddings, src_key_padding_mask):
+                return self.encoder(embeddings, src_key_padding_mask=src_key_padding_mask)
+            
+            output = checkpoint(
+                custom_forward,
+                embeddings,
+                src_key_padding_mask,
+                use_reentrant=False,
+            )
+        else:
+            output = self.encoder(embeddings, src_key_padding_mask=src_key_padding_mask)
+        
         output = self.norm(output)
 
         return output

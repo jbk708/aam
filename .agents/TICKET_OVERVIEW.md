@@ -7,29 +7,24 @@
 
 - **Total Outstanding Tickets:** 18 tickets
 - **Total Estimated Time:** ~115-145 hours
-- **Completed Phases:** Phase 8, Phase 9, Phase 11 (all complete), Phase 10 (3/7 complete)
+- **Completed Phases:** Phase 8, Phase 9, Phase 10 (4/7 complete), Phase 11 (3/4 complete)
 
 ## Outstanding Tickets by Priority
 
-### HIGH Priority (None currently)
-- ✅ **PYT-11.4**: Refactor CLI/Model to Ingest Pre-Generated UniFrac Matrices - **COMPLETED**
+### HIGH Priority (1 ticket)
+- **PYT-11.6**: Optimize Learning Rate Scheduling to Escape Local Minima (4-6 hours)
+  - Training hitting local minima around epoch 34
+  - Need better schedulers/optimizers to escape local minima
+  - High priority for training improvement
 
-### MEDIUM Priority (4 tickets)
+### MEDIUM Priority (3 tickets)
 
 **Phase 10: Performance Optimizations**
-1. **PYT-10.3**: Optimize Data Loading (3-4 hours)
-   - Increase default `num_workers`, add prefetching, pin memory
-   - Medium impact, medium effort
-
-2. **PYT-10.4**: Implement Gradient Checkpointing (3-4 hours)
-   - 30-50% memory reduction, enable larger batches
-   - High impact, medium effort
-
-3. **PYT-10.5**: Optimize Attention Computation (4-6 hours)
+1. **PYT-10.5**: Optimize Attention Computation (4-6 hours)
    - Use `scaled_dot_product_attention` for better performance
    - Medium impact, medium-high effort
 
-4. **PYT-10.6**: Implement Multi-GPU Training (DDP) (8-12 hours)
+2. **PYT-10.6**: Implement Multi-GPU Training (DDP) (8-12 hours)
    - Linear scaling with number of GPUs
    - Very high impact, high effort (requires hardware)
 
@@ -79,16 +74,23 @@
   - Comprehensive test suite (21 tests, all passing)
   - All existing tests updated to use pre-computed matrices
 
+- ✅ **PYT-11.5**: Fix Sigmoid Saturation in UniFrac Distance Normalization
+  - Replaced sigmoid with tanh normalization to avoid saturation at ~0.55
+  - Fixed batch max normalization issue causing all predictions = 1.0
+  - All tests passing, no regressions
+
 ### Phase 10: Performance Optimizations
 - ✅ **PYT-10.1**: Implement Mixed Precision Training (FP16/BF16)
 - ✅ **PYT-10.2**: Implement Model Compilation (`torch.compile()`)
 - ✅ **PYT-10.2.1**: Fix Dependencies to Enable Model Compilation
+- ✅ **PYT-10.3**: Optimize Data Loading
+- ✅ **PYT-10.3.1**: Optimize Tree Loading with Pre-pruning
+- ✅ **PYT-10.4**: Implement Gradient Checkpointing
 
 ## Recommended Next Steps
 
 ### Immediate (Next Sprint)
-1. **PYT-10.3**: Optimize Data Loading - Quick win for training speed
-2. **PYT-10.4**: Implement Gradient Checkpointing - High impact for memory
+1. **PYT-11.6**: Optimize Learning Rate Scheduling - HIGH PRIORITY - Address local minima issue
 
 ### Short-Term (Next 2-3 Sprints)
 3. **PYT-10.5**: Optimize Attention Computation

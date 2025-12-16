@@ -300,3 +300,60 @@ class TestASVEncoder:
             tokens = torch.randint(1, 5, (2, 10, 50))
             result = encoder(tokens)
             assert result.shape == (2, 10, embedding_dim)
+
+    def test_gradient_checkpointing_init(self):
+        """Test that gradient checkpointing can be enabled."""
+        encoder = ASVEncoder(
+            embedding_dim=64,
+            max_bp=150,
+            num_layers=2,
+            num_heads=4,
+            gradient_checkpointing=True,
+        )
+        assert encoder.transformer.gradient_checkpointing is True
+
+    def test_gradient_checkpointing_disabled_by_default(self):
+        """Test that gradient checkpointing is disabled by default."""
+        encoder = ASVEncoder(
+            embedding_dim=64,
+            max_bp=150,
+            num_layers=2,
+            num_heads=4,
+        )
+        assert encoder.transformer.gradient_checkpointing is False
+
+    def test_gradient_checkpointing_training_mode_gradients(self, sample_tokens):
+        """Test that gradients flow correctly with checkpointing in training mode."""
+        encoder = ASVEncoder(
+            embedding_dim=64,
+            max_bp=150,
+            num_layers=2,
+            num_heads=4,
+            gradient_checkpointing=True,
+        )
+        encoder.train()
+        
+        result = encoder(sample_tokens)
+        loss = result.sum()
+        loss.backward()
+        
+        # Check that model parameters have gradients
+        for param in encoder.parameters():
+            if param.requires_grad:
+                assert param.grad is not None
+                assert not torch.isnan(param.grad).any()
+                assert not torch.isinf(param.grad).any()
+
+    def test_gradient_checkpointing_output_shape(self, sample_tokens):
+        """Test that checkpointing produces correct output shape."""
+        encoder = ASVEncoder(
+            embedding_dim=64,
+            max_bp=150,
+            num_layers=2,
+            num_heads=4,
+            gradient_checkpointing=True,
+        )
+        encoder.train()
+        
+        result = encoder(sample_tokens)
+        assert result.shape == (2, 10, 64)
