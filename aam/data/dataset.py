@@ -193,8 +193,15 @@ class ASVDataset(Dataset):
         self.sequence_to_idx = {seq: idx for idx, seq in enumerate(self.observation_ids)}
 
         if metadata is not None and target_column is not None:
+            metadata.columns = metadata.columns.str.strip()
             if "sample_id" not in metadata.columns:
-                raise ValueError("metadata must have 'sample_id' column")
+                found_columns = list(metadata.columns)
+                raise ValueError(
+                    f"metadata must have 'sample_id' column.\n"
+                    f"Found columns: {found_columns}\n"
+                    f"Expected: 'sample_id'\n"
+                    f"Tip: Check for whitespace or encoding issues in column names."
+                )
             self.metadata_dict = metadata.set_index("sample_id")[target_column].to_dict()
         else:
             self.metadata_dict = None

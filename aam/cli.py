@@ -286,11 +286,23 @@ def train(
         table_obj = biom_loader.load_table(table)
         table_obj = biom_loader.rarefy(table_obj, depth=rarefy_depth, random_seed=seed)
 
-        metadata_df = pd.read_csv(metadata, sep="\t")
+        metadata_df = pd.read_csv(metadata, sep="\t", encoding="utf-8-sig")
+        metadata_df.columns = metadata_df.columns.str.strip()
         if "sample_id" not in metadata_df.columns:
-            raise ValueError("Metadata file must have 'sample_id' column")
+            found_columns = list(metadata_df.columns)
+            raise ValueError(
+                f"Metadata file must have 'sample_id' column.\n"
+                f"Found columns: {found_columns}\n"
+                f"Expected: 'sample_id'\n"
+                f"Tip: Check for whitespace or encoding issues in column names."
+            )
         if metadata_column not in metadata_df.columns:
-            raise ValueError(f"Metadata column '{metadata_column}' not found in metadata file")
+            found_columns = list(metadata_df.columns)
+            raise ValueError(
+                f"Metadata column '{metadata_column}' not found in metadata file.\n"
+                f"Found columns: {found_columns}\n"
+                f"Tip: Check for whitespace or encoding issues in column names."
+            )
 
         logger.info("Loading pre-computed UniFrac distance matrix...")
         unifrac_loader = UniFracLoader()

@@ -1523,3 +1523,87 @@ class TestPretrainedEncoderLoading:
         )
 
         assert result.exit_code != 0
+
+
+class TestMetadataLoading:
+    """Tests for metadata loading with column name variations."""
+
+    def test_metadata_with_whitespace_in_column_name(self, temp_dir):
+        """Test that metadata with whitespace in column names works correctly."""
+        import pandas as pd
+        
+        metadata_file = temp_dir / "metadata_whitespace.tsv"
+        metadata_file.write_text(" sample_id \ttarget\nsample1\t1.0\nsample2\t2.0\n")
+        
+        metadata_df = pd.read_csv(metadata_file, sep="\t", encoding="utf-8-sig")
+        metadata_df.columns = metadata_df.columns.str.strip()
+        
+        assert "sample_id" in metadata_df.columns
+        assert "target" in metadata_df.columns
+        assert len(metadata_df) == 2
+
+    def test_metadata_with_missing_sample_id_column(self, temp_dir):
+        """Test that missing sample_id column provides helpful error message."""
+        import pandas as pd
+        
+        metadata_file = temp_dir / "metadata_no_sample_id.tsv"
+        metadata_file.write_text("id\ttarget\nsample1\t1.0\nsample2\t2.0\n")
+        
+        metadata_df = pd.read_csv(metadata_file, sep="\t", encoding="utf-8-sig")
+        metadata_df.columns = metadata_df.columns.str.strip()
+        
+        with pytest.raises(ValueError) as exc_info:
+            if "sample_id" not in metadata_df.columns:
+                found_columns = list(metadata_df.columns)
+                raise ValueError(
+                    f"Metadata file must have 'sample_id' column.\n"
+                    f"Found columns: {found_columns}\n"
+                    f"Expected: 'sample_id'\n"
+                    f"Tip: Check for whitespace or encoding issues in column names."
+                )
+        
+        error_msg = str(exc_info.value)
+        assert "sample_id" in error_msg.lower()
+        assert "found columns" in error_msg.lower() or "columns" in error_msg.lower()
+
+    def test_metadata_with_normal_column_name(self, temp_dir):
+        """Test that normal metadata file still works (regression test)."""
+        import pandas as pd
+        
+        metadata_file = temp_dir / "metadata_normal.tsv"
+        metadata_file.write_text("sample_id\ttarget\nsample1\t1.0\nsample2\t2.0\n")
+        
+        metadata_df = pd.read_csv(metadata_file, sep="\t", encoding="utf-8-sig")
+        metadata_df.columns = metadata_df.columns.str.strip()
+        
+        assert "sample_id" in metadata_df.columns
+        assert "target" in metadata_df.columns
+        assert len(metadata_df) == 2
+
+    def test_metadata_with_trailing_whitespace_in_column_name(self, temp_dir):
+        """Test that metadata with trailing whitespace in column names works."""
+        import pandas as pd
+        
+        metadata_file = temp_dir / "metadata_trailing_whitespace.tsv"
+        metadata_file.write_text("sample_id \ttarget \nsample1\t1.0\nsample2\t2.0\n")
+        
+        metadata_df = pd.read_csv(metadata_file, sep="\t", encoding="utf-8-sig")
+        metadata_df.columns = metadata_df.columns.str.strip()
+        
+        assert "sample_id" in metadata_df.columns
+        assert "target" in metadata_df.columns
+        assert len(metadata_df) == 2
+
+    def test_metadata_with_leading_whitespace_in_column_name(self, temp_dir):
+        """Test that metadata with leading whitespace in column names works."""
+        import pandas as pd
+        
+        metadata_file = temp_dir / "metadata_leading_whitespace.tsv"
+        metadata_file.write_text(" sample_id\ttarget\nsample1\t1.0\nsample2\t2.0\n")
+        
+        metadata_df = pd.read_csv(metadata_file, sep="\t", encoding="utf-8-sig")
+        metadata_df.columns = metadata_df.columns.str.strip()
+        
+        assert "sample_id" in metadata_df.columns
+        assert "target" in metadata_df.columns
+        assert len(metadata_df) == 2
