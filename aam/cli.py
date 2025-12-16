@@ -188,8 +188,8 @@ def cli():
 @click.option(
     "--scheduler",
     default="warmup_cosine",
-    type=click.Choice(["warmup_cosine", "cosine", "plateau", "onecycle"]),
-    help="Learning rate scheduler type",
+    type=click.Choice(["warmup_cosine", "cosine", "cosine_restarts", "plateau", "onecycle"]),
+    help="Learning rate scheduler type (warmup_cosine: warmup+cosine decay, cosine: cosine annealing, cosine_restarts: cosine with warm restarts, plateau: reduce on plateau, onecycle: one cycle policy)",
 )
 @click.option(
     "--mixed-precision",
@@ -558,8 +558,8 @@ def train(
 @click.option(
     "--scheduler",
     default="warmup_cosine",
-    type=click.Choice(["warmup_cosine", "cosine", "plateau", "onecycle"]),
-    help="Learning rate scheduler type",
+    type=click.Choice(["warmup_cosine", "cosine", "cosine_restarts", "plateau", "onecycle"]),
+    help="Learning rate scheduler type (warmup_cosine: warmup+cosine decay, cosine: cosine annealing, cosine_restarts: cosine with warm restarts, plateau: reduce on plateau, onecycle: one cycle policy)",
 )
 @click.option(
     "--mixed-precision",
