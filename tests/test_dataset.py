@@ -1310,3 +1310,204 @@ class TestDatasetMetadataColumnHandling:
             target_column="target",
         )
         assert len(dataset) > 0
+
+
+class TestTargetNormalization:
+    """Test suite for target normalization (PYT-11.9)."""
+
+    def test_normalize_targets_disabled_by_default(self, rarefied_table, tokenizer, simple_metadata):
+        """Test that target normalization is disabled by default."""
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            metadata=simple_metadata,
+            target_column="target",
+        )
+
+        assert dataset.normalize_targets is False
+        assert dataset.get_normalization_params() is None
+
+        # Targets should be raw values
+        sample = dataset[0]
+        assert "y_target" in sample
+        # Raw target is 1.0 for sample1
+        assert sample["y_target"].item() == 1.0
+
+    def test_normalize_targets_enabled(self, rarefied_table, tokenizer):
+        """Test that target normalization normalizes values to [0, 1]."""
+        metadata = pd.DataFrame({
+            "sample_id": ["sample1", "sample2", "sample3"],
+            "target": [0.0, 50.0, 100.0],  # Simple range for easy verification
+        })
+
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            metadata=metadata,
+            target_column="target",
+            normalize_targets=True,
+        )
+
+        assert dataset.normalize_targets is True
+        params = dataset.get_normalization_params()
+        assert params is not None
+        assert params["target_min"] == 0.0
+        assert params["target_max"] == 100.0
+        assert params["target_scale"] == 100.0
+
+        # Check normalized values
+        sample_ids = list(rarefied_table.ids(axis="sample"))
+        for idx, sid in enumerate(sample_ids):
+            sample = dataset[idx]
+            expected_raw = metadata[metadata["sample_id"] == sid]["target"].values[0]
+            expected_normalized = (expected_raw - 0.0) / 100.0
+            np.testing.assert_almost_equal(sample["y_target"].item(), expected_normalized)
+
+    def test_normalize_targets_with_negative_values(self, rarefied_table, tokenizer):
+        """Test target normalization with negative values."""
+        metadata = pd.DataFrame({
+            "sample_id": ["sample1", "sample2", "sample3"],
+            "target": [-50.0, 0.0, 50.0],
+        })
+
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            metadata=metadata,
+            target_column="target",
+            normalize_targets=True,
+        )
+
+        params = dataset.get_normalization_params()
+        assert params["target_min"] == -50.0
+        assert params["target_max"] == 50.0
+        assert params["target_scale"] == 100.0
+
+        # Check first sample (target=-50 should normalize to 0)
+        sample_ids = list(rarefied_table.ids(axis="sample"))
+        sample1_idx = sample_ids.index("sample1")
+        sample = dataset[sample1_idx]
+        np.testing.assert_almost_equal(sample["y_target"].item(), 0.0)
+
+    def test_normalize_targets_with_external_params(self, rarefied_table, tokenizer):
+        """Test target normalization with externally provided min/max."""
+        metadata = pd.DataFrame({
+            "sample_id": ["sample1", "sample2", "sample3"],
+            "target": [25.0, 50.0, 75.0],
+        })
+
+        # Provide external min/max (e.g., from training set)
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            metadata=metadata,
+            target_column="target",
+            normalize_targets=True,
+            target_min=0.0,  # External min
+            target_max=100.0,  # External max
+        )
+
+        params = dataset.get_normalization_params()
+        assert params["target_min"] == 0.0
+        assert params["target_max"] == 100.0
+
+        # Check that values are normalized using external params
+        sample_ids = list(rarefied_table.ids(axis="sample"))
+        sample1_idx = sample_ids.index("sample1")
+        sample = dataset[sample1_idx]
+        np.testing.assert_almost_equal(sample["y_target"].item(), 0.25)  # 25/100
+
+    def test_denormalize_targets_tensor(self, rarefied_table, tokenizer):
+        """Test denormalize_targets method with tensor input."""
+        metadata = pd.DataFrame({
+            "sample_id": ["sample1", "sample2", "sample3"],
+            "target": [0.0, 50.0, 100.0],
+        })
+
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            metadata=metadata,
+            target_column="target",
+            normalize_targets=True,
+        )
+
+        normalized = torch.tensor([0.0, 0.5, 1.0])
+        denormalized = dataset.denormalize_targets(normalized)
+        expected = torch.tensor([0.0, 50.0, 100.0])
+        torch.testing.assert_close(denormalized, expected)
+
+    def test_denormalize_targets_numpy(self, rarefied_table, tokenizer):
+        """Test denormalize_targets method with numpy array input."""
+        metadata = pd.DataFrame({
+            "sample_id": ["sample1", "sample2", "sample3"],
+            "target": [0.0, 50.0, 100.0],
+        })
+
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            metadata=metadata,
+            target_column="target",
+            normalize_targets=True,
+        )
+
+        normalized = np.array([0.0, 0.5, 1.0])
+        denormalized = dataset.denormalize_targets(normalized)
+        expected = np.array([0.0, 50.0, 100.0])
+        np.testing.assert_array_almost_equal(denormalized, expected)
+
+    def test_denormalize_targets_float(self, rarefied_table, tokenizer):
+        """Test denormalize_targets method with float input."""
+        metadata = pd.DataFrame({
+            "sample_id": ["sample1", "sample2", "sample3"],
+            "target": [0.0, 50.0, 100.0],
+        })
+
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            metadata=metadata,
+            target_column="target",
+            normalize_targets=True,
+        )
+
+        denormalized = dataset.denormalize_targets(0.5)
+        assert denormalized == 50.0
+
+    def test_denormalize_targets_no_normalization(self, rarefied_table, tokenizer, simple_metadata):
+        """Test denormalize_targets returns input unchanged when normalization disabled."""
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            metadata=simple_metadata,
+            target_column="target",
+            normalize_targets=False,
+        )
+
+        values = torch.tensor([1.0, 2.0, 3.0])
+        result = dataset.denormalize_targets(values)
+        torch.testing.assert_close(result, values)
+
+    def test_normalize_targets_identical_values(self, rarefied_table, tokenizer):
+        """Test target normalization with identical target values (edge case)."""
+        metadata = pd.DataFrame({
+            "sample_id": ["sample1", "sample2", "sample3"],
+            "target": [50.0, 50.0, 50.0],  # All same value
+        })
+
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            metadata=metadata,
+            target_column="target",
+            normalize_targets=True,
+        )
+
+        # Should not crash, scale should be 1.0 to avoid division by zero
+        params = dataset.get_normalization_params()
+        assert params["target_scale"] == 1.0
+
+        # All normalized values should be 0 (since target - min = 0)
+        sample = dataset[0]
+        assert sample["y_target"].item() == 0.0

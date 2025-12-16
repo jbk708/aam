@@ -1945,3 +1945,80 @@ class TestModelCompilation:
             if "not supported" in str(e) or "Dynamo" in str(e):
                 pytest.skip(f"torch.compile() not supported in this environment: {e}")
             raise
+
+
+class TestTrainerTargetNormalization:
+    """Test suite for Trainer target normalization (PYT-11.9)."""
+
+    def test_trainer_accepts_normalization_params(self, small_predictor, loss_fn, device):
+        """Test that Trainer accepts target_normalization_params."""
+        normalization_params = {
+            "target_min": 0.0,
+            "target_max": 100.0,
+            "target_scale": 100.0,
+        }
+
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+            target_normalization_params=normalization_params,
+        )
+
+        assert trainer.target_normalization_params == normalization_params
+
+    def test_trainer_denormalize_with_params(self, small_predictor, loss_fn, device):
+        """Test that Trainer._denormalize_targets works correctly with params."""
+        normalization_params = {
+            "target_min": 0.0,
+            "target_max": 100.0,
+            "target_scale": 100.0,
+        }
+
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+            target_normalization_params=normalization_params,
+        )
+
+        # Test denormalization
+        normalized = torch.tensor([0.0, 0.5, 1.0])
+        denormalized = trainer._denormalize_targets(normalized)
+        expected = torch.tensor([0.0, 50.0, 100.0])
+        torch.testing.assert_close(denormalized, expected)
+
+    def test_trainer_denormalize_without_params(self, small_predictor, loss_fn, device):
+        """Test that Trainer._denormalize_targets returns input unchanged without params."""
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+            target_normalization_params=None,
+        )
+
+        # Test that values are returned unchanged
+        values = torch.tensor([1.0, 2.0, 3.0])
+        result = trainer._denormalize_targets(values)
+        torch.testing.assert_close(result, values)
+
+    def test_trainer_denormalize_with_negative_min(self, small_predictor, loss_fn, device):
+        """Test Trainer._denormalize_targets with negative target_min."""
+        normalization_params = {
+            "target_min": -50.0,
+            "target_max": 50.0,
+            "target_scale": 100.0,
+        }
+
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+            target_normalization_params=normalization_params,
+        )
+
+        # Test denormalization
+        normalized = torch.tensor([0.0, 0.5, 1.0])
+        denormalized = trainer._denormalize_targets(normalized)
+        expected = torch.tensor([-50.0, 0.0, 50.0])
+        torch.testing.assert_close(denormalized, expected)

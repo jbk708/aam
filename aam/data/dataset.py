@@ -132,6 +132,9 @@ class ASVDataset(Dataset):
         unifrac_computer: Optional[UniFracLoader] = None,
         stripe_mode: bool = True,
         reference_sample_ids: Optional[List[str]] = None,
+        normalize_targets: bool = False,
+        target_min: Optional[float] = None,
+        target_max: Optional[float] = None,
     ):
         """Initialize ASVDataset.
 
@@ -148,6 +151,9 @@ class ASVDataset(Dataset):
             unifrac_computer: UniFracLoader instance (deprecated, not used)
             stripe_mode: If True, use stripe-based distances instead of pairwise (default: True)
             reference_sample_ids: List of reference sample IDs for stripe mode (required if stripe_mode=True)
+            normalize_targets: If True, normalize target values to [0, 1] range (default: False)
+            target_min: Minimum target value for normalization (computed from data if None)
+            target_max: Maximum target value for normalization (computed from data if None)
         """
         self.table = table
         self.metadata = metadata
@@ -192,6 +198,12 @@ class ASVDataset(Dataset):
 
         self.sequence_to_idx = {seq: idx for idx, seq in enumerate(self.observation_ids)}
 
+        # Target normalization settings
+        self.normalize_targets = normalize_targets
+        self.target_min = target_min
+        self.target_max = target_max
+        self.target_scale = None  # Computed as (target_max - target_min)
+
         if metadata is not None and target_column is not None:
             metadata.columns = metadata.columns.str.strip()
             if "sample_id" not in metadata.columns:
@@ -203,12 +215,65 @@ class ASVDataset(Dataset):
                     f"Tip: Check for whitespace or encoding issues in column names."
                 )
             self.metadata_dict = metadata.set_index("sample_id")[target_column].to_dict()
+
+            # Compute normalization parameters if normalizing targets
+            if normalize_targets:
+                target_values = [float(v) for v in self.metadata_dict.values() if v is not None]
+                if target_values:
+                    if self.target_min is None:
+                        self.target_min = float(min(target_values))
+                    if self.target_max is None:
+                        self.target_max = float(max(target_values))
+                    self.target_scale = self.target_max - self.target_min
+                    # Avoid division by zero if all targets are the same
+                    if self.target_scale == 0:
+                        self.target_scale = 1.0
+                        import logging
+                        logger = logging.getLogger(__name__)
+                        logger.warning(
+                            f"All target values are identical ({self.target_min}). "
+                            f"Target normalization will have no effect."
+                        )
         else:
             self.metadata_dict = None
 
     def __len__(self) -> int:
         """Return number of samples in dataset."""
         return len(self.sample_ids)
+
+    def get_normalization_params(self) -> Optional[Dict[str, float]]:
+        """Get target normalization parameters.
+
+        Returns:
+            Dictionary with 'target_min', 'target_max', 'target_scale' if normalization
+            is enabled, None otherwise.
+        """
+        if self.normalize_targets and self.target_scale is not None:
+            return {
+                "target_min": self.target_min,
+                "target_max": self.target_max,
+                "target_scale": self.target_scale,
+            }
+        return None
+
+    def denormalize_targets(self, normalized_values: Union[torch.Tensor, np.ndarray, float]) -> Union[torch.Tensor, np.ndarray, float]:
+        """Denormalize target values back to original scale.
+
+        Args:
+            normalized_values: Normalized values in [0, 1] range
+
+        Returns:
+            Denormalized values in original target range
+        """
+        if not self.normalize_targets or self.target_scale is None:
+            return normalized_values
+
+        if isinstance(normalized_values, torch.Tensor):
+            return normalized_values * self.target_scale + self.target_min
+        elif isinstance(normalized_values, np.ndarray):
+            return normalized_values * self.target_scale + self.target_min
+        else:
+            return float(normalized_values) * self.target_scale + self.target_min
 
     def __getitem__(self, idx: int) -> Dict[str, Union[torch.Tensor, str]]:
         """Get a single sample from the dataset.
@@ -264,8 +329,14 @@ class ASVDataset(Dataset):
         if self.metadata_dict is not None and sample_id in self.metadata_dict:
             target_value = self.metadata_dict[sample_id]
             if isinstance(target_value, (int, float)):
-                result["y_target"] = torch.FloatTensor([target_value])
+                target_float = float(target_value)
             else:
-                result["y_target"] = torch.FloatTensor([float(target_value)])
+                target_float = float(target_value)
+
+            # Apply normalization if enabled
+            if self.normalize_targets and self.target_scale is not None:
+                target_float = (target_float - self.target_min) / self.target_scale
+
+            result["y_target"] = torch.FloatTensor([target_float])
 
         return result

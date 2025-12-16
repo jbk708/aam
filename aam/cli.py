@@ -205,6 +205,7 @@ def cli():
 )
 @click.option("--compile-model", is_flag=True, help="Compile model with torch.compile() for optimization (PyTorch 2.0+)")
 @click.option("--gradient-checkpointing", is_flag=True, help="Use gradient checkpointing to reduce memory usage (30-50% reduction, slower training)")
+@click.option("--normalize-targets", is_flag=True, help="Normalize target values to [0, 1] range during training (recommended for regression tasks)")
 def train(
     table: str,
     unifrac_matrix: str,
@@ -250,6 +251,7 @@ def train(
     mixed_precision: Optional[str],
     compile_model: bool,
     gradient_checkpointing: bool,
+    normalize_targets: bool,
 ):
     """Train AAM model on microbial sequencing data."""
     try:
@@ -398,7 +400,17 @@ def train(
             unifrac_computer=None,
             stripe_mode=False,
             reference_sample_ids=None,
+            normalize_targets=normalize_targets,
         )
+
+        # Get normalization parameters from training set
+        target_normalization_params = train_dataset.get_normalization_params()
+        if target_normalization_params:
+            logger.info(
+                f"Target normalization enabled: min={target_normalization_params['target_min']:.4f}, "
+                f"max={target_normalization_params['target_max']:.4f}, "
+                f"scale={target_normalization_params['target_scale']:.4f}"
+            )
 
         val_dataset = ASVDataset(
             table=val_table,
@@ -412,6 +424,10 @@ def train(
             unifrac_computer=None,
             stripe_mode=False,
             reference_sample_ids=None,
+            normalize_targets=normalize_targets,
+            # Use same normalization params as training set for consistency
+            target_min=train_dataset.target_min if normalize_targets else None,
+            target_max=train_dataset.target_max if normalize_targets else None,
         )
 
         train_collate = partial(
@@ -538,6 +554,7 @@ def train(
             max_grad_norm=max_grad_norm,
             mixed_precision=mixed_precision_normalized,
             compile_model=compile_model,
+            target_normalization_params=target_normalization_params,
         )
 
         if resume_from is not None:

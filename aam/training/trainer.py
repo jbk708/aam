@@ -74,6 +74,7 @@ class Trainer:
         max_grad_norm: Optional[float] = None,
         mixed_precision: Optional[str] = None,
         compile_model: bool = False,
+        target_normalization_params: Optional[Dict[str, float]] = None,
     ):
         """Initialize Trainer.
 
@@ -88,6 +89,8 @@ class Trainer:
             max_grad_norm: Maximum gradient norm for clipping (None to disable)
             mixed_precision: Mixed precision mode ('fp16', 'bf16', or None)
             compile_model: Whether to compile model with torch.compile() for optimization
+            target_normalization_params: Dict with 'target_min', 'target_max', 'target_scale' for
+                denormalizing predictions when computing metrics. If None, no denormalization is applied.
         """
         self.model = model.to(device)
 
@@ -113,6 +116,7 @@ class Trainer:
         self.max_grad_norm = max_grad_norm
         self.mixed_precision = mixed_precision
         self.compile_model = compile_model
+        self.target_normalization_params = target_normalization_params
         self.writer: Optional[SummaryWriter] = None
         self.log_histograms: bool = True
         self.histogram_frequency: int = 50
@@ -192,6 +196,22 @@ class Trainer:
         if hasattr(self.model, "_orig_mod"):
             return self.model._orig_mod.__class__.__name__ == "SequenceEncoder"
         return False
+
+    def _denormalize_targets(self, values: torch.Tensor) -> torch.Tensor:
+        """Denormalize target values back to original scale.
+
+        Args:
+            values: Normalized values (predictions or targets)
+
+        Returns:
+            Denormalized values in original target range
+        """
+        if self.target_normalization_params is None:
+            return values
+
+        target_min = self.target_normalization_params["target_min"]
+        target_scale = self.target_normalization_params["target_scale"]
+        return values * target_scale + target_min
 
     def _create_prediction_plot(
         self,
@@ -1048,7 +1068,11 @@ class Trainer:
                 if is_classifier:
                     metrics = compute_classification_metrics(target_pred_tensor, target_true_tensor)
                 else:
-                    metrics = compute_regression_metrics(target_pred_tensor, target_true_tensor)
+                    # Denormalize predictions and targets for metrics computation
+                    # This ensures metrics (MAE, MSE, R²) are in original target scale
+                    target_pred_denorm = self._denormalize_targets(target_pred_tensor)
+                    target_true_denorm = self._denormalize_targets(target_true_tensor)
+                    metrics = compute_regression_metrics(target_pred_denorm, target_true_denorm)
                 avg_losses.update(metrics)
 
             if "count_prediction" in all_predictions:
@@ -1063,7 +1087,11 @@ class Trainer:
                 # base_pred_tensor and base_true_tensor are already flattened (upper triangle only)
                 return avg_losses, base_pred_tensor, base_true_tensor
             else:
-                return avg_losses, target_pred_tensor, target_true_tensor
+                # Denormalize predictions and targets for plotting
+                # This ensures plots show values in original target scale
+                target_pred_denorm = self._denormalize_targets(target_pred_tensor)
+                target_true_denorm = self._denormalize_targets(target_true_tensor)
+                return avg_losses, target_pred_denorm, target_true_denorm
         return avg_losses
 
     def train(
