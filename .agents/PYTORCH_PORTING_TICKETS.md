@@ -5,6 +5,32 @@
 
 ---
 
+## Maintenance: Test Fixes
+
+### PYT-19.1: Fix Failing Unit Tests
+**Priority:** HIGH | **Effort:** 1-2 hours | **Status:** Not Started
+
+Fix 4 pre-existing failing unit tests discovered during PYT-18.1 implementation.
+
+**Failing Tests:**
+1. `test_cli.py::TestCLIIntegration::test_train_command_full_flow`
+2. `test_cli.py::TestPretrainedEncoderLoading::test_train_command_loads_pretrained_encoder`
+3. `test_cli.py::TestPretrainedEncoderLoading::test_train_command_pretrained_encoder_with_freeze_base`
+4. `test_losses.py::TestPairwiseDistances::test_compute_pairwise_distances_no_saturation`
+
+**Root Causes:**
+- Tests 1-3: Mock `metadata_df.columns` returns a list instead of pandas Index, causing `'list' object has no attribute 'str'` error when `metadata_df.columns.str.strip()` is called
+- Test 4: Flaky assertion `std_val > 0.03` fails intermittently (got 0.024)
+
+**Acceptance Criteria:**
+- [ ] Fix mock to return proper pandas Index for metadata columns
+- [ ] Relax or fix flaky saturation test threshold
+- [ ] All 561 tests pass
+
+**Files:** `tests/test_cli.py`, `tests/test_losses.py`
+
+---
+
 ## Phase 18: Memory Optimization (NEW - HIGH PRIORITY)
 
 See `_design_plan/23_memory_optimization_plan.md` for detailed analysis.
