@@ -1,7 +1,7 @@
 # Outstanding Tickets
 
 **Last Updated:** 2025-12-17
-**Status:** Phases 8-11 Complete (see `ARCHIVED_TICKETS.md`), PYT-20.1 Complete (MAE for Nucleotide Prediction)
+**Status:** Phases 8-11 Complete (see `ARCHIVED_TICKETS.md`), PYT-19.1 Complete, PYT-20.1 Complete (MAE for Nucleotide Prediction)
 
 ---
 
@@ -215,9 +215,9 @@ Cache tokenized sequences and expensive computations.
 | Phase | Tickets | Est. Hours | Priority |
 |-------|---------|------------|----------|
 | 20 (SSL) | 0 (1 complete) | - | **DONE** |
+| 19 (Tests) | 0 (1 complete) | - | **DONE** |
 | 18 (Memory) | 5 | 16-23 | **HIGH** |
-| 19 (Tests) | 1 | 1-2 | HIGH |
 | 10 | 1 | 8-12 | MEDIUM |
 | 12 | 3 | 19-26 | LOW |
 | 13-17 | 13 | 53-73 | LOW |
-| **Total** | **23** | **97-136** |
+| **Total** | **22** | **96-134** |
