@@ -336,11 +336,11 @@ class TestASVEncoder:
             gradient_checkpointing=True,
         )
         encoder.train()
-        
+
         result = encoder(sample_tokens)
         loss = result.sum()
         loss.backward()
-        
+
         # Check that model parameters have gradients
         for param in encoder.parameters():
             if param.requires_grad:
@@ -528,11 +528,11 @@ class TestASVEncoderMasking:
         masked_tokens, mask_indices = encoder._apply_masking(tokens)
 
         # Verify padding positions (0) are never masked
-        padding_mask = (tokens == 0)
+        padding_mask = tokens == 0
         assert not mask_indices[padding_mask].any(), "Padding tokens should not be masked"
 
         # Verify START positions (5) are never masked
-        start_mask = (tokens == 5)
+        start_mask = tokens == 5
         assert not mask_indices[start_mask].any(), "START tokens should not be masked"
 
     def test_apply_masking_approximately_correct_ratio(self):

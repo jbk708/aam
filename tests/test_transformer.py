@@ -269,7 +269,7 @@ class TestTransformerEncoder:
         """Test that checkpointing produces same output in eval mode (checkpointing disabled in eval)."""
         embeddings = torch.randn(2, 10, 64)
         mask = torch.ones(2, 10, dtype=torch.long)
-        
+
         # Create one encoder and copy its weights to another
         encoder_no_checkpoint = TransformerEncoder(
             num_layers=2,
@@ -283,16 +283,16 @@ class TestTransformerEncoder:
             hidden_dim=64,
             gradient_checkpointing=True,
         )
-        
+
         # Copy weights to ensure same initialization
         encoder_checkpoint.load_state_dict(encoder_no_checkpoint.state_dict())
-        
+
         encoder_no_checkpoint.eval()
         encoder_checkpoint.eval()
-        
+
         output_no_checkpoint = encoder_no_checkpoint(embeddings, mask=mask)
         output_checkpoint = encoder_checkpoint(embeddings, mask=mask)
-        
+
         # In eval mode, checkpointing should not be used, so outputs should be identical
         assert torch.allclose(output_no_checkpoint, output_checkpoint, atol=1e-5)
 
@@ -300,7 +300,7 @@ class TestTransformerEncoder:
         """Test that gradients flow correctly with checkpointing in training mode."""
         embeddings = torch.randn(2, 10, 64, requires_grad=True)
         mask = torch.ones(2, 10, dtype=torch.long)
-        
+
         encoder = TransformerEncoder(
             num_layers=2,
             num_heads=4,
@@ -308,16 +308,16 @@ class TestTransformerEncoder:
             gradient_checkpointing=True,
         )
         encoder.train()
-        
+
         output = encoder(embeddings, mask=mask)
         loss = output.sum()
         loss.backward()
-        
+
         # Check that gradients exist
         assert embeddings.grad is not None
         assert not torch.isnan(embeddings.grad).any()
         assert not torch.isinf(embeddings.grad).any()
-        
+
         # Check that model parameters have gradients
         for param in encoder.parameters():
             if param.requires_grad:
@@ -329,7 +329,7 @@ class TestTransformerEncoder:
         """Test gradient checkpointing works correctly with mask."""
         embeddings = torch.randn(2, 10, 64, requires_grad=True)
         mask = torch.tensor([[1, 1, 1, 1, 1, 0, 0, 0, 0, 0], [1, 1, 1, 0, 0, 0, 0, 0, 0, 0]])
-        
+
         encoder = TransformerEncoder(
             num_layers=2,
             num_heads=4,
@@ -337,11 +337,11 @@ class TestTransformerEncoder:
             gradient_checkpointing=True,
         )
         encoder.train()
-        
+
         output = encoder(embeddings, mask=mask)
         loss = output.sum()
         loss.backward()
-        
+
         assert embeddings.grad is not None
         assert not torch.isnan(embeddings.grad).any()
 
@@ -349,7 +349,7 @@ class TestTransformerEncoder:
         """Test that checkpointing produces correct output shape."""
         embeddings = torch.randn(2, 10, 64)
         mask = torch.ones(2, 10, dtype=torch.long)
-        
+
         encoder = TransformerEncoder(
             num_layers=2,
             num_heads=4,
@@ -357,7 +357,7 @@ class TestTransformerEncoder:
             gradient_checkpointing=True,
         )
         encoder.train()
-        
+
         output = encoder(embeddings, mask=mask)
         assert output.shape == embeddings.shape
 
@@ -374,9 +374,7 @@ class TestSDPAOptimization:
         )
         assert encoder.attn_implementation == "sdpa"
 
-    @pytest.mark.parametrize(
-        "attn_impl", ["sdpa", "flash", "mem_efficient", "math", None]
-    )
+    @pytest.mark.parametrize("attn_impl", ["sdpa", "flash", "mem_efficient", "math", None])
     def test_attn_implementation_options(self, attn_impl):
         """Test that different attn_implementation options can be set."""
         encoder = TransformerEncoder(
@@ -387,9 +385,7 @@ class TestSDPAOptimization:
         )
         assert encoder.attn_implementation == attn_impl
 
-    @pytest.mark.parametrize(
-        "attn_impl", ["sdpa", "flash", "mem_efficient", "math", None]
-    )
+    @pytest.mark.parametrize("attn_impl", ["sdpa", "flash", "mem_efficient", "math", None])
     def test_attn_implementation_forward_pass(self, attn_impl):
         """Test forward pass with different attn_implementation options."""
         encoder = TransformerEncoder(

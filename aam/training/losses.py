@@ -49,22 +49,30 @@ def compute_stripe_distances(
     # Check for NaN or Inf in embeddings
     if torch.any(torch.isnan(embeddings)):
         import sys
+
         error_msg = f"NaN values found in embeddings before stripe distance computation, shape={embeddings.shape}"
         print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
         raise ValueError(error_msg)
     if torch.any(torch.isinf(embeddings)):
         import sys
+
         error_msg = f"Inf values found in embeddings before stripe distance computation, shape={embeddings.shape}"
         print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
         raise ValueError(error_msg)
     if torch.any(torch.isnan(reference_embeddings)):
         import sys
-        error_msg = f"NaN values found in reference_embeddings before stripe distance computation, shape={reference_embeddings.shape}"
+
+        error_msg = (
+            f"NaN values found in reference_embeddings before stripe distance computation, shape={reference_embeddings.shape}"
+        )
         print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
         raise ValueError(error_msg)
     if torch.any(torch.isinf(reference_embeddings)):
         import sys
-        error_msg = f"Inf values found in reference_embeddings before stripe distance computation, shape={reference_embeddings.shape}"
+
+        error_msg = (
+            f"Inf values found in reference_embeddings before stripe distance computation, shape={reference_embeddings.shape}"
+        )
         print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
         raise ValueError(error_msg)
 
@@ -75,6 +83,7 @@ def compute_stripe_distances(
     # Check for NaN in distances
     if torch.any(torch.isnan(distances)):
         import sys
+
         error_msg = f"NaN values found in computed stripe distances, shape={distances.shape}"
         print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
         raise ValueError(error_msg)
@@ -216,10 +225,7 @@ class MultiTaskLoss(nn.Module):
         self.nuc_penalty = nuc_penalty
 
         if target_loss_type not in self.VALID_LOSS_TYPES:
-            raise ValueError(
-                f"Invalid target_loss_type: {target_loss_type}. "
-                f"Must be one of: {self.VALID_LOSS_TYPES}"
-            )
+            raise ValueError(f"Invalid target_loss_type: {target_loss_type}. Must be one of: {self.VALID_LOSS_TYPES}")
         self.target_loss_type = target_loss_type
 
         if class_weights is not None:
@@ -308,12 +314,8 @@ class MultiTaskLoss(nn.Module):
             Base loss scalar tensor
         """
         # Detect stripe mode: base_true is not square (batch_size != num_reference_samples)
-        is_stripe_mode = (
-            encoder_type == "unifrac" 
-            and base_true.dim() == 2 
-            and base_true.shape[0] != base_true.shape[1]
-        )
-        
+        is_stripe_mode = encoder_type == "unifrac" and base_true.dim() == 2 and base_true.shape[0] != base_true.shape[1]
+
         # For UniFrac, compute distances from embeddings if provided
         if encoder_type == "unifrac" and embeddings is not None:
             # Check for NaN in embeddings before computing distances
@@ -353,11 +355,16 @@ class MultiTaskLoss(nn.Module):
             except ValueError as e:
                 # Re-raise with more context
                 import sys
+
                 mode_str = "stripe" if is_stripe_mode else "pairwise"
                 print(f"ERROR: Failed to compute {mode_str} distances from embeddings", file=sys.stderr, flush=True)
                 print(f"embeddings shape={embeddings.shape}, {_format_tensor_stats(embeddings)}", file=sys.stderr, flush=True)
                 if is_stripe_mode and reference_embeddings is not None:
-                    print(f"reference_embeddings shape={reference_embeddings.shape}, {_format_tensor_stats(reference_embeddings)}", file=sys.stderr, flush=True)
+                    print(
+                        f"reference_embeddings shape={reference_embeddings.shape}, {_format_tensor_stats(reference_embeddings)}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
                 raise
         elif encoder_type == "unifrac" and embeddings is None:
             # Legacy mode: use base_pred directly (for backward compatibility)

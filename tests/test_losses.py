@@ -366,19 +366,19 @@ class TestPairwiseDistances:
         # Check that values are distributed across [0, 1] range, not all clustered at ~0.5
         mean_val = off_diagonal.mean().item()
         std_val = off_diagonal.std().item()
-        
+
         # Mean should not be ~0.5 (saturation indicator for tanh)
         assert abs(mean_val - 0.5) > 0.05, f"Mean value {mean_val:.3f} suggests saturation at ~0.5"
-        
+
         # Values should have reasonable spread (std > 0.03 indicates distribution, not clustering)
         # Tanh normalization with scale produces narrower range than direct normalization
         assert std_val > 0.03, f"Std {std_val:.3f} too small, suggests clustering/saturation"
-        
+
         # Check that we have values across the range (not all near 0.5)
         values_near_05 = ((off_diagonal > 0.5 - 0.1) & (off_diagonal < 0.5 + 0.1)).sum().item()
         total_values = off_diagonal.numel()
         fraction_near_05 = values_near_05 / total_values
-        
+
         # Less than 80% should be near 0.5 (tanh produces more values near 0.5 than direct normalization)
         assert fraction_near_05 < 0.8, f"Too many values near 0.5 ({fraction_near_05:.1%}), suggests saturation"
 
@@ -438,19 +438,19 @@ class TestPairwiseDistances:
         # Check that values are distributed across [0, 1] range, not all clustered at ~0.5
         mean_val = all_distances.mean().item()
         std_val = all_distances.std().item()
-        
+
         # Mean should not be ~0.5 (saturation indicator for tanh)
         assert abs(mean_val - 0.5) > 0.05, f"Mean value {mean_val:.3f} suggests saturation at ~0.5"
-        
+
         # Values should have reasonable spread (std > 0.03 indicates distribution, not clustering)
         # Tanh normalization with scale produces narrower range than direct normalization
         assert std_val > 0.03, f"Std {std_val:.3f} too small, suggests clustering/saturation"
-        
+
         # Check that we have values across the range (not all near 0.5)
         values_near_05 = ((all_distances > 0.5 - 0.1) & (all_distances < 0.5 + 0.1)).sum().item()
         total_values = all_distances.numel()
         fraction_near_05 = values_near_05 / total_values
-        
+
         # Less than 80% should be near 0.5 (tanh produces more values near 0.5 than direct normalization)
         assert fraction_near_05 < 0.8, f"Too many values near 0.5 ({fraction_near_05:.1%}), suggests saturation"
 

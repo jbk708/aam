@@ -43,6 +43,7 @@ def sample_biom_file(temp_dir):
 def sample_unifrac_matrix_file(temp_dir):
     """Create a sample UniFrac matrix file path."""
     import numpy as np
+
     matrix_file = temp_dir / "distances.npy"
     # Create a simple 4x4 distance matrix
     distances = np.random.rand(4, 4)
@@ -335,7 +336,9 @@ class TestCLICommands:
         )
         assert result.exit_code != 0
 
-    def test_pretrain_command_batch_size_validation(self, runner, sample_biom_file, sample_unifrac_matrix_file, sample_output_dir):
+    def test_pretrain_command_batch_size_validation(
+        self, runner, sample_biom_file, sample_unifrac_matrix_file, sample_output_dir
+    ):
         """Test pretrain command batch size validation."""
         result = runner.invoke(
             cli,
@@ -452,6 +455,7 @@ class TestCLIIntegration:
         mock_unifrac_loader.return_value = mock_unifrac_loader_instance
         from skbio import DistanceMatrix
         import numpy as np
+
         # Create a symmetric distance matrix (required by DistanceMatrix)
         dist_data = np.random.rand(4, 4)
         dist_data = (dist_data + dist_data.T) / 2  # Make symmetric
@@ -527,6 +531,7 @@ class TestCLIIntegration:
         mock_biom_loader_instance = MagicMock()
         mock_biom_loader.return_value = mock_biom_loader_instance
         mock_table = MagicMock()
+
         # Mock ids() to return list when called with axis="sample" or axis="observation"
         def mock_ids(axis=None):
             if axis == "sample":
@@ -534,6 +539,7 @@ class TestCLIIntegration:
             elif axis == "observation":
                 return ["obs1", "obs2", "obs3"]
             return ["sample1", "sample2", "sample3", "sample4"]
+
         mock_table.ids = mock_ids
         mock_biom_loader_instance.load_table.return_value = mock_table
         mock_biom_loader_instance.rarefy.return_value = mock_table
@@ -542,6 +548,7 @@ class TestCLIIntegration:
         mock_unifrac_loader.return_value = mock_unifrac_loader_instance
         from skbio import DistanceMatrix
         import numpy as np
+
         # Create a symmetric distance matrix (required by DistanceMatrix)
         dist_data = np.random.rand(4, 4)
         dist_data = (dist_data + dist_data.T) / 2  # Make symmetric
@@ -718,6 +725,7 @@ class TestCLIIntegration:
         mock_biom_loader_instance = MagicMock()
         mock_biom_loader_class.return_value = mock_biom_loader_instance
         mock_table = MagicMock()
+
         # Mock ids() to return list when called with axis="sample" or axis="observation"
         def mock_ids(axis=None):
             if axis == "sample":
@@ -725,6 +733,7 @@ class TestCLIIntegration:
             elif axis == "observation":
                 return ["obs1", "obs2", "obs3"]
             return ["sample1", "sample2", "sample3", "sample4"]
+
         mock_table.ids = mock_ids
         mock_biom_loader_instance.load_table.return_value = mock_table
         mock_biom_loader_instance.rarefy.return_value = mock_table
@@ -733,6 +742,7 @@ class TestCLIIntegration:
         mock_unifrac_loader_class.return_value = mock_unifrac_loader_instance
         from skbio import DistanceMatrix
         import numpy as np
+
         # Create a symmetric distance matrix (required by DistanceMatrix)
         dist_data = np.random.rand(4, 4)
         dist_data = (dist_data + dist_data.T) / 2  # Make symmetric
@@ -1110,9 +1120,9 @@ class TestCLIIntegration:
                 "predict",
                 "--model",
                 str(model_file),
-                    "--table",
-                    sample_biom_file,
-                    "--output",
+                "--table",
+                sample_biom_file,
+                "--output",
                 str(temp_dir / "output.tsv"),
             ],
         )
@@ -1210,6 +1220,7 @@ class TestPretrainedEncoderLoading:
         mock_biom_loader_instance = MagicMock()
         mock_biom_loader_class.return_value = mock_biom_loader_instance
         mock_table = MagicMock()
+
         # Mock ids() to return list when called with axis="sample" or axis="observation"
         def mock_ids(axis=None):
             if axis == "sample":
@@ -1217,6 +1228,7 @@ class TestPretrainedEncoderLoading:
             elif axis == "observation":
                 return ["obs1", "obs2", "obs3"]
             return ["sample1", "sample2", "sample3", "sample4"]
+
         mock_table.ids = mock_ids
         mock_biom_loader_instance.load_table.return_value = mock_table
         mock_biom_loader_instance.rarefy.return_value = mock_table
@@ -1342,6 +1354,7 @@ class TestPretrainedEncoderLoading:
         mock_biom_loader_instance = MagicMock()
         mock_biom_loader_class.return_value = mock_biom_loader_instance
         mock_table = MagicMock()
+
         # Mock ids() to return list when called with axis="sample" or axis="observation"
         def mock_ids(axis=None):
             if axis == "sample":
@@ -1349,6 +1362,7 @@ class TestPretrainedEncoderLoading:
             elif axis == "observation":
                 return ["obs1", "obs2", "obs3"]
             return ["sample1", "sample2", "sample3", "sample4"]
+
         mock_table.ids = mock_ids
         mock_biom_loader_instance.load_table.return_value = mock_table
         mock_biom_loader_instance.rarefy.return_value = mock_table
@@ -1473,6 +1487,7 @@ class TestPretrainedEncoderLoading:
         mock_biom_loader_instance = MagicMock()
         mock_biom_loader_class.return_value = mock_biom_loader_instance
         mock_table = MagicMock()
+
         # Mock ids() to return list when called with axis="sample" or axis="observation"
         def mock_ids(axis=None):
             if axis == "sample":
@@ -1480,6 +1495,7 @@ class TestPretrainedEncoderLoading:
             elif axis == "observation":
                 return ["obs1", "obs2", "obs3"]
             return ["sample1", "sample2", "sample3", "sample4"]
+
         mock_table.ids = mock_ids
         mock_biom_loader_instance.load_table.return_value = mock_table
         mock_biom_loader_instance.rarefy.return_value = mock_table
@@ -1668,13 +1684,13 @@ class TestMetadataLoading:
     def test_metadata_with_whitespace_in_column_name(self, temp_dir):
         """Test that metadata with whitespace in column names works correctly."""
         import pandas as pd
-        
+
         metadata_file = temp_dir / "metadata_whitespace.tsv"
         metadata_file.write_text(" sample_id \ttarget\nsample1\t1.0\nsample2\t2.0\n")
-        
+
         metadata_df = pd.read_csv(metadata_file, sep="\t", encoding="utf-8-sig")
         metadata_df.columns = metadata_df.columns.str.strip()
-        
+
         assert "sample_id" in metadata_df.columns
         assert "target" in metadata_df.columns
         assert len(metadata_df) == 2
@@ -1682,13 +1698,13 @@ class TestMetadataLoading:
     def test_metadata_with_missing_sample_id_column(self, temp_dir):
         """Test that missing sample_id column provides helpful error message."""
         import pandas as pd
-        
+
         metadata_file = temp_dir / "metadata_no_sample_id.tsv"
         metadata_file.write_text("id\ttarget\nsample1\t1.0\nsample2\t2.0\n")
-        
+
         metadata_df = pd.read_csv(metadata_file, sep="\t", encoding="utf-8-sig")
         metadata_df.columns = metadata_df.columns.str.strip()
-        
+
         with pytest.raises(ValueError) as exc_info:
             if "sample_id" not in metadata_df.columns:
                 found_columns = list(metadata_df.columns)
@@ -1698,7 +1714,7 @@ class TestMetadataLoading:
                     f"Expected: 'sample_id'\n"
                     f"Tip: Check for whitespace or encoding issues in column names."
                 )
-        
+
         error_msg = str(exc_info.value)
         assert "sample_id" in error_msg.lower()
         assert "found columns" in error_msg.lower() or "columns" in error_msg.lower()
@@ -1706,13 +1722,13 @@ class TestMetadataLoading:
     def test_metadata_with_normal_column_name(self, temp_dir):
         """Test that normal metadata file still works (regression test)."""
         import pandas as pd
-        
+
         metadata_file = temp_dir / "metadata_normal.tsv"
         metadata_file.write_text("sample_id\ttarget\nsample1\t1.0\nsample2\t2.0\n")
-        
+
         metadata_df = pd.read_csv(metadata_file, sep="\t", encoding="utf-8-sig")
         metadata_df.columns = metadata_df.columns.str.strip()
-        
+
         assert "sample_id" in metadata_df.columns
         assert "target" in metadata_df.columns
         assert len(metadata_df) == 2
@@ -1720,13 +1736,13 @@ class TestMetadataLoading:
     def test_metadata_with_trailing_whitespace_in_column_name(self, temp_dir):
         """Test that metadata with trailing whitespace in column names works."""
         import pandas as pd
-        
+
         metadata_file = temp_dir / "metadata_trailing_whitespace.tsv"
         metadata_file.write_text("sample_id \ttarget \nsample1\t1.0\nsample2\t2.0\n")
-        
+
         metadata_df = pd.read_csv(metadata_file, sep="\t", encoding="utf-8-sig")
         metadata_df.columns = metadata_df.columns.str.strip()
-        
+
         assert "sample_id" in metadata_df.columns
         assert "target" in metadata_df.columns
         assert len(metadata_df) == 2
@@ -1734,13 +1750,13 @@ class TestMetadataLoading:
     def test_metadata_with_leading_whitespace_in_column_name(self, temp_dir):
         """Test that metadata with leading whitespace in column names works."""
         import pandas as pd
-        
+
         metadata_file = temp_dir / "metadata_leading_whitespace.tsv"
         metadata_file.write_text(" sample_id\ttarget\nsample1\t1.0\nsample2\t2.0\n")
-        
+
         metadata_df = pd.read_csv(metadata_file, sep="\t", encoding="utf-8-sig")
         metadata_df.columns = metadata_df.columns.str.strip()
-        
+
         assert "sample_id" in metadata_df.columns
         assert "target" in metadata_df.columns
         assert len(metadata_df) == 2

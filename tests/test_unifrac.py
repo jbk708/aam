@@ -105,7 +105,7 @@ class TestUniFracComputer:
     @pytest.mark.skip(reason="Computation functionality deprecated in PYT-11.4. Use pre-computed matrices instead.")
     def test_compute_unweighted_basic(self, computer, rarefied_table, simple_tree_file):
         """Test basic compute_unweighted functionality.
-        
+
         DEPRECATED: Computation functionality removed in PYT-11.4.
         Users should generate UniFrac matrices using unifrac-binaries.
         """
@@ -114,7 +114,7 @@ class TestUniFracComputer:
     @pytest.mark.skip(reason="Computation functionality deprecated in PYT-11.4. Use pre-computed matrices instead.")
     def test_compute_faith_pd_basic(self, computer, rarefied_table, simple_tree_file):
         """Test basic compute_faith_pd functionality.
-        
+
         DEPRECATED: Computation functionality removed in PYT-11.4.
         Users should generate UniFrac matrices using unifrac-binaries.
         """
@@ -123,7 +123,7 @@ class TestUniFracComputer:
     def test_extract_batch_distances_basic(self, sample_distance_matrix):
         """Test basic extract_batch_distances functionality using UniFracLoader."""
         from aam.data.unifrac_loader import UniFracLoader
-        
+
         loader = UniFracLoader()
         sample_ids = ["sample1", "sample2"]
         result = loader.extract_batch_distances(sample_distance_matrix, sample_ids, metric="unweighted")
@@ -138,7 +138,7 @@ class TestUniFracComputer:
     @pytest.mark.skip(reason="validate_batch_size deprecated in PYT-11.4. Batch size validation no longer needed.")
     def test_validate_batch_size_even(self, computer):
         """Test that validate_batch_size accepts even batch sizes.
-        
+
         DEPRECATED: Batch size validation removed in PYT-11.4.
         """
         pytest.skip("validate_batch_size deprecated. Batch size validation no longer needed.")
@@ -146,7 +146,7 @@ class TestUniFracComputer:
     @pytest.mark.skip(reason="validate_batch_size deprecated in PYT-11.4. Batch size validation no longer needed.")
     def test_validate_batch_size_odd(self, computer):
         """Test that validate_batch_size rejects odd batch sizes.
-        
+
         DEPRECATED: Batch size validation removed in PYT-11.4.
         """
         pytest.skip("validate_batch_size deprecated. Batch size validation no longer needed.")
@@ -154,7 +154,7 @@ class TestUniFracComputer:
     @pytest.mark.skip(reason="validate_batch_size deprecated in PYT-11.4. Batch size validation no longer needed.")
     def test_validate_batch_size_zero(self, computer):
         """Test that validate_batch_size accepts zero (edge case).
-        
+
         DEPRECATED: Batch size validation removed in PYT-11.4.
         """
         pytest.skip("validate_batch_size deprecated. Batch size validation no longer needed.")
@@ -162,7 +162,7 @@ class TestUniFracComputer:
     @pytest.mark.skip(reason="validate_batch_size deprecated in PYT-11.4. Batch size validation no longer needed.")
     def test_validate_batch_size_negative(self, computer):
         """Test that validate_batch_size handles negative numbers.
-        
+
         DEPRECATED: Batch size validation removed in PYT-11.4.
         """
         pytest.skip("validate_batch_size deprecated. Batch size validation no longer needed.")
@@ -170,7 +170,7 @@ class TestUniFracComputer:
 
 class TestUniFracComputerIntegration:
     """Integration tests for UniFracComputer (require real data and library).
-    
+
     DEPRECATED: Computation functionality removed in PYT-11.4.
     These tests are kept for reference but are skipped.
     """
@@ -179,7 +179,7 @@ class TestUniFracComputerIntegration:
     @pytest.mark.skip(reason="Computation functionality deprecated in PYT-11.4. Use pre-computed matrices instead.")
     def test_compute_unweighted_with_real_data(self, computer):
         """Test compute_unweighted with real BIOM table and tree.
-        
+
         DEPRECATED: Computation functionality removed in PYT-11.4.
         Users should generate UniFrac matrices using unifrac-binaries.
         """
@@ -189,7 +189,7 @@ class TestUniFracComputerIntegration:
     @pytest.mark.skip(reason="Computation functionality deprecated in PYT-11.4. Use pre-computed matrices instead.")
     def test_compute_faith_pd_with_real_data(self, computer):
         """Test compute_faith_pd with real BIOM table and tree.
-        
+
         DEPRECATED: Computation functionality removed in PYT-11.4.
         Users should generate UniFrac matrices using unifrac-binaries.
         """
@@ -199,7 +199,7 @@ class TestUniFracComputerIntegration:
     @pytest.mark.skip(reason="Computation functionality deprecated in PYT-11.4. Use pre-computed matrices instead.")
     def test_compute_unweighted_tree_file_not_found(self, computer, rarefied_table):
         """Test compute_unweighted with non-existent tree file.
-        
+
         DEPRECATED: Computation functionality removed in PYT-11.4.
         """
         pytest.skip("Computation functionality deprecated. Use pre-computed matrices.")
@@ -208,7 +208,7 @@ class TestUniFracComputerIntegration:
     @pytest.mark.skip(reason="Computation functionality deprecated in PYT-11.4. Use pre-computed matrices instead.")
     def test_compute_faith_pd_tree_file_not_found(self, computer, rarefied_table):
         """Test compute_faith_pd with non-existent tree file.
-        
+
         DEPRECATED: Computation functionality removed in PYT-11.4.
         """
         pytest.skip("Computation functionality deprecated. Use pre-computed matrices.")
@@ -216,7 +216,7 @@ class TestUniFracComputerIntegration:
 
 class TestUniFracComputerErrorHandling:
     """Test error handling for UniFracComputer.
-    
+
     DEPRECATED: Computation functionality removed in PYT-11.4.
     These tests are kept for reference but are skipped.
     """
@@ -224,7 +224,7 @@ class TestUniFracComputerErrorHandling:
     @pytest.mark.skip(reason="Computation functionality deprecated in PYT-11.4. Use pre-computed matrices instead.")
     def test_compute_unweighted_file_not_found(self, computer, rarefied_table, tmp_path):
         """Test compute_unweighted with non-existent tree file.
-        
+
         DEPRECATED: Computation functionality removed in PYT-11.4.
         """
         pytest.skip("Computation functionality deprecated. Use pre-computed matrices.")
@@ -232,7 +232,7 @@ class TestUniFracComputerErrorHandling:
     @pytest.mark.skip(reason="Computation functionality deprecated in PYT-11.4. Use pre-computed matrices instead.")
     def test_compute_unweighted_invalid_tree_format(self, computer, rarefied_table, tmp_path):
         """Test compute_unweighted with invalid tree file format.
-        
+
         DEPRECATED: Computation functionality removed in PYT-11.4.
         """
         pytest.skip("Computation functionality deprecated. Use pre-computed matrices.")
@@ -240,7 +240,7 @@ class TestUniFracComputerErrorHandling:
     @pytest.mark.skip(reason="Computation functionality deprecated in PYT-11.4. Use pre-computed matrices instead.")
     def test_compute_unweighted_asv_mismatch(self, computer, rarefied_table, tmp_path):
         """Test compute_unweighted with ASV ID mismatch.
-        
+
         DEPRECATED: Computation functionality removed in PYT-11.4.
         """
         pytest.skip("Computation functionality deprecated. Use pre-computed matrices.")
@@ -248,7 +248,7 @@ class TestUniFracComputerErrorHandling:
     @pytest.mark.skip(reason="Computation functionality deprecated in PYT-11.4. Use pre-computed matrices instead.")
     def test_compute_unweighted_general_error(self, computer, rarefied_table, tmp_path):
         """Test compute_unweighted with general computation error.
-        
+
         DEPRECATED: Computation functionality removed in PYT-11.4.
         """
         pytest.skip("Computation functionality deprecated. Use pre-computed matrices.")
@@ -256,7 +256,7 @@ class TestUniFracComputerErrorHandling:
     @pytest.mark.skip(reason="Computation functionality deprecated in PYT-11.4. Use pre-computed matrices instead.")
     def test_compute_faith_pd_file_not_found(self, computer, rarefied_table, tmp_path):
         """Test compute_faith_pd with non-existent tree file.
-        
+
         DEPRECATED: Computation functionality removed in PYT-11.4.
         """
         pytest.skip("Computation functionality deprecated. Use pre-computed matrices.")
@@ -264,7 +264,7 @@ class TestUniFracComputerErrorHandling:
     @pytest.mark.skip(reason="Computation functionality deprecated in PYT-11.4. Use pre-computed matrices instead.")
     def test_compute_faith_pd_invalid_tree_format(self, computer, rarefied_table, tmp_path):
         """Test compute_faith_pd with invalid tree file format.
-        
+
         DEPRECATED: Computation functionality removed in PYT-11.4.
         """
         pytest.skip("Computation functionality deprecated. Use pre-computed matrices.")
@@ -272,7 +272,7 @@ class TestUniFracComputerErrorHandling:
     @pytest.mark.skip(reason="Computation functionality deprecated in PYT-11.4. Use pre-computed matrices instead.")
     def test_compute_faith_pd_asv_mismatch(self, computer, rarefied_table, tmp_path):
         """Test compute_faith_pd with ASV ID mismatch.
-        
+
         DEPRECATED: Computation functionality removed in PYT-11.4.
         """
         pytest.skip("Computation functionality deprecated. Use pre-computed matrices.")
@@ -280,7 +280,7 @@ class TestUniFracComputerErrorHandling:
     @pytest.mark.skip(reason="Computation functionality deprecated in PYT-11.4. Use pre-computed matrices instead.")
     def test_compute_faith_pd_general_error(self, computer, rarefied_table, tmp_path):
         """Test compute_faith_pd with general computation error.
-        
+
         DEPRECATED: Computation functionality removed in PYT-11.4.
         """
         pytest.skip("Computation functionality deprecated. Use pre-computed matrices.")
@@ -288,7 +288,7 @@ class TestUniFracComputerErrorHandling:
     def test_extract_batch_distances_missing_sample_id(self, sample_distance_matrix):
         """Test extract_batch_distances with missing sample ID using UniFracLoader."""
         from aam.data.unifrac_loader import UniFracLoader
-        
+
         loader = UniFracLoader()
         sample_ids = ["sample1", "nonexistent"]
         with pytest.raises(ValueError, match="not found in distance matrix"):
@@ -297,7 +297,7 @@ class TestUniFracComputerErrorHandling:
     def test_extract_batch_distances_faith_pd_missing_sample_id(self, sample_faith_pd_series):
         """Test extract_batch_distances with missing sample ID for Faith PD using UniFracLoader."""
         from aam.data.unifrac_loader import UniFracLoader
-        
+
         loader = UniFracLoader()
         sample_ids = ["sample1", "nonexistent"]
         with pytest.raises(ValueError, match="not found in Faith PD series"):
@@ -306,7 +306,7 @@ class TestUniFracComputerErrorHandling:
     def test_extract_batch_distances_invalid_metric(self, sample_distance_matrix):
         """Test extract_batch_distances with invalid metric using UniFracLoader."""
         from aam.data.unifrac_loader import UniFracLoader
-        
+
         loader = UniFracLoader()
         sample_ids = ["sample1", "sample2"]
         with pytest.raises(ValueError, match="Invalid metric"):
@@ -319,7 +319,7 @@ class TestExtractBatchDistances:
     def test_extract_batch_distances_unweighted(self, sample_distance_matrix):
         """Test extract_batch_distances for unweighted UniFrac using UniFracLoader."""
         from aam.data.unifrac_loader import UniFracLoader
-        
+
         loader = UniFracLoader()
         sample_ids = ["sample1", "sample2"]
         result = loader.extract_batch_distances(sample_distance_matrix, sample_ids, metric="unweighted")
@@ -339,7 +339,7 @@ class TestExtractBatchDistances:
     def test_extract_batch_distances_unweighted_shuffled_order(self, sample_distance_matrix):
         """Test extract_batch_distances preserves shuffled batch order using UniFracLoader."""
         from aam.data.unifrac_loader import UniFracLoader
-        
+
         loader = UniFracLoader()
         # Test with shuffled order: sample2, sample1 (instead of sample1, sample2)
         sample_ids = ["sample2", "sample1"]
@@ -366,7 +366,7 @@ class TestExtractBatchDistances:
     def test_extract_batch_distances_faith_pd(self, sample_faith_pd_series):
         """Test extract_batch_distances for Faith PD using UniFracLoader."""
         from aam.data.unifrac_loader import UniFracLoader
-        
+
         loader = UniFracLoader()
         sample_ids = ["sample1", "sample2"]
         result = loader.extract_batch_distances(sample_faith_pd_series, sample_ids, metric="faith_pd")
@@ -379,7 +379,7 @@ class TestExtractBatchDistances:
     def test_extract_batch_distances_missing_sample_ids(self, sample_distance_matrix):
         """Test extract_batch_distances with sample IDs not in distance matrix using UniFracLoader."""
         from aam.data.unifrac_loader import UniFracLoader
-        
+
         loader = UniFracLoader()
         with pytest.raises(ValueError, match="not found"):
             loader.extract_batch_distances(sample_distance_matrix, ["nonexistent1", "nonexistent2"], metric="unweighted")
@@ -387,7 +387,7 @@ class TestExtractBatchDistances:
     def test_extract_batch_distances_empty_sample_ids(self, sample_distance_matrix):
         """Test extract_batch_distances with empty sample IDs list using UniFracLoader."""
         from aam.data.unifrac_loader import UniFracLoader
-        
+
         loader = UniFracLoader()
         result = loader.extract_batch_distances(sample_distance_matrix, [], metric="unweighted")
         assert isinstance(result, np.ndarray)
@@ -396,7 +396,7 @@ class TestExtractBatchDistances:
     def test_extract_batch_distances_large_batch(self, sample_distance_matrix):
         """Test extract_batch_distances with all samples (full batch) using UniFracLoader."""
         from aam.data.unifrac_loader import UniFracLoader
-        
+
         loader = UniFracLoader()
         sample_ids = ["sample1", "sample2", "sample3", "sample4"]
         result = loader.extract_batch_distances(sample_distance_matrix, sample_ids, metric="unweighted")
@@ -408,7 +408,7 @@ class TestExtractBatchDistances:
     def test_extract_batch_distances_invalid_metric(self, sample_distance_matrix):
         """Test extract_batch_distances with invalid metric using UniFracLoader."""
         from aam.data.unifrac_loader import UniFracLoader
-        
+
         loader = UniFracLoader()
         with pytest.raises(ValueError, match="Invalid metric"):
             loader.extract_batch_distances(sample_distance_matrix, ["sample1", "sample2"], metric="invalid_metric")

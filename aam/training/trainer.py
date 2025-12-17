@@ -476,18 +476,14 @@ class Trainer:
             mae = metrics.get("count_mae", metrics.get("mae"))
             if r2 is None:
                 return
-            fig = self._create_prediction_plot(
-                predictions, targets, epoch, r2, mae=mae, title_prefix="Count"
-            )
+            fig = self._create_prediction_plot(predictions, targets, epoch, r2, mae=mae, title_prefix="Count")
             plot_file = plots_dir / "count_plot_best.png"
         else:
             # Default: target prediction
             if "r2" not in metrics:
                 return
             mae = metrics.get("mae")
-            fig = self._create_prediction_plot(
-                predictions, targets, epoch, metrics["r2"], mae=mae, title_prefix="Target"
-            )
+            fig = self._create_prediction_plot(predictions, targets, epoch, metrics["r2"], mae=mae, title_prefix="Target")
             plot_file = plots_dir / "prediction_plot_best.png"
 
         if plot_file.exists():
@@ -555,6 +551,7 @@ class Trainer:
             if r2 is None:
                 # Compute R² for unifrac predictions
                 from sklearn.metrics import r2_score
+
                 try:
                     pred_np = predictions_dict["unifrac"].cpu().numpy().flatten()
                     true_np = targets_dict["unifrac"].cpu().numpy().flatten()
@@ -791,7 +788,7 @@ class Trainer:
 
                 encoder_type = self._get_encoder_type()
                 is_classifier = self._get_is_classifier()
-                
+
                 # For stripe mode, we need reference embeddings
                 # Check if we're in stripe mode by looking at base_target shape
                 if "base_target" in targets and encoder_type == "unifrac" and "embeddings" in outputs:
@@ -813,7 +810,7 @@ class Trainer:
                             f"Please use --no-stripe-mode for now, or implement reference embedding computation "
                             f"in Trainer.train_epoch() method."
                         )
-                
+
                 losses = self.loss_fn(outputs, targets, is_classifier=is_classifier, encoder_type=encoder_type)
 
                 # Check for NaN in loss after computation
@@ -836,7 +833,7 @@ class Trainer:
                     nuc_targets = targets.get("tokens", targets.get("nucleotides"))
                     if nuc_targets is not None:
                         predicted_tokens = nuc_preds.argmax(dim=-1)
-                        correct = (predicted_tokens == nuc_targets)
+                        correct = predicted_tokens == nuc_targets
                         mask_indices = outputs.get("mask_indices")
                         if mask_indices is not None and mask_indices.any():
                             nuc_accuracy_train = correct[mask_indices].float().mean().item()
@@ -941,7 +938,9 @@ class Trainer:
                             nuc_val = float(nuc_val)
                         running_avg_nuc_loss = (running_avg_nuc_loss * num_batches + nuc_val) / (num_batches + 1)
                     if "nuc_accuracy" in losses:
-                        running_avg_nuc_accuracy = (running_avg_nuc_accuracy * num_batches + losses["nuc_accuracy"]) / (num_batches + 1)
+                        running_avg_nuc_accuracy = (running_avg_nuc_accuracy * num_batches + losses["nuc_accuracy"]) / (
+                            num_batches + 1
+                        )
 
                 # Format progress bar
                 postfix_dict = {
@@ -1080,7 +1079,7 @@ class Trainer:
                         nuc_targets = targets.get("tokens", targets.get("nucleotides"))
                         if nuc_targets is not None:
                             predicted_tokens = nuc_preds.argmax(dim=-1)  # [batch, num_asvs, seq_len]
-                            correct = (predicted_tokens == nuc_targets)
+                            correct = predicted_tokens == nuc_targets
 
                             # Use mask_indices if available (MAE mode), otherwise use valid positions
                             mask_indices = outputs.get("mask_indices")
@@ -1114,7 +1113,9 @@ class Trainer:
                                 running_avg_nuc_loss = float(nuc_val)
                     else:
                         running_avg_loss = (running_avg_loss * num_batches + current_loss_val) / (num_batches + 1)
-                        running_avg_nuc_accuracy = (running_avg_nuc_accuracy * num_batches + nuc_accuracy_val) / (num_batches + 1)
+                        running_avg_nuc_accuracy = (running_avg_nuc_accuracy * num_batches + nuc_accuracy_val) / (
+                            num_batches + 1
+                        )
                         if "unifrac_loss" in losses:
                             unifrac_val = losses["unifrac_loss"]
                             if isinstance(unifrac_val, torch.Tensor):
@@ -1221,6 +1222,7 @@ class Trainer:
                             # Also collect UniFrac predictions during fine-tuning
                             if "base_target" in targets:
                                 from aam.training.losses import compute_pairwise_distances
+
                                 encoder_type = self._get_encoder_type()
                                 base_pred_batch = None
 
@@ -1378,6 +1380,7 @@ class Trainer:
             # Also collect unifrac predictions during fine-tuning if available
             if not is_pretraining and "base_prediction" in all_predictions:
                 from aam.training.losses import compute_pairwise_distances
+
                 base_pred_flat = torch.cat(all_predictions["base_prediction"], dim=0)
                 base_true_flat = torch.cat(all_targets["base_target"], dim=0)
                 all_preds["unifrac"] = base_pred_flat
@@ -1445,27 +1448,19 @@ class Trainer:
                             chart=[
                                 layout_pb2.Chart(
                                     title="Total Loss",
-                                    multiline=layout_pb2.MultilineChartContent(
-                                        tag=["TotalLoss/train", "TotalLoss/val"]
-                                    ),
+                                    multiline=layout_pb2.MultilineChartContent(tag=["TotalLoss/train", "TotalLoss/val"]),
                                 ),
                                 layout_pb2.Chart(
                                     title="Target Loss",
-                                    multiline=layout_pb2.MultilineChartContent(
-                                        tag=["TargetLoss/train", "TargetLoss/val"]
-                                    ),
+                                    multiline=layout_pb2.MultilineChartContent(tag=["TargetLoss/train", "TargetLoss/val"]),
                                 ),
                                 layout_pb2.Chart(
                                     title="Count Loss",
-                                    multiline=layout_pb2.MultilineChartContent(
-                                        tag=["CountLoss/train", "CountLoss/val"]
-                                    ),
+                                    multiline=layout_pb2.MultilineChartContent(tag=["CountLoss/train", "CountLoss/val"]),
                                 ),
                                 layout_pb2.Chart(
                                     title="UniFrac Loss",
-                                    multiline=layout_pb2.MultilineChartContent(
-                                        tag=["UniFracLoss/train", "UniFracLoss/val"]
-                                    ),
+                                    multiline=layout_pb2.MultilineChartContent(tag=["UniFracLoss/train", "UniFracLoss/val"]),
                                 ),
                             ],
                         ),
@@ -1474,15 +1469,11 @@ class Trainer:
                             chart=[
                                 layout_pb2.Chart(
                                     title="Nucleotide Loss",
-                                    multiline=layout_pb2.MultilineChartContent(
-                                        tag=["NucLoss/train", "NucLoss/val"]
-                                    ),
+                                    multiline=layout_pb2.MultilineChartContent(tag=["NucLoss/train", "NucLoss/val"]),
                                 ),
                                 layout_pb2.Chart(
                                     title="Nucleotide Accuracy",
-                                    multiline=layout_pb2.MultilineChartContent(
-                                        tag=["NucAccuracy/train", "NucAccuracy/val"]
-                                    ),
+                                    multiline=layout_pb2.MultilineChartContent(tag=["NucAccuracy/train", "NucAccuracy/val"]),
                                 ),
                             ],
                         ),
@@ -1524,9 +1515,7 @@ class Trainer:
 
                     # Log prediction figures to TensorBoard at every epoch
                     if self.writer is not None and val_predictions_dict:
-                        self._log_figures_to_tensorboard(
-                            epoch, val_predictions_dict, val_targets_dict, val_results
-                        )
+                        self._log_figures_to_tensorboard(epoch, val_predictions_dict, val_targets_dict, val_results)
 
                     if val_loss < best_val_loss:
                         best_val_loss = val_loss
@@ -1778,9 +1767,7 @@ def create_scheduler(
         T_0 = kwargs.get("T_0", num_training_steps // 4)
         T_mult = kwargs.get("T_mult", 2)
         eta_min = kwargs.get("eta_min", 0.0)
-        return torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-            optimizer, T_0=T_0, T_mult=T_mult, eta_min=eta_min
-        )
+        return torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=T_0, T_mult=T_mult, eta_min=eta_min)
     elif scheduler_type == "plateau":
         mode = kwargs.get("mode", "min")
         factor = kwargs.get("factor", 0.3)

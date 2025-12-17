@@ -42,15 +42,15 @@ def small_model():
 def simple_dataset(device):
     """Create a simple dataset for testing."""
     from aam.data.tokenizer import SequenceTokenizer
-    
+
     batch_size = 4
     num_asvs = 10
     seq_length = 32
-    
+
     # Model expects (batch, num_asvs, seq_len) shape
     tokens = torch.randint(1, 5, (batch_size * 10, num_asvs, seq_length))
     tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
-    
+
     # For pairwise mode, base_target should be [batch_size, batch_size] per batch
     # Create a custom dataset that returns correct shape per batch
     class UniFracDataset:
@@ -73,7 +73,7 @@ def simple_dataset(device):
             # Ensure diagonal is 0 (distance from sample to itself)
             unifrac_target.fill_diagonal_(0.0)
             return batch_tokens, unifrac_target
-    
+
     dataset = UniFracDataset(tokens, batch_size)
     return DataLoader(dataset, batch_size=batch_size, shuffle=False, collate_fn=lambda x: x[0])
 
@@ -94,7 +94,7 @@ class TestLearningRateFinder:
         """Test LR finder initialization."""
         optimizer = torch.optim.AdamW(small_model.parameters(), lr=1e-4)
         lr_finder = LearningRateFinder(small_model, optimizer, loss_fn, device)
-        
+
         assert lr_finder.model == small_model
         assert lr_finder.optimizer == optimizer
         assert lr_finder.loss_fn == loss_fn
@@ -106,20 +106,20 @@ class TestLearningRateFinder:
         small_model = small_model.to(device)
         optimizer = torch.optim.AdamW(small_model.parameters(), lr=1e-4)
         lr_finder = LearningRateFinder(small_model, optimizer, loss_fn, device)
-        
+
         lrs, losses, suggested_lr = lr_finder.find_lr(
             simple_dataset,
             start_lr=1e-6,
             end_lr=1e-2,
             num_iter=20,
         )
-        
+
         assert len(lrs) > 0
         assert len(losses) > 0
         assert len(lrs) == len(losses)
         assert all(lr > 0 for lr in lrs)
         assert all(loss > 0 for loss in losses)
-        
+
         # Suggested LR should be in the range tested
         if suggested_lr is not None:
             assert 1e-6 <= suggested_lr <= 1e-2
@@ -130,9 +130,9 @@ class TestLearningRateFinder:
         original_lr = 1e-4
         optimizer = torch.optim.AdamW(small_model.parameters(), lr=original_lr)
         lr_finder = LearningRateFinder(small_model, optimizer, loss_fn, device)
-        
+
         lr_finder.find_lr(simple_dataset, start_lr=1e-6, end_lr=1e-2, num_iter=10)
-        
+
         # Check that original LR was restored
         current_lr = optimizer.param_groups[0]["lr"]
         assert abs(current_lr - original_lr) < 1e-8
@@ -142,14 +142,14 @@ class TestLearningRateFinder:
         small_model = small_model.to(device)
         optimizer = torch.optim.AdamW(small_model.parameters(), lr=1e-4)
         lr_finder = LearningRateFinder(small_model, optimizer, loss_fn, device)
-        
+
         lr_finder.find_lr(simple_dataset, start_lr=1e-6, end_lr=1e-2, num_iter=20)
-        
+
         # Test plotting
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = Path(tmpdir) / "lr_finder_plot.png"
             fig = lr_finder.plot(output_path=output_path)
-            
+
             assert fig is not None
             assert output_path.exists()
 
@@ -157,7 +157,7 @@ class TestLearningRateFinder:
         """Test LR finder plot raises error without data."""
         optimizer = torch.optim.AdamW(small_model.parameters(), lr=1e-4)
         lr_finder = LearningRateFinder(small_model, optimizer, loss_fn, device)
-        
+
         with pytest.raises(ValueError, match="No LR finder data"):
             lr_finder.plot()
 
@@ -166,7 +166,7 @@ class TestLearningRateFinder:
         small_model = small_model.to(device)
         optimizer = torch.optim.AdamW(small_model.parameters(), lr=1e-4)
         lr_finder = LearningRateFinder(small_model, optimizer, loss_fn, device)
-        
+
         # Use very low divergence threshold to trigger early stop
         lrs, losses, suggested_lr = lr_finder.find_lr(
             simple_dataset,
@@ -175,7 +175,7 @@ class TestLearningRateFinder:
             num_iter=50,
             diverge_threshold=1.1,  # Very low threshold
         )
-        
+
         # Should have stopped early
         assert len(lrs) <= 50
         assert len(lrs) == len(losses)

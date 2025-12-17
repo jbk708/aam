@@ -58,7 +58,7 @@ class TestPruneTreeToTable:
     def test_prune_tree_all_asvs_present(self, simple_tree, simple_table_all_asvs):
         """Test pruning when all ASVs in tree are present in table."""
         pruned = prune_tree_to_table(simple_tree, simple_table_all_asvs)
-        
+
         assert pruned is not None
         tips = [tip.name for tip in pruned.tips()]
         assert set(tips) == {"A", "B", "C", "D"}
@@ -67,7 +67,7 @@ class TestPruneTreeToTable:
     def test_prune_tree_subset_asvs(self, simple_tree, simple_table_subset_asvs):
         """Test pruning to subset of ASVs."""
         pruned = prune_tree_to_table(simple_tree, simple_table_subset_asvs)
-        
+
         assert pruned is not None
         tips = [tip.name for tip in pruned.tips()]
         assert set(tips) == {"A", "B"}
@@ -77,7 +77,7 @@ class TestPruneTreeToTable:
         """Test pruning to single ASV."""
         table = create_simple_table(["A"])
         pruned = prune_tree_to_table(simple_tree, table)
-        
+
         assert pruned is not None
         tips = [tip.name for tip in pruned.tips() if tip.name is not None]
         # When pruning to a single tip, the tree structure may change
@@ -89,14 +89,14 @@ class TestPruneTreeToTable:
     def test_prune_tree_no_overlap(self, simple_tree):
         """Test pruning when no ASVs overlap (should raise ValueError)."""
         table = create_simple_table(["X", "Y", "Z"])
-        
+
         with pytest.raises(ValueError, match="No ASVs from table found in tree"):
             prune_tree_to_table(simple_tree, table)
 
     def test_prune_tree_preserves_structure(self, simple_tree, simple_table_subset_asvs):
         """Test that pruning preserves tree structure (branch lengths, topology)."""
         pruned = prune_tree_to_table(simple_tree, simple_table_subset_asvs)
-        
+
         # Tree should still be valid
         assert pruned is not None
         # Should have at least one tip
@@ -108,7 +108,7 @@ class TestPruneTreeToTable:
         """Test that pruned tree can be saved to file."""
         output_path = str(tmp_path / "pruned_tree.nwk")
         pruned = prune_tree_to_table(simple_tree, simple_table_subset_asvs, output_path=output_path)
-        
+
         assert Path(output_path).exists()
         # Verify saved tree can be loaded
         loaded = TreeNode.read(output_path, format="newick")
@@ -122,7 +122,7 @@ class TestGetPruningStats:
     def test_get_pruning_stats_all_overlap(self, simple_tree, simple_table_all_asvs):
         """Test stats when all ASVs overlap."""
         stats = get_pruning_stats(simple_tree, simple_table_all_asvs)
-        
+
         assert stats["original_tree_tips"] == 4
         assert stats["biom_observations"] == 4
         assert stats["overlap_count"] == 4
@@ -132,7 +132,7 @@ class TestGetPruningStats:
     def test_get_pruning_stats_partial_overlap(self, simple_tree, simple_table_subset_asvs):
         """Test stats when only some ASVs overlap."""
         stats = get_pruning_stats(simple_tree, simple_table_subset_asvs)
-        
+
         assert stats["original_tree_tips"] == 4
         assert stats["biom_observations"] == 2
         assert stats["overlap_count"] == 2
@@ -143,7 +143,7 @@ class TestGetPruningStats:
         """Test stats when no ASVs overlap."""
         table = create_simple_table(["X", "Y"])
         stats = get_pruning_stats(simple_tree, table)
-        
+
         assert stats["original_tree_tips"] == 4
         assert stats["biom_observations"] == 2
         assert stats["overlap_count"] == 0
@@ -159,20 +159,20 @@ class TestLoadOrPruneTree:
         # Create and save pruned tree
         pruned_tree_path = tmp_path / "tree.pruned.nwk"
         full_tree_path = tmp_path / "tree.nwk"
-        
+
         # Save full tree
         simple_tree.write(str(full_tree_path), format="newick")
-        
+
         # Prune and save
         pruned = prune_tree_to_table(simple_tree, simple_table_subset_asvs, output_path=str(pruned_tree_path))
-        
+
         # Test loading cached pruned tree
         loaded = load_or_prune_tree(
             str(full_tree_path),
             simple_table_subset_asvs,
             pruned_tree_path=str(pruned_tree_path),
         )
-        
+
         tips = [tip.name for tip in loaded.tips()]
         assert set(tips) == {"A", "B"}
 
@@ -180,17 +180,17 @@ class TestLoadOrPruneTree:
         """Test pruning and caching tree when cache doesn't exist."""
         full_tree_path = tmp_path / "tree.nwk"
         pruned_tree_path = tmp_path / "tree.pruned.nwk"
-        
+
         # Save full tree
         simple_tree.write(str(full_tree_path), format="newick")
-        
+
         # Load and prune (cache doesn't exist yet)
         loaded = load_or_prune_tree(
             str(full_tree_path),
             simple_table_subset_asvs,
             pruned_tree_path=str(pruned_tree_path),
         )
-        
+
         # Verify pruned tree was created
         assert Path(pruned_tree_path).exists()
         tips = [tip.name for tip in loaded.tips()]
@@ -200,13 +200,13 @@ class TestLoadOrPruneTree:
         """Test that force_prune=True re-prunes even if cache exists."""
         full_tree_path = tmp_path / "tree.nwk"
         pruned_tree_path = tmp_path / "tree.pruned.nwk"
-        
+
         # Save full tree
         simple_tree.write(str(full_tree_path), format="newick")
-        
+
         # Create initial pruned tree
         prune_tree_to_table(simple_tree, simple_table_subset_asvs, output_path=str(pruned_tree_path))
-        
+
         # Force re-pruning
         loaded = load_or_prune_tree(
             str(full_tree_path),
@@ -214,7 +214,7 @@ class TestLoadOrPruneTree:
             pruned_tree_path=str(pruned_tree_path),
             force_prune=True,
         )
-        
+
         tips = [tip.name for tip in loaded.tips()]
         assert set(tips) == {"A", "B"}
 
@@ -225,19 +225,19 @@ class TestTreePrunerIntegration:
     def test_pruned_tree_produces_same_unifrac(self, simple_tree, simple_table_all_asvs, tmp_path):
         """Test that pruned tree produces same UniFrac distances as full tree."""
         import unifrac
-        
+
         # Create a table with all samples
         table = simple_table_all_asvs
-        
+
         # Compute distances with full tree
         full_distances = unifrac.unweighted(table, simple_tree)
-        
+
         # Prune tree (should be same since all ASVs present)
         pruned = prune_tree_to_table(simple_tree, table)
-        
+
         # Compute distances with pruned tree
         pruned_distances = unifrac.unweighted(table, pruned)
-        
+
         # Should be identical (or very close due to numerical precision)
         np.testing.assert_array_almost_equal(
             full_distances.data,
@@ -248,13 +248,13 @@ class TestTreePrunerIntegration:
     def test_pruned_tree_subset_produces_valid_unifrac(self, simple_tree, simple_table_subset_asvs, tmp_path):
         """Test that pruned tree (subset) produces valid UniFrac distances."""
         import unifrac
-        
+
         # Prune tree to subset
         pruned = prune_tree_to_table(simple_tree, simple_table_subset_asvs)
-        
+
         # Compute distances with pruned tree
         distances = unifrac.unweighted(simple_table_subset_asvs, pruned)
-        
+
         # Should be valid distance matrix
         assert distances.shape[0] == distances.shape[1]
         assert distances.shape[0] == len(simple_table_subset_asvs.ids(axis="sample"))

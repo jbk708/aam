@@ -151,7 +151,12 @@ def cli():
 
 @cli.command()
 @click.option("--table", required=True, type=click.Path(exists=True), help="Path to BIOM table file")
-@click.option("--unifrac-matrix", required=True, type=click.Path(exists=True), help="Path to pre-computed UniFrac distance matrix (.npy, .h5, or .csv format)")
+@click.option(
+    "--unifrac-matrix",
+    required=True,
+    type=click.Path(exists=True),
+    help="Path to pre-computed UniFrac distance matrix (.npy, .h5, or .csv format)",
+)
 @click.option("--metadata", required=True, type=click.Path(exists=True), help="Path to metadata file (.tsv)")
 @click.option("--metadata-column", required=True, help="Column name for target prediction")
 @click.option("--output-dir", required=True, type=click.Path(), help="Output directory for checkpoints and logs")
@@ -170,15 +175,35 @@ def cli():
 @click.option("--classifier", is_flag=True, help="Use classification mode")
 @click.option("--rarefy-depth", default=5000, type=int, help="Rarefaction depth")
 @click.option("--test-size", default=0.2, type=float, help="Validation split size")
-@click.option("--unifrac-metric", default="unifrac", type=click.Choice(["unifrac", "faith_pd"]), help="UniFrac metric type (unifrac for pairwise, faith_pd for per-sample values)")
+@click.option(
+    "--unifrac-metric",
+    default="unifrac",
+    type=click.Choice(["unifrac", "faith_pd"]),
+    help="UniFrac metric type (unifrac for pairwise, faith_pd for per-sample values)",
+)
 @click.option("--penalty", default=1.0, type=float, help="Weight for base/UniFrac loss")
 @click.option("--nuc-penalty", default=1.0, type=float, help="Weight for nucleotide loss")
-@click.option("--nuc-mask-ratio", default=0.15, type=float, help="Fraction of nucleotide positions to mask for MAE training (0.0 to disable, default: 0.15)")
-@click.option("--nuc-mask-strategy", default="random", type=click.Choice(["random", "span"]), help="Masking strategy: random (default) or span")
+@click.option(
+    "--nuc-mask-ratio",
+    default=0.15,
+    type=float,
+    help="Fraction of nucleotide positions to mask for MAE training (0.0 to disable, default: 0.15)",
+)
+@click.option(
+    "--nuc-mask-strategy",
+    default="random",
+    type=click.Choice(["random", "span"]),
+    help="Masking strategy: random (default) or span",
+)
 @click.option("--class-weights", default=None, help="Class weights for classification (optional)")
 @click.option("--device", default="cuda", type=click.Choice(["cuda", "cpu"]), help="Device to use")
 @click.option("--seed", default=None, type=int, help="Random seed for reproducibility")
-@click.option("--num-workers", default=4, type=int, help="Number of DataLoader worker processes (default: 4, use 0 to disable multiprocessing)")
+@click.option(
+    "--num-workers",
+    default=4,
+    type=int,
+    help="Number of DataLoader worker processes (default: 4, use 0 to disable multiprocessing)",
+)
 @click.option("--resume-from", default=None, type=click.Path(exists=True), help="Path to checkpoint to resume from")
 @click.option("--freeze-base", is_flag=True, help="Freeze base model parameters")
 @click.option(
@@ -194,10 +219,27 @@ def cli():
     type=click.Choice(["warmup_cosine", "cosine", "cosine_restarts", "plateau", "onecycle"]),
     help="Learning rate scheduler type (warmup_cosine: warmup+cosine decay, cosine: cosine annealing, cosine_restarts: cosine with warm restarts, plateau: reduce on plateau, onecycle: one cycle policy)",
 )
-@click.option("--scheduler-t0", default=None, type=int, help="Initial restart period for cosine_restarts scheduler (default: num_training_steps // 4)")
-@click.option("--scheduler-t-mult", default=None, type=int, help="Restart period multiplier for cosine_restarts scheduler (default: 2)")
-@click.option("--scheduler-eta-min", default=None, type=float, help="Minimum learning rate for cosine/cosine_restarts schedulers (default: 0.0)")
-@click.option("--scheduler-patience", default=None, type=int, help="Patience for plateau scheduler (epochs to wait before reducing LR, default: 5)")
+@click.option(
+    "--scheduler-t0",
+    default=None,
+    type=int,
+    help="Initial restart period for cosine_restarts scheduler (default: num_training_steps // 4)",
+)
+@click.option(
+    "--scheduler-t-mult", default=None, type=int, help="Restart period multiplier for cosine_restarts scheduler (default: 2)"
+)
+@click.option(
+    "--scheduler-eta-min",
+    default=None,
+    type=float,
+    help="Minimum learning rate for cosine/cosine_restarts schedulers (default: 0.0)",
+)
+@click.option(
+    "--scheduler-patience",
+    default=None,
+    type=int,
+    help="Patience for plateau scheduler (epochs to wait before reducing LR, default: 5)",
+)
 @click.option("--scheduler-factor", default=None, type=float, help="LR reduction factor for plateau scheduler (default: 0.3)")
 @click.option("--scheduler-min-lr", default=None, type=float, help="Minimum learning rate for plateau scheduler (default: 0.0)")
 @click.option(
@@ -207,16 +249,31 @@ def cli():
     help="Mixed precision training mode (fp16, bf16, or none)",
 )
 @click.option("--compile-model", is_flag=True, help="Compile model with torch.compile() for optimization (PyTorch 2.0+)")
-@click.option("--gradient-checkpointing/--no-gradient-checkpointing", default=True, help="Use gradient checkpointing to reduce memory (default: enabled, use --no-gradient-checkpointing to disable)")
+@click.option(
+    "--gradient-checkpointing/--no-gradient-checkpointing",
+    default=True,
+    help="Use gradient checkpointing to reduce memory (default: enabled, use --no-gradient-checkpointing to disable)",
+)
 @click.option(
     "--attn-implementation",
     default="mem_efficient",
     type=click.Choice(["sdpa", "flash", "mem_efficient", "math"]),
     help="Attention implementation: mem_efficient (default), sdpa (auto-select), flash (Flash Attention), or math",
 )
-@click.option("--asv-chunk-size", default=256, type=int, help="Process ASVs in chunks to reduce memory (default: 256, use 0 to disable)")
-@click.option("--normalize-targets", is_flag=True, help="Normalize target and count values to [0, 1] range during training (recommended for regression tasks)")
-@click.option("--loss-type", type=click.Choice(["mse", "mae", "huber"]), default="huber", help="Loss function for regression targets: mse, mae, or huber (default)")
+@click.option(
+    "--asv-chunk-size", default=256, type=int, help="Process ASVs in chunks to reduce memory (default: 256, use 0 to disable)"
+)
+@click.option(
+    "--normalize-targets",
+    is_flag=True,
+    help="Normalize target and count values to [0, 1] range during training (recommended for regression tasks)",
+)
+@click.option(
+    "--loss-type",
+    type=click.Choice(["mse", "mae", "huber"]),
+    default="huber",
+    help="Loss function for regression targets: mse, mae, or huber (default)",
+)
 def train(
     table: str,
     unifrac_matrix: str,
@@ -324,21 +381,21 @@ def train(
 
         logger.info("Loading pre-computed UniFrac distance matrix...")
         unifrac_loader = UniFracLoader()
-        
+
         # Get sample IDs from table for validation
         sample_ids = list(table_obj.ids(axis="sample"))
         logger.info(f"Total samples: {len(sample_ids)}")
-        
+
         # Determine matrix format based on metric
         matrix_format = "pairwise" if unifrac_metric == "unifrac" else "faith_pd"
-        
+
         # Load the matrix
         unifrac_distances = unifrac_loader.load_matrix(
             unifrac_matrix,
             sample_ids=sample_ids,
             matrix_format=matrix_format,
         )
-        
+
         # Get actual sample IDs from loaded matrix (may be filtered to intersection)
         if isinstance(unifrac_distances, DistanceMatrix):
             matrix_sample_ids = list(unifrac_distances.ids)
@@ -347,7 +404,7 @@ def train(
         else:
             # For numpy arrays, use original sample_ids (matrix should match)
             matrix_sample_ids = sample_ids
-        
+
         # Filter table to only include samples present in the matrix
         if set(matrix_sample_ids) != set(sample_ids):
             logger.info(
@@ -357,15 +414,17 @@ def train(
             # Filter table to only include samples in matrix
             table_obj = table_obj.filter(matrix_sample_ids, axis="sample", inplace=False)
             sample_ids = matrix_sample_ids
-        
+
         if unifrac_metric == "unifrac":
             unifrac_metric_name = "unweighted"
             encoder_type = "unifrac"
         else:
             unifrac_metric_name = "faith_pd"
             encoder_type = "faith_pd"
-        
-        logger.info(f"Loaded UniFrac matrix: {type(unifrac_distances).__name__}, shape: {getattr(unifrac_distances, 'shape', 'N/A')}")
+
+        logger.info(
+            f"Loaded UniFrac matrix: {type(unifrac_distances).__name__}, shape: {getattr(unifrac_distances, 'shape', 'N/A')}"
+        )
 
         logger.info("Splitting data...")
         train_ids, val_ids = train_test_split(sample_ids, test_size=test_size, random_state=seed)
@@ -400,7 +459,7 @@ def train(
                 val_indices = [sample_ids.index(sid) for sid in val_ids]
                 train_distance_matrix = unifrac_distances[train_indices]
                 val_distance_matrix = unifrac_distances[val_indices]
-        
+
         reference_sample_ids = None
 
         logger.info("Creating datasets...")
@@ -578,9 +637,13 @@ def train(
                 scheduler_kwargs["factor"] = scheduler_factor
             if scheduler_min_lr is not None:
                 scheduler_kwargs["min_lr"] = scheduler_min_lr
-        
+
         scheduler_obj = create_scheduler(
-            optimizer_obj, scheduler_type=scheduler, num_warmup_steps=warmup_steps, num_training_steps=num_training_steps, **scheduler_kwargs
+            optimizer_obj,
+            scheduler_type=scheduler,
+            num_warmup_steps=warmup_steps,
+            num_training_steps=num_training_steps,
+            **scheduler_kwargs,
         )
 
         # Normalize mixed_precision: "none" -> None
@@ -620,7 +683,7 @@ def train(
         )
 
         logger.info("Training completed")
-        best_val_loss = min(history['val_loss']) if history['val_loss'] else float('inf')
+        best_val_loss = min(history["val_loss"]) if history["val_loss"] else float("inf")
         logger.info(f"Best validation loss: {best_val_loss}")
 
         final_model_path = output_path / "final_model.pt"
@@ -634,7 +697,12 @@ def train(
 
 @cli.command()
 @click.option("--table", required=True, type=click.Path(exists=True), help="Path to BIOM table file")
-@click.option("--unifrac-matrix", required=True, type=click.Path(exists=True), help="Path to pre-computed UniFrac distance matrix (.npy, .h5, or .csv format)")
+@click.option(
+    "--unifrac-matrix",
+    required=True,
+    type=click.Path(exists=True),
+    help="Path to pre-computed UniFrac distance matrix (.npy, .h5, or .csv format)",
+)
 @click.option("--output-dir", required=True, type=click.Path(), help="Output directory for checkpoints and logs")
 @click.option("--epochs", default=100, type=int, help="Number of training epochs")
 @click.option("--batch-size", default=8, type=int, help="Batch size")
@@ -649,14 +717,34 @@ def train(
 @click.option("--token-limit", default=1024, type=int, help="Maximum ASVs per sample")
 @click.option("--rarefy-depth", default=5000, type=int, help="Rarefaction depth")
 @click.option("--test-size", default=0.2, type=float, help="Validation split size")
-@click.option("--unifrac-metric", default="unifrac", type=click.Choice(["unifrac", "faith_pd"]), help="UniFrac metric type (unifrac for pairwise, faith_pd for per-sample values)")
+@click.option(
+    "--unifrac-metric",
+    default="unifrac",
+    type=click.Choice(["unifrac", "faith_pd"]),
+    help="UniFrac metric type (unifrac for pairwise, faith_pd for per-sample values)",
+)
 @click.option("--penalty", default=1.0, type=float, help="Weight for base/UniFrac loss")
 @click.option("--nuc-penalty", default=1.0, type=float, help="Weight for nucleotide loss")
-@click.option("--nuc-mask-ratio", default=0.15, type=float, help="Fraction of nucleotide positions to mask for MAE training (0.0 to disable, default: 0.15)")
-@click.option("--nuc-mask-strategy", default="random", type=click.Choice(["random", "span"]), help="Masking strategy: random (default) or span")
+@click.option(
+    "--nuc-mask-ratio",
+    default=0.15,
+    type=float,
+    help="Fraction of nucleotide positions to mask for MAE training (0.0 to disable, default: 0.15)",
+)
+@click.option(
+    "--nuc-mask-strategy",
+    default="random",
+    type=click.Choice(["random", "span"]),
+    help="Masking strategy: random (default) or span",
+)
 @click.option("--device", default="cuda", type=click.Choice(["cuda", "cpu"]), help="Device to use")
 @click.option("--seed", default=None, type=int, help="Random seed for reproducibility")
-@click.option("--num-workers", default=4, type=int, help="Number of DataLoader worker processes (default: 4, use 0 to disable multiprocessing)")
+@click.option(
+    "--num-workers",
+    default=4,
+    type=int,
+    help="Number of DataLoader worker processes (default: 4, use 0 to disable multiprocessing)",
+)
 @click.option("--resume-from", default=None, type=click.Path(exists=True), help="Path to checkpoint to resume from")
 @click.option("--gradient-accumulation-steps", default=1, type=int, help="Number of gradient accumulation steps")
 @click.option("--use-expandable-segments", is_flag=True, help="Enable PyTorch CUDA expandable segments for memory optimization")
@@ -668,10 +756,27 @@ def train(
     type=click.Choice(["warmup_cosine", "cosine", "cosine_restarts", "plateau", "onecycle"]),
     help="Learning rate scheduler type (warmup_cosine: warmup+cosine decay, cosine: cosine annealing, cosine_restarts: cosine with warm restarts, plateau: reduce on plateau, onecycle: one cycle policy)",
 )
-@click.option("--scheduler-t0", default=None, type=int, help="Initial restart period for cosine_restarts scheduler (default: num_training_steps // 4)")
-@click.option("--scheduler-t-mult", default=None, type=int, help="Restart period multiplier for cosine_restarts scheduler (default: 2)")
-@click.option("--scheduler-eta-min", default=None, type=float, help="Minimum learning rate for cosine/cosine_restarts schedulers (default: 0.0)")
-@click.option("--scheduler-patience", default=None, type=int, help="Patience for plateau scheduler (epochs to wait before reducing LR, default: 5)")
+@click.option(
+    "--scheduler-t0",
+    default=None,
+    type=int,
+    help="Initial restart period for cosine_restarts scheduler (default: num_training_steps // 4)",
+)
+@click.option(
+    "--scheduler-t-mult", default=None, type=int, help="Restart period multiplier for cosine_restarts scheduler (default: 2)"
+)
+@click.option(
+    "--scheduler-eta-min",
+    default=None,
+    type=float,
+    help="Minimum learning rate for cosine/cosine_restarts schedulers (default: 0.0)",
+)
+@click.option(
+    "--scheduler-patience",
+    default=None,
+    type=int,
+    help="Patience for plateau scheduler (epochs to wait before reducing LR, default: 5)",
+)
 @click.option("--scheduler-factor", default=None, type=float, help="LR reduction factor for plateau scheduler (default: 0.3)")
 @click.option("--scheduler-min-lr", default=None, type=float, help="Minimum learning rate for plateau scheduler (default: 0.0)")
 @click.option(
@@ -681,7 +786,11 @@ def train(
     help="Mixed precision training mode (fp16, bf16, or none)",
 )
 @click.option("--compile-model", is_flag=True, help="Compile model with torch.compile() for optimization (PyTorch 2.0+)")
-@click.option("--gradient-checkpointing/--no-gradient-checkpointing", default=True, help="Use gradient checkpointing to reduce memory (default: enabled, use --no-gradient-checkpointing to disable)")
+@click.option(
+    "--gradient-checkpointing/--no-gradient-checkpointing",
+    default=True,
+    help="Use gradient checkpointing to reduce memory (default: enabled, use --no-gradient-checkpointing to disable)",
+)
 @click.option(
     "--attn-implementation",
     default="mem_efficient",
@@ -768,21 +877,21 @@ def pretrain(
 
         logger.info("Loading pre-computed UniFrac distance matrix...")
         unifrac_loader = UniFracLoader()
-        
+
         # Get sample IDs from table for validation
         sample_ids = list(table_obj.ids(axis="sample"))
         logger.info(f"Total samples: {len(sample_ids)}")
-        
+
         # Determine matrix format based on metric
         matrix_format = "pairwise" if unifrac_metric == "unifrac" else "faith_pd"
-        
+
         # Load the matrix
         unifrac_distances = unifrac_loader.load_matrix(
             unifrac_matrix,
             sample_ids=sample_ids,
             matrix_format=matrix_format,
         )
-        
+
         if unifrac_metric == "unifrac":
             unifrac_metric_name = "unweighted"
             encoder_type = "unifrac"
@@ -791,8 +900,10 @@ def pretrain(
             unifrac_metric_name = "faith_pd"
             encoder_type = "faith_pd"
             base_output_dim = 1
-        
-        logger.info(f"Loaded UniFrac matrix: {type(unifrac_distances).__name__}, shape: {getattr(unifrac_distances, 'shape', 'N/A')}")
+
+        logger.info(
+            f"Loaded UniFrac matrix: {type(unifrac_distances).__name__}, shape: {getattr(unifrac_distances, 'shape', 'N/A')}"
+        )
 
         logger.info("Splitting data...")
         train_ids, val_ids = train_test_split(sample_ids, test_size=test_size, random_state=seed)
@@ -824,7 +935,7 @@ def pretrain(
                 val_indices = [sample_ids.index(sid) for sid in val_ids]
                 train_distance_matrix = unifrac_distances[train_indices]
                 val_distance_matrix = unifrac_distances[val_indices]
-        
+
         reference_sample_ids = None
 
         logger.info("Creating datasets...")
@@ -955,9 +1066,13 @@ def pretrain(
                 scheduler_kwargs["factor"] = scheduler_factor
             if scheduler_min_lr is not None:
                 scheduler_kwargs["min_lr"] = scheduler_min_lr
-        
+
         scheduler_obj = create_scheduler(
-            optimizer_obj, scheduler_type=scheduler, num_warmup_steps=warmup_steps, num_training_steps=num_training_steps, **scheduler_kwargs
+            optimizer_obj,
+            scheduler_type=scheduler,
+            num_warmup_steps=warmup_steps,
+            num_training_steps=num_training_steps,
+            **scheduler_kwargs,
         )
 
         # Normalize mixed_precision: "none" -> None
@@ -995,7 +1110,7 @@ def pretrain(
         )
 
         logger.info("Pre-training completed")
-        best_val_loss = min(history['val_loss']) if history['val_loss'] else float('inf')
+        best_val_loss = min(history["val_loss"]) if history["val_loss"] else float("inf")
         logger.info(f"Best validation loss: {best_val_loss}")
 
         final_model_path = output_path / "pretrained_encoder.pt"
