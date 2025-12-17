@@ -1,7 +1,61 @@
 # Outstanding Tickets
 
 **Last Updated:** 2025-12-17
-**Status:** Phases 8-11 Complete (see `ARCHIVED_TICKETS.md`)
+**Status:** Phases 8-11 Complete (see `ARCHIVED_TICKETS.md`), PYT-20.1 Complete (MAE for Nucleotide Prediction)
+
+---
+
+## Phase 20: Self-Supervised Learning Improvements (NEW - HIGH PRIORITY)
+
+### PYT-20.1: Masked Autoencoder for Nucleotide Prediction
+**Priority:** HIGH | **Effort:** 4-6 hours | **Status:** Complete
+
+Replace current autoencoding nucleotide loss with masked autoencoding (MAE) to provide meaningful gradient signal throughout training.
+
+**Problem:**
+Current nucleotide loss saturates within 1-2 epochs (NL: 0.7319 → 0.0002) because autoencoding (predict all tokens from full context) is trivial. After saturation, the auxiliary task provides zero useful gradient signal - only UniFrac loss drives learning.
+
+**Solution:**
+Implement masked prediction similar to BERT's MLM objective:
+1. Randomly mask 15-30% of nucleotide positions (excluding padding/START)
+2. Replace masked positions with a MASK token
+3. Only compute loss on masked positions
+4. Forces model to learn true contextual sequence patterns
+
+**Implementation Details:**
+```python
+# Masking strategy options:
+# 1. Random masking (15-30% of valid positions)
+# 2. Span masking (contiguous 3-5bp chunks) - harder, forces longer-range deps
+# 3. Hybrid approach
+
+# Vocab change: Add MASK token (id=6) to vocab_size=7
+# Or reuse padding token for masking (simpler, no vocab change)
+```
+
+**Acceptance Criteria:**
+- [x] Add `mask_ratio` parameter to ASVEncoder (default: 0.15)
+- [x] Add `mask_strategy` parameter ('random', 'span', default: 'random')
+- [x] Implement masking logic in ASVEncoder.forward() during training
+- [x] Only compute nucleotide loss on masked positions
+- [x] Add CLI flags: `--nuc-mask-ratio`, `--nuc-mask-strategy`
+- [x] Verify nucleotide loss no longer saturates (should remain > 0.1 throughout training)
+- [x] Update tests for new masking behavior
+- [x] Add TensorBoard visualization for nucleotide metrics (train/val overlay)
+- [x] Add nucleotide accuracy metric
+
+**Expected Impact:**
+- Continuous gradient signal from nucleotide task throughout training
+- Better sequence representations (must learn actual context, not position mapping)
+- Improved regularization effect
+- Potentially better final UniFrac prediction performance
+
+**Files:** `asv_encoder.py`, `sample_sequence_encoder.py`, `sequence_encoder.py`, `losses.py`, `cli.py`, `trainer.py`, `tests/test_asv_encoder.py`
+
+**References:**
+- BERT: 15% masking with 80/10/10 mask/random/keep strategy
+- DNA-BERT: Similar approach for genomic sequences
+- Observation: Current NL saturates epoch 1→2: 0.7319 → 0.0002
 
 ---
 
@@ -160,8 +214,10 @@ Cache tokenized sequences and expensive computations.
 
 | Phase | Tickets | Est. Hours | Priority |
 |-------|---------|------------|----------|
-| 18 (Memory) | 6 | 18-26 | **HIGH** |
+| 20 (SSL) | 0 (1 complete) | - | **DONE** |
+| 18 (Memory) | 5 | 16-23 | **HIGH** |
+| 19 (Tests) | 1 | 1-2 | HIGH |
 | 10 | 1 | 8-12 | MEDIUM |
 | 12 | 3 | 19-26 | LOW |
 | 13-17 | 13 | 53-73 | LOW |
-| **Total** | **23** | **98-137** |
+| **Total** | **23** | **97-136** |
