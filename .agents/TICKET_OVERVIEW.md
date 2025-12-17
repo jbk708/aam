@@ -5,20 +5,16 @@
 
 ## Quick Summary
 
-- **Total Outstanding Tickets:** 16 tickets
-- **Total Estimated Time:** ~105-135 hours
-- **Completed Phases:** Phase 8, Phase 9, Phase 10 (6/7 complete), Phase 11 (✅ All Complete)
+- **Total Outstanding Tickets:** 15 tickets
+- **Total Estimated Time:** ~99-129 hours
+- **Completed Phases:** Phase 8, Phase 9, Phase 10 (✅ All Complete), Phase 11 (✅ All Complete)
 
 ## Outstanding Tickets by Priority
 
-### MEDIUM Priority (2 tickets)
+### MEDIUM Priority (1 ticket)
 
 **Phase 10: Performance Optimizations**
-1. **PYT-10.5**: Optimize Attention Computation (4-6 hours)
-   - Use `scaled_dot_product_attention` for better performance
-   - Medium impact, medium-high effort
-
-2. **PYT-10.6**: Implement Multi-GPU Training (DDP) (8-12 hours)
+1. **PYT-10.6**: Implement Multi-GPU Training (DDP) (8-12 hours)
    - Linear scaling with number of GPUs
    - Very high impact, high effort (requires hardware)
 
@@ -53,6 +49,19 @@
 - PYT-17.4: Create Docker Containerization (2-3 hours)
 
 ## Recently Completed
+
+### Phase 10: Performance Optimizations (✅ All Complete)
+- ✅ **PYT-10.1**: Implement Mixed Precision Training (FP16/BF16)
+- ✅ **PYT-10.2**: Implement Model Compilation (`torch.compile()`)
+- ✅ **PYT-10.2.1**: Fix Dependencies to Enable Model Compilation
+- ✅ **PYT-10.3**: Optimize Data Loading
+- ✅ **PYT-10.3.1**: Optimize Tree Loading with Pre-pruning
+- ✅ **PYT-10.4**: Implement Gradient Checkpointing
+- ✅ **PYT-10.5**: Optimize Attention Computation
+  - Added `attn_implementation` parameter (sdpa, flash, mem_efficient, math)
+  - Created `sdpa_kernel_context()` for explicit SDPA backend control
+  - Added `--attn-implementation` CLI option
+  - Comprehensive tests for numerical equivalence
 
 ### Phase 11: Critical Fixes (✅ All Complete)
 - ✅ **PYT-11.1**: Fix UniFrac Distance Predictions Exceeding 1.0
@@ -94,32 +103,22 @@
   - Added MAE to validation prediction plots
   - TensorBoard logging for prediction/count/unifrac plots
 
-### Phase 10: Performance Optimizations (6/7 Complete)
-- ✅ **PYT-10.1**: Implement Mixed Precision Training (FP16/BF16)
-- ✅ **PYT-10.2**: Implement Model Compilation (`torch.compile()`)
-- ✅ **PYT-10.2.1**: Fix Dependencies to Enable Model Compilation
-- ✅ **PYT-10.3**: Optimize Data Loading
-- ✅ **PYT-10.3.1**: Optimize Tree Loading with Pre-pruning
-- ✅ **PYT-10.4**: Implement Gradient Checkpointing
-
 ## Recommended Next Steps
 
 ### Short-Term (Next 2-3 Sprints)
-1. **PYT-10.5**: Optimize Attention Computation
-2. **PYT-12.3**: Implement Caching Mechanisms - Speed up repeated computations
+1. **PYT-12.3**: Implement Caching Mechanisms - Speed up repeated computations
+2. **PYT-10.6**: Implement Multi-GPU Training (if hardware available)
 
 ### Medium-Term (Future Sprints)
-3. **PYT-10.6**: Implement Multi-GPU Training (if hardware available)
-4. **PYT-13.1**: Add Attention Visualization Tools - Improve interpretability
-5. **PYT-15.1**: Integrate Experiment Tracking - Better experiment management
+3. **PYT-13.1**: Add Attention Visualization Tools - Improve interpretability
+4. **PYT-15.1**: Integrate Experiment Tracking - Better experiment management
 
 ### Long-Term (Research/Exploration)
-6. **PYT-12.1**: Implement FSDP - For very large models
-7. **PYT-17.1-17.4**: Documentation and Deployment - Production readiness
+5. **PYT-12.1**: Implement FSDP - For very large models
+6. **PYT-17.1-17.4**: Documentation and Deployment - Production readiness
 
 ## Notes
 
-- All Phase 8, Phase 9, and Phase 11 tickets are complete
-- Phase 10 performance optimizations nearly complete (6/7 done)
+- All Phase 8, Phase 9, Phase 10, and Phase 11 tickets are complete
 - Phases 12-17 are enhancements from `_design_plan/FUTURE_WORK.md`
 - See `.agents/PYTORCH_PORTING_TICKETS.md` for detailed ticket descriptions
