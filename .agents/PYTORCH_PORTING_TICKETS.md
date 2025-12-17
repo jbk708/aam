@@ -46,8 +46,9 @@ Update defaults: `asv_chunk_size=256`, `gradient_checkpointing=True`, `attn_impl
 - [x] Add `--asv-chunk-size` to train command
 - [x] Document memory impact in help text
 - [x] Verify no accuracy regression (tests pass)
+- [x] Add model summary logging at training start
 
-**Files:** `cli.py`, `sequence_predictor.py`
+**Files:** `cli.py`, `sequence_predictor.py`, `model_summary.py`
 
 ---
 
