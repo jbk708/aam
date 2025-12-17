@@ -19,6 +19,7 @@ from aam.models.sequence_predictor import SequencePredictor
 from aam.models.sequence_encoder import SequenceEncoder
 from aam.training.losses import MultiTaskLoss
 from aam.training.trainer import Trainer, create_optimizer, create_scheduler, load_pretrained_encoder
+from aam.models.model_summary import log_model_summary
 
 
 def setup_logging(output_dir: Path, log_level: str = "INFO"):
@@ -527,6 +528,8 @@ def train(
             asv_chunk_size=effective_asv_chunk_size,
         )
 
+        log_model_summary(model, logger)
+
         if pretrained_encoder is not None:
             logger.info(f"Loading pretrained encoder from {pretrained_encoder}")
             load_pretrained_encoder(pretrained_encoder, model, strict=False)
@@ -909,6 +912,8 @@ def pretrain(
             gradient_checkpointing=gradient_checkpointing,
             attn_implementation=attn_implementation,
         )
+
+        log_model_summary(model, logger)
 
         loss_fn = MultiTaskLoss(
             penalty=penalty,
