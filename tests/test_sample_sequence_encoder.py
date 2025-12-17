@@ -115,9 +115,11 @@ class TestSampleSequenceEncoder:
 
     def test_forward_shape_with_nucleotides(self, sample_encoder_with_nucleotides, sample_tokens):
         """Test forward pass output shape with nucleotide predictions."""
-        embeddings, nucleotides = sample_encoder_with_nucleotides(sample_tokens, return_nucleotides=True)
+        embeddings, nucleotides, mask_indices = sample_encoder_with_nucleotides(sample_tokens, return_nucleotides=True)
         assert embeddings.shape == (2, 10, 64)
         assert nucleotides.shape == (2, 10, 50, 6)
+        # mask_indices is None when mask_ratio=0 (default in fixture)
+        assert mask_indices is None
 
     def test_forward_different_batch_sizes(self, sample_encoder):
         """Test forward pass with different batch sizes."""
@@ -171,9 +173,11 @@ class TestSampleSequenceEncoder:
     def test_forward_training_mode_with_nucleotides(self, sample_encoder_with_nucleotides, sample_tokens):
         """Test forward pass in training mode with nucleotide predictions."""
         sample_encoder_with_nucleotides.train()
-        embeddings, nucleotides = sample_encoder_with_nucleotides(sample_tokens, return_nucleotides=True)
+        embeddings, nucleotides, mask_indices = sample_encoder_with_nucleotides(sample_tokens, return_nucleotides=True)
         assert embeddings.shape == (2, 10, 64)
         assert nucleotides.shape == (2, 10, 50, 6)
+        # mask_indices is None when mask_ratio=0 (default in fixture)
+        assert mask_indices is None
 
     def test_forward_training_mode_without_nucleotides(self, sample_encoder_with_nucleotides, sample_tokens):
         """Test forward pass in training mode without requesting nucleotide predictions."""
@@ -201,7 +205,7 @@ class TestSampleSequenceEncoder:
 
     def test_gradients_with_nucleotides(self, sample_encoder_with_nucleotides, sample_tokens):
         """Test that gradients flow correctly with nucleotide predictions."""
-        embeddings, nucleotides = sample_encoder_with_nucleotides(sample_tokens, return_nucleotides=True)
+        embeddings, nucleotides, mask_indices = sample_encoder_with_nucleotides(sample_tokens, return_nucleotides=True)
         loss = embeddings.sum() + nucleotides.sum()
         loss.backward()
 

@@ -494,20 +494,33 @@ class MultiTaskLoss(nn.Module):
         nuc_true_flat = nuc_true.view(-1)
         mask_flat = mask.view(-1)
 
-        valid_indices = mask_flat.bool()
-        num_valid = valid_indices.sum().item()
+        # Determine which positions to compute loss on
+        if masked_indices is not None:
+            # MAE mode: compute loss only on positions that were masked during training
+            # AND are valid (not padding)
+            masked_indices_flat = masked_indices.view(-1)
+            compute_loss_indices = masked_indices_flat & mask_flat.bool()
+        else:
+            # Standard mode: compute loss on all valid positions
+            compute_loss_indices = mask_flat.bool()
 
-        if num_valid == 0:
-            print(f"WARNING: No valid positions in mask for nucleotide loss", file=sys.stderr, flush=True)
-            return torch.zeros_like(nuc_pred.sum(), requires_grad=True)
+        num_to_compute = compute_loss_indices.sum().item()
 
-        valid_pred = nuc_pred_flat[valid_indices]
-        valid_true = nuc_true_flat[valid_indices]
+        if num_to_compute == 0:
+            if masked_indices is not None:
+                # MAE mode with no masked positions - return zero loss
+                return torch.zeros(1, device=nuc_pred.device, dtype=nuc_pred.dtype, requires_grad=True).squeeze()
+            else:
+                print(f"WARNING: No valid positions in mask for nucleotide loss", file=sys.stderr, flush=True)
+                return torch.zeros_like(nuc_pred.sum(), requires_grad=True)
+
+        valid_pred = nuc_pred_flat[compute_loss_indices]
+        valid_true = nuc_true_flat[compute_loss_indices]
 
         # Final check before cross_entropy
         if torch.any(torch.isnan(valid_pred)):
             print(f"ERROR: NaN in valid_pred after masking", file=sys.stderr, flush=True)
-            print(f"valid_pred shape={valid_pred.shape}, num_valid={num_valid}", file=sys.stderr, flush=True)
+            print(f"valid_pred shape={valid_pred.shape}, num_to_compute={num_to_compute}", file=sys.stderr, flush=True)
             raise ValueError(f"NaN values found in valid_pred after masking")
 
         loss = nn.functional.cross_entropy(valid_pred, valid_true)

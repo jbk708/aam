@@ -104,9 +104,56 @@ class ASVEncoder(nn.Module):
             - masked_tokens: Tokens with some positions replaced by MASK_TOKEN
             - mask_indices: Boolean mask indicating which positions were masked
         """
-        # Stub implementation - will be filled in during implementation phase
+        masked_tokens = tokens.clone()
         mask_indices = torch.zeros_like(tokens, dtype=torch.bool)
-        return tokens, mask_indices
+
+        # Identify valid positions for masking (nucleotides only: 1-4)
+        valid_for_masking = (tokens >= 1) & (tokens <= 4)
+
+        if self.mask_strategy == "random":
+            # Random masking: independently mask each valid position with probability mask_ratio
+            random_probs = torch.rand_like(tokens, dtype=torch.float)
+            mask_indices = valid_for_masking & (random_probs < self.mask_ratio)
+        elif self.mask_strategy == "span":
+            # Span masking: mask contiguous spans of 3-5 tokens
+            # This is more challenging and forces longer-range dependencies
+            batch_seq_size, seq_len = tokens.shape
+            span_length_min = 3
+            span_length_max = 5
+
+            for i in range(batch_seq_size):
+                valid_positions = torch.where(valid_for_masking[i])[0]
+                if len(valid_positions) == 0:
+                    continue
+
+                num_valid = len(valid_positions)
+                num_to_mask = int(num_valid * self.mask_ratio)
+                num_masked = 0
+
+                # Keep selecting spans until we've masked enough positions
+                max_attempts = 100
+                attempt = 0
+                while num_masked < num_to_mask and attempt < max_attempts:
+                    attempt += 1
+                    # Random span length
+                    span_len = torch.randint(span_length_min, span_length_max + 1, (1,)).item()
+                    # Random start position from valid positions
+                    start_idx = torch.randint(0, max(1, len(valid_positions)), (1,)).item()
+                    start_pos = valid_positions[start_idx].item()
+
+                    # Mask the span
+                    for j in range(span_len):
+                        pos = start_pos + j
+                        if pos < seq_len and valid_for_masking[i, pos] and not mask_indices[i, pos]:
+                            mask_indices[i, pos] = True
+                            num_masked += 1
+                            if num_masked >= num_to_mask:
+                                break
+
+        # Apply masking: replace masked positions with MASK_TOKEN
+        masked_tokens[mask_indices] = self.MASK_TOKEN
+
+        return masked_tokens, mask_indices
 
     def forward(
         self, tokens: torch.Tensor, return_nucleotides: bool = False
@@ -130,40 +177,52 @@ class ASVEncoder(nn.Module):
 
         should_mask = self.training and self.mask_ratio > 0 and return_nucleotides
 
+        # Initialize mask_indices for return
+        all_mask_indices = None
+
         if self.asv_chunk_size is not None and num_asvs > self.asv_chunk_size:
             asv_embeddings_list = []
             nucleotide_predictions_list = []
-            
+            mask_indices_list = []
+
             for i in range(0, num_asvs, self.asv_chunk_size):
                 end_idx = min(i + self.asv_chunk_size, num_asvs)
                 chunk_tokens = tokens[:, i:end_idx, :]
                 chunk_num_asvs = chunk_tokens.size(1)
-                
+
                 tokens_flat = chunk_tokens.reshape(batch_size * chunk_num_asvs, seq_len)
+
+                # Apply masking if enabled (training mode with mask_ratio > 0)
+                chunk_mask_indices = None
+                if should_mask:
+                    tokens_flat, chunk_mask_indices_flat = self._apply_masking(tokens_flat)
+                    chunk_mask_indices = chunk_mask_indices_flat.reshape(batch_size, chunk_num_asvs, seq_len)
+                    mask_indices_list.append(chunk_mask_indices)
+
                 mask = (tokens_flat > 0).long()
-                
+
                 # Identify all-padding sequences (will cause NaN in transformer)
                 mask_sum = mask.sum(dim=-1)  # [batch_size * chunk_num_asvs]
                 all_padding = (mask_sum == 0)  # [batch_size * chunk_num_asvs]
-                
+
                 embeddings = self.token_embedding(tokens_flat)
                 embeddings = self.position_embedding(embeddings)
-                
+
                 # Handle all-padding sequences: skip transformer and set embeddings to zero
                 # This prevents NaN from being produced by the transformer
                 if all_padding.any():
                     # For sequences with valid positions, run transformer normally
                     # For all-padding sequences, set embeddings to zero (skip transformer)
                     valid_mask = ~all_padding  # [batch_size * chunk_num_asvs]
-                    
+
                     if valid_mask.any():
                         # Process valid sequences through transformer
                         valid_indices = torch.where(valid_mask)[0]
                         valid_embeddings = embeddings[valid_indices]
                         valid_mask_tensor = mask[valid_indices]
-                        
+
                         valid_transformed = self.transformer(valid_embeddings, mask=valid_mask_tensor)
-                        
+
                         # Combine: valid sequences get transformer output, all-padding get zeros
                         all_embeddings = torch.zeros_like(embeddings)
                         all_embeddings[valid_indices] = valid_transformed
@@ -174,29 +233,38 @@ class ASVEncoder(nn.Module):
                 else:
                     # No all-padding sequences, normal transformer processing
                     embeddings = self.transformer(embeddings, mask=mask)
-                
+
                 if self.predict_nucleotides and return_nucleotides:
                     nucleotide_logits = self.nucleotide_head(embeddings)
                     chunk_nuc_preds = nucleotide_logits.reshape(batch_size, chunk_num_asvs, seq_len, self.vocab_size)
                     nucleotide_predictions_list.append(chunk_nuc_preds)
                     del nucleotide_logits
-                
+
                 pooled_embeddings = self.attention_pooling(embeddings, mask=mask)
                 chunk_asv_embeddings = pooled_embeddings.reshape(batch_size, chunk_num_asvs, self.embedding_dim)
                 asv_embeddings_list.append(chunk_asv_embeddings)
-                
+
                 del embeddings, pooled_embeddings, tokens_flat, mask
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
-            
+
             asv_embeddings = torch.cat(asv_embeddings_list, dim=1)
-            
+
             if return_nucleotides and nucleotide_predictions_list:
                 nucleotide_predictions = torch.cat(nucleotide_predictions_list, dim=1)
             else:
                 nucleotide_predictions = None
+
+            if should_mask and mask_indices_list:
+                all_mask_indices = torch.cat(mask_indices_list, dim=1)
         else:
             tokens_flat = tokens.reshape(batch_size * num_asvs, seq_len)
+
+            # Apply masking if enabled (training mode with mask_ratio > 0)
+            if should_mask:
+                tokens_flat, mask_indices_flat = self._apply_masking(tokens_flat)
+                all_mask_indices = mask_indices_flat.reshape(batch_size, num_asvs, seq_len)
+
             mask = (tokens_flat > 0).long()
             
             # Identify all-padding sequences (will cause NaN in transformer)
@@ -242,8 +310,6 @@ class ASVEncoder(nn.Module):
         
         if return_nucleotides and nucleotide_predictions is not None:
             # Return mask_indices (None when not masking) for loss computation
-            # Stub: mask_indices will be populated during implementation
-            mask_indices = None
-            return asv_embeddings, nucleotide_predictions, mask_indices
+            return asv_embeddings, nucleotide_predictions, all_mask_indices
         else:
             return asv_embeddings

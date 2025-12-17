@@ -173,6 +173,8 @@ def cli():
 @click.option("--unifrac-metric", default="unifrac", type=click.Choice(["unifrac", "faith_pd"]), help="UniFrac metric type (unifrac for pairwise, faith_pd for per-sample values)")
 @click.option("--penalty", default=1.0, type=float, help="Weight for base/UniFrac loss")
 @click.option("--nuc-penalty", default=1.0, type=float, help="Weight for nucleotide loss")
+@click.option("--nuc-mask-ratio", default=0.15, type=float, help="Fraction of nucleotide positions to mask for MAE training (0.0 to disable, default: 0.15)")
+@click.option("--nuc-mask-strategy", default="random", type=click.Choice(["random", "span"]), help="Masking strategy: random (default) or span")
 @click.option("--class-weights", default=None, help="Class weights for classification (optional)")
 @click.option("--device", default="cuda", type=click.Choice(["cuda", "cpu"]), help="Device to use")
 @click.option("--seed", default=None, type=int, help="Random seed for reproducibility")
@@ -239,6 +241,8 @@ def train(
     unifrac_metric: str,
     penalty: float,
     nuc_penalty: float,
+    nuc_mask_ratio: float,
+    nuc_mask_strategy: str,
     class_weights: Optional[str],
     device: str,
     seed: Optional[int],
@@ -505,7 +509,7 @@ def train(
         effective_asv_chunk_size = asv_chunk_size if asv_chunk_size > 0 else None
         model = SequencePredictor(
             encoder_type=encoder_type,
-            vocab_size=6,
+            vocab_size=7,
             embedding_dim=embedding_dim,
             max_bp=max_bp,
             token_limit=token_limit,
@@ -526,6 +530,8 @@ def train(
             gradient_checkpointing=gradient_checkpointing,
             attn_implementation=attn_implementation,
             asv_chunk_size=effective_asv_chunk_size,
+            mask_ratio=nuc_mask_ratio,
+            mask_strategy=nuc_mask_strategy,
         )
 
         log_model_summary(model, logger)
@@ -646,6 +652,8 @@ def train(
 @click.option("--unifrac-metric", default="unifrac", type=click.Choice(["unifrac", "faith_pd"]), help="UniFrac metric type (unifrac for pairwise, faith_pd for per-sample values)")
 @click.option("--penalty", default=1.0, type=float, help="Weight for base/UniFrac loss")
 @click.option("--nuc-penalty", default=1.0, type=float, help="Weight for nucleotide loss")
+@click.option("--nuc-mask-ratio", default=0.15, type=float, help="Fraction of nucleotide positions to mask for MAE training (0.0 to disable, default: 0.15)")
+@click.option("--nuc-mask-strategy", default="random", type=click.Choice(["random", "span"]), help="Masking strategy: random (default) or span")
 @click.option("--device", default="cuda", type=click.Choice(["cuda", "cpu"]), help="Device to use")
 @click.option("--seed", default=None, type=int, help="Random seed for reproducibility")
 @click.option("--num-workers", default=4, type=int, help="Number of DataLoader worker processes (default: 4, use 0 to disable multiprocessing)")
@@ -703,6 +711,8 @@ def pretrain(
     unifrac_metric: str,
     penalty: float,
     nuc_penalty: float,
+    nuc_mask_ratio: float,
+    nuc_mask_strategy: str,
     device: str,
     seed: Optional[int],
     num_workers: int,
@@ -896,7 +906,7 @@ def pretrain(
         effective_asv_chunk_size = asv_chunk_size if asv_chunk_size > 0 else None
         model = SequenceEncoder(
             encoder_type=encoder_type,
-            vocab_size=6,
+            vocab_size=7,
             embedding_dim=embedding_dim,
             max_bp=max_bp,
             token_limit=token_limit,
@@ -910,6 +920,8 @@ def pretrain(
             predict_nucleotides=True,
             asv_chunk_size=effective_asv_chunk_size,
             gradient_checkpointing=gradient_checkpointing,
+            mask_ratio=nuc_mask_ratio,
+            mask_strategy=nuc_mask_strategy,
             attn_implementation=attn_implementation,
         )
 
