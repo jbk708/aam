@@ -2,7 +2,7 @@
 
 import torch
 import torch.nn as nn
-from typing import Optional
+from typing import Optional, Tuple, Union
 
 from aam.models.attention_pooling import AttentionPooling
 from aam.models.position_embedding import PositionEmbedding
@@ -12,9 +12,12 @@ from aam.models.transformer import TransformerEncoder
 class ASVEncoder(nn.Module):
     """Encoder that processes nucleotide sequences at the ASV level."""
 
+    MASK_TOKEN = 6
+    VALID_MASK_STRATEGIES = ("random", "span")
+
     def __init__(
         self,
-        vocab_size: int = 6,
+        vocab_size: int = 7,
         embedding_dim: int = 128,
         max_bp: int = 150,
         num_layers: int = 2,
@@ -26,11 +29,13 @@ class ASVEncoder(nn.Module):
         asv_chunk_size: Optional[int] = None,
         gradient_checkpointing: bool = False,
         attn_implementation: Optional[str] = "sdpa",
+        mask_ratio: float = 0.0,
+        mask_strategy: str = "random",
     ):
         """Initialize ASVEncoder.
 
         Args:
-            vocab_size: Vocabulary size (default: 6 for pad, A, C, G, T, START)
+            vocab_size: Vocabulary size (default: 7 for pad, A, C, G, T, START, MASK)
             embedding_dim: Embedding dimension
             max_bp: Maximum sequence length (base pairs)
             num_layers: Number of transformer layers
@@ -42,18 +47,28 @@ class ASVEncoder(nn.Module):
             asv_chunk_size: Process ASVs in chunks of this size (None = process all at once)
             gradient_checkpointing: Whether to use gradient checkpointing to save memory
             attn_implementation: Which SDPA backend to use ('sdpa', 'flash', 'mem_efficient', 'math')
+            mask_ratio: Fraction of nucleotide positions to mask for MAE training (0.0 = no masking)
+            mask_strategy: Masking strategy ('random' or 'span')
         """
         super().__init__()
-        
+
+        if mask_strategy not in self.VALID_MASK_STRATEGIES:
+            raise ValueError(
+                f"Invalid mask_strategy: {mask_strategy}. "
+                f"Must be one of: {self.VALID_MASK_STRATEGIES}"
+            )
+
         self.vocab_size = vocab_size
         self.embedding_dim = embedding_dim
         self.max_bp = max_bp
         self.predict_nucleotides = predict_nucleotides
         self.asv_chunk_size = asv_chunk_size
-        
+        self.mask_ratio = mask_ratio
+        self.mask_strategy = mask_strategy
+
         if intermediate_size is None:
             intermediate_size = 4 * embedding_dim
-        
+
         self.token_embedding = nn.Embedding(vocab_size, embedding_dim)
         self.position_embedding = PositionEmbedding(max_length=max_bp + 1, hidden_dim=embedding_dim)
         self.transformer = TransformerEncoder(
@@ -67,13 +82,35 @@ class ASVEncoder(nn.Module):
             attn_implementation=attn_implementation,
         )
         self.attention_pooling = AttentionPooling(hidden_dim=embedding_dim)
-        
+
         if predict_nucleotides:
             self.nucleotide_head = nn.Linear(embedding_dim, vocab_size)
 
+    def _apply_masking(
+        self, tokens: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Apply masking to tokens for masked autoencoder training.
+
+        Only masks actual nucleotide positions (tokens 1-4), excluding:
+        - Padding tokens (0)
+        - START tokens (5)
+        - Already masked tokens (6)
+
+        Args:
+            tokens: Input tokens [batch_size * num_asvs, seq_len]
+
+        Returns:
+            Tuple of:
+            - masked_tokens: Tokens with some positions replaced by MASK_TOKEN
+            - mask_indices: Boolean mask indicating which positions were masked
+        """
+        # Stub implementation - will be filled in during implementation phase
+        mask_indices = torch.zeros_like(tokens, dtype=torch.bool)
+        return tokens, mask_indices
+
     def forward(
         self, tokens: torch.Tensor, return_nucleotides: bool = False
-    ):
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]]:
         """Forward pass.
 
         Args:
@@ -82,13 +119,17 @@ class ASVEncoder(nn.Module):
 
         Returns:
             If return_nucleotides=False: ASV embeddings [batch_size, num_asvs, embedding_dim]
-            If return_nucleotides=True: Tuple of (embeddings, nucleotide_predictions)
+            If return_nucleotides=True: Tuple of (embeddings, nucleotide_predictions, mask_indices)
                 where nucleotide_predictions is [batch_size, num_asvs, seq_len, vocab_size]
+                and mask_indices is [batch_size, num_asvs, seq_len] boolean tensor (None if not masking)
         """
         batch_size, num_asvs, seq_len = tokens.shape
-        
+
         tokens = tokens.long()
-        
+        original_tokens = tokens.clone()
+
+        should_mask = self.training and self.mask_ratio > 0 and return_nucleotides
+
         if self.asv_chunk_size is not None and num_asvs > self.asv_chunk_size:
             asv_embeddings_list = []
             nucleotide_predictions_list = []
@@ -200,6 +241,9 @@ class ASVEncoder(nn.Module):
             asv_embeddings = pooled_embeddings.reshape(batch_size, num_asvs, self.embedding_dim)
         
         if return_nucleotides and nucleotide_predictions is not None:
-            return asv_embeddings, nucleotide_predictions
+            # Return mask_indices (None when not masking) for loss computation
+            # Stub: mask_indices will be populated during implementation
+            mask_indices = None
+            return asv_embeddings, nucleotide_predictions, mask_indices
         else:
             return asv_embeddings

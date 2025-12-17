@@ -8,6 +8,7 @@ class SequenceTokenizer:
     """Tokenize nucleotide sequences for model input."""
 
     START_TOKEN = 5
+    MASK_TOKEN = 6
 
     def __init__(self):
         """Initialize SequenceTokenizer."""

@@ -14,7 +14,7 @@ class SequenceEncoder(nn.Module):
 
     def __init__(
         self,
-        vocab_size: int = 6,
+        vocab_size: int = 7,
         embedding_dim: int = 128,
         max_bp: int = 150,
         token_limit: int = 1024,
@@ -39,11 +39,13 @@ class SequenceEncoder(nn.Module):
         asv_chunk_size: Optional[int] = None,
         gradient_checkpointing: bool = False,
         attn_implementation: Optional[str] = "sdpa",
+        mask_ratio: float = 0.0,
+        mask_strategy: str = "random",
     ):
         """Initialize SequenceEncoder.
 
         Args:
-            vocab_size: Vocabulary size (default: 6 for pad, A, C, G, T, START)
+            vocab_size: Vocabulary size (default: 7 for pad, A, C, G, T, START, MASK)
             embedding_dim: Embedding dimension
             max_bp: Maximum sequence length (base pairs)
             token_limit: Maximum number of ASVs per sample
@@ -68,14 +70,16 @@ class SequenceEncoder(nn.Module):
             asv_chunk_size: Process ASVs in chunks of this size to reduce memory (None = process all)
             gradient_checkpointing: Whether to use gradient checkpointing to save memory
             attn_implementation: Which SDPA backend to use ('sdpa', 'flash', 'mem_efficient', 'math')
+            mask_ratio: Fraction of nucleotide positions to mask for MAE training (0.0 = no masking)
+            mask_strategy: Masking strategy ('random' or 'span')
         """
         super().__init__()
-        
+
         self.embedding_dim = embedding_dim
         self.base_output_dim = base_output_dim if base_output_dim is not None else embedding_dim
         self.encoder_type = encoder_type
         self.predict_nucleotides = predict_nucleotides
-        
+
         self.sample_encoder = SampleSequenceEncoder(
             vocab_size=vocab_size,
             embedding_dim=embedding_dim,
@@ -95,6 +99,8 @@ class SequenceEncoder(nn.Module):
             asv_chunk_size=asv_chunk_size,
             gradient_checkpointing=gradient_checkpointing,
             attn_implementation=attn_implementation,
+            mask_ratio=mask_ratio,
+            mask_strategy=mask_strategy,
         )
         
         if encoder_intermediate_size is None:
@@ -148,21 +154,23 @@ class SequenceEncoder(nn.Module):
                 - 'base_prediction': [batch_size, base_output_dim] or [batch_size, embedding_dim]
                 - 'sample_embeddings': [batch_size, num_asvs, embedding_dim]
                 - 'nuc_predictions': [batch_size, num_asvs, seq_len, vocab_size] (if return_nucleotides=True)
+                - 'mask_indices': [batch_size, num_asvs, seq_len] boolean (if masking, else None)
             Or tuple if encoder_type='combined': (unifrac_pred, faith_pred, tax_pred)
         """
         asv_mask = (tokens.sum(dim=-1) > 0).long()
-        
+
         if self.predict_nucleotides and return_nucleotides:
-            sample_embeddings, nuc_predictions = self.sample_encoder(
+            sample_embeddings, nuc_predictions, mask_indices = self.sample_encoder(
                 tokens, return_nucleotides=True
             )
         else:
             sample_embeddings = self.sample_encoder(tokens, return_nucleotides=False)
             nuc_predictions = None
-        
+            mask_indices = None
+
         encoder_embeddings = self.encoder_transformer(sample_embeddings, mask=asv_mask)
         pooled_embeddings = self.attention_pooling(encoder_embeddings, mask=asv_mask)
-        
+
         if self.encoder_type == "combined":
             unifrac_pred = self.uni_ff(pooled_embeddings)
             # Use sigmoid activation for UniFrac predictions (bounded regression)
@@ -171,17 +179,18 @@ class SequenceEncoder(nn.Module):
             unifrac_pred = torch.sigmoid(unifrac_pred)
             faith_pred = self.faith_ff(pooled_embeddings)
             tax_pred = self.tax_ff(pooled_embeddings)
-            
+
             result = {
                 "unifrac_pred": unifrac_pred,
                 "faith_pred": faith_pred,
                 "tax_pred": tax_pred,
                 "sample_embeddings": sample_embeddings,
             }
-            
+
             if return_nucleotides and nuc_predictions is not None:
                 result["nuc_predictions"] = nuc_predictions
-            
+                result["mask_indices"] = mask_indices
+
             return result
         else:
             # For UniFrac, return embeddings directly (distances computed in loss function)
@@ -199,8 +208,9 @@ class SequenceEncoder(nn.Module):
                     "base_prediction": base_prediction,
                     "sample_embeddings": sample_embeddings,
                 }
-            
+
             if return_nucleotides and nuc_predictions is not None:
                 result["nuc_predictions"] = nuc_predictions
-            
+                result["mask_indices"] = mask_indices
+
             return result

@@ -441,13 +441,20 @@ class MultiTaskLoss(nn.Module):
         nuc_pred: torch.Tensor,
         nuc_true: torch.Tensor,
         mask: torch.Tensor,
+        masked_indices: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Compute masked CrossEntropy loss for nucleotide prediction.
+
+        When masked_indices is provided (MAE mode), loss is computed only on
+        positions that were masked during training. Otherwise, loss is computed
+        on all valid (non-padding) positions.
 
         Args:
             nuc_pred: Predicted nucleotides [batch_size, num_asvs, seq_len, vocab_size]
             nuc_true: True nucleotides [batch_size, num_asvs, seq_len]
             mask: Mask for valid positions [batch_size, num_asvs, seq_len] (1=valid, 0=padding)
+            masked_indices: Boolean mask indicating which positions were masked for MAE
+                          [batch_size, num_asvs, seq_len] (True=masked, compute loss here)
 
         Returns:
             Nucleotide loss scalar tensor
@@ -628,10 +635,13 @@ class MultiTaskLoss(nn.Module):
                     nuc_mask = (targets["tokens"] > 0).long()
                 else:
                     nuc_mask = torch.ones_like(nuc_true, dtype=torch.long)
+                # Get mask_indices for MAE mode (if provided)
+                masked_indices = outputs.get("mask_indices")
                 losses["nuc_loss"] = self.compute_nucleotide_loss(
                     outputs["nuc_predictions"],
                     nuc_true,
                     nuc_mask,
+                    masked_indices=masked_indices,
                 )
             else:
                 if reference_tensor is not None:

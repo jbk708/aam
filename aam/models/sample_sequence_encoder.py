@@ -2,7 +2,7 @@
 
 import torch
 import torch.nn as nn
-from typing import Optional
+from typing import Optional, Tuple, Union
 
 from aam.models.asv_encoder import ASVEncoder
 from aam.models.position_embedding import PositionEmbedding
@@ -14,7 +14,7 @@ class SampleSequenceEncoder(nn.Module):
 
     def __init__(
         self,
-        vocab_size: int = 6,
+        vocab_size: int = 7,
         embedding_dim: int = 128,
         max_bp: int = 150,
         token_limit: int = 1024,
@@ -32,11 +32,13 @@ class SampleSequenceEncoder(nn.Module):
         asv_chunk_size: Optional[int] = None,
         gradient_checkpointing: bool = False,
         attn_implementation: Optional[str] = "sdpa",
+        mask_ratio: float = 0.0,
+        mask_strategy: str = "random",
     ):
         """Initialize SampleSequenceEncoder.
 
         Args:
-            vocab_size: Vocabulary size (default: 6 for pad, A, C, G, T, START)
+            vocab_size: Vocabulary size (default: 7 for pad, A, C, G, T, START, MASK)
             embedding_dim: Embedding dimension
             max_bp: Maximum sequence length (base pairs)
             token_limit: Maximum number of ASVs per sample
@@ -54,13 +56,15 @@ class SampleSequenceEncoder(nn.Module):
             asv_chunk_size: Process ASVs in chunks of this size to reduce memory (None = process all)
             gradient_checkpointing: Whether to use gradient checkpointing to save memory
             attn_implementation: Which SDPA backend to use ('sdpa', 'flash', 'mem_efficient', 'math')
+            mask_ratio: Fraction of nucleotide positions to mask for MAE training (0.0 = no masking)
+            mask_strategy: Masking strategy ('random' or 'span')
         """
         super().__init__()
-        
+
         self.embedding_dim = embedding_dim
         self.token_limit = token_limit
         self.predict_nucleotides = predict_nucleotides
-        
+
         self.asv_encoder = ASVEncoder(
             vocab_size=vocab_size,
             embedding_dim=embedding_dim,
@@ -74,6 +78,8 @@ class SampleSequenceEncoder(nn.Module):
             asv_chunk_size=asv_chunk_size,
             gradient_checkpointing=gradient_checkpointing,
             attn_implementation=attn_implementation,
+            mask_ratio=mask_ratio,
+            mask_strategy=mask_strategy,
         )
         
         self.sample_position_embedding = PositionEmbedding(
@@ -97,7 +103,7 @@ class SampleSequenceEncoder(nn.Module):
 
     def forward(
         self, tokens: torch.Tensor, return_nucleotides: bool = False
-    ):
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]]:
         """Forward pass.
 
         Args:
@@ -106,19 +112,21 @@ class SampleSequenceEncoder(nn.Module):
 
         Returns:
             If return_nucleotides=False: Sample embeddings [batch_size, num_asvs, embedding_dim]
-            If return_nucleotides=True: Tuple of (sample_embeddings, nucleotide_predictions)
+            If return_nucleotides=True: Tuple of (sample_embeddings, nucleotide_predictions, mask_indices)
                 where nucleotide_predictions is [batch_size, num_asvs, seq_len, vocab_size]
+                and mask_indices is [batch_size, num_asvs, seq_len] boolean tensor (None if not masking)
         """
         asv_mask = (tokens.sum(dim=-1) > 0).long()
-        
+
         if self.predict_nucleotides and return_nucleotides:
-            asv_embeddings, nucleotide_predictions = self.asv_encoder(
+            asv_embeddings, nucleotide_predictions, mask_indices = self.asv_encoder(
                 tokens, return_nucleotides=True
             )
         else:
             asv_embeddings = self.asv_encoder(tokens, return_nucleotides=False)
             nucleotide_predictions = None
-        
+            mask_indices = None
+
         asv_mask_expanded = asv_mask.unsqueeze(-1).float()
         asv_embeddings = torch.where(
             torch.isnan(asv_embeddings),
@@ -126,18 +134,18 @@ class SampleSequenceEncoder(nn.Module):
             asv_embeddings
         )
         asv_embeddings = asv_embeddings * asv_mask_expanded
-        
+
         asv_embeddings = self.sample_position_embedding(asv_embeddings)
         sample_embeddings = self.sample_transformer(asv_embeddings, mask=asv_mask)
-        
+
         sample_embeddings = torch.where(
             torch.isnan(sample_embeddings),
             torch.zeros_like(sample_embeddings),
             sample_embeddings
         )
         sample_embeddings = sample_embeddings * asv_mask_expanded
-        
+
         if return_nucleotides and nucleotide_predictions is not None:
-            return sample_embeddings, nucleotide_predictions
+            return sample_embeddings, nucleotide_predictions, mask_indices
         else:
             return sample_embeddings
