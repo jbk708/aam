@@ -249,6 +249,7 @@ def cli():
     help="Mixed precision training mode (fp16, bf16, or none)",
 )
 @click.option("--compile-model", is_flag=True, help="Compile model with torch.compile() for optimization (PyTorch 2.0+)")
+@click.option("--tf32",default=True, is_flag=True, help="Enable TensorFloat32 for faster matrix multiplication on Ampere+ GPUs (RTX 30xx, A100, etc.)")
 @click.option(
     "--gradient-checkpointing/--no-gradient-checkpointing",
     default=True,
@@ -320,6 +321,7 @@ def train(
     scheduler_min_lr: Optional[float],
     mixed_precision: Optional[str],
     compile_model: bool,
+    tf32: bool,
     gradient_checkpointing: bool,
     attn_implementation: str,
     asv_chunk_size: int,
@@ -333,6 +335,11 @@ def train(
 
         setup_logging(output_path)
         logger = logging.getLogger(__name__)
+
+        if tf32:
+            torch.set_float32_matmul_precision("high")
+            logger.info("TensorFloat32 enabled for faster matrix multiplication")
+
         logger.info("Starting AAM training")
         logger.info(f"Arguments: table={table}, unifrac_matrix={unifrac_matrix}, metadata={metadata}")
 
@@ -786,6 +793,7 @@ def train(
     help="Mixed precision training mode (fp16, bf16, or none)",
 )
 @click.option("--compile-model", is_flag=True, help="Compile model with torch.compile() for optimization (PyTorch 2.0+)")
+@click.option("--tf32", is_flag=True, help="Enable TensorFloat32 for faster matrix multiplication on Ampere+ GPUs (RTX 30xx, A100, etc.)")
 @click.option(
     "--gradient-checkpointing/--no-gradient-checkpointing",
     default=True,
@@ -839,6 +847,7 @@ def pretrain(
     scheduler_min_lr: Optional[float],
     mixed_precision: Optional[str],
     compile_model: bool,
+    tf32: bool,
     gradient_checkpointing: bool,
     attn_implementation: str,
     asv_chunk_size: Optional[int],
@@ -850,6 +859,11 @@ def pretrain(
 
         setup_logging(output_path)
         logger = logging.getLogger(__name__)
+
+        if tf32:
+            torch.set_float32_matmul_precision("high")
+            logger.info("TensorFloat32 enabled for faster matrix multiplication")
+
         logger.info("Starting SequenceEncoder pre-training")
         logger.info(f"Arguments: table={table}, unifrac_matrix={unifrac_matrix}")
 
