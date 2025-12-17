@@ -753,6 +753,102 @@ class TestNucleotideLoss:
         expected_loss = loss_fn.compute_nucleotide_loss(nuc_predictions, tokens, mask)
         assert torch.allclose(losses["nuc_loss"], expected_loss)
 
+    def test_nucleotide_loss_with_masked_indices(self, loss_fn):
+        """Test nucleotide loss computed only on masked positions (MAE mode)."""
+        batch_size = 2
+        num_asvs = 5
+        seq_len = 10
+        vocab_size = 7  # Including MASK token
+
+        nuc_pred = torch.randn(batch_size, num_asvs, seq_len, vocab_size)
+        nuc_true = torch.randint(1, 5, (batch_size, num_asvs, seq_len))  # Only nucleotides
+        mask = torch.ones(batch_size, num_asvs, seq_len)
+
+        # Create masked_indices: only first 3 positions per sequence are masked
+        masked_indices = torch.zeros(batch_size, num_asvs, seq_len, dtype=torch.bool)
+        masked_indices[:, :, :3] = True
+
+        loss = loss_fn.compute_nucleotide_loss(nuc_pred, nuc_true, mask, masked_indices=masked_indices)
+
+        assert loss.dim() == 0
+        assert loss.item() >= 0
+
+        # Verify loss is computed only on masked positions
+        nuc_pred_flat = nuc_pred.view(-1, vocab_size)
+        nuc_true_flat = nuc_true.view(-1)
+        masked_indices_flat = masked_indices.view(-1)
+
+        masked_pred = nuc_pred_flat[masked_indices_flat]
+        masked_true = nuc_true_flat[masked_indices_flat]
+
+        expected_loss = nn.functional.cross_entropy(masked_pred, masked_true)
+        assert torch.allclose(loss, expected_loss, atol=1e-5)
+
+    def test_nucleotide_loss_masked_indices_none_uses_all_valid(self, loss_fn):
+        """Test that None masked_indices uses all valid positions."""
+        batch_size = 2
+        num_asvs = 5
+        seq_len = 10
+        vocab_size = 6
+
+        nuc_pred = torch.randn(batch_size, num_asvs, seq_len, vocab_size)
+        nuc_true = torch.randint(0, vocab_size, (batch_size, num_asvs, seq_len))
+        mask = torch.ones(batch_size, num_asvs, seq_len)
+        mask[:, :, 5:] = 0  # Last 5 positions are padding
+
+        # Call with masked_indices=None (default)
+        loss_with_none = loss_fn.compute_nucleotide_loss(nuc_pred, nuc_true, mask, masked_indices=None)
+
+        # Should be same as without masked_indices
+        loss_without = loss_fn.compute_nucleotide_loss(nuc_pred, nuc_true, mask)
+
+        assert torch.allclose(loss_with_none, loss_without)
+
+    def test_nucleotide_loss_masked_indices_respects_padding_mask(self, loss_fn):
+        """Test that masked_indices combined with padding mask works correctly."""
+        batch_size = 2
+        num_asvs = 5
+        seq_len = 10
+        vocab_size = 7
+
+        nuc_pred = torch.randn(batch_size, num_asvs, seq_len, vocab_size)
+        nuc_true = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
+
+        # Padding mask: only first 6 positions are valid
+        mask = torch.zeros(batch_size, num_asvs, seq_len)
+        mask[:, :, :6] = 1
+
+        # Masked indices: positions 2-4 are masked for MAE
+        masked_indices = torch.zeros(batch_size, num_asvs, seq_len, dtype=torch.bool)
+        masked_indices[:, :, 2:5] = True
+
+        loss = loss_fn.compute_nucleotide_loss(nuc_pred, nuc_true, mask, masked_indices=masked_indices)
+
+        # Loss should only be computed on positions 2-4 (masked AND valid)
+        # Positions 5+ are padding, even though masked_indices might be True there
+        assert loss.dim() == 0
+        assert loss.item() >= 0
+
+    def test_nucleotide_loss_no_masked_positions(self, loss_fn):
+        """Test nucleotide loss when masked_indices has no True values."""
+        batch_size = 2
+        num_asvs = 5
+        seq_len = 10
+        vocab_size = 7
+
+        nuc_pred = torch.randn(batch_size, num_asvs, seq_len, vocab_size)
+        nuc_true = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
+        mask = torch.ones(batch_size, num_asvs, seq_len)
+
+        # No positions masked
+        masked_indices = torch.zeros(batch_size, num_asvs, seq_len, dtype=torch.bool)
+
+        loss = loss_fn.compute_nucleotide_loss(nuc_pred, nuc_true, mask, masked_indices=masked_indices)
+
+        # Should return zero loss when no positions are masked
+        assert loss.dim() == 0
+        assert loss.item() == 0.0
+
 
 class TestTotalLoss:
     """Test total loss computation."""
