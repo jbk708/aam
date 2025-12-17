@@ -62,7 +62,7 @@ Implement masked prediction similar to BERT's MLM objective:
 ## Maintenance: Test Fixes
 
 ### PYT-19.1: Fix Failing Unit Tests
-**Priority:** HIGH | **Effort:** 1-2 hours | **Status:** Not Started
+**Priority:** HIGH | **Effort:** 1-2 hours | **Status:** Complete
 
 Fix 4 pre-existing failing unit tests discovered during PYT-18.1 implementation.
 
@@ -77,9 +77,9 @@ Fix 4 pre-existing failing unit tests discovered during PYT-18.1 implementation.
 - Test 4: Flaky assertion `std_val > 0.03` fails intermittently (got 0.024)
 
 **Acceptance Criteria:**
-- [ ] Fix mock to return proper pandas Index for metadata columns
-- [ ] Relax or fix flaky saturation test threshold
-- [ ] All 561 tests pass
+- [x] Fix mock to return proper pandas Index for metadata columns
+- [x] Relax or fix flaky saturation test threshold
+- [x] All 582 tests pass
 
 **Files:** `tests/test_cli.py`, `tests/test_losses.py`
 
