@@ -38,6 +38,7 @@ class SequenceEncoder(nn.Module):
         predict_nucleotides: bool = False,
         asv_chunk_size: Optional[int] = None,
         gradient_checkpointing: bool = False,
+        attn_implementation: Optional[str] = "sdpa",
     ):
         """Initialize SequenceEncoder.
 
@@ -66,6 +67,7 @@ class SequenceEncoder(nn.Module):
             predict_nucleotides: Whether to include nucleotide prediction head
             asv_chunk_size: Process ASVs in chunks of this size to reduce memory (None = process all)
             gradient_checkpointing: Whether to use gradient checkpointing to save memory
+            attn_implementation: Which SDPA backend to use ('sdpa', 'flash', 'mem_efficient', 'math')
         """
         super().__init__()
         
@@ -92,6 +94,7 @@ class SequenceEncoder(nn.Module):
             predict_nucleotides=predict_nucleotides,
             asv_chunk_size=asv_chunk_size,
             gradient_checkpointing=gradient_checkpointing,
+            attn_implementation=attn_implementation,
         )
         
         if encoder_intermediate_size is None:
@@ -105,6 +108,7 @@ class SequenceEncoder(nn.Module):
             dropout=encoder_dropout,
             activation=encoder_activation,
             gradient_checkpointing=gradient_checkpointing,
+            attn_implementation=attn_implementation,
         )
         
         self.attention_pooling = AttentionPooling(hidden_dim=embedding_dim)

@@ -25,6 +25,7 @@ class ASVEncoder(nn.Module):
         predict_nucleotides: bool = False,
         asv_chunk_size: Optional[int] = None,
         gradient_checkpointing: bool = False,
+        attn_implementation: Optional[str] = "sdpa",
     ):
         """Initialize ASVEncoder.
 
@@ -40,6 +41,7 @@ class ASVEncoder(nn.Module):
             predict_nucleotides: Whether to include nucleotide prediction head
             asv_chunk_size: Process ASVs in chunks of this size (None = process all at once)
             gradient_checkpointing: Whether to use gradient checkpointing to save memory
+            attn_implementation: Which SDPA backend to use ('sdpa', 'flash', 'mem_efficient', 'math')
         """
         super().__init__()
         
@@ -62,6 +64,7 @@ class ASVEncoder(nn.Module):
             dropout=dropout,
             activation=activation,
             gradient_checkpointing=gradient_checkpointing,
+            attn_implementation=attn_implementation,
         )
         self.attention_pooling = AttentionPooling(hidden_dim=embedding_dim)
         
