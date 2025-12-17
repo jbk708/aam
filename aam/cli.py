@@ -249,7 +249,9 @@ def cli():
     help="Mixed precision training mode (fp16, bf16, or none)",
 )
 @click.option("--compile-model", is_flag=True, help="Compile model with torch.compile() for optimization (PyTorch 2.0+)")
-@click.option("--tf32", is_flag=True, help="Enable TensorFloat32 for faster matrix multiplication on Ampere+ GPUs (RTX 30xx, A100, etc.)")
+@click.option(
+    "--tf32", is_flag=True, help="Enable TensorFloat32 for faster matrix multiplication on Ampere+ GPUs (RTX 30xx, A100, etc.)"
+)
 @click.option(
     "--gradient-checkpointing/--no-gradient-checkpointing",
     default=True,
@@ -793,7 +795,9 @@ def train(
     help="Mixed precision training mode (fp16, bf16, or none)",
 )
 @click.option("--compile-model", is_flag=True, help="Compile model with torch.compile() for optimization (PyTorch 2.0+)")
-@click.option("--tf32", is_flag=True, help="Enable TensorFloat32 for faster matrix multiplication on Ampere+ GPUs (RTX 30xx, A100, etc.)")
+@click.option(
+    "--tf32", is_flag=True, help="Enable TensorFloat32 for faster matrix multiplication on Ampere+ GPUs (RTX 30xx, A100, etc.)"
+)
 @click.option(
     "--gradient-checkpointing/--no-gradient-checkpointing",
     default=True,
