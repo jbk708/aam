@@ -205,6 +205,12 @@ def cli():
 )
 @click.option("--compile-model", is_flag=True, help="Compile model with torch.compile() for optimization (PyTorch 2.0+)")
 @click.option("--gradient-checkpointing", is_flag=True, help="Use gradient checkpointing to reduce memory usage (30-50% reduction, slower training)")
+@click.option(
+    "--attn-implementation",
+    default="sdpa",
+    type=click.Choice(["sdpa", "flash", "mem_efficient", "math"]),
+    help="Attention implementation: sdpa (auto-select best), flash (Flash Attention), mem_efficient, or math",
+)
 @click.option("--normalize-targets", is_flag=True, help="Normalize target and count values to [0, 1] range during training (recommended for regression tasks)")
 @click.option("--loss-type", type=click.Choice(["mse", "mae", "huber"]), default="huber", help="Loss function for regression targets: mse, mae, or huber (default)")
 def train(
@@ -252,6 +258,7 @@ def train(
     mixed_precision: Optional[str],
     compile_model: bool,
     gradient_checkpointing: bool,
+    attn_implementation: str,
     normalize_targets: bool,
     loss_type: str,
 ):
@@ -512,6 +519,7 @@ def train(
             freeze_base=freeze_base,
             predict_nucleotides=True,
             gradient_checkpointing=gradient_checkpointing,
+            attn_implementation=attn_implementation,
         )
 
         if pretrained_encoder is not None:
@@ -659,6 +667,12 @@ def train(
 @click.option("--compile-model", is_flag=True, help="Compile model with torch.compile() for optimization (PyTorch 2.0+)")
 @click.option("--gradient-checkpointing", is_flag=True, help="Use gradient checkpointing to reduce memory usage (30-50% reduction, slower training)")
 @click.option(
+    "--attn-implementation",
+    default="sdpa",
+    type=click.Choice(["sdpa", "flash", "mem_efficient", "math"]),
+    help="Attention implementation: sdpa (auto-select best), flash (Flash Attention), mem_efficient, or math",
+)
+@click.option(
     "--asv-chunk-size", default=None, type=int, help="Process ASVs in chunks of this size to reduce memory (None = process all)"
 )
 def pretrain(
@@ -699,6 +713,7 @@ def pretrain(
     mixed_precision: Optional[str],
     compile_model: bool,
     gradient_checkpointing: bool,
+    attn_implementation: str,
     asv_chunk_size: Optional[int],
 ):
     """Pre-train SequenceEncoder on UniFrac and nucleotide prediction (self-supervised)."""
@@ -885,6 +900,7 @@ def pretrain(
             predict_nucleotides=True,
             asv_chunk_size=asv_chunk_size,
             gradient_checkpointing=gradient_checkpointing,
+            attn_implementation=attn_implementation,
         )
 
         loss_fn = MultiTaskLoss(

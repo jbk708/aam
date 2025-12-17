@@ -55,6 +55,7 @@ class SequencePredictor(nn.Module):
         freeze_base: bool = False,
         predict_nucleotides: bool = False,
         gradient_checkpointing: bool = False,
+        attn_implementation: Optional[str] = "sdpa",
     ):
         """Initialize SequencePredictor.
 
@@ -96,6 +97,7 @@ class SequencePredictor(nn.Module):
             freeze_base: Whether to freeze base model parameters
             predict_nucleotides: Whether base model should predict nucleotides
             gradient_checkpointing: Whether to use gradient checkpointing to save memory
+            attn_implementation: Which SDPA backend to use ('sdpa', 'flash', 'mem_efficient', 'math')
         """
         super().__init__()
         
@@ -124,6 +126,7 @@ class SequencePredictor(nn.Module):
                 encoder_type=encoder_type,
                 predict_nucleotides=predict_nucleotides,
                 gradient_checkpointing=gradient_checkpointing,
+                attn_implementation=attn_implementation,
             )
             self.embedding_dim = embedding_dim
         else:
@@ -148,6 +151,7 @@ class SequencePredictor(nn.Module):
             dropout=count_dropout,
             activation=count_activation,
             gradient_checkpointing=gradient_checkpointing,
+            attn_implementation=attn_implementation,
         )
         
         self.count_head = nn.Linear(self.embedding_dim, 1)
@@ -163,6 +167,7 @@ class SequencePredictor(nn.Module):
             dropout=target_dropout,
             activation=target_activation,
             gradient_checkpointing=gradient_checkpointing,
+            attn_implementation=attn_implementation,
         )
         
         self.target_pooling = AttentionPooling(hidden_dim=self.embedding_dim)

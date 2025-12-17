@@ -31,6 +31,7 @@ class SampleSequenceEncoder(nn.Module):
         predict_nucleotides: bool = False,
         asv_chunk_size: Optional[int] = None,
         gradient_checkpointing: bool = False,
+        attn_implementation: Optional[str] = "sdpa",
     ):
         """Initialize SampleSequenceEncoder.
 
@@ -52,6 +53,7 @@ class SampleSequenceEncoder(nn.Module):
             predict_nucleotides: Whether to include nucleotide prediction head
             asv_chunk_size: Process ASVs in chunks of this size to reduce memory (None = process all)
             gradient_checkpointing: Whether to use gradient checkpointing to save memory
+            attn_implementation: Which SDPA backend to use ('sdpa', 'flash', 'mem_efficient', 'math')
         """
         super().__init__()
         
@@ -71,6 +73,7 @@ class SampleSequenceEncoder(nn.Module):
             predict_nucleotides=predict_nucleotides,
             asv_chunk_size=asv_chunk_size,
             gradient_checkpointing=gradient_checkpointing,
+            attn_implementation=attn_implementation,
         )
         
         self.sample_position_embedding = PositionEmbedding(
@@ -89,6 +92,7 @@ class SampleSequenceEncoder(nn.Module):
             dropout=sample_dropout,
             activation=sample_activation,
             gradient_checkpointing=gradient_checkpointing,
+            attn_implementation=attn_implementation,
         )
 
     def forward(
