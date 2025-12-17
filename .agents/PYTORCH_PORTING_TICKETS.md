@@ -5,6 +5,109 @@
 
 ---
 
+## Maintenance: Test Fixes
+
+### PYT-19.1: Fix Failing Unit Tests
+**Priority:** HIGH | **Effort:** 1-2 hours | **Status:** Not Started
+
+Fix 4 pre-existing failing unit tests discovered during PYT-18.1 implementation.
+
+**Failing Tests:**
+1. `test_cli.py::TestCLIIntegration::test_train_command_full_flow`
+2. `test_cli.py::TestPretrainedEncoderLoading::test_train_command_loads_pretrained_encoder`
+3. `test_cli.py::TestPretrainedEncoderLoading::test_train_command_pretrained_encoder_with_freeze_base`
+4. `test_losses.py::TestPairwiseDistances::test_compute_pairwise_distances_no_saturation`
+
+**Root Causes:**
+- Tests 1-3: Mock `metadata_df.columns` returns a list instead of pandas Index, causing `'list' object has no attribute 'str'` error when `metadata_df.columns.str.strip()` is called
+- Test 4: Flaky assertion `std_val > 0.03` fails intermittently (got 0.024)
+
+**Acceptance Criteria:**
+- [ ] Fix mock to return proper pandas Index for metadata columns
+- [ ] Relax or fix flaky saturation test threshold
+- [ ] All 561 tests pass
+
+**Files:** `tests/test_cli.py`, `tests/test_losses.py`
+
+---
+
+## Phase 18: Memory Optimization (NEW - HIGH PRIORITY)
+
+See `_design_plan/23_memory_optimization_plan.md` for detailed analysis.
+
+### PYT-18.1: Enable Memory-Efficient Defaults
+**Priority:** HIGH | **Effort:** 2-3 hours | **Status:** Complete
+
+Update defaults: `asv_chunk_size=256`, `gradient_checkpointing=True`, `attn_implementation=mem_efficient`
+
+**Acceptance Criteria:**
+- [x] Update CLI defaults in `cli.py`
+- [x] Add `--no-gradient-checkpointing` flag to opt out
+- [x] Add `--asv-chunk-size` to train command
+- [x] Document memory impact in help text
+- [x] Verify no accuracy regression (tests pass)
+- [x] Add model summary logging at training start
+
+**Files:** `cli.py`, `sequence_predictor.py`, `model_summary.py`
+
+---
+
+### PYT-18.2: Streaming Validation Metrics
+**Priority:** HIGH | **Effort:** 3-4 hours | **Status:** Not Started
+
+Replace O(dataset) memory accumulation with streaming metrics.
+
+**Acceptance Criteria:**
+- [ ] Compute metrics incrementally (running mean/variance)
+- [ ] Add `--validation-plot-samples` flag to limit plot data
+- [ ] Reduce validation memory from O(dataset) to O(batch)
+- [ ] Maintain metric accuracy
+
+**Files:** `trainer.py`, `metrics.py`
+
+---
+
+### PYT-18.3: Skip Nucleotide Predictions During Inference
+**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Not Started
+
+Skip nucleotide head `[batch, 1024, 150, 6]` tensors when not needed.
+
+**Acceptance Criteria:**
+- [ ] Add `predict_nucleotides` flag to ASVEncoder
+- [ ] Auto-disable during eval/fine-tuning
+- [ ] Reduce memory by ~3.7 MB/sample during inference
+
+**Files:** `asv_encoder.py`, `sample_sequence_encoder.py`
+
+---
+
+### PYT-18.4: Configurable FFN Intermediate Size
+**Priority:** MEDIUM | **Effort:** 3-4 hours | **Status:** Not Started
+
+Add `--ffn-ratio` flag (default 4, can reduce to 2 for memory savings).
+
+**Acceptance Criteria:**
+- [ ] Add `ffn_ratio` parameter to transformers
+- [ ] Propagate through model hierarchy
+- [ ] Add CLI flag
+- [ ] Document memory vs accuracy trade-off
+
+**Files:** `transformer.py`, model files, `cli.py`
+
+---
+
+### PYT-18.5: Lazy Sample Embedding Computation
+**Priority:** LOW | **Effort:** 4-6 hours | **Status:** Not Started
+
+Only compute/return sample_embeddings when needed for loss.
+
+### PYT-18.6: Memory-Aware Dynamic Batching
+**Priority:** LOW | **Effort:** 4-6 hours | **Status:** Not Started
+
+Add `--max-memory-gb` flag for dynamic batch adjustment.
+
+---
+
 ## Phase 10: Performance (1 remaining)
 
 ### PYT-10.6: Multi-GPU Training (DDP)
@@ -29,7 +132,7 @@ Implement DistributedDataParallel for linear scaling across GPUs.
 ### PYT-12.1: FSDP
 **Priority:** LOW | **Effort:** 12-16 hours
 
-Fully Sharded Data Parallel for memory-efficient distributed training of large models.
+Fully Sharded Data Parallel for memory-efficient distributed training.
 
 ### PYT-12.2: Batch Size Optimization
 **Priority:** LOW | **Effort:** 4-6 hours
@@ -43,92 +146,22 @@ Cache tokenized sequences and expensive computations.
 
 ---
 
-## Phase 13: Model Improvements (3 tickets)
+## Phase 13-17: Future Enhancements (13 tickets)
 
-### PYT-13.1: Attention Visualization
-**Priority:** LOW | **Effort:** 4-6 hours
-
-Extract and visualize attention patterns for interpretability.
-
-### PYT-13.2: Feature Importance Analysis
-**Priority:** LOW | **Effort:** 4-6 hours
-
-Gradient-based, attention-based, and permutation importance methods.
-
-### PYT-13.3: Additional Encoder Types
-**Priority:** LOW | **Effort:** 4-6 hours
-
-Support Bray-Curtis, Jaccard, Aitchison distances.
-
----
-
-## Phase 14: Data Pipeline (2 tickets)
-
-### PYT-14.1: Streaming Data Loading
-**Priority:** LOW | **Effort:** 6-8 hours
-
-Lazy loading for datasets larger than RAM.
-
-### PYT-14.2: Data Augmentation
-**Priority:** LOW | **Effort:** 4-6 hours
-
-Sequence shuffling, masking, noise injection.
-
----
-
-## Phase 15: Training Improvements (2 tickets)
-
-### PYT-15.1: Experiment Tracking
-**Priority:** LOW | **Effort:** 4-6 hours
-
-Weights & Biases and MLflow integration.
-
-### PYT-15.2: Hyperparameter Optimization
-**Priority:** LOW | **Effort:** 6-8 hours
-
-Optuna or Ray Tune integration.
-
----
-
-## Phase 16: Evaluation Tools (2 tickets)
-
-### PYT-16.1: Benchmarking Suite
-**Priority:** LOW | **Effort:** 4-6 hours
-
-Standardized benchmarks and performance metrics.
-
-### PYT-16.2: Error Analysis Tools
-**Priority:** LOW | **Effort:** 4-6 hours
-
-Error distribution and sample-level analysis.
-
----
-
-## Phase 17: Documentation & Deployment (4 tickets)
-
-### PYT-17.1: API Documentation (Sphinx)
-**Priority:** LOW | **Effort:** 4-6 hours
-
-### PYT-17.2: Tutorial Notebooks
-**Priority:** LOW | **Effort:** 4-6 hours
-
-### PYT-17.3: ONNX Export
-**Priority:** LOW | **Effort:** 3-4 hours
-
-### PYT-17.4: Docker Containerization
-**Priority:** LOW | **Effort:** 2-3 hours
+- **Phase 13:** Attention Visualization, Feature Importance, Encoder Types
+- **Phase 14:** Streaming Data, Augmentation
+- **Phase 15:** Experiment Tracking, Hyperparameter Optimization
+- **Phase 16:** Benchmarking, Error Analysis
+- **Phase 17:** Docs, Tutorials, ONNX, Docker
 
 ---
 
 ## Summary
 
-| Phase | Tickets | Est. Hours |
-|-------|---------|------------|
-| 10 | 1 | 8-12 |
-| 12 | 3 | 19-26 |
-| 13 | 3 | 12-18 |
-| 14 | 2 | 10-14 |
-| 15 | 2 | 10-14 |
-| 16 | 2 | 8-12 |
-| 17 | 4 | 13-19 |
-| **Total** | **17** | **80-115** |
+| Phase | Tickets | Est. Hours | Priority |
+|-------|---------|------------|----------|
+| 18 (Memory) | 6 | 18-26 | **HIGH** |
+| 10 | 1 | 8-12 | MEDIUM |
+| 12 | 3 | 19-26 | LOW |
+| 13-17 | 13 | 53-73 | LOW |
+| **Total** | **23** | **98-137** |

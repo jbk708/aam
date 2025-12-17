@@ -1525,6 +1525,130 @@ class TestPretrainedEncoderLoading:
         assert result.exit_code != 0
 
 
+class TestMemoryEfficientDefaults:
+    """Tests for PYT-18.1: Memory-efficient default settings."""
+
+    def test_train_gradient_checkpointing_default_true(self):
+        """Test that gradient_checkpointing defaults to True in train command."""
+        train_cmd = cli.commands["train"]
+        gc_option = None
+        for param in train_cmd.params:
+            if param.name == "gradient_checkpointing":
+                gc_option = param
+                break
+        assert gc_option is not None, "gradient_checkpointing parameter not found"
+        assert gc_option.default == True, f"Expected default to be True, got {gc_option.default}"
+
+    def test_pretrain_gradient_checkpointing_default_true(self):
+        """Test that gradient_checkpointing defaults to True in pretrain command."""
+        pretrain_cmd = cli.commands["pretrain"]
+        gc_option = None
+        for param in pretrain_cmd.params:
+            if param.name == "gradient_checkpointing":
+                gc_option = param
+                break
+        assert gc_option is not None, "gradient_checkpointing parameter not found"
+        assert gc_option.default == True, f"Expected default to be True, got {gc_option.default}"
+
+    def test_train_no_gradient_checkpointing_flag_exists(self):
+        """Test that --no-gradient-checkpointing flag is available in train command."""
+        train_cmd = cli.commands["train"]
+        gc_option = None
+        for param in train_cmd.params:
+            if param.name == "gradient_checkpointing":
+                gc_option = param
+                break
+        assert gc_option is not None, "gradient_checkpointing parameter not found"
+        # Click boolean flags use secondary_opts for the --no- version
+        assert gc_option.is_flag == True, "Should be a flag"
+        assert gc_option.flag_value == True, "Flag value should be True (default enabled)"
+
+    def test_pretrain_no_gradient_checkpointing_flag_exists(self):
+        """Test that --no-gradient-checkpointing flag is available in pretrain command."""
+        pretrain_cmd = cli.commands["pretrain"]
+        gc_option = None
+        for param in pretrain_cmd.params:
+            if param.name == "gradient_checkpointing":
+                gc_option = param
+                break
+        assert gc_option is not None, "gradient_checkpointing parameter not found"
+        # Click boolean flags use secondary_opts for the --no- version
+        assert gc_option.is_flag == True, "Should be a flag"
+        assert gc_option.flag_value == True, "Flag value should be True (default enabled)"
+
+    def test_train_attn_implementation_default_mem_efficient(self):
+        """Test that attn_implementation defaults to mem_efficient in train command."""
+        train_cmd = cli.commands["train"]
+        attn_option = None
+        for param in train_cmd.params:
+            if param.name == "attn_implementation":
+                attn_option = param
+                break
+        assert attn_option is not None, "attn_implementation parameter not found"
+        assert attn_option.default == "mem_efficient", f"Expected default to be 'mem_efficient', got {attn_option.default}"
+
+    def test_pretrain_attn_implementation_default_mem_efficient(self):
+        """Test that attn_implementation defaults to mem_efficient in pretrain command."""
+        pretrain_cmd = cli.commands["pretrain"]
+        attn_option = None
+        for param in pretrain_cmd.params:
+            if param.name == "attn_implementation":
+                attn_option = param
+                break
+        assert attn_option is not None, "attn_implementation parameter not found"
+        assert attn_option.default == "mem_efficient", f"Expected default to be 'mem_efficient', got {attn_option.default}"
+
+    def test_train_asv_chunk_size_exists(self):
+        """Test that asv_chunk_size parameter exists in train command."""
+        train_cmd = cli.commands["train"]
+        chunk_option = None
+        for param in train_cmd.params:
+            if param.name == "asv_chunk_size":
+                chunk_option = param
+                break
+        assert chunk_option is not None, "asv_chunk_size parameter not found in train command"
+
+    def test_train_asv_chunk_size_default_256(self):
+        """Test that asv_chunk_size defaults to 256 in train command."""
+        train_cmd = cli.commands["train"]
+        chunk_option = None
+        for param in train_cmd.params:
+            if param.name == "asv_chunk_size":
+                chunk_option = param
+                break
+        assert chunk_option is not None, "asv_chunk_size parameter not found"
+        assert chunk_option.default == 256, f"Expected default to be 256, got {chunk_option.default}"
+
+    def test_pretrain_asv_chunk_size_default_256(self):
+        """Test that asv_chunk_size defaults to 256 in pretrain command."""
+        pretrain_cmd = cli.commands["pretrain"]
+        chunk_option = None
+        for param in pretrain_cmd.params:
+            if param.name == "asv_chunk_size":
+                chunk_option = param
+                break
+        assert chunk_option is not None, "asv_chunk_size parameter not found"
+        assert chunk_option.default == 256, f"Expected default to be 256, got {chunk_option.default}"
+
+    def test_train_help_shows_memory_options(self):
+        """Test that train help shows memory-related options with descriptions."""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["train", "--help"])
+        assert result.exit_code == 0
+        assert "--no-gradient-checkpointing" in result.output
+        assert "--asv-chunk-size" in result.output
+        assert "--attn-implementation" in result.output
+
+    def test_pretrain_help_shows_memory_options(self):
+        """Test that pretrain help shows memory-related options with descriptions."""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["pretrain", "--help"])
+        assert result.exit_code == 0
+        assert "--no-gradient-checkpointing" in result.output
+        assert "--asv-chunk-size" in result.output
+        assert "--attn-implementation" in result.output
+
+
 class TestMetadataLoading:
     """Tests for metadata loading with column name variations."""
 
