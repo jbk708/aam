@@ -4,7 +4,7 @@ import pytest
 import torch
 import torch.nn as nn
 
-from aam.models.transformer import TransformerEncoder
+from aam.models.transformer import TransformerEncoder, sdpa_kernel_context
 
 
 @pytest.fixture
@@ -360,3 +360,215 @@ class TestTransformerEncoder:
         
         output = encoder(embeddings, mask=mask)
         assert output.shape == embeddings.shape
+
+
+class TestSDPAOptimization:
+    """Test suite for SDPA (Scaled Dot Product Attention) optimization."""
+
+    def test_attn_implementation_default(self):
+        """Test that attn_implementation defaults to 'sdpa'."""
+        encoder = TransformerEncoder(
+            num_layers=2,
+            num_heads=4,
+            hidden_dim=64,
+        )
+        assert encoder.attn_implementation == "sdpa"
+
+    @pytest.mark.parametrize(
+        "attn_impl", ["sdpa", "flash", "mem_efficient", "math", None]
+    )
+    def test_attn_implementation_options(self, attn_impl):
+        """Test that different attn_implementation options can be set."""
+        encoder = TransformerEncoder(
+            num_layers=2,
+            num_heads=4,
+            hidden_dim=64,
+            attn_implementation=attn_impl,
+        )
+        assert encoder.attn_implementation == attn_impl
+
+    @pytest.mark.parametrize(
+        "attn_impl", ["sdpa", "flash", "mem_efficient", "math", None]
+    )
+    def test_attn_implementation_forward_pass(self, attn_impl):
+        """Test forward pass with different attn_implementation options."""
+        encoder = TransformerEncoder(
+            num_layers=2,
+            num_heads=4,
+            hidden_dim=64,
+            attn_implementation=attn_impl,
+        )
+        embeddings = torch.randn(2, 10, 64)
+        mask = torch.ones(2, 10, dtype=torch.long)
+
+        output = encoder(embeddings, mask=mask)
+
+        assert output.shape == embeddings.shape
+        assert not torch.isnan(output).any()
+        assert not torch.isinf(output).any()
+
+    def test_numerical_equivalence_sdpa_vs_math(self):
+        """Test that SDPA and math implementations produce equivalent outputs."""
+        embeddings = torch.randn(2, 10, 64)
+        mask = torch.ones(2, 10, dtype=torch.long)
+
+        encoder_sdpa = TransformerEncoder(
+            num_layers=2,
+            num_heads=4,
+            hidden_dim=64,
+            attn_implementation="sdpa",
+            dropout=0.0,
+        )
+        encoder_math = TransformerEncoder(
+            num_layers=2,
+            num_heads=4,
+            hidden_dim=64,
+            attn_implementation="math",
+            dropout=0.0,
+        )
+        encoder_math.load_state_dict(encoder_sdpa.state_dict())
+
+        encoder_sdpa.eval()
+        encoder_math.eval()
+
+        output_sdpa = encoder_sdpa(embeddings, mask=mask)
+        output_math = encoder_math(embeddings, mask=mask)
+
+        assert torch.allclose(output_sdpa, output_math, atol=1e-5)
+
+    @pytest.mark.parametrize("seq_len", [8, 16, 32, 64, 128, 256])
+    def test_sdpa_different_sequence_lengths(self, seq_len):
+        """Test SDPA optimization with different sequence lengths."""
+        encoder = TransformerEncoder(
+            num_layers=2,
+            num_heads=4,
+            hidden_dim=64,
+            attn_implementation="sdpa",
+        )
+        embeddings = torch.randn(2, seq_len, 64)
+        mask = torch.ones(2, seq_len, dtype=torch.long)
+
+        output = encoder(embeddings, mask=mask)
+
+        assert output.shape == (2, seq_len, 64)
+        assert not torch.isnan(output).any()
+        assert not torch.isinf(output).any()
+
+    def test_sdpa_with_variable_length_padding(self):
+        """Test SDPA with variable-length sequences (different padding per sample)."""
+        encoder = TransformerEncoder(
+            num_layers=2,
+            num_heads=4,
+            hidden_dim=64,
+            attn_implementation="sdpa",
+        )
+        embeddings = torch.randn(4, 32, 64)
+        mask = torch.zeros(4, 32, dtype=torch.long)
+        mask[0, :8] = 1
+        mask[1, :16] = 1
+        mask[2, :24] = 1
+        mask[3, :32] = 1
+
+        output = encoder(embeddings, mask=mask)
+
+        assert output.shape == (4, 32, 64)
+        assert not torch.isnan(output).any()
+        assert not torch.isinf(output).any()
+
+    def test_sdpa_gradients_flow(self):
+        """Test that gradients flow correctly with SDPA optimization."""
+        encoder = TransformerEncoder(
+            num_layers=2,
+            num_heads=4,
+            hidden_dim=64,
+            attn_implementation="sdpa",
+        )
+        embeddings = torch.randn(2, 10, 64, requires_grad=True)
+
+        output = encoder(embeddings)
+        loss = output.sum()
+        loss.backward()
+
+        assert embeddings.grad is not None
+        assert not torch.isnan(embeddings.grad).any()
+        assert not torch.isinf(embeddings.grad).any()
+
+        for param in encoder.parameters():
+            if param.requires_grad:
+                assert param.grad is not None
+
+    def test_sdpa_with_gradient_checkpointing(self):
+        """Test SDPA optimization combined with gradient checkpointing."""
+        encoder = TransformerEncoder(
+            num_layers=2,
+            num_heads=4,
+            hidden_dim=64,
+            attn_implementation="sdpa",
+            gradient_checkpointing=True,
+        )
+        encoder.train()
+        embeddings = torch.randn(2, 10, 64, requires_grad=True)
+        mask = torch.ones(2, 10, dtype=torch.long)
+
+        output = encoder(embeddings, mask=mask)
+        loss = output.sum()
+        loss.backward()
+
+        assert embeddings.grad is not None
+        assert not torch.isnan(embeddings.grad).any()
+
+
+class TestSDPAKernelContext:
+    """Test suite for sdpa_kernel_context context manager."""
+
+    def test_sdpa_context_none(self):
+        """Test that None attn_implementation uses default behavior."""
+        with sdpa_kernel_context(None):
+            assert True
+
+    def test_sdpa_context_sdpa(self):
+        """Test that 'sdpa' attn_implementation uses default behavior."""
+        with sdpa_kernel_context("sdpa"):
+            assert True
+
+    def test_sdpa_context_math(self):
+        """Test that 'math' attn_implementation configures backends correctly."""
+        with sdpa_kernel_context("math"):
+            pass
+
+    def test_sdpa_context_flash(self):
+        """Test that 'flash' attn_implementation configures backends correctly."""
+        with sdpa_kernel_context("flash"):
+            pass
+
+    def test_sdpa_context_mem_efficient(self):
+        """Test that 'mem_efficient' attn_implementation configures backends correctly."""
+        with sdpa_kernel_context("mem_efficient"):
+            pass
+
+    def test_sdpa_context_restores_state(self):
+        """Test that context manager restores original backend state."""
+        original_flash = torch.backends.cuda.flash_sdp_enabled()
+        original_mem_eff = torch.backends.cuda.mem_efficient_sdp_enabled()
+        original_math = torch.backends.cuda.math_sdp_enabled()
+
+        with sdpa_kernel_context("math"):
+            pass
+
+        assert torch.backends.cuda.flash_sdp_enabled() == original_flash
+        assert torch.backends.cuda.mem_efficient_sdp_enabled() == original_mem_eff
+        assert torch.backends.cuda.math_sdp_enabled() == original_math
+
+    def test_sdpa_context_restores_on_exception(self):
+        """Test that context manager restores state even if exception occurs."""
+        original_flash = torch.backends.cuda.flash_sdp_enabled()
+        original_mem_eff = torch.backends.cuda.mem_efficient_sdp_enabled()
+        original_math = torch.backends.cuda.math_sdp_enabled()
+
+        with pytest.raises(ValueError):
+            with sdpa_kernel_context("math"):
+                raise ValueError("Test exception")
+
+        assert torch.backends.cuda.flash_sdp_enabled() == original_flash
+        assert torch.backends.cuda.mem_efficient_sdp_enabled() == original_mem_eff
+        assert torch.backends.cuda.math_sdp_enabled() == original_math

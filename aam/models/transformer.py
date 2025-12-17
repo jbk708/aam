@@ -8,7 +8,7 @@ import torch.nn as nn
 from torch.utils.checkpoint import checkpoint
 
 # Type alias for attention implementation options
-AttnImplementation = Literal["sdpa", "flash", "mem_efficient", "math", "eager"]
+AttnImplementation = Literal["sdpa", "flash", "mem_efficient", "math"]
 
 
 @contextmanager
@@ -18,34 +18,21 @@ def sdpa_kernel_context(attn_implementation: Optional[AttnImplementation]):
     Args:
         attn_implementation: Which SDPA backend to use:
             - "sdpa" or None: Use PyTorch's default SDPA (auto-selects best backend)
-            - "flash": Force Flash Attention (requires compatible GPU)
-            - "mem_efficient": Force memory-efficient attention
-            - "math": Force standard math implementation
-            - "eager": Disable SDPA, use eager attention (slower but more compatible)
+            - "flash": Force Flash Attention (requires compatible GPU, falls back to math)
+            - "mem_efficient": Force memory-efficient attention (falls back to math)
+            - "math": Force standard math implementation (always available)
+
+    Note:
+        Flash and mem_efficient backends require CUDA. On CPU or incompatible GPUs,
+        they will fall back to the math implementation.
     """
     if attn_implementation is None or attn_implementation == "sdpa":
         # Use default SDPA behavior (auto-select best backend)
         yield
         return
 
-    if attn_implementation == "eager":
-        # Disable all SDPA backends to fall back to eager attention
-        # This is useful for debugging or compatibility
-        original_flash = torch.backends.cuda.flash_sdp_enabled()
-        original_mem_eff = torch.backends.cuda.mem_efficient_sdp_enabled()
-        original_math = torch.backends.cuda.math_sdp_enabled()
-        try:
-            torch.backends.cuda.enable_flash_sdp(False)
-            torch.backends.cuda.enable_mem_efficient_sdp(False)
-            torch.backends.cuda.enable_math_sdp(False)
-            yield
-        finally:
-            torch.backends.cuda.enable_flash_sdp(original_flash)
-            torch.backends.cuda.enable_mem_efficient_sdp(original_mem_eff)
-            torch.backends.cuda.enable_math_sdp(original_math)
-        return
-
     # For specific backends, disable others and enable the requested one
+    # Always keep math enabled as fallback for CPU or when preferred backend unavailable
     original_flash = torch.backends.cuda.flash_sdp_enabled()
     original_mem_eff = torch.backends.cuda.mem_efficient_sdp_enabled()
     original_math = torch.backends.cuda.math_sdp_enabled()
@@ -54,11 +41,11 @@ def sdpa_kernel_context(attn_implementation: Optional[AttnImplementation]):
         if attn_implementation == "flash":
             torch.backends.cuda.enable_flash_sdp(True)
             torch.backends.cuda.enable_mem_efficient_sdp(False)
-            torch.backends.cuda.enable_math_sdp(False)
+            torch.backends.cuda.enable_math_sdp(True)
         elif attn_implementation == "mem_efficient":
             torch.backends.cuda.enable_flash_sdp(False)
             torch.backends.cuda.enable_mem_efficient_sdp(True)
-            torch.backends.cuda.enable_math_sdp(False)
+            torch.backends.cuda.enable_math_sdp(True)
         elif attn_implementation == "math":
             torch.backends.cuda.enable_flash_sdp(False)
             torch.backends.cuda.enable_mem_efficient_sdp(False)
@@ -100,10 +87,9 @@ class TransformerEncoder(nn.Module):
             gradient_checkpointing: Whether to use gradient checkpointing to save memory
             attn_implementation: Which attention implementation to use:
                 - "sdpa" (default): Use scaled_dot_product_attention with auto backend selection
-                - "flash": Force Flash Attention (requires compatible GPU)
-                - "mem_efficient": Force memory-efficient attention
-                - "math": Force standard math implementation
-                - "eager": Disable SDPA (slower but more compatible)
+                - "flash": Force Flash Attention (requires compatible GPU, falls back to math)
+                - "mem_efficient": Force memory-efficient attention (falls back to math)
+                - "math": Force standard math implementation (always available)
         """
         super().__init__()
         if intermediate_size is None:
