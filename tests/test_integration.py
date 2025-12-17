@@ -708,7 +708,7 @@ class TestEndToEnd:
             losses.append(loss_dict["total_loss"].item())
 
         assert len(losses) > 0
-        assert all(l >= 0 for l in losses)
+        assert all(loss >= 0 for loss in losses)
 
     @pytest.mark.slow
     def test_end_to_end_checkpoint_saving(self, biom_file, device, small_model_config, tmp_path):

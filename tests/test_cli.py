@@ -1300,7 +1300,7 @@ class TestPretrainedEncoderLoading:
         call_args = mock_load_pretrained_encoder.call_args
         assert call_args[0][0] == str(pretrained_encoder_path)
         assert call_args[0][1] == mock_model_instance
-        assert call_args[1]["strict"] == False
+        assert call_args[1]["strict"] is False
 
     @patch("aam.cli.setup_logging")
     @patch("aam.cli.setup_device")
@@ -1434,7 +1434,7 @@ class TestPretrainedEncoderLoading:
         assert mock_load_pretrained_encoder.called
         assert mock_create_optimizer.called
         optimizer_call_args = mock_create_optimizer.call_args
-        assert optimizer_call_args[1]["freeze_base"] == True
+        assert optimizer_call_args[1]["freeze_base"] is True
 
     @patch("aam.cli.setup_logging")
     @patch("aam.cli.setup_device")
@@ -1566,7 +1566,7 @@ class TestMemoryEfficientDefaults:
                 gc_option = param
                 break
         assert gc_option is not None, "gradient_checkpointing parameter not found"
-        assert gc_option.default == True, f"Expected default to be True, got {gc_option.default}"
+        assert gc_option.default is True, f"Expected default to be True, got {gc_option.default}"
 
     def test_pretrain_gradient_checkpointing_default_true(self):
         """Test that gradient_checkpointing defaults to True in pretrain command."""
@@ -1577,7 +1577,7 @@ class TestMemoryEfficientDefaults:
                 gc_option = param
                 break
         assert gc_option is not None, "gradient_checkpointing parameter not found"
-        assert gc_option.default == True, f"Expected default to be True, got {gc_option.default}"
+        assert gc_option.default is True, f"Expected default to be True, got {gc_option.default}"
 
     def test_train_no_gradient_checkpointing_flag_exists(self):
         """Test that --no-gradient-checkpointing flag is available in train command."""
@@ -1589,8 +1589,8 @@ class TestMemoryEfficientDefaults:
                 break
         assert gc_option is not None, "gradient_checkpointing parameter not found"
         # Click boolean flags use secondary_opts for the --no- version
-        assert gc_option.is_flag == True, "Should be a flag"
-        assert gc_option.flag_value == True, "Flag value should be True (default enabled)"
+        assert gc_option.is_flag is True, "Should be a flag"
+        assert gc_option.flag_value is True, "Flag value should be True (default enabled)"
 
     def test_pretrain_no_gradient_checkpointing_flag_exists(self):
         """Test that --no-gradient-checkpointing flag is available in pretrain command."""
@@ -1602,8 +1602,8 @@ class TestMemoryEfficientDefaults:
                 break
         assert gc_option is not None, "gradient_checkpointing parameter not found"
         # Click boolean flags use secondary_opts for the --no- version
-        assert gc_option.is_flag == True, "Should be a flag"
-        assert gc_option.flag_value == True, "Flag value should be True (default enabled)"
+        assert gc_option.is_flag is True, "Should be a flag"
+        assert gc_option.flag_value is True, "Flag value should be True (default enabled)"
 
     def test_train_attn_implementation_default_mem_efficient(self):
         """Test that attn_implementation defaults to mem_efficient in train command."""
