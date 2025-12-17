@@ -9,6 +9,7 @@ from unittest.mock import patch, MagicMock, mock_open
 import click
 from click.testing import CliRunner
 import inspect
+import pandas as pd
 
 from aam.cli import (
     setup_logging,
@@ -711,7 +712,7 @@ class TestCLIIntegration:
         mock_setup_device.return_value = torch.device("cpu")
 
         mock_metadata_df = MagicMock()
-        mock_metadata_df.columns = ["sample_id", "target"]
+        mock_metadata_df.columns = pd.Index(["sample_id", "target"])
         mock_read_csv.return_value = mock_metadata_df
 
         mock_biom_loader_instance = MagicMock()
@@ -748,6 +749,8 @@ class TestCLIIntegration:
         mock_table.filter.side_effect = lambda ids, **kwargs: mock_train_table if ids == mock_train_ids else mock_val_table
 
         mock_dataset_instance = MagicMock()
+        mock_dataset_instance.get_normalization_params.return_value = None
+        mock_dataset_instance.get_count_normalization_params.return_value = None
         mock_dataset_class.return_value = mock_dataset_instance
 
         mock_dataloader_instance = MagicMock()
@@ -843,6 +846,8 @@ class TestCLIIntegration:
         mock_biom_loader_instance.load_table.return_value = mock_table
 
         mock_dataset_instance = MagicMock()
+        mock_dataset_instance.get_normalization_params.return_value = None
+        mock_dataset_instance.get_count_normalization_params.return_value = None
         mock_dataset_class.return_value = mock_dataset_instance
 
         mock_model_instance = MagicMock()
@@ -945,6 +950,8 @@ class TestCLIIntegration:
         mock_biom_loader_instance.load_table.return_value = mock_table
 
         mock_dataset_instance = MagicMock()
+        mock_dataset_instance.get_normalization_params.return_value = None
+        mock_dataset_instance.get_count_normalization_params.return_value = None
         mock_dataset_class.return_value = mock_dataset_instance
 
         import numpy as np
@@ -1197,7 +1204,7 @@ class TestPretrainedEncoderLoading:
         mock_setup_device.return_value = torch.device("cpu")
 
         mock_metadata_df = MagicMock()
-        mock_metadata_df.columns = ["sample_id", "target"]
+        mock_metadata_df.columns = pd.Index(["sample_id", "target"])
         mock_read_csv.return_value = mock_metadata_df
 
         mock_biom_loader_instance = MagicMock()
@@ -1226,6 +1233,8 @@ class TestPretrainedEncoderLoading:
         mock_table.filter.side_effect = lambda ids, **kwargs: mock_train_table if ids == mock_train_ids else mock_val_table
 
         mock_dataset_instance = MagicMock()
+        mock_dataset_instance.get_normalization_params.return_value = None
+        mock_dataset_instance.get_count_normalization_params.return_value = None
         mock_dataset_class.return_value = mock_dataset_instance
 
         mock_dataloader_instance = MagicMock()
@@ -1327,7 +1336,7 @@ class TestPretrainedEncoderLoading:
         mock_setup_device.return_value = torch.device("cpu")
 
         mock_metadata_df = MagicMock()
-        mock_metadata_df.columns = ["sample_id", "target"]
+        mock_metadata_df.columns = pd.Index(["sample_id", "target"])
         mock_read_csv.return_value = mock_metadata_df
 
         mock_biom_loader_instance = MagicMock()
@@ -1356,6 +1365,8 @@ class TestPretrainedEncoderLoading:
         mock_table.filter.side_effect = lambda ids, **kwargs: mock_train_table if ids == mock_train_ids else mock_val_table
 
         mock_dataset_instance = MagicMock()
+        mock_dataset_instance.get_normalization_params.return_value = None
+        mock_dataset_instance.get_count_normalization_params.return_value = None
         mock_dataset_class.return_value = mock_dataset_instance
 
         mock_dataloader_instance = MagicMock()
@@ -1456,7 +1467,7 @@ class TestPretrainedEncoderLoading:
         mock_setup_device.return_value = torch.device("cpu")
 
         mock_metadata_df = MagicMock()
-        mock_metadata_df.columns = ["sample_id", "target"]
+        mock_metadata_df.columns = pd.Index(["sample_id", "target"])
         mock_read_csv.return_value = mock_metadata_df
 
         mock_biom_loader_instance = MagicMock()
@@ -1485,6 +1496,8 @@ class TestPretrainedEncoderLoading:
         mock_table.filter.side_effect = lambda ids, **kwargs: mock_train_table if ids == mock_train_ids else mock_val_table
 
         mock_dataset_instance = MagicMock()
+        mock_dataset_instance.get_normalization_params.return_value = None
+        mock_dataset_instance.get_count_normalization_params.return_value = None
         mock_dataset_class.return_value = mock_dataset_instance
 
         mock_dataloader_instance = MagicMock()

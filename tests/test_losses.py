@@ -352,6 +352,8 @@ class TestPairwiseDistances:
 
         batch_size = 8
         embedding_dim = 16
+        # Use fixed seed for reproducibility (avoids flaky test failures)
+        torch.manual_seed(42)
         # Use diverse embeddings to ensure varied distances
         embeddings = torch.randn(batch_size, embedding_dim) * 2.0
 
