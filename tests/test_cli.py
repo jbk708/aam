@@ -9,6 +9,7 @@ from unittest.mock import patch, MagicMock, mock_open
 import click
 from click.testing import CliRunner
 import inspect
+import pandas as pd
 
 from aam.cli import (
     setup_logging,
@@ -42,6 +43,7 @@ def sample_biom_file(temp_dir):
 def sample_unifrac_matrix_file(temp_dir):
     """Create a sample UniFrac matrix file path."""
     import numpy as np
+
     matrix_file = temp_dir / "distances.npy"
     # Create a simple 4x4 distance matrix
     distances = np.random.rand(4, 4)
@@ -334,7 +336,9 @@ class TestCLICommands:
         )
         assert result.exit_code != 0
 
-    def test_pretrain_command_batch_size_validation(self, runner, sample_biom_file, sample_unifrac_matrix_file, sample_output_dir):
+    def test_pretrain_command_batch_size_validation(
+        self, runner, sample_biom_file, sample_unifrac_matrix_file, sample_output_dir
+    ):
         """Test pretrain command batch size validation."""
         result = runner.invoke(
             cli,
@@ -451,6 +455,7 @@ class TestCLIIntegration:
         mock_unifrac_loader.return_value = mock_unifrac_loader_instance
         from skbio import DistanceMatrix
         import numpy as np
+
         # Create a symmetric distance matrix (required by DistanceMatrix)
         dist_data = np.random.rand(4, 4)
         dist_data = (dist_data + dist_data.T) / 2  # Make symmetric
@@ -526,6 +531,7 @@ class TestCLIIntegration:
         mock_biom_loader_instance = MagicMock()
         mock_biom_loader.return_value = mock_biom_loader_instance
         mock_table = MagicMock()
+
         # Mock ids() to return list when called with axis="sample" or axis="observation"
         def mock_ids(axis=None):
             if axis == "sample":
@@ -533,6 +539,7 @@ class TestCLIIntegration:
             elif axis == "observation":
                 return ["obs1", "obs2", "obs3"]
             return ["sample1", "sample2", "sample3", "sample4"]
+
         mock_table.ids = mock_ids
         mock_biom_loader_instance.load_table.return_value = mock_table
         mock_biom_loader_instance.rarefy.return_value = mock_table
@@ -541,6 +548,7 @@ class TestCLIIntegration:
         mock_unifrac_loader.return_value = mock_unifrac_loader_instance
         from skbio import DistanceMatrix
         import numpy as np
+
         # Create a symmetric distance matrix (required by DistanceMatrix)
         dist_data = np.random.rand(4, 4)
         dist_data = (dist_data + dist_data.T) / 2  # Make symmetric
@@ -711,12 +719,13 @@ class TestCLIIntegration:
         mock_setup_device.return_value = torch.device("cpu")
 
         mock_metadata_df = MagicMock()
-        mock_metadata_df.columns = ["sample_id", "target"]
+        mock_metadata_df.columns = pd.Index(["sample_id", "target"])
         mock_read_csv.return_value = mock_metadata_df
 
         mock_biom_loader_instance = MagicMock()
         mock_biom_loader_class.return_value = mock_biom_loader_instance
         mock_table = MagicMock()
+
         # Mock ids() to return list when called with axis="sample" or axis="observation"
         def mock_ids(axis=None):
             if axis == "sample":
@@ -724,6 +733,7 @@ class TestCLIIntegration:
             elif axis == "observation":
                 return ["obs1", "obs2", "obs3"]
             return ["sample1", "sample2", "sample3", "sample4"]
+
         mock_table.ids = mock_ids
         mock_biom_loader_instance.load_table.return_value = mock_table
         mock_biom_loader_instance.rarefy.return_value = mock_table
@@ -732,6 +742,7 @@ class TestCLIIntegration:
         mock_unifrac_loader_class.return_value = mock_unifrac_loader_instance
         from skbio import DistanceMatrix
         import numpy as np
+
         # Create a symmetric distance matrix (required by DistanceMatrix)
         dist_data = np.random.rand(4, 4)
         dist_data = (dist_data + dist_data.T) / 2  # Make symmetric
@@ -748,6 +759,8 @@ class TestCLIIntegration:
         mock_table.filter.side_effect = lambda ids, **kwargs: mock_train_table if ids == mock_train_ids else mock_val_table
 
         mock_dataset_instance = MagicMock()
+        mock_dataset_instance.get_normalization_params.return_value = None
+        mock_dataset_instance.get_count_normalization_params.return_value = None
         mock_dataset_class.return_value = mock_dataset_instance
 
         mock_dataloader_instance = MagicMock()
@@ -843,6 +856,8 @@ class TestCLIIntegration:
         mock_biom_loader_instance.load_table.return_value = mock_table
 
         mock_dataset_instance = MagicMock()
+        mock_dataset_instance.get_normalization_params.return_value = None
+        mock_dataset_instance.get_count_normalization_params.return_value = None
         mock_dataset_class.return_value = mock_dataset_instance
 
         mock_model_instance = MagicMock()
@@ -945,6 +960,8 @@ class TestCLIIntegration:
         mock_biom_loader_instance.load_table.return_value = mock_table
 
         mock_dataset_instance = MagicMock()
+        mock_dataset_instance.get_normalization_params.return_value = None
+        mock_dataset_instance.get_count_normalization_params.return_value = None
         mock_dataset_class.return_value = mock_dataset_instance
 
         import numpy as np
@@ -1103,9 +1120,9 @@ class TestCLIIntegration:
                 "predict",
                 "--model",
                 str(model_file),
-                    "--table",
-                    sample_biom_file,
-                    "--output",
+                "--table",
+                sample_biom_file,
+                "--output",
                 str(temp_dir / "output.tsv"),
             ],
         )
@@ -1197,12 +1214,13 @@ class TestPretrainedEncoderLoading:
         mock_setup_device.return_value = torch.device("cpu")
 
         mock_metadata_df = MagicMock()
-        mock_metadata_df.columns = ["sample_id", "target"]
+        mock_metadata_df.columns = pd.Index(["sample_id", "target"])
         mock_read_csv.return_value = mock_metadata_df
 
         mock_biom_loader_instance = MagicMock()
         mock_biom_loader_class.return_value = mock_biom_loader_instance
         mock_table = MagicMock()
+
         # Mock ids() to return list when called with axis="sample" or axis="observation"
         def mock_ids(axis=None):
             if axis == "sample":
@@ -1210,6 +1228,7 @@ class TestPretrainedEncoderLoading:
             elif axis == "observation":
                 return ["obs1", "obs2", "obs3"]
             return ["sample1", "sample2", "sample3", "sample4"]
+
         mock_table.ids = mock_ids
         mock_biom_loader_instance.load_table.return_value = mock_table
         mock_biom_loader_instance.rarefy.return_value = mock_table
@@ -1226,6 +1245,8 @@ class TestPretrainedEncoderLoading:
         mock_table.filter.side_effect = lambda ids, **kwargs: mock_train_table if ids == mock_train_ids else mock_val_table
 
         mock_dataset_instance = MagicMock()
+        mock_dataset_instance.get_normalization_params.return_value = None
+        mock_dataset_instance.get_count_normalization_params.return_value = None
         mock_dataset_class.return_value = mock_dataset_instance
 
         mock_dataloader_instance = MagicMock()
@@ -1279,7 +1300,7 @@ class TestPretrainedEncoderLoading:
         call_args = mock_load_pretrained_encoder.call_args
         assert call_args[0][0] == str(pretrained_encoder_path)
         assert call_args[0][1] == mock_model_instance
-        assert call_args[1]["strict"] == False
+        assert call_args[1]["strict"] is False
 
     @patch("aam.cli.setup_logging")
     @patch("aam.cli.setup_device")
@@ -1327,12 +1348,13 @@ class TestPretrainedEncoderLoading:
         mock_setup_device.return_value = torch.device("cpu")
 
         mock_metadata_df = MagicMock()
-        mock_metadata_df.columns = ["sample_id", "target"]
+        mock_metadata_df.columns = pd.Index(["sample_id", "target"])
         mock_read_csv.return_value = mock_metadata_df
 
         mock_biom_loader_instance = MagicMock()
         mock_biom_loader_class.return_value = mock_biom_loader_instance
         mock_table = MagicMock()
+
         # Mock ids() to return list when called with axis="sample" or axis="observation"
         def mock_ids(axis=None):
             if axis == "sample":
@@ -1340,6 +1362,7 @@ class TestPretrainedEncoderLoading:
             elif axis == "observation":
                 return ["obs1", "obs2", "obs3"]
             return ["sample1", "sample2", "sample3", "sample4"]
+
         mock_table.ids = mock_ids
         mock_biom_loader_instance.load_table.return_value = mock_table
         mock_biom_loader_instance.rarefy.return_value = mock_table
@@ -1356,6 +1379,8 @@ class TestPretrainedEncoderLoading:
         mock_table.filter.side_effect = lambda ids, **kwargs: mock_train_table if ids == mock_train_ids else mock_val_table
 
         mock_dataset_instance = MagicMock()
+        mock_dataset_instance.get_normalization_params.return_value = None
+        mock_dataset_instance.get_count_normalization_params.return_value = None
         mock_dataset_class.return_value = mock_dataset_instance
 
         mock_dataloader_instance = MagicMock()
@@ -1409,7 +1434,7 @@ class TestPretrainedEncoderLoading:
         assert mock_load_pretrained_encoder.called
         assert mock_create_optimizer.called
         optimizer_call_args = mock_create_optimizer.call_args
-        assert optimizer_call_args[1]["freeze_base"] == True
+        assert optimizer_call_args[1]["freeze_base"] is True
 
     @patch("aam.cli.setup_logging")
     @patch("aam.cli.setup_device")
@@ -1456,12 +1481,13 @@ class TestPretrainedEncoderLoading:
         mock_setup_device.return_value = torch.device("cpu")
 
         mock_metadata_df = MagicMock()
-        mock_metadata_df.columns = ["sample_id", "target"]
+        mock_metadata_df.columns = pd.Index(["sample_id", "target"])
         mock_read_csv.return_value = mock_metadata_df
 
         mock_biom_loader_instance = MagicMock()
         mock_biom_loader_class.return_value = mock_biom_loader_instance
         mock_table = MagicMock()
+
         # Mock ids() to return list when called with axis="sample" or axis="observation"
         def mock_ids(axis=None):
             if axis == "sample":
@@ -1469,6 +1495,7 @@ class TestPretrainedEncoderLoading:
             elif axis == "observation":
                 return ["obs1", "obs2", "obs3"]
             return ["sample1", "sample2", "sample3", "sample4"]
+
         mock_table.ids = mock_ids
         mock_biom_loader_instance.load_table.return_value = mock_table
         mock_biom_loader_instance.rarefy.return_value = mock_table
@@ -1485,6 +1512,8 @@ class TestPretrainedEncoderLoading:
         mock_table.filter.side_effect = lambda ids, **kwargs: mock_train_table if ids == mock_train_ids else mock_val_table
 
         mock_dataset_instance = MagicMock()
+        mock_dataset_instance.get_normalization_params.return_value = None
+        mock_dataset_instance.get_count_normalization_params.return_value = None
         mock_dataset_class.return_value = mock_dataset_instance
 
         mock_dataloader_instance = MagicMock()
@@ -1537,7 +1566,7 @@ class TestMemoryEfficientDefaults:
                 gc_option = param
                 break
         assert gc_option is not None, "gradient_checkpointing parameter not found"
-        assert gc_option.default == True, f"Expected default to be True, got {gc_option.default}"
+        assert gc_option.default is True, f"Expected default to be True, got {gc_option.default}"
 
     def test_pretrain_gradient_checkpointing_default_true(self):
         """Test that gradient_checkpointing defaults to True in pretrain command."""
@@ -1548,7 +1577,7 @@ class TestMemoryEfficientDefaults:
                 gc_option = param
                 break
         assert gc_option is not None, "gradient_checkpointing parameter not found"
-        assert gc_option.default == True, f"Expected default to be True, got {gc_option.default}"
+        assert gc_option.default is True, f"Expected default to be True, got {gc_option.default}"
 
     def test_train_no_gradient_checkpointing_flag_exists(self):
         """Test that --no-gradient-checkpointing flag is available in train command."""
@@ -1560,8 +1589,8 @@ class TestMemoryEfficientDefaults:
                 break
         assert gc_option is not None, "gradient_checkpointing parameter not found"
         # Click boolean flags use secondary_opts for the --no- version
-        assert gc_option.is_flag == True, "Should be a flag"
-        assert gc_option.flag_value == True, "Flag value should be True (default enabled)"
+        assert gc_option.is_flag is True, "Should be a flag"
+        assert gc_option.flag_value is True, "Flag value should be True (default enabled)"
 
     def test_pretrain_no_gradient_checkpointing_flag_exists(self):
         """Test that --no-gradient-checkpointing flag is available in pretrain command."""
@@ -1573,8 +1602,8 @@ class TestMemoryEfficientDefaults:
                 break
         assert gc_option is not None, "gradient_checkpointing parameter not found"
         # Click boolean flags use secondary_opts for the --no- version
-        assert gc_option.is_flag == True, "Should be a flag"
-        assert gc_option.flag_value == True, "Flag value should be True (default enabled)"
+        assert gc_option.is_flag is True, "Should be a flag"
+        assert gc_option.flag_value is True, "Flag value should be True (default enabled)"
 
     def test_train_attn_implementation_default_mem_efficient(self):
         """Test that attn_implementation defaults to mem_efficient in train command."""
@@ -1655,13 +1684,13 @@ class TestMetadataLoading:
     def test_metadata_with_whitespace_in_column_name(self, temp_dir):
         """Test that metadata with whitespace in column names works correctly."""
         import pandas as pd
-        
+
         metadata_file = temp_dir / "metadata_whitespace.tsv"
         metadata_file.write_text(" sample_id \ttarget\nsample1\t1.0\nsample2\t2.0\n")
-        
+
         metadata_df = pd.read_csv(metadata_file, sep="\t", encoding="utf-8-sig")
         metadata_df.columns = metadata_df.columns.str.strip()
-        
+
         assert "sample_id" in metadata_df.columns
         assert "target" in metadata_df.columns
         assert len(metadata_df) == 2
@@ -1669,13 +1698,13 @@ class TestMetadataLoading:
     def test_metadata_with_missing_sample_id_column(self, temp_dir):
         """Test that missing sample_id column provides helpful error message."""
         import pandas as pd
-        
+
         metadata_file = temp_dir / "metadata_no_sample_id.tsv"
         metadata_file.write_text("id\ttarget\nsample1\t1.0\nsample2\t2.0\n")
-        
+
         metadata_df = pd.read_csv(metadata_file, sep="\t", encoding="utf-8-sig")
         metadata_df.columns = metadata_df.columns.str.strip()
-        
+
         with pytest.raises(ValueError) as exc_info:
             if "sample_id" not in metadata_df.columns:
                 found_columns = list(metadata_df.columns)
@@ -1685,7 +1714,7 @@ class TestMetadataLoading:
                     f"Expected: 'sample_id'\n"
                     f"Tip: Check for whitespace or encoding issues in column names."
                 )
-        
+
         error_msg = str(exc_info.value)
         assert "sample_id" in error_msg.lower()
         assert "found columns" in error_msg.lower() or "columns" in error_msg.lower()
@@ -1693,13 +1722,13 @@ class TestMetadataLoading:
     def test_metadata_with_normal_column_name(self, temp_dir):
         """Test that normal metadata file still works (regression test)."""
         import pandas as pd
-        
+
         metadata_file = temp_dir / "metadata_normal.tsv"
         metadata_file.write_text("sample_id\ttarget\nsample1\t1.0\nsample2\t2.0\n")
-        
+
         metadata_df = pd.read_csv(metadata_file, sep="\t", encoding="utf-8-sig")
         metadata_df.columns = metadata_df.columns.str.strip()
-        
+
         assert "sample_id" in metadata_df.columns
         assert "target" in metadata_df.columns
         assert len(metadata_df) == 2
@@ -1707,13 +1736,13 @@ class TestMetadataLoading:
     def test_metadata_with_trailing_whitespace_in_column_name(self, temp_dir):
         """Test that metadata with trailing whitespace in column names works."""
         import pandas as pd
-        
+
         metadata_file = temp_dir / "metadata_trailing_whitespace.tsv"
         metadata_file.write_text("sample_id \ttarget \nsample1\t1.0\nsample2\t2.0\n")
-        
+
         metadata_df = pd.read_csv(metadata_file, sep="\t", encoding="utf-8-sig")
         metadata_df.columns = metadata_df.columns.str.strip()
-        
+
         assert "sample_id" in metadata_df.columns
         assert "target" in metadata_df.columns
         assert len(metadata_df) == 2
@@ -1721,13 +1750,13 @@ class TestMetadataLoading:
     def test_metadata_with_leading_whitespace_in_column_name(self, temp_dir):
         """Test that metadata with leading whitespace in column names works."""
         import pandas as pd
-        
+
         metadata_file = temp_dir / "metadata_leading_whitespace.tsv"
         metadata_file.write_text(" sample_id\ttarget\nsample1\t1.0\nsample2\t2.0\n")
-        
+
         metadata_df = pd.read_csv(metadata_file, sep="\t", encoding="utf-8-sig")
         metadata_df.columns = metadata_df.columns.str.strip()
-        
+
         assert "sample_id" in metadata_df.columns
         assert "target" in metadata_df.columns
         assert len(metadata_df) == 2

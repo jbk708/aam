@@ -106,7 +106,7 @@ def analyze_zero_distances(distance_matrix: DistanceMatrix) -> Dict:
         sample_zero_counts[i] += 1
         sample_zero_counts[j] += 1
 
-    print(f"\nZero-distance pair statistics per sample:")
+    print("\nZero-distance pair statistics per sample:")
     print(f"  Mean: {np.mean(sample_zero_counts):.2f}")
     print(f"  Median: {np.median(sample_zero_counts):.0f}")
     print(f"  Max: {np.max(sample_zero_counts)}")
@@ -118,7 +118,7 @@ def analyze_zero_distances(distance_matrix: DistanceMatrix) -> Dict:
     # Analyze distribution of non-zero distances
     non_zero_distances = pairwise_distances[~zero_mask]
 
-    print(f"\nNon-zero distance statistics:")
+    print("\nNon-zero distance statistics:")
     print(f"  Count: {len(non_zero_distances):,}")
     print(f"  Mean: {np.mean(non_zero_distances):.6f}")
     print(f"  Median: {np.median(non_zero_distances):.6f}")
@@ -204,12 +204,12 @@ def analyze_sample_metadata(table, sample_ids: List[str], analysis_results: Dict
         zero_sample_counts = counts_array[list(zero_sample_indices)]
         non_zero_sample_counts = counts_array[list(non_zero_sample_indices)]
 
-        print(f"\nSample abundance (total counts) analysis:")
-        print(f"  Samples with zero distances:")
+        print("\nSample abundance (total counts) analysis:")
+        print("  Samples with zero distances:")
         print(f"    Mean: {np.mean(zero_sample_counts):.2f}")
         print(f"    Median: {np.median(zero_sample_counts):.0f}")
         print(f"    Std: {np.std(zero_sample_counts):.2f}")
-        print(f"  Samples without zero distances:")
+        print("  Samples without zero distances:")
         print(f"    Mean: {np.mean(non_zero_sample_counts):.2f}")
         print(f"    Median: {np.median(non_zero_sample_counts):.0f}")
         print(f"    Std: {np.std(non_zero_sample_counts):.2f}")

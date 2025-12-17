@@ -476,18 +476,14 @@ class Trainer:
             mae = metrics.get("count_mae", metrics.get("mae"))
             if r2 is None:
                 return
-            fig = self._create_prediction_plot(
-                predictions, targets, epoch, r2, mae=mae, title_prefix="Count"
-            )
+            fig = self._create_prediction_plot(predictions, targets, epoch, r2, mae=mae, title_prefix="Count")
             plot_file = plots_dir / "count_plot_best.png"
         else:
             # Default: target prediction
             if "r2" not in metrics:
                 return
             mae = metrics.get("mae")
-            fig = self._create_prediction_plot(
-                predictions, targets, epoch, metrics["r2"], mae=mae, title_prefix="Target"
-            )
+            fig = self._create_prediction_plot(predictions, targets, epoch, metrics["r2"], mae=mae, title_prefix="Target")
             plot_file = plots_dir / "prediction_plot_best.png"
 
         if plot_file.exists():
@@ -555,6 +551,7 @@ class Trainer:
             if r2 is None:
                 # Compute R² for unifrac predictions
                 from sklearn.metrics import r2_score
+
                 try:
                     pred_np = predictions_dict["unifrac"].cpu().numpy().flatten()
                     true_np = targets_dict["unifrac"].cpu().numpy().flatten()
@@ -707,7 +704,7 @@ class Trainer:
                 if torch.any(tokens < 0) or torch.any(tokens >= vocab_size):
                     invalid_mask = (tokens < 0) | (tokens >= vocab_size)
                     invalid_count = invalid_mask.sum().item()
-                    print(f"ERROR: Invalid token values detected before model forward", file=sys.stderr, flush=True)
+                    print("ERROR: Invalid token values detected before model forward", file=sys.stderr, flush=True)
                     print(
                         f"tokens shape={tokens.shape}, min={tokens.min().item()}, max={tokens.max().item()}, invalid_count={invalid_count}",
                         file=sys.stderr,
@@ -717,7 +714,7 @@ class Trainer:
                         f"Invalid token values: min={tokens.min().item()}, max={tokens.max().item()}, vocab_size={vocab_size}"
                     )
                 if torch.any(torch.isnan(tokens)):
-                    print(f"ERROR: NaN in tokens before model forward", file=sys.stderr, flush=True)
+                    print("ERROR: NaN in tokens before model forward", file=sys.stderr, flush=True)
                     raise ValueError("NaN values found in tokens")
 
                 return_nucleotides = "nucleotides" in targets or self.loss_fn.nuc_penalty > 0
@@ -742,7 +739,7 @@ class Trainer:
                 encoder_type = self._get_encoder_type()
                 if encoder_type == "unifrac" and "embeddings" in outputs:
                     if torch.any(torch.isnan(outputs["embeddings"])):
-                        print(f"ERROR: NaN in embeddings before loss computation", file=sys.stderr, flush=True)
+                        print("ERROR: NaN in embeddings before loss computation", file=sys.stderr, flush=True)
                         print(f"embeddings shape={outputs['embeddings'].shape}", file=sys.stderr, flush=True)
                         print(
                             f"embeddings min={outputs['embeddings'].min().item()}, max={outputs['embeddings'].max().item()}",
@@ -759,7 +756,7 @@ class Trainer:
                         raise ValueError("NaN values found in embeddings before loss computation")
                 elif "base_prediction" in outputs:
                     if torch.any(torch.isnan(outputs["base_prediction"])):
-                        print(f"ERROR: NaN in base_prediction before loss computation", file=sys.stderr, flush=True)
+                        print("ERROR: NaN in base_prediction before loss computation", file=sys.stderr, flush=True)
                         print(f"base_prediction shape={outputs['base_prediction'].shape}", file=sys.stderr, flush=True)
                         print(
                             f"base_prediction min={outputs['base_prediction'].min().item()}, max={outputs['base_prediction'].max().item()}",
@@ -769,7 +766,7 @@ class Trainer:
 
                 if "base_target" in targets:
                     if torch.any(torch.isnan(targets["base_target"])):
-                        print(f"ERROR: NaN in base_target before loss computation", file=sys.stderr, flush=True)
+                        print("ERROR: NaN in base_target before loss computation", file=sys.stderr, flush=True)
                         print(f"base_target shape={targets['base_target'].shape}", file=sys.stderr, flush=True)
                         print(
                             f"base_target min={targets['base_target'].min().item()}, max={targets['base_target'].max().item()}",
@@ -781,7 +778,7 @@ class Trainer:
 
                 if "nuc_predictions" in outputs:
                     if torch.any(torch.isnan(outputs["nuc_predictions"])):
-                        print(f"ERROR: NaN in nuc_predictions before loss computation", file=sys.stderr, flush=True)
+                        print("ERROR: NaN in nuc_predictions before loss computation", file=sys.stderr, flush=True)
                         print(f"nuc_predictions shape={outputs['nuc_predictions'].shape}", file=sys.stderr, flush=True)
                         print(
                             f"nuc_predictions min={outputs['nuc_predictions'].min().item()}, max={outputs['nuc_predictions'].max().item()}",
@@ -791,7 +788,7 @@ class Trainer:
 
                 encoder_type = self._get_encoder_type()
                 is_classifier = self._get_is_classifier()
-                
+
                 # For stripe mode, we need reference embeddings
                 # Check if we're in stripe mode by looking at base_target shape
                 if "base_target" in targets and encoder_type == "unifrac" and "embeddings" in outputs:
@@ -813,12 +810,12 @@ class Trainer:
                             f"Please use --no-stripe-mode for now, or implement reference embedding computation "
                             f"in Trainer.train_epoch() method."
                         )
-                
+
                 losses = self.loss_fn(outputs, targets, is_classifier=is_classifier, encoder_type=encoder_type)
 
                 # Check for NaN in loss after computation
                 if torch.any(torch.isnan(losses["total_loss"])):
-                    print(f"ERROR: NaN in total_loss after computation", file=sys.stderr, flush=True)
+                    print("ERROR: NaN in total_loss after computation", file=sys.stderr, flush=True)
                     print(f"losses: {losses}", file=sys.stderr, flush=True)
                     if "unifrac_loss" in losses:
                         print(f"unifrac_loss: {losses['unifrac_loss']}", file=sys.stderr, flush=True)
@@ -836,7 +833,7 @@ class Trainer:
                     nuc_targets = targets.get("tokens", targets.get("nucleotides"))
                     if nuc_targets is not None:
                         predicted_tokens = nuc_preds.argmax(dim=-1)
-                        correct = (predicted_tokens == nuc_targets)
+                        correct = predicted_tokens == nuc_targets
                         mask_indices = outputs.get("mask_indices")
                         if mask_indices is not None and mask_indices.any():
                             nuc_accuracy_train = correct[mask_indices].float().mean().item()
@@ -941,7 +938,9 @@ class Trainer:
                             nuc_val = float(nuc_val)
                         running_avg_nuc_loss = (running_avg_nuc_loss * num_batches + nuc_val) / (num_batches + 1)
                     if "nuc_accuracy" in losses:
-                        running_avg_nuc_accuracy = (running_avg_nuc_accuracy * num_batches + losses["nuc_accuracy"]) / (num_batches + 1)
+                        running_avg_nuc_accuracy = (running_avg_nuc_accuracy * num_batches + losses["nuc_accuracy"]) / (
+                            num_batches + 1
+                        )
 
                 # Format progress bar
                 postfix_dict = {
@@ -1080,7 +1079,7 @@ class Trainer:
                         nuc_targets = targets.get("tokens", targets.get("nucleotides"))
                         if nuc_targets is not None:
                             predicted_tokens = nuc_preds.argmax(dim=-1)  # [batch, num_asvs, seq_len]
-                            correct = (predicted_tokens == nuc_targets)
+                            correct = predicted_tokens == nuc_targets
 
                             # Use mask_indices if available (MAE mode), otherwise use valid positions
                             mask_indices = outputs.get("mask_indices")
@@ -1114,7 +1113,9 @@ class Trainer:
                                 running_avg_nuc_loss = float(nuc_val)
                     else:
                         running_avg_loss = (running_avg_loss * num_batches + current_loss_val) / (num_batches + 1)
-                        running_avg_nuc_accuracy = (running_avg_nuc_accuracy * num_batches + nuc_accuracy_val) / (num_batches + 1)
+                        running_avg_nuc_accuracy = (running_avg_nuc_accuracy * num_batches + nuc_accuracy_val) / (
+                            num_batches + 1
+                        )
                         if "unifrac_loss" in losses:
                             unifrac_val = losses["unifrac_loss"]
                             if isinstance(unifrac_val, torch.Tensor):
@@ -1221,6 +1222,7 @@ class Trainer:
                             # Also collect UniFrac predictions during fine-tuning
                             if "base_target" in targets:
                                 from aam.training.losses import compute_pairwise_distances
+
                                 encoder_type = self._get_encoder_type()
                                 base_pred_batch = None
 
@@ -1272,9 +1274,9 @@ class Trainer:
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
                     error_msg = (
-                        f"CUDA out of memory during validation. "
-                        f"Try: (1) reducing batch_size, (2) reducing model size, "
-                        f"(3) setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True"
+                        "CUDA out of memory during validation. "
+                        "Try: (1) reducing batch_size, (2) reducing model size, "
+                        "(3) setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True"
                     )
                     raise RuntimeError(error_msg) from e
 
@@ -1378,6 +1380,7 @@ class Trainer:
             # Also collect unifrac predictions during fine-tuning if available
             if not is_pretraining and "base_prediction" in all_predictions:
                 from aam.training.losses import compute_pairwise_distances
+
                 base_pred_flat = torch.cat(all_predictions["base_prediction"], dim=0)
                 base_true_flat = torch.cat(all_targets["base_target"], dim=0)
                 all_preds["unifrac"] = base_pred_flat
@@ -1445,27 +1448,19 @@ class Trainer:
                             chart=[
                                 layout_pb2.Chart(
                                     title="Total Loss",
-                                    multiline=layout_pb2.MultilineChartContent(
-                                        tag=["TotalLoss/train", "TotalLoss/val"]
-                                    ),
+                                    multiline=layout_pb2.MultilineChartContent(tag=["TotalLoss/train", "TotalLoss/val"]),
                                 ),
                                 layout_pb2.Chart(
                                     title="Target Loss",
-                                    multiline=layout_pb2.MultilineChartContent(
-                                        tag=["TargetLoss/train", "TargetLoss/val"]
-                                    ),
+                                    multiline=layout_pb2.MultilineChartContent(tag=["TargetLoss/train", "TargetLoss/val"]),
                                 ),
                                 layout_pb2.Chart(
                                     title="Count Loss",
-                                    multiline=layout_pb2.MultilineChartContent(
-                                        tag=["CountLoss/train", "CountLoss/val"]
-                                    ),
+                                    multiline=layout_pb2.MultilineChartContent(tag=["CountLoss/train", "CountLoss/val"]),
                                 ),
                                 layout_pb2.Chart(
                                     title="UniFrac Loss",
-                                    multiline=layout_pb2.MultilineChartContent(
-                                        tag=["UniFracLoss/train", "UniFracLoss/val"]
-                                    ),
+                                    multiline=layout_pb2.MultilineChartContent(tag=["UniFracLoss/train", "UniFracLoss/val"]),
                                 ),
                             ],
                         ),
@@ -1474,15 +1469,11 @@ class Trainer:
                             chart=[
                                 layout_pb2.Chart(
                                     title="Nucleotide Loss",
-                                    multiline=layout_pb2.MultilineChartContent(
-                                        tag=["NucLoss/train", "NucLoss/val"]
-                                    ),
+                                    multiline=layout_pb2.MultilineChartContent(tag=["NucLoss/train", "NucLoss/val"]),
                                 ),
                                 layout_pb2.Chart(
                                     title="Nucleotide Accuracy",
-                                    multiline=layout_pb2.MultilineChartContent(
-                                        tag=["NucAccuracy/train", "NucAccuracy/val"]
-                                    ),
+                                    multiline=layout_pb2.MultilineChartContent(tag=["NucAccuracy/train", "NucAccuracy/val"]),
                                 ),
                             ],
                         ),
@@ -1524,9 +1515,7 @@ class Trainer:
 
                     # Log prediction figures to TensorBoard at every epoch
                     if self.writer is not None and val_predictions_dict:
-                        self._log_figures_to_tensorboard(
-                            epoch, val_predictions_dict, val_targets_dict, val_results
-                        )
+                        self._log_figures_to_tensorboard(epoch, val_predictions_dict, val_targets_dict, val_results)
 
                     if val_loss < best_val_loss:
                         best_val_loss = val_loss
@@ -1778,9 +1767,7 @@ def create_scheduler(
         T_0 = kwargs.get("T_0", num_training_steps // 4)
         T_mult = kwargs.get("T_mult", 2)
         eta_min = kwargs.get("eta_min", 0.0)
-        return torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
-            optimizer, T_0=T_0, T_mult=T_mult, eta_min=eta_min
-        )
+        return torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=T_0, T_mult=T_mult, eta_min=eta_min)
     elif scheduler_type == "plateau":
         mode = kwargs.get("mode", "min")
         factor = kwargs.get("factor", 0.3)

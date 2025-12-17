@@ -111,6 +111,7 @@ class TestDataPipelineIntegration:
         # Create pre-computed UniFrac distance matrix for testing
         from skbio import DistanceMatrix
         import numpy as np
+
         sample_ids = list(rarefied_table.ids(axis="sample"))
         n_samples = len(sample_ids)
         distances = np.random.rand(n_samples, n_samples)
@@ -148,6 +149,7 @@ class TestDataPipelineIntegration:
 
         # Create pre-computed Faith PD values
         import pandas as pd
+
         sample_ids = list(rarefied_table.ids(axis="sample"))
         faith_pd_values = np.random.rand(len(sample_ids))
         unifrac_distances = pd.Series(faith_pd_values, index=sample_ids)
@@ -178,7 +180,9 @@ class TestDataPipelineIntegration:
         # Test that collate_fn adds unifrac_target correctly
         from functools import partial
 
-        collate = partial(collate_fn, token_limit=1024, unifrac_distances=unifrac_distances, unifrac_metric="faith_pd", stripe_mode=False)
+        collate = partial(
+            collate_fn, token_limit=1024, unifrac_distances=unifrac_distances, unifrac_metric="faith_pd", stripe_mode=False
+        )
         batch = [dataset[0], dataset[1]]
         batched = collate(batch)
         assert "unifrac_target" in batched
@@ -195,6 +199,7 @@ class TestDataPipelineIntegration:
 
         # Create pre-computed Faith PD values
         import pandas as pd
+
         sample_ids = list(rarefied_table.ids(axis="sample"))
         faith_pd_values = np.random.rand(len(sample_ids))
         unifrac_distances = pd.Series(faith_pd_values, index=sample_ids)
@@ -219,7 +224,9 @@ class TestDataPipelineIntegration:
         # Test that collate_fn adds unifrac_target with correct dtype
         from functools import partial
 
-        collate = partial(collate_fn, token_limit=1024, unifrac_distances=unifrac_distances, unifrac_metric="faith_pd", stripe_mode=False)
+        collate = partial(
+            collate_fn, token_limit=1024, unifrac_distances=unifrac_distances, unifrac_metric="faith_pd", stripe_mode=False
+        )
         batch = [dataset[0]]
         batched = collate(batch)
         assert batched["unifrac_target"].dtype == torch.float32
@@ -232,6 +239,7 @@ class TestDataPipelineIntegration:
 
         # Create pre-computed Faith PD values
         import pandas as pd
+
         sample_ids = list(rarefied_table.ids(axis="sample"))
         faith_pd_values = np.random.rand(len(sample_ids))
         unifrac_distances = pd.Series(faith_pd_values, index=sample_ids)
@@ -531,6 +539,7 @@ class TestEndToEnd:
 
         # Create pre-computed UniFrac distance matrix
         from skbio import DistanceMatrix
+
         sample_ids = list(rarefied_table.ids(axis="sample"))
         n_samples = len(sample_ids)
         distances = np.random.rand(n_samples, n_samples)
@@ -552,7 +561,9 @@ class TestEndToEnd:
             dataset,
             batch_size=batch_size,
             shuffle=False,
-            collate_fn=lambda batch: collate_fn(batch, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False),
+            collate_fn=lambda batch: collate_fn(
+                batch, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False
+            ),
         )
 
         model_config = small_model_config.copy()
@@ -619,6 +630,7 @@ class TestEndToEnd:
 
         # Create pre-computed UniFrac distance matrix
         from skbio import DistanceMatrix
+
         sample_ids = list(rarefied_table.ids(axis="sample"))
         n_samples = len(sample_ids)
         distances = np.random.rand(n_samples, n_samples)
@@ -640,7 +652,9 @@ class TestEndToEnd:
             dataset,
             batch_size=batch_size,
             shuffle=False,
-            collate_fn=lambda batch: collate_fn(batch, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False),
+            collate_fn=lambda batch: collate_fn(
+                batch, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False
+            ),
         )
 
         model_config = small_model_config.copy()
@@ -694,7 +708,7 @@ class TestEndToEnd:
             losses.append(loss_dict["total_loss"].item())
 
         assert len(losses) > 0
-        assert all(l >= 0 for l in losses)
+        assert all(loss >= 0 for loss in losses)
 
     @pytest.mark.slow
     def test_end_to_end_checkpoint_saving(self, biom_file, device, small_model_config, tmp_path):
@@ -706,6 +720,7 @@ class TestEndToEnd:
 
         # Create pre-computed UniFrac distance matrix
         from skbio import DistanceMatrix
+
         sample_ids = list(rarefied_table.ids(axis="sample"))
         n_samples = len(sample_ids)
         distances = np.random.rand(n_samples, n_samples)
@@ -727,7 +742,9 @@ class TestEndToEnd:
             dataset,
             batch_size=batch_size,
             shuffle=False,
-            collate_fn=lambda batch: collate_fn(batch, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False),
+            collate_fn=lambda batch: collate_fn(
+                batch, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False
+            ),
         )
 
         model_config = small_model_config.copy()

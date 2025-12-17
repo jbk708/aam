@@ -324,7 +324,7 @@ class TestCreateScheduler:
         # Plateau scheduler needs patience epochs of no improvement
         for _ in range(2):
             scheduler.step(0.6)  # Worse loss
-        
+
         # Verify scheduler can step and LR is within bounds
         current_lr = optimizer.param_groups[0]["lr"]
         assert current_lr >= 1e-5  # Should not go below min_lr
@@ -344,9 +344,7 @@ class TestCreateScheduler:
         """Test Trainer works correctly with cosine_restarts scheduler."""
         small_model = small_model.to(device)
         optimizer = create_optimizer(small_model, optimizer_type="adamw", lr=1e-4)
-        scheduler = create_scheduler(
-            optimizer, scheduler_type="cosine_restarts", num_training_steps=20, T_0=5, T_mult=2
-        )
+        scheduler = create_scheduler(optimizer, scheduler_type="cosine_restarts", num_training_steps=20, T_0=5, T_mult=2)
 
         trainer = Trainer(
             model=small_model,
@@ -674,7 +672,7 @@ class TestTrainingLoop:
                 assert "embeddings" in outputs, "UniFrac encoder should return embeddings"
                 embeddings = outputs["embeddings"]
                 embeddings_found = True
-                
+
                 # Compute normalized distances (normalize=True is now the default)
                 distances = compute_pairwise_distances(embeddings)
 
@@ -682,15 +680,19 @@ class TestTrainingLoop:
                 # Use explicit device-aware comparisons
                 zero_tensor = torch.tensor(0.0, device=distances.device)
                 one_tensor = torch.tensor(1.0, device=distances.device)
-                assert torch.all(distances >= zero_tensor), f"UniFrac distances should be >= 0.0, got min={distances.min().item()}"
-                assert torch.all(distances <= one_tensor), f"UniFrac distances should be <= 1.0, got max={distances.max().item()}"
+                assert torch.all(distances >= zero_tensor), (
+                    f"UniFrac distances should be >= 0.0, got min={distances.min().item()}"
+                )
+                assert torch.all(distances <= one_tensor), (
+                    f"UniFrac distances should be <= 1.0, got max={distances.max().item()}"
+                )
                 # Diagonal should be 0.0
                 diag = torch.diag(distances)
                 zeros = torch.zeros(distances.shape[0], device=distances.device, dtype=distances.dtype)
                 assert torch.allclose(diag, zeros), "Diagonal should be 0.0"
 
                 break  # Just check first batch
-        
+
         assert embeddings_found, "Should have found embeddings in at least one batch"
 
     def test_train_early_stopping(self, small_model, loss_fn, simple_dataloader_encoder, device):
@@ -1366,7 +1368,9 @@ class TestPredictionPlots:
             device=device,
         )
 
-        results, predictions_dict, targets_dict = trainer.validate_epoch(simple_dataloader, compute_metrics=True, return_predictions=True)
+        results, predictions_dict, targets_dict = trainer.validate_epoch(
+            simple_dataloader, compute_metrics=True, return_predictions=True
+        )
 
         assert "total_loss" in results
         assert isinstance(predictions_dict, dict)
@@ -1407,7 +1411,9 @@ class TestPredictionPlots:
         targets = predictions + torch.randn(50, 1).to(device) * 0.1
         metrics = {"r2": 0.95, "mse": 0.05}
 
-        trainer._save_prediction_plots(predictions, targets, epoch=5, metrics=metrics, checkpoint_dir=str(checkpoint_dir), plot_type="target")
+        trainer._save_prediction_plots(
+            predictions, targets, epoch=5, metrics=metrics, checkpoint_dir=str(checkpoint_dir), plot_type="target"
+        )
 
         plots_dir = checkpoint_dir / "plots"
         plot_file = plots_dir / "prediction_plot_best.png"
@@ -1453,7 +1459,9 @@ class TestPredictionPlots:
         targets = torch.randint(0, 3, (50,)).to(device)
         metrics = {"accuracy": 0.85, "precision": 0.82, "recall": 0.80, "f1": 0.81}
 
-        trainer._save_prediction_plots(predictions, targets, epoch=5, metrics=metrics, checkpoint_dir=str(checkpoint_dir), plot_type="target")
+        trainer._save_prediction_plots(
+            predictions, targets, epoch=5, metrics=metrics, checkpoint_dir=str(checkpoint_dir), plot_type="target"
+        )
 
         plots_dir = checkpoint_dir / "plots"
         plot_file = plots_dir / "prediction_plot_best.png"

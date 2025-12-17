@@ -19,8 +19,14 @@ import skbio
 from skbio import DistanceMatrix, TreeNode
 import pandas as pd
 import numpy as np
-import unifrac
 import multiprocessing
+
+try:
+    import unifrac
+    UNIFRAC_AVAILABLE = True
+except ImportError:
+    unifrac = None
+    UNIFRAC_AVAILABLE = False
 
 # Import tree pruner (deprecated)
 try:
@@ -107,6 +113,11 @@ class UniFracComputer:
             DeprecationWarning,
             stacklevel=2
         )
+        if not UNIFRAC_AVAILABLE:
+            raise ImportError(
+                "unifrac package is required for compute_unweighted(). "
+                "Install with: pip install aam[compute]"
+            )
         tree_path_obj = Path(tree_path)
         if not tree_path_obj.exists():
             raise FileNotFoundError(f"Tree file not found: {tree_path}")
@@ -171,6 +182,11 @@ class UniFracComputer:
             DeprecationWarning,
             stacklevel=2
         )
+        if not UNIFRAC_AVAILABLE:
+            raise ImportError(
+                "unifrac package is required for compute_faith_pd(). "
+                "Install with: pip install aam[compute]"
+            )
         tree_path_obj = Path(tree_path)
         if not tree_path_obj.exists():
             raise FileNotFoundError(f"Tree file not found: {tree_path}")
@@ -435,9 +451,14 @@ class UniFracComputer:
             DeprecationWarning,
             stacklevel=2
         )
+        if not UNIFRAC_AVAILABLE:
+            raise ImportError(
+                "unifrac package is required for compute_batch_unweighted(). "
+                "Install with: pip install aam[compute]"
+            )
         if not sample_ids:
             return np.array([]).reshape(0, 0)
-        
+
         self.validate_batch_size(len(sample_ids))
         
         # Check cache first
@@ -534,9 +555,14 @@ class UniFracComputer:
             DeprecationWarning,
             stacklevel=2
         )
+        if not UNIFRAC_AVAILABLE:
+            raise ImportError(
+                "unifrac package is required for compute_batch_faith_pd(). "
+                "Install with: pip install aam[compute]"
+            )
         if not sample_ids:
             return np.array([]).reshape(0, 1)
-        
+
         # Check cache first
         cache_key = (frozenset(sample_ids), "faith_pd")
         if cache_key in self._batch_cache:
@@ -799,9 +825,14 @@ class UniFracComputer:
             DeprecationWarning,
             stacklevel=2
         )
+        if not UNIFRAC_AVAILABLE:
+            raise ImportError(
+                "unifrac package is required for compute_batch_unweighted_stripe(). "
+                "Install with: pip install aam[compute]"
+            )
         if not sample_ids:
             return np.array([]).reshape(0, 0)
-        
+
         # Use cached reference samples if not provided
         if reference_sample_ids is None:
             reference_sample_ids = self._reference_sample_ids

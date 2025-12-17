@@ -435,11 +435,11 @@ class TestSequenceEncoder:
             gradient_checkpointing=True,
         )
         encoder.train()
-        
+
         result = encoder(sample_tokens)
         loss = result["base_prediction"].sum()
         loss.backward()
-        
+
         # Check that model parameters have gradients
         for param in encoder.parameters():
             if param.requires_grad:
@@ -463,7 +463,7 @@ class TestSequenceEncoder:
             gradient_checkpointing=True,
         )
         encoder.train()
-        
+
         result = encoder(sample_tokens)
         assert "base_prediction" in result
         assert result["base_prediction"].shape[0] == sample_tokens.shape[0]

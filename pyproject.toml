@@ -34,7 +34,6 @@ dependencies = [
     "scikit-learn >= 1.3",
     "scipy >= 1.13.0",
     "click",
-    "unifrac",
     "tqdm",
     "tensorboard >= 2.13.0",
     "matplotlib",
@@ -71,8 +70,11 @@ training = [
     "wandb >= 0.15.0",
     "tensorboard >= 2.13.0",
 ]
+compute = [
+    "unifrac",
+]
 all = [
-    "aam[dev,docs,training]",
+    "aam[dev,docs,training,compute]",
 ]
 
 

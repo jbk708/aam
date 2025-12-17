@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader
 from typing import Dict, List, Optional, Tuple
 import numpy as np
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from pathlib import Path
@@ -17,7 +18,7 @@ from pathlib import Path
 
 class LearningRateFinder:
     """Find optimal learning rate using LR range test.
-    
+
     The LR range test exponentially increases the learning rate while training
     and tracks the loss. The optimal learning rate is typically where the loss
     decreases fastest (steepest negative slope).
@@ -42,10 +43,10 @@ class LearningRateFinder:
         self.optimizer = optimizer
         self.loss_fn = loss_fn
         self.device = device
-        
+
         # Store original learning rate
         self.original_lr = [group["lr"] for group in optimizer.param_groups]
-        
+
         # Results storage
         self.lrs: List[float] = []
         self.losses: List[float] = []
@@ -77,23 +78,23 @@ class LearningRateFinder:
         """
         self.lrs = []
         self.losses = []
-        
+
         # Set initial learning rate
         for param_group in self.optimizer.param_groups:
             param_group["lr"] = start_lr
-        
+
         # Exponential learning rate multiplier
         lr_mult = (end_lr / start_lr) ** (1.0 / num_iter)
-        
+
         # Create iterator from data loader
         data_iter = iter(train_loader)
-        
+
         # Track best loss and smoothed loss
         best_loss = float("inf")
         smoothed_loss = None
-        
+
         self.model.train()
-        
+
         try:
             for iteration in range(num_iter):
                 # Get next batch (cycle if needed)
@@ -102,15 +103,15 @@ class LearningRateFinder:
                 except StopIteration:
                     data_iter = iter(train_loader)
                     batch = next(data_iter)
-                
+
                 # Update learning rate exponentially
-                current_lr = start_lr * (lr_mult ** iteration)
+                current_lr = start_lr * (lr_mult**iteration)
                 for param_group in self.optimizer.param_groups:
                     param_group["lr"] = current_lr
-                
+
                 # Forward pass
                 self.optimizer.zero_grad()
-                
+
                 # Prepare batch (similar to trainer._prepare_batch)
                 if isinstance(batch, dict):
                     tokens = batch["tokens"].to(self.device)
@@ -130,103 +131,103 @@ class LearningRateFinder:
                 else:
                     tokens = batch.to(self.device)
                     targets = {"tokens": tokens}
-                
+
                 # Forward pass
                 outputs = self.model(tokens)
-                
+
                 # Compute loss (need to determine encoder_type)
                 encoder_type = "unifrac"  # Default, can be improved
                 if hasattr(self.model, "encoder_type"):
                     encoder_type = self.model.encoder_type
                 elif hasattr(self.model, "base_model") and hasattr(self.model.base_model, "encoder_type"):
                     encoder_type = self.model.base_model.encoder_type
-                
+
                 loss_dict = self.loss_fn(outputs, targets, encoder_type=encoder_type)
                 loss = loss_dict["total_loss"]
-                
+
                 # Backward pass
                 loss.backward()
                 self.optimizer.step()
-                
+
                 # Track loss
                 loss_value = loss.item()
-                
+
                 # Smooth loss
                 if smoothed_loss is None:
                     smoothed_loss = loss_value
                 else:
                     smoothed_loss = smooth_factor * loss_value + (1 - smooth_factor) * smoothed_loss
-                
+
                 # Store results
                 self.lrs.append(current_lr)
                 self.losses.append(smoothed_loss)
-                
+
                 # Check for divergence
                 if smoothed_loss > diverge_threshold * best_loss:
                     print(f"LR finder: Loss diverged at LR={current_lr:.2e}, stopping early")
                     break
-                
+
                 # Update best loss
                 if smoothed_loss < best_loss:
                     best_loss = smoothed_loss
-                
+
         except KeyboardInterrupt:
             print("LR finder: Interrupted by user")
-        
+
         # Restore original learning rate
         for param_group, orig_lr in zip(self.optimizer.param_groups, self.original_lr):
             param_group["lr"] = orig_lr
-        
+
         # Find suggested learning rate (steepest negative slope)
         suggested_lr = self._suggest_lr()
-        
+
         return self.lrs, self.losses, suggested_lr
 
     def _suggest_lr(self) -> Optional[float]:
         """Suggest optimal learning rate based on loss curve.
-        
+
         Finds the learning rate where the loss decreases fastest
         (steepest negative slope).
-        
+
         Returns:
             Suggested learning rate, or None if not enough data
         """
         if len(self.lrs) < 10:
             return None
-        
+
         # Convert to numpy for easier computation
         lrs = np.array(self.lrs)
         losses = np.array(self.losses)
-        
+
         # Find minimum loss point
         min_idx = np.argmin(losses)
-        
+
         # Look for steepest negative slope before minimum
         # Use a window to compute gradients
         window_size = max(5, len(losses) // 20)
         best_lr = None
         best_gradient = float("inf")
-        
+
         # Check gradients in the range before minimum loss
         for i in range(window_size, min_idx):
             # Compute gradient over window
             lr_window = lrs[i - window_size : i + window_size]
             loss_window = losses[i - window_size : i + window_size]
-            
+
             # Fit linear regression to log space
             log_lrs = np.log10(lr_window)
             if len(loss_window) > 1 and np.std(loss_window) > 1e-8:
                 gradient = np.polyfit(log_lrs, loss_window, 1)[0]
-                
+
                 # Find most negative gradient (steepest descent)
                 if gradient < best_gradient:
                     best_gradient = gradient
                     best_lr = lrs[i]
-        
+
         # If no good gradient found, use LR at 1/10th of minimum loss point
         if best_lr is None and min_idx > 0:
             best_lr = lrs[min(min_idx // 10, len(lrs) - 1)]
-        
+
         return best_lr
 
     def plot(
@@ -247,19 +248,19 @@ class LearningRateFinder:
         """
         if len(self.lrs) == 0:
             raise ValueError("No LR finder data. Run find_lr() first.")
-        
+
         # Skip noisy start and end
         start_idx = skip_start
         end_idx = len(self.lrs) - skip_end if skip_end > 0 else len(self.lrs)
-        
+
         lrs_plot = self.lrs[start_idx:end_idx]
         losses_plot = self.losses[start_idx:end_idx]
-        
+
         fig, ax = plt.subplots(figsize=(10, 6))
-        
+
         # Plot on log scale
         ax.semilogx(lrs_plot, losses_plot, "b-", linewidth=2, label="Loss")
-        
+
         # Mark suggested LR if available
         suggested_lr = self._suggest_lr()
         if suggested_lr is not None:
@@ -267,17 +268,17 @@ class LearningRateFinder:
             idx = min(np.argmin(np.abs(np.array(lrs_plot) - suggested_lr)), len(losses_plot) - 1)
             ax.axvline(x=suggested_lr, color="r", linestyle="--", linewidth=2, label=f"Suggested LR: {suggested_lr:.2e}")
             ax.plot(suggested_lr, losses_plot[idx], "ro", markersize=10)
-        
+
         ax.set_xlabel("Learning Rate", fontsize=12)
         ax.set_ylabel("Loss", fontsize=12)
         ax.set_title("Learning Rate Finder", fontsize=14)
         ax.grid(True, alpha=0.3)
         ax.legend()
-        
+
         plt.tight_layout()
-        
+
         if output_path:
             fig.savefig(output_path, dpi=150, bbox_inches="tight")
             print(f"LR finder plot saved to {output_path}")
-        
+
         return fig

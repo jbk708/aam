@@ -50,7 +50,7 @@ def trace_attention_pooling(embeddings, mask, pooling_layer):
 
     batch_size, seq_len, hidden_dim = embeddings.shape
 
-    print(f"\nInput:")
+    print("\nInput:")
     print(f"  embeddings shape: {embeddings.shape}")
     print(f"  mask shape: {mask.shape if mask is not None else 'None'}")
 
@@ -81,17 +81,17 @@ def trace_attention_pooling(embeddings, mask, pooling_layer):
         if all_padding.any():
             all_padding_expanded = all_padding.expand(-1, seq_len)
             scores = scores.masked_fill(all_padding_expanded, 0.0)
-            print(f"  After setting scores to 0 for all-padding sequences:")
+            print("  After setting scores to 0 for all-padding sequences:")
             check_tensor_stats(scores, "scores (after all-padding fix)", detailed=True)
 
             # Mask padding for valid sequences
             valid_mask_expanded = (~all_padding).expand(-1, seq_len)
             scores = scores.masked_fill(valid_mask_expanded & (mask == 0), float("-inf"))
-            print(f"  After masking padding with -inf for valid sequences:")
+            print("  After masking padding with -inf for valid sequences:")
             check_tensor_stats(scores, "scores (after -inf masking)", detailed=True)
         else:
             scores = scores.masked_fill(mask == 0, float("-inf"))
-            print(f"  After masking padding with -inf:")
+            print("  After masking padding with -inf:")
             check_tensor_stats(scores, "scores (after -inf masking)", detailed=True)
 
     # Step 3: Softmax
@@ -117,7 +117,7 @@ def trace_attention_pooling(embeddings, mask, pooling_layer):
 
         # Apply mask
         attention_weights = attention_weights * mask
-        print(f"  After applying mask:")
+        print("  After applying mask:")
         check_tensor_stats(attention_weights, "attention_weights (after mask)", detailed=True)
         print(f"  attention_weights sum per sample (first 10): {attention_weights.sum(dim=-1)[:10].tolist()}")
 
@@ -127,7 +127,7 @@ def trace_attention_pooling(embeddings, mask, pooling_layer):
         print(f"  attention_weights_sum values (first 10): {attention_weights_sum[:10].squeeze().tolist()}")
 
         normalized = attention_weights / (attention_weights_sum + 1e-8)
-        print(f"  After normalization:")
+        print("  After normalization:")
         check_tensor_stats(normalized, "normalized attention_weights", detailed=True)
         print(f"  normalized sum per sample (first 10): {normalized.sum(dim=-1)[:10].tolist()}")
 
@@ -135,7 +135,7 @@ def trace_attention_pooling(embeddings, mask, pooling_layer):
         if all_padding is not None and all_padding.any():
             all_padding_expanded = all_padding.expand(-1, seq_len)
             attention_weights = torch.where(all_padding_expanded, attention_weights_all_padding, normalized)
-            print(f"  After replacing all-padding with uniform weights:")
+            print("  After replacing all-padding with uniform weights:")
             check_tensor_stats(attention_weights, "attention_weights (final)", detailed=True)
             print(f"  attention_weights sum per sample (first 10): {attention_weights.sum(dim=-1)[:10].tolist()}")
         else:
@@ -180,7 +180,7 @@ def test_attention_pooling_scenarios():
     mask[:5, :] = 1
     # Last 5 samples are all padding
 
-    print(f"\nSetup:")
+    print("\nSetup:")
     print(f"  batch_size: {batch_size}")
     print(f"  seq_len: {seq_len}")
     print(f"  hidden_dim: {hidden_dim}")
@@ -211,11 +211,11 @@ def test_attention_pooling_scenarios():
     mask[:100, :] = 1
     # Rest are all padding
 
-    print(f"\nSetup:")
+    print("\nSetup:")
     print(f"  batch_size: {batch_size}")
     print(f"  seq_len: {seq_len}")
     print(f"  hidden_dim: {hidden_dim}")
-    print(f"  Samples 0-99: valid")
+    print("  Samples 0-99: valid")
     print(f"  Samples 100-4095: all padding ({batch_size - 100} all-padding sequences)")
 
     try:
@@ -239,9 +239,9 @@ def test_attention_pooling_scenarios():
     embeddings = torch.randn(batch_size, seq_len, hidden_dim)
     mask = torch.ones(batch_size, seq_len)
 
-    print(f"\nSetup:")
+    print("\nSetup:")
     print(f"  batch_size: {batch_size}")
-    print(f"  All sequences valid")
+    print("  All sequences valid")
 
     try:
         result = trace_attention_pooling(embeddings, mask, pooling)
@@ -264,9 +264,9 @@ def test_attention_pooling_scenarios():
     embeddings = torch.randn(batch_size, seq_len, hidden_dim)
     mask = torch.zeros(batch_size, seq_len)
 
-    print(f"\nSetup:")
+    print("\nSetup:")
     print(f"  batch_size: {batch_size}")
-    print(f"  All sequences are all-padding")
+    print("  All sequences are all-padding")
 
     try:
         result = trace_attention_pooling(embeddings, mask, pooling)
@@ -312,7 +312,7 @@ def test_with_real_model_forward():
     mask = (tokens.sum(dim=-1) > 0).long()  # [batch_size, num_asvs]
     mask = mask.squeeze(1)  # [batch_size]
 
-    print(f"\nSetup:")
+    print("\nSetup:")
     print(f"  tokens shape: {tokens.shape}")
     print(f"  mask shape: {mask.shape}")
     print(f"  Valid sequences: {mask.sum().item()} / {batch_size}")

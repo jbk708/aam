@@ -77,9 +77,8 @@ def simple_metadata():
 @pytest.fixture
 def simple_unifrac_distances(rarefied_table, tmp_path):
     """Create simple UniFrac distance matrix (pre-computed for testing)."""
-    from skbio import DistanceMatrix
     import numpy as np
-    
+
     # Create a simple pre-computed distance matrix
     sample_ids = list(rarefied_table.ids(axis="sample"))
     n_samples = len(sample_ids)
@@ -466,7 +465,9 @@ class TestDatasetEdgeCases:
         from functools import partial
 
         batch = [dataset[0], dataset[2]]  # sample 2 is missing from faith_pd_values
-        collate = partial(collate_fn, token_limit=1024, unifrac_distances=faith_pd_values, unifrac_metric="faith_pd", stripe_mode=False)
+        collate = partial(
+            collate_fn, token_limit=1024, unifrac_distances=faith_pd_values, unifrac_metric="faith_pd", stripe_mode=False
+        )
         # This should raise ValueError because sample_ids[2] is not in faith_pd_values
         with pytest.raises(ValueError, match="not found|reference_sample_ids"):
             collate(batch)
@@ -530,168 +531,6 @@ class TestASVDatasetIntegration:
         )
 
         def custom_collate(batch):
-            return collate_fn(batch, token_limit=1024, unifrac_distances=simple_unifrac_distances, unifrac_metric="unweighted", stripe_mode=False)
-
-        dataloader = DataLoader(dataset, batch_size=2, collate_fn=custom_collate, shuffle=False)
-
-        for batch in dataloader:
-            assert "unifrac_target" in batch
-            assert batch["unifrac_target"].shape == (2, 2)
-            break
-
-
-class TestShuffledBatchDistances:
-    """Test shuffled batch distance extraction for PYT-8.5."""
-
-    def test_collate_fn_extracts_batch_distances_unweighted(self, rarefied_table, tokenizer, simple_unifrac_distances):
-        """Test collate_fn extracts batch-specific distances for unweighted UniFrac."""
-        batch = [
-            {
-                "tokens": torch.LongTensor([[1, 2, 3], [4, 1, 2]]),
-                "counts": torch.FloatTensor([[10.0], [20.0]]),
-                "sample_id": "sample1",
-            },
-            {
-                "tokens": torch.LongTensor([[2, 3, 4], [1, 2, 3]]),
-                "counts": torch.FloatTensor([[15.0], [25.0]]),
-                "sample_id": "sample2",
-            },
-        ]
-
-        token_limit = 5
-        result = collate_fn(
-            batch,
-            token_limit=token_limit,
-            unifrac_distances=simple_unifrac_distances,
-            unifrac_metric="unweighted",
-            stripe_mode=False,
-        )
-
-        assert "unifrac_target" in result
-        assert result["unifrac_target"].shape == (2, 2)
-        assert isinstance(result["unifrac_target"], torch.FloatTensor)
-
-        sample_ids = result["sample_ids"]
-        loader = UniFracLoader()
-        expected_distances = loader.extract_batch_distances(simple_unifrac_distances, sample_ids, metric="unweighted")
-        np.testing.assert_array_almost_equal(result["unifrac_target"].numpy(), expected_distances)
-
-    def test_collate_fn_extracts_batch_distances_shuffled_order(self, rarefied_table, tokenizer, simple_unifrac_distances):
-        """Test collate_fn extracts distances in shuffled batch order."""
-        batch = [
-            {
-                "tokens": torch.LongTensor([[1, 2, 3], [4, 1, 2]]),
-                "counts": torch.FloatTensor([[10.0], [20.0]]),
-                "sample_id": "sample3",
-            },
-            {
-                "tokens": torch.LongTensor([[2, 3, 4], [1, 2, 3]]),
-                "counts": torch.FloatTensor([[15.0], [25.0]]),
-                "sample_id": "sample1",
-            },
-        ]
-
-        token_limit = 5
-        result = collate_fn(
-            batch,
-            token_limit=token_limit,
-            unifrac_distances=simple_unifrac_distances,
-            unifrac_metric="unweighted",
-            stripe_mode=False,
-        )
-
-        assert "unifrac_target" in result
-        assert result["unifrac_target"].shape == (2, 2)
-        sample_ids = result["sample_ids"]
-        assert sample_ids == ["sample3", "sample1"]
-
-        loader = UniFracLoader()
-        expected_distances = loader.extract_batch_distances(simple_unifrac_distances, sample_ids, metric="unweighted")
-        np.testing.assert_array_almost_equal(result["unifrac_target"].numpy(), expected_distances)
-
-    def test_collate_fn_extracts_batch_distances_faith_pd(self, rarefied_table, tokenizer, tmp_path):
-        """Test collate_fn extracts batch-specific distances for Faith PD."""
-        computer = UniFracComputer()
-        observation_ids = list(rarefied_table.ids(axis="observation"))
-        tree_file = create_simple_tree_file(tmp_path, observation_ids)
-        faith_pd = computer.compute_faith_pd(rarefied_table, tree_file)
-
-        batch = [
-            {
-                "tokens": torch.LongTensor([[1, 2, 3], [4, 1, 2]]),
-                "counts": torch.FloatTensor([[10.0], [20.0]]),
-                "sample_id": "sample1",
-            },
-            {
-                "tokens": torch.LongTensor([[2, 3, 4], [1, 2, 3]]),
-                "counts": torch.FloatTensor([[15.0], [25.0]]),
-                "sample_id": "sample2",
-            },
-        ]
-
-        token_limit = 5
-        result = collate_fn(
-            batch,
-            token_limit=token_limit,
-            unifrac_distances=faith_pd,
-            unifrac_metric="faith_pd",
-            stripe_mode=False,
-        )
-
-        assert "unifrac_target" in result
-        assert result["unifrac_target"].shape == (2, 1)
-        assert isinstance(result["unifrac_target"], torch.FloatTensor)
-
-        sample_ids = result["sample_ids"]
-        loader = UniFracLoader()
-        expected_distances = loader.extract_batch_distances(faith_pd, sample_ids, metric="faith_pd")
-        np.testing.assert_array_almost_equal(result["unifrac_target"].numpy(), expected_distances)
-
-    def test_dataloader_shuffled_batches(self, rarefied_table, tokenizer, simple_unifrac_distances):
-        """Test DataLoader with shuffled batches extracts correct distances."""
-        dataset = ASVDataset(
-            table=rarefied_table,
-            unifrac_distances=simple_unifrac_distances,
-            tokenizer=tokenizer,
-            max_bp=150,
-            token_limit=1024,
-            unifrac_metric="unweighted",
-            stripe_mode=False,
-        )
-
-        def custom_collate(batch):
-            return collate_fn(
-                batch,
-                token_limit=1024,
-                unifrac_distances=simple_unifrac_distances,
-                unifrac_metric="unweighted",
-                stripe_mode=False,
-            )
-
-        dataloader = DataLoader(dataset, batch_size=2, collate_fn=custom_collate, shuffle=True)
-
-        loader = UniFracLoader()
-        for batch in dataloader:
-            assert "unifrac_target" in batch
-            assert batch["unifrac_target"].shape == (2, 2)
-            sample_ids = batch["sample_ids"]
-            expected_distances = loader.extract_batch_distances(simple_unifrac_distances, sample_ids, metric="unweighted")
-            np.testing.assert_array_almost_equal(batch["unifrac_target"].numpy(), expected_distances)
-            break
-
-    def test_dataloader_non_shuffled_batches(self, rarefied_table, tokenizer, simple_unifrac_distances):
-        """Test DataLoader with non-shuffled batches extracts correct distances."""
-        dataset = ASVDataset(
-            table=rarefied_table,
-            unifrac_distances=simple_unifrac_distances,
-            tokenizer=tokenizer,
-            max_bp=150,
-            token_limit=1024,
-            unifrac_metric="unweighted",
-            stripe_mode=False,
-        )
-
-        def custom_collate(batch):
             return collate_fn(
                 batch,
                 token_limit=1024,
@@ -702,37 +541,10 @@ class TestShuffledBatchDistances:
 
         dataloader = DataLoader(dataset, batch_size=2, collate_fn=custom_collate, shuffle=False)
 
-        loader = UniFracLoader()
         for batch in dataloader:
             assert "unifrac_target" in batch
             assert batch["unifrac_target"].shape == (2, 2)
-            sample_ids = batch["sample_ids"]
-            expected_distances = loader.extract_batch_distances(simple_unifrac_distances, sample_ids, metric="unweighted")
-            np.testing.assert_array_almost_equal(batch["unifrac_target"].numpy(), expected_distances)
             break
-
-    def test_collate_fn_no_unifrac_distances(self, tokenizer):
-        """Test collate_fn works without UniFrac distances."""
-        batch = [
-            {
-                "tokens": torch.LongTensor([[1, 2, 3], [4, 1, 2]]),
-                "counts": torch.FloatTensor([[10.0], [20.0]]),
-                "sample_id": "sample1",
-            },
-            {
-                "tokens": torch.LongTensor([[2, 3, 4], [1, 2, 3]]),
-                "counts": torch.FloatTensor([[15.0], [25.0]]),
-                "sample_id": "sample2",
-            },
-        ]
-
-        token_limit = 5
-        result = collate_fn(batch, token_limit=token_limit, unifrac_distances=None, unifrac_metric="unweighted")
-
-        assert "unifrac_target" not in result
-        assert "tokens" in result
-        assert "counts" in result
-        assert "sample_ids" in result
 
 
 class TestShuffledBatchDistances:
@@ -942,7 +754,9 @@ class TestDataLoaderOptimizations:
             token_limit=1024,
         )
 
-        custom_collate = partial(collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False)
+        custom_collate = partial(
+            collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False
+        )
 
         # Test with 2 workers
         dataloader = DataLoader(
@@ -975,7 +789,9 @@ class TestDataLoaderOptimizations:
             token_limit=1024,
         )
 
-        custom_collate = partial(collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False)
+        custom_collate = partial(
+            collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False
+        )
 
         # Load data with single worker
         dataloader_single = DataLoader(
@@ -1023,7 +839,9 @@ class TestDataLoaderOptimizations:
             token_limit=1024,
         )
 
-        custom_collate = partial(collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False)
+        custom_collate = partial(
+            collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False
+        )
 
         # Test with prefetch_factor
         dataloader = DataLoader(
@@ -1054,7 +872,9 @@ class TestDataLoaderOptimizations:
             token_limit=1024,
         )
 
-        custom_collate = partial(collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False)
+        custom_collate = partial(
+            collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False
+        )
 
         # pin_memory=True should work on CPU (though not as effective)
         dataloader = DataLoader(
@@ -1115,7 +935,9 @@ class TestDataLoaderOptimizations:
             token_limit=1024,
         )
 
-        custom_collate = partial(collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False)
+        custom_collate = partial(
+            collate_fn, token_limit=1024, unifrac_distances=None, unifrac_metric="unweighted", stripe_mode=False
+        )
 
         dataloader = DataLoader(
             dataset,
@@ -1135,103 +957,6 @@ class TestDataLoaderOptimizations:
         expected_sample_ids = list(rarefied_table.ids(axis="sample"))
         assert len(all_sample_ids) == len(expected_sample_ids)
         assert set(all_sample_ids) == set(expected_sample_ids)
-
-
-class TestStripeMode:
-    """Test suite for stripe-based UniFrac mode in dataset and collate_fn."""
-
-    @pytest.mark.skip(reason="Stripe mode deprecated in PYT-11.4. Use pairwise matrices instead.")
-    def test_dataset_stripe_mode_auto_select_reference(self, rarefied_table, tokenizer, tmp_path):
-        """Test that dataset auto-selects reference samples when stripe_mode=True.
-        
-        DEPRECATED: Stripe mode removed in PYT-11.4.
-        """
-        pytest.skip("Stripe mode deprecated. Use pairwise matrices.")
-
-    @pytest.mark.skip(reason="Stripe mode deprecated in PYT-11.4. Use pairwise matrices instead.")
-    def test_dataset_stripe_mode_custom_reference(self, rarefied_table, tokenizer, tmp_path):
-        """Test that dataset uses custom reference samples when provided.
-        
-        DEPRECATED: Stripe mode removed in PYT-11.4.
-        """
-        pytest.skip("Stripe mode deprecated. Use pairwise matrices.")
-
-    @pytest.mark.skip(reason="Stripe mode deprecated in PYT-11.4. Use pairwise matrices instead.")
-    def test_dataset_stripe_mode_invalid_reference(self, rarefied_table, tokenizer, tmp_path):
-        """Test that dataset raises error for invalid reference samples.
-        
-        DEPRECATED: Stripe mode removed in PYT-11.4.
-        """
-        pytest.skip("Stripe mode deprecated. Use pairwise matrices.")
-
-    @pytest.mark.skip(reason="Lazy computation deprecated in PYT-11.4. Use pre-computed matrices instead.")
-    def test_collate_fn_stripe_mode_lazy(self, rarefied_table, tokenizer, tmp_path):
-        """Test collate_fn with stripe mode and lazy computation.
-        
-        DEPRECATED: Lazy computation removed in PYT-11.4.
-        Users should generate UniFrac matrices using unifrac-binaries.
-        """
-        pytest.skip("Lazy computation deprecated. Use pre-computed matrices.")
-
-    def test_collate_fn_stripe_mode_precomputed(self, rarefied_table, tokenizer, tmp_path):
-        """Test collate_fn with stripe mode and pre-computed distances."""
-        sample_ids = list(rarefied_table.ids(axis="sample"))
-        observation_ids = list(rarefied_table.ids(axis="observation"))
-        reference_sample_ids = sample_ids[:2]  # First 2 as reference
-        
-        # Create pre-computed stripe distances
-        n_samples = len(sample_ids)
-        n_ref = len(reference_sample_ids)
-        stripe_distances = np.random.rand(n_samples, n_ref)
-        
-        # Create batch
-        batch = []
-        for i in range(2):
-            sample = sample_ids[i]
-            sample_data = rarefied_table.matrix_data[:, i].toarray().flatten()
-            asv_indices = np.where(sample_data > 0)[0]
-            
-            tokens_list = []
-            counts_list = []
-            for asv_idx in asv_indices:
-                seq = observation_ids[asv_idx]
-                tokenized = tokenizer.tokenize(seq)
-                padded = tokenizer.pad_sequences([tokenized], 151)[0]
-                tokens_list.append(padded)
-                counts_list.append(sample_data[asv_idx])
-            
-            batch.append({
-                "tokens": torch.stack(tokens_list) if tokens_list else torch.zeros(1, 151, dtype=torch.long),
-                "counts": torch.FloatTensor(counts_list).unsqueeze(1) if counts_list else torch.zeros(1, 1),
-                "sample_id": sample,
-            })
-        
-        # Note: stripe_mode is deprecated, but test pre-computed extraction
-        # For now, we'll skip this test since stripe extraction requires different handling
-        pytest.skip("Stripe mode deprecated. Use pairwise matrices instead.")
-        
-        assert "unifrac_target" in result
-        # Stripe shape: [batch_size, N_reference_samples]
-        assert result["unifrac_target"].shape == (2, len(reference_sample_ids))
-        assert not torch.isnan(result["unifrac_target"]).any()
-        assert not torch.isinf(result["unifrac_target"]).any()
-
-    @pytest.mark.skip(reason="Stripe mode deprecated in PYT-11.4. Use pairwise matrices instead.")
-    def test_collate_fn_stripe_mode_missing_reference(self, tokenizer):
-        """Test that collate_fn raises error when reference_sample_ids missing in stripe mode.
-        
-        DEPRECATED: Stripe mode removed in PYT-11.4.
-        """
-        pytest.skip("Stripe mode deprecated. Use pairwise matrices.")
-
-    @pytest.mark.skip(reason="Stripe mode and lazy computation deprecated in PYT-11.4. Use pre-computed matrices instead.")
-    def test_dataloader_stripe_mode(self, rarefied_table, tokenizer, tmp_path):
-        """Test DataLoader with stripe mode.
-        
-        DEPRECATED: Stripe mode and lazy computation removed in PYT-11.4.
-        Users should generate UniFrac matrices using unifrac-binaries.
-        """
-        pytest.skip("Stripe mode and lazy computation deprecated. Use pre-computed matrices.")
 
 
 class TestDatasetMetadataColumnHandling:
@@ -1335,10 +1060,12 @@ class TestTargetNormalization:
 
     def test_normalize_targets_enabled(self, rarefied_table, tokenizer):
         """Test that target normalization normalizes values to [0, 1]."""
-        metadata = pd.DataFrame({
-            "sample_id": ["sample1", "sample2", "sample3"],
-            "target": [0.0, 50.0, 100.0],  # Simple range for easy verification
-        })
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3"],
+                "target": [0.0, 50.0, 100.0],  # Simple range for easy verification
+            }
+        )
 
         dataset = ASVDataset(
             table=rarefied_table,
@@ -1365,10 +1092,12 @@ class TestTargetNormalization:
 
     def test_normalize_targets_with_negative_values(self, rarefied_table, tokenizer):
         """Test target normalization with negative values."""
-        metadata = pd.DataFrame({
-            "sample_id": ["sample1", "sample2", "sample3"],
-            "target": [-50.0, 0.0, 50.0],
-        })
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3"],
+                "target": [-50.0, 0.0, 50.0],
+            }
+        )
 
         dataset = ASVDataset(
             table=rarefied_table,
@@ -1391,10 +1120,12 @@ class TestTargetNormalization:
 
     def test_normalize_targets_with_external_params(self, rarefied_table, tokenizer):
         """Test target normalization with externally provided min/max."""
-        metadata = pd.DataFrame({
-            "sample_id": ["sample1", "sample2", "sample3"],
-            "target": [25.0, 50.0, 75.0],
-        })
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3"],
+                "target": [25.0, 50.0, 75.0],
+            }
+        )
 
         # Provide external min/max (e.g., from training set)
         dataset = ASVDataset(
@@ -1419,10 +1150,12 @@ class TestTargetNormalization:
 
     def test_denormalize_targets_tensor(self, rarefied_table, tokenizer):
         """Test denormalize_targets method with tensor input."""
-        metadata = pd.DataFrame({
-            "sample_id": ["sample1", "sample2", "sample3"],
-            "target": [0.0, 50.0, 100.0],
-        })
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3"],
+                "target": [0.0, 50.0, 100.0],
+            }
+        )
 
         dataset = ASVDataset(
             table=rarefied_table,
@@ -1439,10 +1172,12 @@ class TestTargetNormalization:
 
     def test_denormalize_targets_numpy(self, rarefied_table, tokenizer):
         """Test denormalize_targets method with numpy array input."""
-        metadata = pd.DataFrame({
-            "sample_id": ["sample1", "sample2", "sample3"],
-            "target": [0.0, 50.0, 100.0],
-        })
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3"],
+                "target": [0.0, 50.0, 100.0],
+            }
+        )
 
         dataset = ASVDataset(
             table=rarefied_table,
@@ -1459,10 +1194,12 @@ class TestTargetNormalization:
 
     def test_denormalize_targets_float(self, rarefied_table, tokenizer):
         """Test denormalize_targets method with float input."""
-        metadata = pd.DataFrame({
-            "sample_id": ["sample1", "sample2", "sample3"],
-            "target": [0.0, 50.0, 100.0],
-        })
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3"],
+                "target": [0.0, 50.0, 100.0],
+            }
+        )
 
         dataset = ASVDataset(
             table=rarefied_table,
@@ -1491,10 +1228,12 @@ class TestTargetNormalization:
 
     def test_normalize_targets_identical_values(self, rarefied_table, tokenizer):
         """Test target normalization with identical target values (edge case)."""
-        metadata = pd.DataFrame({
-            "sample_id": ["sample1", "sample2", "sample3"],
-            "target": [50.0, 50.0, 50.0],  # All same value
-        })
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3"],
+                "target": [50.0, 50.0, 50.0],  # All same value
+            }
+        )
 
         dataset = ASVDataset(
             table=rarefied_table,
