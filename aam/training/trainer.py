@@ -604,6 +604,7 @@ class Trainer:
         if self.writer is None:
             return
 
+        # Original logging (grouped by train/val)
         for key, value in train_losses.items():
             self.writer.add_scalar(f"train/{key}", value, epoch)
 
@@ -611,6 +612,23 @@ class Trainer:
             for key, value in val_results.items():
                 if isinstance(value, (int, float)):
                     self.writer.add_scalar(f"val/{key}", value, epoch)
+
+        # Overlay-friendly logging (grouped by metric for train/val overlay)
+        # Maps loss keys to display names
+        overlay_metrics = {
+            "total_loss": "TotalLoss",
+            "target_loss": "TargetLoss",
+            "count_loss": "CountLoss",
+            "unifrac_loss": "UniFracLoss",
+            "nuc_loss": "NucLoss",
+            "nuc_accuracy": "NucAccuracy",
+        }
+
+        for key, display_name in overlay_metrics.items():
+            if key in train_losses:
+                self.writer.add_scalar(f"{display_name}/train", train_losses[key], epoch)
+            if val_results is not None and key in val_results:
+                self.writer.add_scalar(f"{display_name}/val", val_results[key], epoch)
 
         if self.scheduler is not None:
             if hasattr(self.scheduler, "get_last_lr"):
@@ -656,6 +674,7 @@ class Trainer:
         running_avg_loss = 0.0
         running_avg_unifrac_loss = 0.0
         running_avg_nuc_loss = 0.0
+        running_avg_nuc_accuracy = 0.0
 
         self.optimizer.zero_grad()
 
@@ -810,6 +829,25 @@ class Trainer:
                 else:
                     current_loss_val = float(current_loss_val)
 
+                # Compute nucleotide accuracy on masked/valid positions (training)
+                nuc_accuracy_train = 0.0
+                if "nuc_predictions" in outputs:
+                    nuc_preds = outputs["nuc_predictions"].detach()
+                    nuc_targets = targets.get("tokens", targets.get("nucleotides"))
+                    if nuc_targets is not None:
+                        predicted_tokens = nuc_preds.argmax(dim=-1)
+                        correct = (predicted_tokens == nuc_targets)
+                        mask_indices = outputs.get("mask_indices")
+                        if mask_indices is not None and mask_indices.any():
+                            nuc_accuracy_train = correct[mask_indices].float().mean().item()
+                        else:
+                            valid_mask = (nuc_targets >= 1) & (nuc_targets <= 4)
+                            if valid_mask.any():
+                                nuc_accuracy_train = correct[valid_mask].float().mean().item()
+                        del nuc_preds, predicted_tokens, correct
+                    if "nuc_accuracy" not in losses:
+                        losses["nuc_accuracy"] = nuc_accuracy_train
+
                 scaled_loss = losses["total_loss"] / gradient_accumulation_steps
 
                 # Mixed precision backward pass
@@ -884,6 +922,8 @@ class Trainer:
                             running_avg_nuc_loss = nuc_val.detach().item()
                         else:
                             running_avg_nuc_loss = float(nuc_val)
+                    if "nuc_accuracy" in losses:
+                        running_avg_nuc_accuracy = losses["nuc_accuracy"]
                 else:
                     running_avg_loss = (running_avg_loss * num_batches + current_loss_val) / (num_batches + 1)
                     if "unifrac_loss" in losses:
@@ -900,6 +940,8 @@ class Trainer:
                         else:
                             nuc_val = float(nuc_val)
                         running_avg_nuc_loss = (running_avg_nuc_loss * num_batches + nuc_val) / (num_batches + 1)
+                    if "nuc_accuracy" in losses:
+                        running_avg_nuc_accuracy = (running_avg_nuc_accuracy * num_batches + losses["nuc_accuracy"]) / (num_batches + 1)
 
                 # Format progress bar
                 postfix_dict = {
@@ -916,6 +958,8 @@ class Trainer:
                     postfix_dict["NL"] = (
                         f"{running_avg_nuc_loss:.6f}" if running_avg_nuc_loss < 0.0001 else f"{running_avg_nuc_loss:.4f}"
                     )
+                if "nuc_accuracy" in losses:
+                    postfix_dict["NA"] = f"{running_avg_nuc_accuracy:.2%}"
 
                 pbar.set_postfix(postfix_dict)
 
@@ -1029,8 +1073,33 @@ class Trainer:
                         else:
                             total_losses[key] += float(value)
 
+                    # Compute nucleotide accuracy on masked/valid positions
+                    nuc_accuracy_val = 0.0
+                    if "nuc_predictions" in outputs:
+                        nuc_preds = outputs["nuc_predictions"]  # [batch, num_asvs, seq_len, vocab_size]
+                        nuc_targets = targets.get("tokens", targets.get("nucleotides"))
+                        if nuc_targets is not None:
+                            predicted_tokens = nuc_preds.argmax(dim=-1)  # [batch, num_asvs, seq_len]
+                            correct = (predicted_tokens == nuc_targets)
+
+                            # Use mask_indices if available (MAE mode), otherwise use valid positions
+                            mask_indices = outputs.get("mask_indices")
+                            if mask_indices is not None and mask_indices.any():
+                                # Compute accuracy only on masked positions
+                                nuc_accuracy_val = correct[mask_indices].float().mean().item()
+                            else:
+                                # Compute accuracy on all valid positions (tokens 1-4)
+                                valid_mask = (nuc_targets >= 1) & (nuc_targets <= 4)
+                                if valid_mask.any():
+                                    nuc_accuracy_val = correct[valid_mask].float().mean().item()
+
+                        if "nuc_accuracy" not in total_losses:
+                            total_losses["nuc_accuracy"] = 0.0
+                        total_losses["nuc_accuracy"] += nuc_accuracy_val
+
                     if num_batches == 0:
                         running_avg_loss = current_loss_val
+                        running_avg_nuc_accuracy = nuc_accuracy_val
                         if "unifrac_loss" in losses:
                             unifrac_val = losses["unifrac_loss"]
                             if isinstance(unifrac_val, torch.Tensor):
@@ -1045,6 +1114,7 @@ class Trainer:
                                 running_avg_nuc_loss = float(nuc_val)
                     else:
                         running_avg_loss = (running_avg_loss * num_batches + current_loss_val) / (num_batches + 1)
+                        running_avg_nuc_accuracy = (running_avg_nuc_accuracy * num_batches + nuc_accuracy_val) / (num_batches + 1)
                         if "unifrac_loss" in losses:
                             unifrac_val = losses["unifrac_loss"]
                             if isinstance(unifrac_val, torch.Tensor):
@@ -1076,6 +1146,8 @@ class Trainer:
                         postfix_dict["NL"] = (
                             f"{running_avg_nuc_loss:.6f}" if running_avg_nuc_loss < 0.0001 else f"{running_avg_nuc_loss:.4f}"
                         )
+                    if "nuc_predictions" in outputs:
+                        postfix_dict["NA"] = f"{running_avg_nuc_accuracy:.2%}"
 
                     pbar.set_postfix(postfix_dict)
 
@@ -1361,6 +1433,64 @@ class Trainer:
             tensorboard_path = Path(self.tensorboard_dir) / "tensorboard"
             tensorboard_path.mkdir(parents=True, exist_ok=True)
             self.writer = SummaryWriter(log_dir=str(tensorboard_path))
+
+            # Add custom scalars layout for train/val overlay comparison
+            try:
+                from tensorboard.plugins.custom_scalars import layout_pb2
+
+                layout = layout_pb2.Layout(
+                    category=[
+                        layout_pb2.Category(
+                            title="Losses",
+                            chart=[
+                                layout_pb2.Chart(
+                                    title="Total Loss",
+                                    multiline=layout_pb2.MultilineChartContent(
+                                        tag=["TotalLoss/train", "TotalLoss/val"]
+                                    ),
+                                ),
+                                layout_pb2.Chart(
+                                    title="Target Loss",
+                                    multiline=layout_pb2.MultilineChartContent(
+                                        tag=["TargetLoss/train", "TargetLoss/val"]
+                                    ),
+                                ),
+                                layout_pb2.Chart(
+                                    title="Count Loss",
+                                    multiline=layout_pb2.MultilineChartContent(
+                                        tag=["CountLoss/train", "CountLoss/val"]
+                                    ),
+                                ),
+                                layout_pb2.Chart(
+                                    title="UniFrac Loss",
+                                    multiline=layout_pb2.MultilineChartContent(
+                                        tag=["UniFracLoss/train", "UniFracLoss/val"]
+                                    ),
+                                ),
+                            ],
+                        ),
+                        layout_pb2.Category(
+                            title="Nucleotide",
+                            chart=[
+                                layout_pb2.Chart(
+                                    title="Nucleotide Loss",
+                                    multiline=layout_pb2.MultilineChartContent(
+                                        tag=["NucLoss/train", "NucLoss/val"]
+                                    ),
+                                ),
+                                layout_pb2.Chart(
+                                    title="Nucleotide Accuracy",
+                                    multiline=layout_pb2.MultilineChartContent(
+                                        tag=["NucAccuracy/train", "NucAccuracy/val"]
+                                    ),
+                                ),
+                            ],
+                        ),
+                    ]
+                )
+                self.writer.add_custom_scalars(layout)
+            except ImportError:
+                pass  # tensorboard custom_scalars plugin not available
 
         try:
             for epoch in range(start_epoch, num_epochs):
