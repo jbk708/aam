@@ -43,7 +43,7 @@ def analyze_batch(batch, token_limit):
         num_valid_asvs = valid_asv_mask.sum().item()
         num_padding_asvs = token_limit - num_valid_asvs
 
-        print(f"\nASV Statistics:")
+        print("\nASV Statistics:")
         print(f"  Total ASV positions: {token_limit}")
         print(f"  Valid ASVs (count > 0): {num_valid_asvs}")
         print(f"  Padding ASVs (count = 0): {num_padding_asvs}")
@@ -85,7 +85,7 @@ def analyze_batch(batch, token_limit):
                 if asv_idx < 3:
                     print(f"    First 10 tokens: {asv_tokens[:10].tolist()}")
 
-        print(f"\nSequence Statistics:")
+        print("\nSequence Statistics:")
         print(f"  Sequences with START_TOKEN: {sequences_with_start_token}")
         print(f"  Sequences all zeros: {sequences_all_zeros}")
         print(f"  Sequences all padding: {sequences_all_padding}")
@@ -98,7 +98,7 @@ def analyze_batch(batch, token_limit):
         all_padding_mask = mask_sum_per_seq == 0
         num_all_padding_from_mask = all_padding_mask.sum().item()
 
-        print(f"\nMask Analysis (for attention pooling):")
+        print("\nMask Analysis (for attention pooling):")
         print(f"  Sequences with mask sum = 0 (all padding): {num_all_padding_from_mask}")
         print(f"  Mask sum per sequence (first 10): {mask_sum_per_seq[:10].tolist()}")
 
@@ -106,7 +106,7 @@ def analyze_batch(batch, token_limit):
         valid_asv_all_padding = (all_padding_mask & valid_asv_mask).sum().item()
         if valid_asv_all_padding > 0:
             print(f"\n  ⚠️  WARNING: {valid_asv_all_padding} VALID ASVs have all-padding sequences!")
-            print(f"     This is a problem - valid ASVs should have valid sequences.")
+            print("     This is a problem - valid ASVs should have valid sequences.")
             problem_indices = torch.where(all_padding_mask & valid_asv_mask)[0].tolist()
             print(f"     Problem ASV indices: {problem_indices[:10]}...")
 
@@ -158,7 +158,7 @@ def trace_sequence_through_pipeline(dataset, sample_idx, asv_idx, token_limit):
 
     if asv_idx < token_limit:
         padded_sequence = padded_tokens[asv_idx]
-        print(f"\nAfter padding:")
+        print("\nAfter padding:")
         print(f"  ASV {asv_idx} tokens (first 10): {padded_sequence[:10].tolist()}")
         print(f"  Has START_TOKEN at pos 0: {(padded_sequence[0] == 5).item()}")
         print(f"  Non-zero tokens: {(padded_sequence > 0).sum().item()}")

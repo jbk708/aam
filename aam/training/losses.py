@@ -397,7 +397,7 @@ class MultiTaskLoss(nn.Module):
                 print(f"ERROR: Computed from embeddings with shape {embeddings.shape}", file=sys.stderr, flush=True)
                 print(f"embeddings {_format_tensor_stats(embeddings)}", file=sys.stderr, flush=True)
                 if torch.any(torch.isnan(embeddings)):
-                    print(f"ERROR: Embeddings themselves contain NaN!", file=sys.stderr, flush=True)
+                    print("ERROR: Embeddings themselves contain NaN!", file=sys.stderr, flush=True)
             raise ValueError(error_msg)
         if torch.any(torch.isnan(base_true)):
             import sys
@@ -470,7 +470,7 @@ class MultiTaskLoss(nn.Module):
 
         # Check for NaN/Inf in inputs
         if torch.any(torch.isnan(nuc_pred)):
-            print(f"ERROR: NaN in nuc_pred before nucleotide loss computation", file=sys.stderr, flush=True)
+            print("ERROR: NaN in nuc_pred before nucleotide loss computation", file=sys.stderr, flush=True)
             print(
                 f"nuc_pred shape={nuc_pred.shape}, min={nuc_pred.min().item()}, max={nuc_pred.max().item()}",
                 file=sys.stderr,
@@ -478,7 +478,7 @@ class MultiTaskLoss(nn.Module):
             )
             raise ValueError(f"NaN values found in nuc_pred with shape {nuc_pred.shape}")
         if torch.any(torch.isinf(nuc_pred)):
-            print(f"ERROR: Inf in nuc_pred before nucleotide loss computation", file=sys.stderr, flush=True)
+            print("ERROR: Inf in nuc_pred before nucleotide loss computation", file=sys.stderr, flush=True)
             raise ValueError(f"Inf values found in nuc_pred with shape {nuc_pred.shape}")
 
         # Check target values are valid (within vocab_size range)
@@ -486,7 +486,7 @@ class MultiTaskLoss(nn.Module):
         if torch.any(nuc_true >= vocab_size) or torch.any(nuc_true < 0):
             invalid_mask = (nuc_true >= vocab_size) | (nuc_true < 0)
             invalid_count = invalid_mask.sum().item()
-            print(f"ERROR: Invalid target values in nuc_true", file=sys.stderr, flush=True)
+            print("ERROR: Invalid target values in nuc_true", file=sys.stderr, flush=True)
             print(f"nuc_true shape={nuc_true.shape}, vocab_size={vocab_size}", file=sys.stderr, flush=True)
             print(
                 f"nuc_true min={nuc_true.min().item()}, max={nuc_true.max().item()}, invalid_count={invalid_count}",
@@ -518,7 +518,7 @@ class MultiTaskLoss(nn.Module):
                 # MAE mode with no masked positions - return zero loss
                 return torch.zeros(1, device=nuc_pred.device, dtype=nuc_pred.dtype, requires_grad=True).squeeze()
             else:
-                print(f"WARNING: No valid positions in mask for nucleotide loss", file=sys.stderr, flush=True)
+                print("WARNING: No valid positions in mask for nucleotide loss", file=sys.stderr, flush=True)
                 return torch.zeros_like(nuc_pred.sum(), requires_grad=True)
 
         valid_pred = nuc_pred_flat[compute_loss_indices]
@@ -526,14 +526,14 @@ class MultiTaskLoss(nn.Module):
 
         # Final check before cross_entropy
         if torch.any(torch.isnan(valid_pred)):
-            print(f"ERROR: NaN in valid_pred after masking", file=sys.stderr, flush=True)
+            print("ERROR: NaN in valid_pred after masking", file=sys.stderr, flush=True)
             print(f"valid_pred shape={valid_pred.shape}, num_to_compute={num_to_compute}", file=sys.stderr, flush=True)
-            raise ValueError(f"NaN values found in valid_pred after masking")
+            raise ValueError("NaN values found in valid_pred after masking")
 
         loss = nn.functional.cross_entropy(valid_pred, valid_true)
 
         if torch.any(torch.isnan(loss)):
-            print(f"ERROR: NaN in nucleotide loss after cross_entropy", file=sys.stderr, flush=True)
+            print("ERROR: NaN in nucleotide loss after cross_entropy", file=sys.stderr, flush=True)
             print(f"valid_pred shape={valid_pred.shape}, valid_true shape={valid_true.shape}", file=sys.stderr, flush=True)
             print(
                 f"valid_pred {_format_tensor_stats(valid_pred)}",
@@ -542,7 +542,7 @@ class MultiTaskLoss(nn.Module):
             )
             # valid_true is integer (token indices), so format it separately
             print(f"valid_true min={valid_true.min().item()}, max={valid_true.max().item()}", file=sys.stderr, flush=True)
-            raise ValueError(f"NaN in nucleotide loss after cross_entropy computation")
+            raise ValueError("NaN in nucleotide loss after cross_entropy computation")
 
         return loss
 

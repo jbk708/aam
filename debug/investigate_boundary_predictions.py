@@ -160,7 +160,7 @@ def load_model_checkpoint(
     if encoder_type is None or encoder_type == "unifrac":
         encoder_type = arch["encoder_type"]
 
-    print(f"Inferred architecture:")
+    print("Inferred architecture:")
     print(f"  ASV layers: {arch['asv_num_layers']}")
     print(f"  Sample layers: {arch['sample_num_layers']}")
     print(f"  Encoder layers: {arch['encoder_num_layers']}")

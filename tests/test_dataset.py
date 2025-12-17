@@ -77,7 +77,6 @@ def simple_metadata():
 @pytest.fixture
 def simple_unifrac_distances(rarefied_table, tmp_path):
     """Create simple UniFrac distance matrix (pre-computed for testing)."""
-    from skbio import DistanceMatrix
     import numpy as np
 
     # Create a simple pre-computed distance matrix

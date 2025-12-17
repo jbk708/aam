@@ -92,7 +92,7 @@ def test_collate_fn_order():
     # Distance from sample_B to sample_C should be at [1, 2]
 
     distances = result["unifrac_target"].numpy()
-    print(f"\nDistance matrix:")
+    print("\nDistance matrix:")
     print(f"  [0, 1] (A->B): {distances[0, 1]:.3f} (expected: 0.1)")
     print(f"  [0, 2] (A->C): {distances[0, 2]:.3f} (expected: 0.2)")
     print(f"  [0, 3] (A->D): {distances[0, 3]:.3f} (expected: 0.3)")
@@ -166,7 +166,7 @@ def test_shuffled_batch_order():
     # Distance from A to B should be at [1, 2] (original: A->B = 0.1)
 
     distances = result["unifrac_target"].numpy()
-    print(f"\nDistance matrix (reordered for shuffled batch):")
+    print("\nDistance matrix (reordered for shuffled batch):")
     print(f"  [0, 1] (C->A): {distances[0, 1]:.3f} (expected: 0.2)")
     print(f"  [0, 2] (C->B): {distances[0, 2]:.3f} (expected: 0.1)")
     print(f"  [0, 3] (C->D): {distances[0, 3]:.3f} (expected: 0.1)")
@@ -303,7 +303,7 @@ def test_dataloader_shuffling():
             for mismatch in distance_mismatches[:5]:
                 print(f"    {mismatch}")
         else:
-            print(f"  ✅ All distances match expected values")
+            print("  ✅ All distances match expected values")
 
         # Verify tokens order matches sample_ids order
         # Check that each sample's tokens are valid

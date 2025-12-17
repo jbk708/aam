@@ -704,7 +704,7 @@ class Trainer:
                 if torch.any(tokens < 0) or torch.any(tokens >= vocab_size):
                     invalid_mask = (tokens < 0) | (tokens >= vocab_size)
                     invalid_count = invalid_mask.sum().item()
-                    print(f"ERROR: Invalid token values detected before model forward", file=sys.stderr, flush=True)
+                    print("ERROR: Invalid token values detected before model forward", file=sys.stderr, flush=True)
                     print(
                         f"tokens shape={tokens.shape}, min={tokens.min().item()}, max={tokens.max().item()}, invalid_count={invalid_count}",
                         file=sys.stderr,
@@ -714,7 +714,7 @@ class Trainer:
                         f"Invalid token values: min={tokens.min().item()}, max={tokens.max().item()}, vocab_size={vocab_size}"
                     )
                 if torch.any(torch.isnan(tokens)):
-                    print(f"ERROR: NaN in tokens before model forward", file=sys.stderr, flush=True)
+                    print("ERROR: NaN in tokens before model forward", file=sys.stderr, flush=True)
                     raise ValueError("NaN values found in tokens")
 
                 return_nucleotides = "nucleotides" in targets or self.loss_fn.nuc_penalty > 0
@@ -739,7 +739,7 @@ class Trainer:
                 encoder_type = self._get_encoder_type()
                 if encoder_type == "unifrac" and "embeddings" in outputs:
                     if torch.any(torch.isnan(outputs["embeddings"])):
-                        print(f"ERROR: NaN in embeddings before loss computation", file=sys.stderr, flush=True)
+                        print("ERROR: NaN in embeddings before loss computation", file=sys.stderr, flush=True)
                         print(f"embeddings shape={outputs['embeddings'].shape}", file=sys.stderr, flush=True)
                         print(
                             f"embeddings min={outputs['embeddings'].min().item()}, max={outputs['embeddings'].max().item()}",
@@ -756,7 +756,7 @@ class Trainer:
                         raise ValueError("NaN values found in embeddings before loss computation")
                 elif "base_prediction" in outputs:
                     if torch.any(torch.isnan(outputs["base_prediction"])):
-                        print(f"ERROR: NaN in base_prediction before loss computation", file=sys.stderr, flush=True)
+                        print("ERROR: NaN in base_prediction before loss computation", file=sys.stderr, flush=True)
                         print(f"base_prediction shape={outputs['base_prediction'].shape}", file=sys.stderr, flush=True)
                         print(
                             f"base_prediction min={outputs['base_prediction'].min().item()}, max={outputs['base_prediction'].max().item()}",
@@ -766,7 +766,7 @@ class Trainer:
 
                 if "base_target" in targets:
                     if torch.any(torch.isnan(targets["base_target"])):
-                        print(f"ERROR: NaN in base_target before loss computation", file=sys.stderr, flush=True)
+                        print("ERROR: NaN in base_target before loss computation", file=sys.stderr, flush=True)
                         print(f"base_target shape={targets['base_target'].shape}", file=sys.stderr, flush=True)
                         print(
                             f"base_target min={targets['base_target'].min().item()}, max={targets['base_target'].max().item()}",
@@ -778,7 +778,7 @@ class Trainer:
 
                 if "nuc_predictions" in outputs:
                     if torch.any(torch.isnan(outputs["nuc_predictions"])):
-                        print(f"ERROR: NaN in nuc_predictions before loss computation", file=sys.stderr, flush=True)
+                        print("ERROR: NaN in nuc_predictions before loss computation", file=sys.stderr, flush=True)
                         print(f"nuc_predictions shape={outputs['nuc_predictions'].shape}", file=sys.stderr, flush=True)
                         print(
                             f"nuc_predictions min={outputs['nuc_predictions'].min().item()}, max={outputs['nuc_predictions'].max().item()}",
@@ -815,7 +815,7 @@ class Trainer:
 
                 # Check for NaN in loss after computation
                 if torch.any(torch.isnan(losses["total_loss"])):
-                    print(f"ERROR: NaN in total_loss after computation", file=sys.stderr, flush=True)
+                    print("ERROR: NaN in total_loss after computation", file=sys.stderr, flush=True)
                     print(f"losses: {losses}", file=sys.stderr, flush=True)
                     if "unifrac_loss" in losses:
                         print(f"unifrac_loss: {losses['unifrac_loss']}", file=sys.stderr, flush=True)
@@ -1274,9 +1274,9 @@ class Trainer:
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
                     error_msg = (
-                        f"CUDA out of memory during validation. "
-                        f"Try: (1) reducing batch_size, (2) reducing model size, "
-                        f"(3) setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True"
+                        "CUDA out of memory during validation. "
+                        "Try: (1) reducing batch_size, (2) reducing model size, "
+                        "(3) setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True"
                     )
                     raise RuntimeError(error_msg) from e
 

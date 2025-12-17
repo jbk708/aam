@@ -76,8 +76,8 @@ def check_tensor_stats(tensor: torch.Tensor, name: str, step: str = ""):
         print(f"  Min: {tensor.min().item()}, Max: {tensor.max().item()}")
         unique_count = torch.unique(tensor).numel()
         print(f"  Unique values: {unique_count}")
-        print(f"  Has NaN: False (integer tensor)")
-        print(f"  Has Inf: False (integer tensor)")
+        print("  Has NaN: False (integer tensor)")
+        print("  Has Inf: False (integer tensor)")
     else:
         # Floating point tensors
         print(f"  Min: {tensor.min().item():.6f}, Max: {tensor.max().item():.6f}, Mean: {tensor.mean().item():.6f}")
@@ -128,7 +128,7 @@ def debug_collate_fn(batch, token_limit, unifrac_distances, unifrac_metric):
     result = collate_fn(batch, token_limit, unifrac_distances, unifrac_metric)
 
     # Check output
-    print(f"\nCollate_fn output:")
+    print("\nCollate_fn output:")
     print(f"  tokens shape: {result['tokens'].shape}")
     print(f"  counts shape: {result['counts'].shape}")
 
@@ -176,7 +176,7 @@ def debug_model_forward(model, tokens, step_name="forward"):
     # Check token values
     invalid_tokens = (tokens < 0) | (tokens >= 6)
     if invalid_tokens.any():
-        print(f"⚠️  Invalid input tokens detected!")
+        print("⚠️  Invalid input tokens detected!")
         return None
 
     # Trace through model components
@@ -436,7 +436,7 @@ def main():
             # Check for invalid tokens
             invalid_tokens = (tokens < 0) | (tokens >= 6)
             if invalid_tokens.any():
-                print(f"❌ Invalid tokens detected in batch!")
+                print("❌ Invalid tokens detected in batch!")
                 invalid_count = invalid_tokens.sum().item()
                 print(f"Invalid token count: {invalid_count}")
                 break

@@ -119,7 +119,7 @@ def main():
 
     # Create mask for valid ASVs
     asv_mask = (tokens.sum(dim=-1) > 0).long()  # [batch_size, num_asvs]
-    print(f"\nASV mask (valid ASVs):")
+    print("\nASV mask (valid ASVs):")
     print(f"  Shape: {asv_mask.shape}")
     print(f"  Valid ASVs per sample: {asv_mask.sum(dim=1).tolist()}")
 
@@ -172,7 +172,7 @@ def main():
 
         # Check which ASVs have NaN
         nan_per_asv = torch.isnan(nuc_predictions).any(dim=(2, 3))  # [batch_size, num_asvs]
-        print(f"\nNaN per ASV:")
+        print("\nNaN per ASV:")
         for sample_idx in range(batch_size):
             nan_asvs = torch.where(nan_per_asv[sample_idx])[0].tolist()
             valid_asvs = torch.where(asv_mask[sample_idx])[0].tolist()

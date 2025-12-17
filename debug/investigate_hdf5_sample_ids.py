@@ -38,10 +38,10 @@ with h5py.File(h5_path, "r") as f:
             h5_sample_ids = [str(sid) for sid in order]
 
         print(f"   Number of HDF5 samples: {len(h5_sample_ids)}")
-        print(f"   First 5 HDF5 sample IDs:")
+        print("   First 5 HDF5 sample IDs:")
         for i, sid in enumerate(h5_sample_ids[:5]):
             print(f"     [{i}] {repr(sid)} (type: {type(sid).__name__})")
-        print(f"   Last 5 HDF5 sample IDs:")
+        print("   Last 5 HDF5 sample IDs:")
         for i, sid in enumerate(h5_sample_ids[-5:], len(h5_sample_ids) - 5):
             print(f"     [{i}] {repr(sid)} (type: {type(sid).__name__})")
 
@@ -50,10 +50,10 @@ print("\n2. Loading BIOM table...")
 table = biom.load_table(biom_path)
 biom_sample_ids = list(table.ids(axis="sample"))
 print(f"   Number of BIOM samples: {len(biom_sample_ids)}")
-print(f"   First 5 BIOM sample IDs:")
+print("   First 5 BIOM sample IDs:")
 for i, sid in enumerate(biom_sample_ids[:5]):
     print(f"     [{i}] {repr(sid)} (type: {type(sid).__name__})")
-print(f"   Last 5 BIOM sample IDs:")
+print("   Last 5 BIOM sample IDs:")
 for i, sid in enumerate(biom_sample_ids[-5:], len(biom_sample_ids) - 5):
     print(f"     [{i}] {repr(sid)} (type: {type(sid).__name__})")
 
@@ -69,7 +69,7 @@ print(f"   Only in HDF5: {len(h5_set - biom_set)}")
 print(f"   Only in BIOM: {len(biom_set - h5_set)}")
 
 if h5_set & biom_set:
-    print(f"\n   Common samples (first 10):")
+    print("\n   Common samples (first 10):")
     for sid in sorted(list(h5_set & biom_set))[:10]:
         print(f"     {repr(sid)}")
 else:
@@ -90,7 +90,7 @@ else:
     print(f"   String intersection (after str() and strip()): {len(str_intersection)}")
 
     if str_intersection:
-        print(f"   Found matches after string conversion (first 10):")
+        print("   Found matches after string conversion (first 10):")
         for sid in sorted(list(str_intersection))[:10]:
             print(f"     {repr(sid)}")
 
