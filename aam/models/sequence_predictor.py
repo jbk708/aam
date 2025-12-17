@@ -56,6 +56,7 @@ class SequencePredictor(nn.Module):
         predict_nucleotides: bool = False,
         gradient_checkpointing: bool = False,
         attn_implementation: Optional[str] = "sdpa",
+        asv_chunk_size: Optional[int] = None,
     ):
         """Initialize SequencePredictor.
 
@@ -98,6 +99,7 @@ class SequencePredictor(nn.Module):
             predict_nucleotides: Whether base model should predict nucleotides
             gradient_checkpointing: Whether to use gradient checkpointing to save memory
             attn_implementation: Which SDPA backend to use ('sdpa', 'flash', 'mem_efficient', 'math')
+            asv_chunk_size: Process ASVs in chunks to reduce memory (None = process all)
         """
         super().__init__()
         
@@ -127,6 +129,7 @@ class SequencePredictor(nn.Module):
                 predict_nucleotides=predict_nucleotides,
                 gradient_checkpointing=gradient_checkpointing,
                 attn_implementation=attn_implementation,
+                asv_chunk_size=asv_chunk_size,
             )
             self.embedding_dim = embedding_dim
         else:

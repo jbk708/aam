@@ -204,13 +204,14 @@ def cli():
     help="Mixed precision training mode (fp16, bf16, or none)",
 )
 @click.option("--compile-model", is_flag=True, help="Compile model with torch.compile() for optimization (PyTorch 2.0+)")
-@click.option("--gradient-checkpointing", is_flag=True, help="Use gradient checkpointing to reduce memory usage (30-50% reduction, slower training)")
+@click.option("--gradient-checkpointing/--no-gradient-checkpointing", default=True, help="Use gradient checkpointing to reduce memory (default: enabled, use --no-gradient-checkpointing to disable)")
 @click.option(
     "--attn-implementation",
-    default="sdpa",
+    default="mem_efficient",
     type=click.Choice(["sdpa", "flash", "mem_efficient", "math"]),
-    help="Attention implementation: sdpa (auto-select best), flash (Flash Attention), mem_efficient, or math",
+    help="Attention implementation: mem_efficient (default), sdpa (auto-select), flash (Flash Attention), or math",
 )
+@click.option("--asv-chunk-size", default=256, type=int, help="Process ASVs in chunks to reduce memory (default: 256, use 0 to disable)")
 @click.option("--normalize-targets", is_flag=True, help="Normalize target and count values to [0, 1] range during training (recommended for regression tasks)")
 @click.option("--loss-type", type=click.Choice(["mse", "mae", "huber"]), default="huber", help="Loss function for regression targets: mse, mae, or huber (default)")
 def train(
@@ -259,6 +260,7 @@ def train(
     compile_model: bool,
     gradient_checkpointing: bool,
     attn_implementation: str,
+    asv_chunk_size: int,
     normalize_targets: bool,
     loss_type: str,
 ):
@@ -498,6 +500,8 @@ def train(
         )
 
         logger.info("Creating model...")
+        # Convert asv_chunk_size=0 to None (disabled)
+        effective_asv_chunk_size = asv_chunk_size if asv_chunk_size > 0 else None
         model = SequencePredictor(
             encoder_type=encoder_type,
             vocab_size=6,
@@ -520,6 +524,7 @@ def train(
             predict_nucleotides=True,
             gradient_checkpointing=gradient_checkpointing,
             attn_implementation=attn_implementation,
+            asv_chunk_size=effective_asv_chunk_size,
         )
 
         if pretrained_encoder is not None:
@@ -665,15 +670,15 @@ def train(
     help="Mixed precision training mode (fp16, bf16, or none)",
 )
 @click.option("--compile-model", is_flag=True, help="Compile model with torch.compile() for optimization (PyTorch 2.0+)")
-@click.option("--gradient-checkpointing", is_flag=True, help="Use gradient checkpointing to reduce memory usage (30-50% reduction, slower training)")
+@click.option("--gradient-checkpointing/--no-gradient-checkpointing", default=True, help="Use gradient checkpointing to reduce memory (default: enabled, use --no-gradient-checkpointing to disable)")
 @click.option(
     "--attn-implementation",
-    default="sdpa",
+    default="mem_efficient",
     type=click.Choice(["sdpa", "flash", "mem_efficient", "math"]),
-    help="Attention implementation: sdpa (auto-select best), flash (Flash Attention), mem_efficient, or math",
+    help="Attention implementation: mem_efficient (default), sdpa (auto-select), flash (Flash Attention), or math",
 )
 @click.option(
-    "--asv-chunk-size", default=None, type=int, help="Process ASVs in chunks of this size to reduce memory (None = process all)"
+    "--asv-chunk-size", default=256, type=int, help="Process ASVs in chunks to reduce memory (default: 256, use 0 to disable)"
 )
 def pretrain(
     table: str,
@@ -884,6 +889,8 @@ def pretrain(
         )
 
         logger.info("Creating model...")
+        # Convert asv_chunk_size=0 to None (disabled)
+        effective_asv_chunk_size = asv_chunk_size if asv_chunk_size > 0 else None
         model = SequenceEncoder(
             encoder_type=encoder_type,
             vocab_size=6,
@@ -898,7 +905,7 @@ def pretrain(
             encoder_num_heads=attention_heads,
             base_output_dim=base_output_dim,
             predict_nucleotides=True,
-            asv_chunk_size=asv_chunk_size,
+            asv_chunk_size=effective_asv_chunk_size,
             gradient_checkpointing=gradient_checkpointing,
             attn_implementation=attn_implementation,
         )
