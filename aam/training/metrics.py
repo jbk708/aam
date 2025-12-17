@@ -2,7 +2,7 @@
 
 import torch
 import numpy as np
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 from sklearn.metrics import (
     mean_absolute_error,
     mean_squared_error,
@@ -11,6 +11,373 @@ from sklearn.metrics import (
     confusion_matrix,
     precision_recall_fscore_support,
 )
+
+
+class StreamingRegressionMetrics:
+    """Streaming computation of regression metrics (MAE, MSE, R²).
+
+    Uses Welford's online algorithm for numerically stable computation of
+    running statistics. Memory usage is O(1) regardless of dataset size.
+    """
+
+    def __init__(self, max_plot_samples: int = 1000):
+        """Initialize streaming metrics.
+
+        Args:
+            max_plot_samples: Maximum samples to retain for plotting (reservoir sampling)
+        """
+        self.n = 0
+        self.sum_abs_error = 0.0
+        self.sum_sq_error = 0.0
+        self.mean_true = 0.0
+        self.m2_true = 0.0  # For computing variance of true values (Welford)
+        self.sum_sq_total = 0.0  # Will be finalized after mean is known
+
+        # Reservoir sampling for plot data
+        self.max_plot_samples = max_plot_samples
+        self.plot_predictions = []
+        self.plot_targets = []
+        self._reservoir_idx = 0
+
+    def update(self, predictions: torch.Tensor, targets: torch.Tensor) -> None:
+        """Update metrics with a new batch.
+
+        Args:
+            predictions: Predicted values (any shape, will be flattened)
+            targets: True values (same shape as predictions)
+        """
+        pred_flat = predictions.detach().cpu().float().flatten()
+        true_flat = targets.detach().cpu().float().flatten()
+
+        batch_size = pred_flat.numel()
+        if batch_size == 0:
+            return
+
+        # Update error sums
+        errors = pred_flat - true_flat
+        self.sum_abs_error += torch.abs(errors).sum().item()
+        self.sum_sq_error += (errors ** 2).sum().item()
+
+        # Update mean of true values using Welford's algorithm (batch update)
+        for val in true_flat.tolist():
+            self.n += 1
+            delta = val - self.mean_true
+            self.mean_true += delta / self.n
+            delta2 = val - self.mean_true
+            self.m2_true += delta * delta2
+
+        # Reservoir sampling for plot data
+        for i in range(batch_size):
+            if len(self.plot_predictions) < self.max_plot_samples:
+                self.plot_predictions.append(pred_flat[i].item())
+                self.plot_targets.append(true_flat[i].item())
+            else:
+                # Reservoir sampling: replace with decreasing probability
+                j = np.random.randint(0, self._reservoir_idx + 1)
+                if j < self.max_plot_samples:
+                    self.plot_predictions[j] = pred_flat[i].item()
+                    self.plot_targets[j] = true_flat[i].item()
+            self._reservoir_idx += 1
+
+    def compute(self) -> Dict[str, float]:
+        """Compute final metrics.
+
+        Returns:
+            Dictionary with 'mae', 'mse', 'r2' keys
+        """
+        if self.n == 0:
+            return {"mae": 0.0, "mse": 0.0, "r2": 0.0}
+
+        mae = self.sum_abs_error / self.n
+        mse = self.sum_sq_error / self.n
+
+        # R² = 1 - SSres/SStot where SStot = variance * n
+        variance_true = self.m2_true / self.n if self.n > 0 else 0.0
+        ss_tot = variance_true * self.n
+
+        if ss_tot > 0:
+            r2 = 1.0 - (self.sum_sq_error / ss_tot)
+        else:
+            r2 = 0.0  # All true values are the same
+
+        return {"mae": float(mae), "mse": float(mse), "r2": float(r2)}
+
+    def get_plot_data(self) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Get sampled data for plotting.
+
+        Returns:
+            Tuple of (predictions, targets) tensors
+        """
+        return (
+            torch.tensor(self.plot_predictions, dtype=torch.float32),
+            torch.tensor(self.plot_targets, dtype=torch.float32),
+        )
+
+    def reset(self) -> None:
+        """Reset all accumulated statistics."""
+        self.n = 0
+        self.sum_abs_error = 0.0
+        self.sum_sq_error = 0.0
+        self.mean_true = 0.0
+        self.m2_true = 0.0
+        self.plot_predictions = []
+        self.plot_targets = []
+        self._reservoir_idx = 0
+
+
+class StreamingClassificationMetrics:
+    """Streaming computation of classification metrics.
+
+    Accumulates a confusion matrix incrementally. Memory usage is O(num_classes²).
+    """
+
+    def __init__(self, num_classes: Optional[int] = None, max_plot_samples: int = 1000):
+        """Initialize streaming metrics.
+
+        Args:
+            num_classes: Number of classes (if None, inferred from data)
+            max_plot_samples: Maximum samples to retain for plotting
+        """
+        self.num_classes = num_classes
+        self.confusion_matrix = None
+        self.n = 0
+
+        # Store samples for confusion matrix plot
+        self.max_plot_samples = max_plot_samples
+        self.plot_predictions = []
+        self.plot_targets = []
+        self._reservoir_idx = 0
+
+    def update(self, predictions: torch.Tensor, targets: torch.Tensor) -> None:
+        """Update metrics with a new batch.
+
+        Args:
+            predictions: Predicted logits [batch, num_classes] or class indices [batch]
+            targets: True class indices [batch]
+        """
+        # Convert predictions to class indices if needed
+        if predictions.dim() > 1 and predictions.size(-1) > 1:
+            pred_indices = predictions.detach().cpu().argmax(dim=-1)
+        else:
+            pred_indices = predictions.detach().cpu().flatten().long()
+
+        true_indices = targets.detach().cpu().flatten().long()
+        batch_size = pred_indices.numel()
+
+        if batch_size == 0:
+            return
+
+        # Infer num_classes if not set
+        if self.num_classes is None:
+            self.num_classes = max(
+                int(pred_indices.max().item()) + 1,
+                int(true_indices.max().item()) + 1
+            )
+
+        # Expand confusion matrix if needed
+        max_class = max(int(pred_indices.max().item()), int(true_indices.max().item()))
+        if max_class >= self.num_classes:
+            self.num_classes = max_class + 1
+
+        if self.confusion_matrix is None:
+            self.confusion_matrix = np.zeros((self.num_classes, self.num_classes), dtype=np.int64)
+        elif self.confusion_matrix.shape[0] < self.num_classes:
+            new_cm = np.zeros((self.num_classes, self.num_classes), dtype=np.int64)
+            old_size = self.confusion_matrix.shape[0]
+            new_cm[:old_size, :old_size] = self.confusion_matrix
+            self.confusion_matrix = new_cm
+
+        # Update confusion matrix
+        for pred, true in zip(pred_indices.tolist(), true_indices.tolist()):
+            self.confusion_matrix[true, pred] += 1
+            self.n += 1
+
+        # Reservoir sampling for plot data
+        for i in range(batch_size):
+            if len(self.plot_predictions) < self.max_plot_samples:
+                self.plot_predictions.append(pred_indices[i].item())
+                self.plot_targets.append(true_indices[i].item())
+            else:
+                j = np.random.randint(0, self._reservoir_idx + 1)
+                if j < self.max_plot_samples:
+                    self.plot_predictions[j] = pred_indices[i].item()
+                    self.plot_targets[j] = true_indices[i].item()
+            self._reservoir_idx += 1
+
+    def compute(self) -> Dict[str, float]:
+        """Compute final metrics.
+
+        Returns:
+            Dictionary with 'accuracy', 'precision', 'recall', 'f1' keys
+        """
+        if self.n == 0 or self.confusion_matrix is None:
+            return {"accuracy": 0.0, "precision": 0.0, "recall": 0.0, "f1": 0.0}
+
+        # Accuracy from confusion matrix diagonal
+        accuracy = np.trace(self.confusion_matrix) / self.n
+
+        # Compute precision, recall, F1 (weighted average)
+        precision_sum = 0.0
+        recall_sum = 0.0
+        f1_sum = 0.0
+        total_support = 0
+
+        for c in range(self.num_classes):
+            tp = self.confusion_matrix[c, c]
+            fp = self.confusion_matrix[:, c].sum() - tp
+            fn = self.confusion_matrix[c, :].sum() - tp
+            support = self.confusion_matrix[c, :].sum()
+
+            if support == 0:
+                continue
+
+            precision_c = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+            recall_c = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+            f1_c = 2 * precision_c * recall_c / (precision_c + recall_c) if (precision_c + recall_c) > 0 else 0.0
+
+            precision_sum += precision_c * support
+            recall_sum += recall_c * support
+            f1_sum += f1_c * support
+            total_support += support
+
+        if total_support > 0:
+            precision = precision_sum / total_support
+            recall = recall_sum / total_support
+            f1 = f1_sum / total_support
+        else:
+            precision = recall = f1 = 0.0
+
+        return {
+            "accuracy": float(accuracy),
+            "precision": float(precision),
+            "recall": float(recall),
+            "f1": float(f1),
+        }
+
+    def get_plot_data(self) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Get sampled data for confusion matrix plotting.
+
+        Returns:
+            Tuple of (predictions, targets) tensors
+        """
+        return (
+            torch.tensor(self.plot_predictions, dtype=torch.long),
+            torch.tensor(self.plot_targets, dtype=torch.long),
+        )
+
+    def reset(self) -> None:
+        """Reset all accumulated statistics."""
+        self.confusion_matrix = None
+        self.n = 0
+        self.plot_predictions = []
+        self.plot_targets = []
+        self._reservoir_idx = 0
+
+
+class StreamingCountMetrics:
+    """Streaming computation of count prediction metrics (masked MAE, MSE).
+
+    Memory usage is O(1) regardless of dataset size.
+    """
+
+    def __init__(self, max_plot_samples: int = 1000):
+        """Initialize streaming metrics.
+
+        Args:
+            max_plot_samples: Maximum samples to retain for plotting
+        """
+        self.n = 0
+        self.sum_abs_error = 0.0
+        self.sum_sq_error = 0.0
+
+        # Reservoir sampling for plot data
+        self.max_plot_samples = max_plot_samples
+        self.plot_predictions = []
+        self.plot_targets = []
+        self._reservoir_idx = 0
+
+    def update(
+        self,
+        predictions: torch.Tensor,
+        targets: torch.Tensor,
+        mask: torch.Tensor
+    ) -> None:
+        """Update metrics with a new batch.
+
+        Args:
+            predictions: Predicted counts [batch, num_asvs] or [batch, num_asvs, 1]
+            targets: True counts (same shape as predictions)
+            mask: Valid ASV mask [batch, num_asvs] (1=valid, 0=padding)
+        """
+        pred = predictions.detach().cpu().float()
+        true = targets.detach().cpu().float()
+        m = mask.detach().cpu().bool()
+
+        # Handle extra dimension
+        if pred.dim() == 3:
+            pred = pred.squeeze(-1)
+        if true.dim() == 3:
+            true = true.squeeze(-1)
+
+        # Apply mask
+        valid_pred = pred[m]
+        valid_true = true[m]
+
+        batch_valid = valid_pred.numel()
+        if batch_valid == 0:
+            return
+
+        # Update error sums
+        errors = valid_pred - valid_true
+        self.sum_abs_error += torch.abs(errors).sum().item()
+        self.sum_sq_error += (errors ** 2).sum().item()
+        self.n += batch_valid
+
+        # Reservoir sampling for plot data
+        for i in range(batch_valid):
+            if len(self.plot_predictions) < self.max_plot_samples:
+                self.plot_predictions.append(valid_pred[i].item())
+                self.plot_targets.append(valid_true[i].item())
+            else:
+                j = np.random.randint(0, self._reservoir_idx + 1)
+                if j < self.max_plot_samples:
+                    self.plot_predictions[j] = valid_pred[i].item()
+                    self.plot_targets[j] = valid_true[i].item()
+            self._reservoir_idx += 1
+
+    def compute(self) -> Dict[str, float]:
+        """Compute final metrics.
+
+        Returns:
+            Dictionary with 'mae', 'mse' keys
+        """
+        if self.n == 0:
+            return {"mae": 0.0, "mse": 0.0}
+
+        mae = self.sum_abs_error / self.n
+        mse = self.sum_sq_error / self.n
+
+        return {"mae": float(mae), "mse": float(mse)}
+
+    def get_plot_data(self) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Get sampled data for plotting.
+
+        Returns:
+            Tuple of (predictions, targets) tensors
+        """
+        return (
+            torch.tensor(self.plot_predictions, dtype=torch.float32),
+            torch.tensor(self.plot_targets, dtype=torch.float32),
+        )
+
+    def reset(self) -> None:
+        """Reset all accumulated statistics."""
+        self.n = 0
+        self.sum_abs_error = 0.0
+        self.sum_sq_error = 0.0
+        self.plot_predictions = []
+        self.plot_targets = []
+        self._reservoir_idx = 0
 
 
 def compute_regression_metrics(

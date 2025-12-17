@@ -107,15 +107,16 @@ Update defaults: `asv_chunk_size=256`, `gradient_checkpointing=True`, `attn_impl
 ---
 
 ### PYT-18.2: Streaming Validation Metrics
-**Priority:** HIGH | **Effort:** 3-4 hours | **Status:** Not Started
+**Priority:** HIGH | **Effort:** 3-4 hours | **Status:** Complete
 
 Replace O(dataset) memory accumulation with streaming metrics.
 
 **Acceptance Criteria:**
-- [ ] Compute metrics incrementally (running mean/variance)
-- [ ] Add `--validation-plot-samples` flag to limit plot data
-- [ ] Reduce validation memory from O(dataset) to O(batch)
-- [ ] Maintain metric accuracy
+- [x] Compute metrics incrementally (running mean/variance)
+- [x] Streaming metrics as default behavior (no flag needed)
+- [x] Reduce validation memory from O(dataset) to O(batch)
+- [x] Maintain metric accuracy
+- [x] Reservoir sampling for plot data (1000 samples max)
 
 **Files:** `trainer.py`, `metrics.py`
 

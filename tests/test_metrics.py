@@ -8,6 +8,9 @@ from aam.training.metrics import (
     compute_regression_metrics,
     compute_classification_metrics,
     compute_count_metrics,
+    StreamingRegressionMetrics,
+    StreamingClassificationMetrics,
+    StreamingCountMetrics,
 )
 
 
@@ -238,3 +241,269 @@ class TestDeviceHandling:
         assert "mae" in metrics
         assert "mse" in metrics
         assert "r2" in metrics
+
+
+class TestStreamingRegressionMetrics:
+    """Test streaming regression metrics computation."""
+
+    def test_streaming_matches_batch(self):
+        """Test that streaming metrics match batch computation."""
+        np.random.seed(42)
+        torch.manual_seed(42)
+
+        # Generate data
+        n_samples = 100
+        y_pred = torch.randn(n_samples)
+        y_true = torch.randn(n_samples)
+
+        # Batch computation
+        batch_metrics = compute_regression_metrics(y_pred, y_true)
+
+        # Streaming computation (process in chunks)
+        streaming = StreamingRegressionMetrics(max_plot_samples=1000)
+        batch_size = 10
+        for i in range(0, n_samples, batch_size):
+            streaming.update(y_pred[i:i+batch_size], y_true[i:i+batch_size])
+
+        streaming_metrics = streaming.compute()
+
+        # Should match within tolerance
+        assert abs(streaming_metrics["mae"] - batch_metrics["mae"]) < 1e-4
+        assert abs(streaming_metrics["mse"] - batch_metrics["mse"]) < 1e-4
+        assert abs(streaming_metrics["r2"] - batch_metrics["r2"]) < 1e-4
+
+    def test_streaming_single_update(self):
+        """Test streaming metrics with a single batch update."""
+        y_pred = torch.tensor([1.0, 2.0, 3.0])
+        y_true = torch.tensor([1.1, 2.2, 2.8])
+
+        streaming = StreamingRegressionMetrics()
+        streaming.update(y_pred, y_true)
+        metrics = streaming.compute()
+
+        batch_metrics = compute_regression_metrics(y_pred, y_true)
+
+        assert abs(metrics["mae"] - batch_metrics["mae"]) < 1e-5
+        assert abs(metrics["mse"] - batch_metrics["mse"]) < 1e-5
+        assert abs(metrics["r2"] - batch_metrics["r2"]) < 1e-5
+
+    def test_streaming_empty(self):
+        """Test streaming metrics with no data."""
+        streaming = StreamingRegressionMetrics()
+        metrics = streaming.compute()
+
+        assert metrics["mae"] == 0.0
+        assert metrics["mse"] == 0.0
+        assert metrics["r2"] == 0.0
+
+    def test_streaming_perfect_prediction(self):
+        """Test streaming metrics with perfect predictions."""
+        y_pred = torch.tensor([1.0, 2.0, 3.0, 4.0])
+        y_true = y_pred.clone()
+
+        streaming = StreamingRegressionMetrics()
+        streaming.update(y_pred, y_true)
+        metrics = streaming.compute()
+
+        assert metrics["mae"] == 0.0
+        assert metrics["mse"] == 0.0
+        assert metrics["r2"] == 1.0
+
+    def test_streaming_plot_data(self):
+        """Test that plot data is retained via reservoir sampling."""
+        streaming = StreamingRegressionMetrics(max_plot_samples=50)
+
+        # Add more samples than max_plot_samples
+        for _ in range(10):
+            streaming.update(torch.randn(20), torch.randn(20))
+
+        pred_samples, targ_samples = streaming.get_plot_data()
+
+        # Should have exactly max_plot_samples
+        assert len(pred_samples) == 50
+        assert len(targ_samples) == 50
+
+    def test_streaming_reset(self):
+        """Test that reset clears all state."""
+        streaming = StreamingRegressionMetrics()
+        streaming.update(torch.randn(10), torch.randn(10))
+        streaming.reset()
+
+        assert streaming.n == 0
+        assert streaming.sum_abs_error == 0.0
+        assert len(streaming.plot_predictions) == 0
+
+    def test_streaming_2d_input(self):
+        """Test streaming with 2D input (gets flattened)."""
+        y_pred = torch.randn(5, 3)
+        y_true = torch.randn(5, 3)
+
+        streaming = StreamingRegressionMetrics()
+        streaming.update(y_pred, y_true)
+        metrics = streaming.compute()
+
+        batch_metrics = compute_regression_metrics(y_pred, y_true)
+
+        assert abs(metrics["mae"] - batch_metrics["mae"]) < 1e-5
+        assert abs(metrics["mse"] - batch_metrics["mse"]) < 1e-5
+        assert abs(metrics["r2"] - batch_metrics["r2"]) < 1e-5
+
+
+class TestStreamingClassificationMetrics:
+    """Test streaming classification metrics computation."""
+
+    def test_streaming_matches_batch(self):
+        """Test that streaming metrics match batch computation."""
+        np.random.seed(42)
+        torch.manual_seed(42)
+
+        n_samples = 100
+        num_classes = 5
+        y_pred = torch.randint(0, num_classes, (n_samples,))
+        y_true = torch.randint(0, num_classes, (n_samples,))
+
+        batch_metrics = compute_classification_metrics(y_pred, y_true)
+
+        streaming = StreamingClassificationMetrics(num_classes=num_classes)
+        batch_size = 10
+        for i in range(0, n_samples, batch_size):
+            streaming.update(y_pred[i:i+batch_size], y_true[i:i+batch_size])
+
+        streaming_metrics = streaming.compute()
+
+        assert abs(streaming_metrics["accuracy"] - batch_metrics["accuracy"]) < 1e-5
+        assert abs(streaming_metrics["precision"] - batch_metrics["precision"]) < 1e-4
+        assert abs(streaming_metrics["recall"] - batch_metrics["recall"]) < 1e-4
+        assert abs(streaming_metrics["f1"] - batch_metrics["f1"]) < 1e-4
+
+    def test_streaming_from_logits(self):
+        """Test streaming classification with logits input."""
+        n_samples = 50
+        num_classes = 3
+
+        logits = torch.randn(n_samples, num_classes)
+        y_true = torch.randint(0, num_classes, (n_samples,))
+
+        streaming = StreamingClassificationMetrics()
+        streaming.update(logits, y_true)
+        metrics = streaming.compute()
+
+        batch_metrics = compute_classification_metrics(logits, y_true)
+
+        assert abs(metrics["accuracy"] - batch_metrics["accuracy"]) < 1e-5
+
+    def test_streaming_empty(self):
+        """Test streaming classification metrics with no data."""
+        streaming = StreamingClassificationMetrics()
+        metrics = streaming.compute()
+
+        assert metrics["accuracy"] == 0.0
+        assert metrics["precision"] == 0.0
+        assert metrics["recall"] == 0.0
+        assert metrics["f1"] == 0.0
+
+    def test_streaming_perfect_prediction(self):
+        """Test streaming classification with perfect predictions."""
+        y_true = torch.tensor([0, 1, 2, 0, 1, 2])
+        y_pred = y_true.clone()
+
+        streaming = StreamingClassificationMetrics()
+        streaming.update(y_pred, y_true)
+        metrics = streaming.compute()
+
+        assert metrics["accuracy"] == 1.0
+
+    def test_streaming_infer_num_classes(self):
+        """Test that num_classes is inferred from data."""
+        streaming = StreamingClassificationMetrics()
+
+        # First batch with classes 0-2
+        streaming.update(torch.tensor([0, 1, 2]), torch.tensor([0, 1, 2]))
+        # Second batch introduces class 3
+        streaming.update(torch.tensor([3, 3]), torch.tensor([0, 3]))
+
+        assert streaming.num_classes == 4
+
+
+class TestStreamingCountMetrics:
+    """Test streaming count metrics computation."""
+
+    def test_streaming_matches_batch(self):
+        """Test that streaming metrics match batch computation."""
+        np.random.seed(42)
+        torch.manual_seed(42)
+
+        batch_size = 4
+        num_asvs = 20
+        count_pred = torch.randn(batch_size, num_asvs, 1)
+        count_true = torch.randn(batch_size, num_asvs, 1)
+        mask = torch.ones(batch_size, num_asvs)
+        mask[:, 15:] = 0  # Mask out last 5 ASVs
+
+        batch_metrics = compute_count_metrics(count_pred, count_true, mask)
+
+        streaming = StreamingCountMetrics()
+        # Process in smaller chunks
+        for i in range(batch_size):
+            streaming.update(
+                count_pred[i:i+1],
+                count_true[i:i+1],
+                mask[i:i+1]
+            )
+
+        streaming_metrics = streaming.compute()
+
+        assert abs(streaming_metrics["mae"] - batch_metrics["mae"]) < 1e-5
+        assert abs(streaming_metrics["mse"] - batch_metrics["mse"]) < 1e-5
+
+    def test_streaming_empty(self):
+        """Test streaming count metrics with no data."""
+        streaming = StreamingCountMetrics()
+        metrics = streaming.compute()
+
+        assert metrics["mae"] == 0.0
+        assert metrics["mse"] == 0.0
+
+    def test_streaming_all_masked(self):
+        """Test streaming with all values masked."""
+        streaming = StreamingCountMetrics()
+        streaming.update(
+            torch.randn(4, 10, 1),
+            torch.randn(4, 10, 1),
+            torch.zeros(4, 10)  # All masked
+        )
+        metrics = streaming.compute()
+
+        assert metrics["mae"] == 0.0
+        assert metrics["mse"] == 0.0
+
+    def test_streaming_perfect_prediction(self):
+        """Test streaming count metrics with perfect predictions."""
+        count_pred = torch.randn(4, 10, 1)
+        count_true = count_pred.clone()
+        mask = torch.ones(4, 10)
+
+        streaming = StreamingCountMetrics()
+        streaming.update(count_pred, count_true, mask)
+        metrics = streaming.compute()
+
+        assert metrics["mae"] == 0.0
+        assert metrics["mse"] == 0.0
+
+    def test_streaming_plot_data(self):
+        """Test that plot data is retained for counts."""
+        streaming = StreamingCountMetrics(max_plot_samples=30)
+
+        # Add samples (4 batches * 10 valid per batch = 40 valid samples)
+        for _ in range(4):
+            streaming.update(
+                torch.randn(2, 10, 1),
+                torch.randn(2, 10, 1),
+                torch.ones(2, 10)
+            )
+
+        pred_samples, targ_samples = streaming.get_plot_data()
+
+        # Should have max_plot_samples
+        assert len(pred_samples) == 30
+        assert len(targ_samples) == 30

@@ -16,7 +16,14 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
-from aam.training.metrics import compute_regression_metrics, compute_count_metrics, compute_classification_metrics
+from aam.training.metrics import (
+    compute_regression_metrics,
+    compute_count_metrics,
+    compute_classification_metrics,
+    StreamingRegressionMetrics,
+    StreamingClassificationMetrics,
+    StreamingCountMetrics,
+)
 
 
 class WarmupCosineScheduler:
@@ -1003,24 +1010,41 @@ class Trainer:
         num_epochs: int = 1,
         return_predictions: bool = False,
     ) -> Union[Dict[str, float], Tuple[Dict[str, float], Optional[torch.Tensor], Optional[torch.Tensor]]]:
-        """Run one validation epoch.
+        """Run one validation epoch with streaming metrics computation.
+
+        Uses O(batch) memory instead of O(dataset) by computing metrics incrementally.
+        Plot data is retained via reservoir sampling (max 1000 samples by default).
 
         Args:
             dataloader: Validation data loader
             compute_metrics: Whether to compute metrics
             epoch: Current epoch number
             num_epochs: Total number of epochs
+            return_predictions: Whether to return sampled predictions for plotting
 
         Returns:
-            Dictionary with losses and metrics
+            Dictionary with losses and metrics, optionally with prediction samples
         """
         self.model.eval()
         total_losses = {}
-        all_predictions = {}
-        all_targets = {}
         num_batches = 0
-        total_steps = len(dataloader)
         is_pretraining = self._is_pretraining()
+        is_classifier = self._get_is_classifier()
+        encoder_type = self._get_encoder_type()
+
+        # Initialize streaming metrics (O(1) memory for stats, O(max_plot_samples) for plots)
+        unifrac_metrics = StreamingRegressionMetrics(max_plot_samples=1000)
+        target_metrics = (
+            StreamingClassificationMetrics(max_plot_samples=1000)
+            if is_classifier
+            else StreamingRegressionMetrics(max_plot_samples=1000)
+        )
+        count_metrics = StreamingCountMetrics(max_plot_samples=1000)
+
+        # Track which metrics have data
+        has_unifrac = False
+        has_target = False
+        has_count = False
 
         with torch.no_grad():
             pbar = tqdm(
@@ -1032,6 +1056,12 @@ class Trainer:
             # Store last batch info for debugging
             last_targets = None
             last_outputs = None
+
+            # Running averages for progress bar
+            running_avg_loss = 0.0
+            running_avg_unifrac_loss = 0.0
+            running_avg_nuc_loss = 0.0
+            running_avg_nuc_accuracy = 0.0
 
             for step, batch in enumerate(pbar, 1):
                 try:
@@ -1054,8 +1084,6 @@ class Trainer:
                         outputs = self.model(tokens, return_nucleotides=return_nucleotides)
                     last_outputs = outputs
 
-                    encoder_type = self._get_encoder_type()
-                    is_classifier = self._get_is_classifier()
                     losses = self.loss_fn(outputs, targets, is_classifier=is_classifier, encoder_type=encoder_type)
 
                     current_loss_val = losses["total_loss"]
@@ -1075,19 +1103,16 @@ class Trainer:
                     # Compute nucleotide accuracy on masked/valid positions
                     nuc_accuracy_val = 0.0
                     if "nuc_predictions" in outputs:
-                        nuc_preds = outputs["nuc_predictions"]  # [batch, num_asvs, seq_len, vocab_size]
+                        nuc_preds = outputs["nuc_predictions"]
                         nuc_targets = targets.get("tokens", targets.get("nucleotides"))
                         if nuc_targets is not None:
-                            predicted_tokens = nuc_preds.argmax(dim=-1)  # [batch, num_asvs, seq_len]
+                            predicted_tokens = nuc_preds.argmax(dim=-1)
                             correct = predicted_tokens == nuc_targets
 
-                            # Use mask_indices if available (MAE mode), otherwise use valid positions
                             mask_indices = outputs.get("mask_indices")
                             if mask_indices is not None and mask_indices.any():
-                                # Compute accuracy only on masked positions
                                 nuc_accuracy_val = correct[mask_indices].float().mean().item()
                             else:
-                                # Compute accuracy on all valid positions (tokens 1-4)
                                 valid_mask = (nuc_targets >= 1) & (nuc_targets <= 4)
                                 if valid_mask.any():
                                     nuc_accuracy_val = correct[valid_mask].float().mean().item()
@@ -1096,41 +1121,26 @@ class Trainer:
                             total_losses["nuc_accuracy"] = 0.0
                         total_losses["nuc_accuracy"] += nuc_accuracy_val
 
+                    # Update running averages for progress bar
                     if num_batches == 0:
                         running_avg_loss = current_loss_val
                         running_avg_nuc_accuracy = nuc_accuracy_val
                         if "unifrac_loss" in losses:
                             unifrac_val = losses["unifrac_loss"]
-                            if isinstance(unifrac_val, torch.Tensor):
-                                running_avg_unifrac_loss = unifrac_val.detach().item()
-                            else:
-                                running_avg_unifrac_loss = float(unifrac_val)
+                            running_avg_unifrac_loss = unifrac_val.detach().item() if isinstance(unifrac_val, torch.Tensor) else float(unifrac_val)
                         if "nuc_loss" in losses:
                             nuc_val = losses["nuc_loss"]
-                            if isinstance(nuc_val, torch.Tensor):
-                                running_avg_nuc_loss = nuc_val.detach().item()
-                            else:
-                                running_avg_nuc_loss = float(nuc_val)
+                            running_avg_nuc_loss = nuc_val.detach().item() if isinstance(nuc_val, torch.Tensor) else float(nuc_val)
                     else:
                         running_avg_loss = (running_avg_loss * num_batches + current_loss_val) / (num_batches + 1)
-                        running_avg_nuc_accuracy = (running_avg_nuc_accuracy * num_batches + nuc_accuracy_val) / (
-                            num_batches + 1
-                        )
+                        running_avg_nuc_accuracy = (running_avg_nuc_accuracy * num_batches + nuc_accuracy_val) / (num_batches + 1)
                         if "unifrac_loss" in losses:
                             unifrac_val = losses["unifrac_loss"]
-                            if isinstance(unifrac_val, torch.Tensor):
-                                unifrac_val = unifrac_val.detach().item()
-                            else:
-                                unifrac_val = float(unifrac_val)
-                            running_avg_unifrac_loss = (running_avg_unifrac_loss * num_batches + unifrac_val) / (
-                                num_batches + 1
-                            )
+                            unifrac_val = unifrac_val.detach().item() if isinstance(unifrac_val, torch.Tensor) else float(unifrac_val)
+                            running_avg_unifrac_loss = (running_avg_unifrac_loss * num_batches + unifrac_val) / (num_batches + 1)
                         if "nuc_loss" in losses:
                             nuc_val = losses["nuc_loss"]
-                            if isinstance(nuc_val, torch.Tensor):
-                                nuc_val = nuc_val.detach().item()
-                            else:
-                                nuc_val = float(nuc_val)
+                            nuc_val = nuc_val.detach().item() if isinstance(nuc_val, torch.Tensor) else float(nuc_val)
                             running_avg_nuc_loss = (running_avg_nuc_loss * num_batches + nuc_val) / (num_batches + 1)
 
                     # Format validation progress bar
@@ -1138,135 +1148,68 @@ class Trainer:
                         "TL": f"{running_avg_loss:.6f}" if running_avg_loss < 0.0001 else f"{running_avg_loss:.4f}",
                     }
                     if "unifrac_loss" in losses:
-                        postfix_dict["UL"] = (
-                            f"{running_avg_unifrac_loss:.6f}"
-                            if running_avg_unifrac_loss < 0.0001
-                            else f"{running_avg_unifrac_loss:.4f}"
-                        )
+                        postfix_dict["UL"] = f"{running_avg_unifrac_loss:.6f}" if running_avg_unifrac_loss < 0.0001 else f"{running_avg_unifrac_loss:.4f}"
                     if "nuc_loss" in losses:
-                        postfix_dict["NL"] = (
-                            f"{running_avg_nuc_loss:.6f}" if running_avg_nuc_loss < 0.0001 else f"{running_avg_nuc_loss:.4f}"
-                        )
+                        postfix_dict["NL"] = f"{running_avg_nuc_loss:.6f}" if running_avg_nuc_loss < 0.0001 else f"{running_avg_nuc_loss:.4f}"
                     if "nuc_predictions" in outputs:
                         postfix_dict["NA"] = f"{running_avg_nuc_accuracy:.2%}"
 
                     pbar.set_postfix(postfix_dict)
 
+                    # Update streaming metrics (O(batch) memory per update)
                     if compute_metrics:
-                        if is_pretraining:
-                            # For pretraining, collect base_prediction (UniFrac) for plotting
-                            # For UniFrac, compute distances from embeddings if available
+                        # UniFrac metrics (pretraining or fine-tuning with unifrac)
+                        if "base_target" in targets:
                             from aam.training.losses import compute_pairwise_distances
 
-                            if "base_target" in targets:
-                                encoder_type = self._get_encoder_type()
-                                base_pred_batch = None
+                            base_pred_batch = None
 
-                                # Try to get embeddings first (for UniFrac encoder type)
-                                if encoder_type == "unifrac" and "embeddings" in outputs:
-                                    # Compute distances from embeddings
-                                    embeddings = outputs["embeddings"]
-                                    if embeddings is not None:
-                                        try:
-                                            # Detach embeddings before computing distances to ensure proper gradient handling
-                                            embeddings_detached = embeddings.detach()
-                                            # Normalize distances to [0, 1] for UniFrac (normalize=True is now the default)
-                                            base_pred_batch = compute_pairwise_distances(embeddings_detached).detach()
-                                        except Exception as e:
-                                            import logging
+                            if encoder_type == "unifrac" and "embeddings" in outputs:
+                                embeddings = outputs["embeddings"]
+                                if embeddings is not None:
+                                    try:
+                                        base_pred_batch = compute_pairwise_distances(embeddings.detach()).detach()
+                                    except Exception:
+                                        base_pred_batch = None
 
-                                            logger = logging.getLogger(__name__)
-                                            logger.error(f"Error computing pairwise distances: {e}", exc_info=True)
-                                            base_pred_batch = None
+                            if base_pred_batch is None and "base_prediction" in outputs:
+                                base_pred_batch = outputs["base_prediction"]
 
-                                # Fallback to base_prediction if embeddings not available
-                                if base_pred_batch is None and "base_prediction" in outputs:
-                                    base_pred_batch = outputs["base_prediction"]
+                            if base_pred_batch is not None:
+                                base_true_batch = targets["base_target"]
+                                # Extract upper triangle (excluding diagonal)
+                                if base_pred_batch.dim() == 2 and base_pred_batch.shape[0] == base_pred_batch.shape[1]:
+                                    batch_size = base_pred_batch.shape[0]
+                                    triu_indices = torch.triu_indices(batch_size, batch_size, offset=1, device=base_pred_batch.device)
+                                    base_pred_flat = base_pred_batch[triu_indices[0], triu_indices[1]]
+                                    base_true_flat = base_true_batch[triu_indices[0], triu_indices[1]]
+                                else:
+                                    base_pred_flat = base_pred_batch.flatten()
+                                    base_true_flat = base_true_batch.flatten()
 
-                                if base_pred_batch is not None:
-                                    if "base_prediction" not in all_predictions:
-                                        all_predictions["base_prediction"] = []
-                                        all_targets["base_target"] = []
-                                    # Extract upper triangle (excluding diagonal) from each batch matrix
-                                    # to avoid including diagonal 0.0 values in validation plots
-                                    base_true_batch = targets["base_target"]
-                                    if base_pred_batch.dim() == 2 and base_pred_batch.shape[0] == base_pred_batch.shape[1]:
-                                        batch_size = base_pred_batch.shape[0]
-                                        triu_indices = torch.triu_indices(
-                                            batch_size, batch_size, offset=1, device=base_pred_batch.device
-                                        )
-                                        base_pred_flat = base_pred_batch[triu_indices[0], triu_indices[1]].detach()
-                                        base_true_flat = base_true_batch[triu_indices[0], triu_indices[1]].detach()
-                                        all_predictions["base_prediction"].append(base_pred_flat)
-                                        all_targets["base_target"].append(base_true_flat)
-                                    else:
-                                        # If not square, just flatten (shouldn't happen for UniFrac)
-                                        all_predictions["base_prediction"].append(base_pred_batch.flatten().detach())
-                                        all_targets["base_target"].append(base_true_batch.flatten().detach())
-                            else:
-                                # Debug: log why base_target check failed
-                                if step == 1:  # Only log once per epoch
-                                    import logging
+                                unifrac_metrics.update(base_pred_flat, base_true_flat)
+                                has_unifrac = True
 
-                                    logger = logging.getLogger(__name__)
-                                    logger.debug(f"base_target not in targets. Target keys: {list(targets.keys())}")
-                        else:
-                            # For regular training, collect target_prediction for plotting
-                            if "target_prediction" in outputs and "target" in targets:
-                                if "target_prediction" not in all_predictions:
-                                    all_predictions["target_prediction"] = []
-                                    all_targets["target"] = []
-                                all_predictions["target_prediction"].append(outputs["target_prediction"].detach())
-                                all_targets["target"].append(targets["target"].detach())
+                        # Target metrics (fine-tuning)
+                        if not is_pretraining and "target_prediction" in outputs and "target" in targets:
+                            pred = outputs["target_prediction"]
+                            true = targets["target"]
+                            # Denormalize for metrics
+                            pred_denorm = self._denormalize_targets(pred)
+                            true_denorm = self._denormalize_targets(true)
+                            target_metrics.update(pred_denorm, true_denorm)
+                            has_target = True
 
-                            # Also collect UniFrac predictions during fine-tuning
-                            if "base_target" in targets:
-                                from aam.training.losses import compute_pairwise_distances
-
-                                encoder_type = self._get_encoder_type()
-                                base_pred_batch = None
-
-                                # Try to get embeddings first (for UniFrac encoder type)
-                                if encoder_type == "unifrac" and "embeddings" in outputs:
-                                    embeddings = outputs["embeddings"]
-                                    if embeddings is not None:
-                                        try:
-                                            embeddings_detached = embeddings.detach()
-                                            base_pred_batch = compute_pairwise_distances(embeddings_detached).detach()
-                                        except Exception:
-                                            base_pred_batch = None
-
-                                # Fallback to base_prediction if embeddings not available
-                                if base_pred_batch is None and "base_prediction" in outputs:
-                                    base_pred_batch = outputs["base_prediction"]
-
-                                if base_pred_batch is not None:
-                                    if "base_prediction" not in all_predictions:
-                                        all_predictions["base_prediction"] = []
-                                        all_targets["base_target"] = []
-                                    base_true_batch = targets["base_target"]
-                                    if base_pred_batch.dim() == 2 and base_pred_batch.shape[0] == base_pred_batch.shape[1]:
-                                        batch_size = base_pred_batch.shape[0]
-                                        triu_indices = torch.triu_indices(
-                                            batch_size, batch_size, offset=1, device=base_pred_batch.device
-                                        )
-                                        base_pred_flat = base_pred_batch[triu_indices[0], triu_indices[1]].detach()
-                                        base_true_flat = base_true_batch[triu_indices[0], triu_indices[1]].detach()
-                                        all_predictions["base_prediction"].append(base_pred_flat)
-                                        all_targets["base_target"].append(base_true_flat)
-                                    else:
-                                        all_predictions["base_prediction"].append(base_pred_batch.flatten().detach())
-                                        all_targets["base_target"].append(base_true_batch.flatten().detach())
-
+                        # Count metrics
                         if "count_prediction" in outputs and "counts" in targets:
-                            if "count_prediction" not in all_predictions:
-                                all_predictions["count_prediction"] = []
-                                all_targets["counts"] = []
-                                all_targets["mask"] = []
-                            all_predictions["count_prediction"].append(outputs["count_prediction"].detach())
-                            all_targets["counts"].append(targets["counts"].detach())
+                            count_pred = outputs["count_prediction"]
+                            count_true = targets["counts"]
                             mask = targets.get("mask", (tokens.sum(dim=-1) > 0).long())
-                            all_targets["mask"].append(mask.detach())
+                            # Denormalize for metrics
+                            count_pred_denorm = self._denormalize_counts(count_pred)
+                            count_true_denorm = self._denormalize_counts(count_true)
+                            count_metrics.update(count_pred_denorm, count_true_denorm, mask)
+                            has_count = True
 
                     num_batches += 1
 
@@ -1285,108 +1228,52 @@ class Trainer:
 
         avg_losses = {key: value / num_batches for key, value in total_losses.items()}
 
-        target_pred_tensor = None
-        target_true_tensor = None
-        base_pred_tensor = None
-        base_true_tensor = None
+        # Compute final metrics from streaming accumulators
+        if compute_metrics:
+            if is_pretraining and has_unifrac:
+                metrics = unifrac_metrics.compute()
+                avg_losses.update(metrics)
+            elif has_target:
+                metrics = target_metrics.compute()
+                avg_losses.update(metrics)
 
-        # Debug: Log if predictions weren't collected
-        if compute_metrics and not all_predictions:
+            if has_count:
+                metrics = count_metrics.compute()
+                avg_losses.update({f"count_{k}": v for k, v in metrics.items()})
+
+        # Debug logging if no predictions collected
+        if compute_metrics and not (has_unifrac or has_target or has_count):
             import logging
-
             logger = logging.getLogger(__name__)
-            # Get target keys from the last batch processed
             target_keys = list(last_targets.keys()) if last_targets is not None else []
             output_keys = list(last_outputs.keys()) if last_outputs is not None else []
             logger.warning(
                 f"No predictions collected for metrics computation at epoch {epoch}. "
-                f"Outputs keys: {output_keys}, "
-                f"Target keys: {target_keys}, "
-                f"is_pretraining: {is_pretraining}"
+                f"Outputs keys: {output_keys}, Target keys: {target_keys}, is_pretraining: {is_pretraining}"
             )
 
-        if compute_metrics and all_predictions:
-            if is_pretraining and "base_prediction" in all_predictions:
-                # For pretraining, compute metrics for UniFrac predictions
-                # Predictions are already flattened (upper triangle only) from collection step
-                base_pred_flat = torch.cat(all_predictions["base_prediction"], dim=0)
-                base_true_flat = torch.cat(all_targets["base_target"], dim=0)
-
-                metrics = compute_regression_metrics(base_pred_flat, base_true_flat)
-                avg_losses.update(metrics)
-
-                # For return_predictions, we need to return the flattened tensors
-                # (they're already flattened, so we can use them directly)
-                base_pred_tensor = base_pred_flat
-                base_true_tensor = base_true_flat
-            elif "target_prediction" in all_predictions:
-                target_pred_tensor = torch.cat(all_predictions["target_prediction"], dim=0)
-                target_true_tensor = torch.cat(all_targets["target"], dim=0)
-
-                is_classifier = self._get_is_classifier()
-                if is_classifier:
-                    metrics = compute_classification_metrics(target_pred_tensor, target_true_tensor)
-                else:
-                    # Denormalize predictions and targets for metrics computation
-                    # This ensures metrics (MAE, MSE, R²) are in original target scale
-                    target_pred_denorm = self._denormalize_targets(target_pred_tensor)
-                    target_true_denorm = self._denormalize_targets(target_true_tensor)
-                    metrics = compute_regression_metrics(target_pred_denorm, target_true_denorm)
-                avg_losses.update(metrics)
-
-            if "count_prediction" in all_predictions:
-                count_pred = torch.cat(all_predictions["count_prediction"], dim=0)
-                count_true = torch.cat(all_targets["counts"], dim=0)
-                mask = torch.cat(all_targets["mask"], dim=0)
-                # Denormalize counts for metrics computation
-                # This ensures metrics (MAE, MSE) are in original count scale
-                count_pred_denorm = self._denormalize_counts(count_pred)
-                count_true_denorm = self._denormalize_counts(count_true)
-                metrics = compute_count_metrics(count_pred_denorm, count_true_denorm, mask)
-                avg_losses.update({f"count_{k}": v for k, v in metrics.items()})
-
         if return_predictions:
-            # Return all available predictions as a dictionary
+            # Return sampled predictions for plotting (from reservoir sampling)
             all_preds = {}
             all_targs = {}
 
-            if is_pretraining and base_pred_tensor is not None:
-                # base_pred_tensor and base_true_tensor are already flattened (upper triangle only)
-                all_preds["unifrac"] = base_pred_tensor
-                all_targs["unifrac"] = base_true_tensor
+            if has_unifrac:
+                pred_samples, targ_samples = unifrac_metrics.get_plot_data()
+                all_preds["unifrac"] = pred_samples
+                all_targs["unifrac"] = targ_samples
 
-            if target_pred_tensor is not None:
-                # Denormalize predictions and targets for plotting
-                # This ensures plots show values in original target scale
-                target_pred_denorm = self._denormalize_targets(target_pred_tensor)
-                target_true_denorm = self._denormalize_targets(target_true_tensor)
-                all_preds["target"] = target_pred_denorm
-                all_targs["target"] = target_true_denorm
+            if has_target:
+                pred_samples, targ_samples = target_metrics.get_plot_data()
+                all_preds["target"] = pred_samples
+                all_targs["target"] = targ_samples
 
-            if "count_prediction" in all_predictions:
-                count_pred = torch.cat(all_predictions["count_prediction"], dim=0)
-                count_true = torch.cat(all_targets["counts"], dim=0)
-                mask = torch.cat(all_targets["mask"], dim=0)
-                # Denormalize counts for plotting
-                count_pred_denorm = self._denormalize_counts(count_pred)
-                count_true_denorm = self._denormalize_counts(count_true)
-                # Flatten and apply mask for plotting
-                count_pred_flat = count_pred_denorm.flatten()
-                count_true_flat = count_true_denorm.flatten()
-                mask_flat = mask.flatten().bool()
-                all_preds["count"] = count_pred_flat[mask_flat]
-                all_targs["count"] = count_true_flat[mask_flat]
-
-            # Also collect unifrac predictions during fine-tuning if available
-            if not is_pretraining and "base_prediction" in all_predictions:
-                from aam.training.losses import compute_pairwise_distances
-
-                base_pred_flat = torch.cat(all_predictions["base_prediction"], dim=0)
-                base_true_flat = torch.cat(all_targets["base_target"], dim=0)
-                all_preds["unifrac"] = base_pred_flat
-                all_targs["unifrac"] = base_true_flat
+            if has_count:
+                pred_samples, targ_samples = count_metrics.get_plot_data()
+                all_preds["count"] = pred_samples
+                all_targs["count"] = targ_samples
 
             return avg_losses, all_preds, all_targs
+
         return avg_losses
 
     def train(
