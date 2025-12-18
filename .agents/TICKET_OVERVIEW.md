@@ -1,6 +1,6 @@
 # Ticket Overview
 
-**Status:** 20 outstanding tickets (~90-126 hours)
+**Status:** 19 outstanding tickets (~88-123 hours)
 
 ## Quick Links
 - **Outstanding work:** `PYTORCH_PORTING_TICKETS.md`
@@ -9,8 +9,7 @@
 
 ## Outstanding by Priority
 
-### HIGH (2)
-- PYT-18.3: Skip Nucleotide Predictions During Inference
+### HIGH (1)
 - PYT-18.4: Configurable FFN Intermediate Size
 
 ### MEDIUM (1)
@@ -27,6 +26,7 @@
 - Phase 17: Docs, Tutorials, ONNX, Docker
 
 ## Recently Completed
+- PYT-18.3: Skip Nucleotide Predictions During Inference (already implemented)
 - PYT-12.3: Caching Mechanisms (sequence tokenization cache)
 - PYT-18.2: Streaming Validation Metrics (O(batch) memory)
 - PYT-19.1: Fix Failing Unit Tests (test fixes)
@@ -34,6 +34,6 @@
 - PYT-18.1: Memory-Efficient Defaults
 
 ## Recommended Next Steps
-1. **PYT-18.3** - Skip nucleotide predictions during inference
-2. **PYT-18.4** - Configurable FFN intermediate size
-3. **PYT-10.6** - Multi-GPU training (if hardware available)
+1. **PYT-18.4** - Configurable FFN intermediate size
+2. **PYT-10.6** - Multi-GPU training (if hardware available)
+3. **PYT-21.3** - Regressor head optimization
