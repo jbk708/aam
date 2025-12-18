@@ -1,7 +1,58 @@
 # Outstanding Tickets
 
-**Last Updated:** 2025-12-17
+**Last Updated:** 2025-12-18
 **Status:** Phases 8-11 Complete (see `ARCHIVED_TICKETS.md`), PYT-19.1 Complete, PYT-20.1 Complete (MAE for Nucleotide Prediction)
+
+---
+
+## Phase 21: Transfer Learning & Fine-Tuning Fixes (NEW - HIGH PRIORITY)
+
+### PYT-21.2: Fix Pretrained Encoder Loading and Freeze-Base Verification
+**Priority:** HIGH | **Effort:** 4-5 hours | **Status:** Complete
+
+**Problem:**
+Multiple issues with pretrained encoder loading and freeze-base functionality:
+1. `load_pretrained_encoder()` uses `strict=False` with **no logging** of matched/mismatched keys
+2. No verification that weights were actually loaded (silently fails on key mismatch)
+3. No startup logging of frozen vs trainable parameter counts
+4. `nuc_penalty` defaults to 1.0 even with `--freeze-base`, meaning nucleotide loss still contributes to training when the encoder is frozen
+5. **Root cause found:** `torch.compile()` adds `_orig_mod.` prefix to all state dict keys, causing 100% key mismatch when loading into non-compiled model
+
+**Evidence:**
+When loading a pretrained encoder that achieved NA=97.98% during pretraining, fine-tuning starts with NA=19.49% - indicating the weights weren't loaded correctly.
+```
+# Expected (if loaded correctly): NA should start high
+# Actual: Epoch 1/1000: TL=55945.4088, NL=2.1022, NA=19.49%
+```
+
+**Solution:**
+1. Strip `_orig_mod.` prefix from checkpoint keys when loading compiled model checkpoints
+2. Add detailed logging to `load_pretrained_encoder()`:
+   - Log number of matched/loaded keys
+   - Warn on any unmatched keys (even with `strict=False`)
+   - Log total parameters loaded
+   - Detect and report shape mismatches with helpful error messages
+3. Add parameter count logging at training start (frozen vs trainable)
+4. Auto-set `nuc_penalty=0` when `freeze_base=True`
+
+**Acceptance Criteria:**
+- [x] `load_pretrained_encoder()` logs: "Loaded X/Y keys (Z parameters)"
+- [x] Warn on mismatched keys: "WARNING: N keys not found in checkpoint: [key1, key2, ...]"
+- [x] Warn on unexpected keys: "WARNING: N unexpected keys in checkpoint: [key1, key2, ...]"
+- [x] Log at training start: "Frozen: X params, Trainable: Y params (Z%)"
+- [x] Auto-set `nuc_penalty=0` when `freeze_base=True`
+- [x] Strip `_orig_mod.` prefix for torch.compile() checkpoints
+- [x] Raise helpful error on shape mismatch (not silent fail)
+- [x] Add test verifying pretrained weights are actually loaded
+- [x] Add test for compiled model checkpoint loading
+
+**Expected Impact:**
+- Clear visibility into what weights are loaded during transfer learning
+- Early detection of configuration mismatches
+- Proper fine-tuning behavior with frozen base
+- Checkpoints from `--compile-model` runs now load correctly
+
+**Files:** `aam/training/trainer.py`, `aam/cli.py`, `tests/test_trainer.py`
 
 ---
 

@@ -896,6 +896,114 @@ class TestLoadPretrainedEncoder:
             if name in predictor_base_params:
                 assert torch.allclose(param, predictor_base_params[name])
 
+    def test_load_compiled_model_checkpoint(self, small_predictor, device, tmp_path):
+        """Test loading checkpoint from torch.compile() model (has _orig_mod. prefix)."""
+        encoder = SequenceEncoder(
+            vocab_size=6,
+            embedding_dim=32,
+            max_bp=50,
+            token_limit=64,
+            asv_num_layers=1,
+            asv_num_heads=2,
+            sample_num_layers=1,
+            sample_num_heads=2,
+            encoder_num_layers=1,
+            encoder_num_heads=2,
+            base_output_dim=None,
+            encoder_type="unifrac",
+            predict_nucleotides=False,
+        ).to(device)
+
+        # Simulate torch.compile() checkpoint by adding _orig_mod. prefix
+        original_state_dict = encoder.state_dict()
+        compiled_state_dict = {f"_orig_mod.{k}": v for k, v in original_state_dict.items()}
+
+        checkpoint_path = tmp_path / "compiled_encoder.pt"
+        torch.save({"model_state_dict": compiled_state_dict}, checkpoint_path)
+
+        small_predictor = small_predictor.to(device)
+        result = load_pretrained_encoder(str(checkpoint_path), small_predictor, strict=False)
+
+        # Verify all keys were loaded after prefix stripping
+        assert result["loaded_keys"] == len(original_state_dict)
+        assert len(result["missing_keys"]) == 0
+        assert len(result["unexpected_keys"]) == 0
+
+        # Verify weights match
+        encoder_params = dict(encoder.named_parameters())
+        predictor_base_params = dict(small_predictor.base_model.named_parameters())
+        for name, param in encoder_params.items():
+            if name in predictor_base_params:
+                assert torch.allclose(param, predictor_base_params[name])
+
+    def test_load_pretrained_encoder_returns_stats(self, small_predictor, device, tmp_path):
+        """Test that load_pretrained_encoder returns loading statistics."""
+        encoder = SequenceEncoder(
+            vocab_size=6,
+            embedding_dim=32,
+            max_bp=50,
+            token_limit=64,
+            asv_num_layers=1,
+            asv_num_heads=2,
+            sample_num_layers=1,
+            sample_num_heads=2,
+            encoder_num_layers=1,
+            encoder_num_heads=2,
+            base_output_dim=None,
+            encoder_type="unifrac",
+            predict_nucleotides=False,
+        ).to(device)
+
+        checkpoint_path = tmp_path / "encoder.pt"
+        torch.save({"model_state_dict": encoder.state_dict()}, checkpoint_path)
+
+        small_predictor = small_predictor.to(device)
+        result = load_pretrained_encoder(str(checkpoint_path), small_predictor, strict=False)
+
+        assert "loaded_keys" in result
+        assert "total_checkpoint_keys" in result
+        assert "total_model_keys" in result
+        assert "missing_keys" in result
+        assert "unexpected_keys" in result
+        assert "loaded_params" in result
+        assert result["loaded_keys"] > 0
+        assert result["loaded_params"] > 0
+
+    def test_load_pretrained_encoder_shape_mismatch_raises(self, device, tmp_path):
+        """Test that shape mismatch raises ValueError with helpful message."""
+        # Create encoder with different embedding dim
+        encoder = SequenceEncoder(
+            vocab_size=6,
+            embedding_dim=64,  # Different from small_predictor's 32
+            max_bp=50,
+            token_limit=64,
+            asv_num_layers=1,
+            asv_num_heads=2,
+            sample_num_layers=1,
+            sample_num_heads=2,
+            encoder_num_layers=1,
+            encoder_num_heads=2,
+        ).to(device)
+
+        checkpoint_path = tmp_path / "mismatched_encoder.pt"
+        torch.save({"model_state_dict": encoder.state_dict()}, checkpoint_path)
+
+        predictor = SequencePredictor(
+            vocab_size=6,
+            embedding_dim=32,  # Different embedding dim
+            max_bp=50,
+            token_limit=64,
+            asv_num_layers=1,
+            asv_num_heads=2,
+            sample_num_layers=1,
+            sample_num_heads=2,
+            encoder_num_layers=1,
+            encoder_num_heads=2,
+        ).to(device)
+
+        with pytest.raises(ValueError, match="Shape mismatch"):
+            load_pretrained_encoder(str(checkpoint_path), predictor, strict=False)
+
 
 class TestTrainerEdgeCases:
     """Test edge cases for trainer."""
