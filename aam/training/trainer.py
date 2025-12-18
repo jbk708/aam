@@ -1710,14 +1710,30 @@ def load_pretrained_encoder(
     checkpoint_path: str,
     model: nn.Module,
     strict: bool = True,
-) -> None:
+    logger: Optional[any] = None,
+) -> Dict[str, any]:
     """Load pre-trained SequenceEncoder checkpoint into model.
 
     Args:
         checkpoint_path: Path to SequenceEncoder checkpoint
         model: Model to load weights into (SequencePredictor with base_model)
         strict: Whether to strictly match state dict keys
+        logger: Optional logger for detailed output
+
+    Returns:
+        Dictionary with loading statistics:
+            - loaded_keys: Number of keys successfully loaded
+            - total_checkpoint_keys: Total keys in checkpoint
+            - total_model_keys: Total keys in model
+            - missing_keys: List of keys in model but not in checkpoint
+            - unexpected_keys: List of keys in checkpoint but not in model
+            - loaded_params: Total parameters loaded
     """
+    import logging as logging_module
+
+    if logger is None:
+        logger = logging_module.getLogger(__name__)
+
     checkpoint = torch.load(checkpoint_path, map_location="cpu")
 
     if "model_state_dict" in checkpoint:
@@ -1725,7 +1741,104 @@ def load_pretrained_encoder(
     else:
         state_dict = checkpoint
 
+    # Handle torch.compile() prefix: compiled models have "_orig_mod." prefix
+    # Strip this prefix so checkpoints from compiled models can be loaded into non-compiled models
+    compiled_prefix = "_orig_mod."
+    has_compiled_prefix = any(k.startswith(compiled_prefix) for k in state_dict.keys())
+    if has_compiled_prefix:
+        logger.info(f"  Detected torch.compile() checkpoint (keys have '{compiled_prefix}' prefix)")
+        state_dict = {
+            k[len(compiled_prefix):] if k.startswith(compiled_prefix) else k: v
+            for k, v in state_dict.items()
+        }
+        logger.info(f"  Stripped prefix from {sum(1 for k in checkpoint.get('model_state_dict', checkpoint) if k.startswith(compiled_prefix))} keys")
+
+    # Determine target module
     if hasattr(model, "base_model"):
-        model.base_model.load_state_dict(state_dict, strict=strict)
+        target_module = model.base_model
+        target_name = "base_model"
     else:
-        model.load_state_dict(state_dict, strict=strict)
+        target_module = model
+        target_name = "model"
+
+    # Get model's expected keys
+    model_state_dict = target_module.state_dict()
+    model_keys = set(model_state_dict.keys())
+    checkpoint_keys = set(state_dict.keys())
+
+    # Calculate what will be loaded
+    matching_keys = model_keys & checkpoint_keys
+    missing_keys = model_keys - checkpoint_keys
+    unexpected_keys = checkpoint_keys - model_keys
+
+    # Check for shape mismatches in matching keys
+    shape_mismatches = []
+    for key in matching_keys:
+        if state_dict[key].shape != model_state_dict[key].shape:
+            shape_mismatches.append(
+                f"{key}: checkpoint={state_dict[key].shape}, model={model_state_dict[key].shape}"
+            )
+
+    # Log detailed information
+    logger.info(f"Loading pretrained encoder from: {checkpoint_path}")
+    logger.info(f"  Checkpoint keys: {len(checkpoint_keys)}, Model keys: {len(model_keys)}")
+    logger.info(f"  Matching keys: {len(matching_keys)}")
+
+    if missing_keys:
+        logger.warning(f"  Missing keys (in model but not checkpoint): {len(missing_keys)}")
+        for key in sorted(missing_keys)[:5]:
+            logger.warning(f"    - {key}")
+        if len(missing_keys) > 5:
+            logger.warning(f"    ... and {len(missing_keys) - 5} more")
+
+    if unexpected_keys:
+        logger.warning(f"  Unexpected keys (in checkpoint but not model): {len(unexpected_keys)}")
+        for key in sorted(unexpected_keys)[:5]:
+            logger.warning(f"    - {key}")
+        if len(unexpected_keys) > 5:
+            logger.warning(f"    ... and {len(unexpected_keys) - 5} more")
+
+    if shape_mismatches:
+        logger.error(f"  Shape mismatches found: {len(shape_mismatches)}")
+        for mismatch in shape_mismatches[:5]:
+            logger.error(f"    - {mismatch}")
+        if len(shape_mismatches) > 5:
+            logger.error(f"    ... and {len(shape_mismatches) - 5} more")
+        raise ValueError(
+            f"Shape mismatch between checkpoint and model. "
+            f"Ensure pretrain and train use the same --embedding-dim, --attention-heads, --attention-layers. "
+            f"First mismatch: {shape_mismatches[0]}"
+        )
+
+    # Calculate parameters being loaded
+    loaded_params = sum(state_dict[k].numel() for k in matching_keys)
+    total_model_params = sum(p.numel() for p in target_module.parameters())
+
+    # Perform the actual load
+    result = target_module.load_state_dict(state_dict, strict=strict)
+
+    # Verify loading worked
+    if len(matching_keys) == 0:
+        logger.error(
+            "WARNING: No keys were loaded! Checkpoint and model have no matching keys. "
+            "This usually means a configuration mismatch between pretrain and train."
+        )
+    elif len(matching_keys) < len(model_keys) * 0.5:
+        logger.warning(
+            f"WARNING: Only {len(matching_keys)}/{len(model_keys)} keys loaded ({len(matching_keys)/len(model_keys)*100:.1f}%). "
+            f"Check that pretrain and train configurations match."
+        )
+    else:
+        logger.info(
+            f"  Successfully loaded {len(matching_keys)}/{len(model_keys)} keys "
+            f"({loaded_params:,} parameters, {loaded_params/total_model_params*100:.1f}% of {target_name})"
+        )
+
+    return {
+        "loaded_keys": len(matching_keys),
+        "total_checkpoint_keys": len(checkpoint_keys),
+        "total_model_keys": len(model_keys),
+        "missing_keys": list(missing_keys),
+        "unexpected_keys": list(unexpected_keys),
+        "loaded_params": loaded_params,
+    }
