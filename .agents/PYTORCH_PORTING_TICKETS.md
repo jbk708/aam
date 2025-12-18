@@ -56,41 +56,12 @@ When loading a pretrained encoder that achieved NA=97.98% during pretraining, fi
 
 ---
 
-### PYT-21.5: Fix Prediction Plots to Show Denormalized Values
-**Priority:** HIGH | **Effort:** 1-2 hours | **Status:** Not Started
+### PYT-21.1: Target Loss Improvements and Normalize-Targets Default
+**Priority:** HIGH | **Effort:** 2-3 hours | **Status:** Complete
 
 **Problem:**
-When using `--normalize-targets`, the predicted vs actual plots show values in [0, 1] range instead of the original target scale. This makes it difficult to interpret model performance in meaningful units.
-
-**Evidence:**
-Prediction plots display all values between 0 and 1, even when original targets have different ranges (e.g., temperature in Celsius, concentrations, etc.).
-
-**Solution:**
-1. Pass denormalization parameters to the plotting functions
-2. Denormalize predictions and targets before creating plots
-3. Update axis labels to reflect original units
-4. Ensure R² and other metrics are computed on denormalized values
-
-**Acceptance Criteria:**
-- [ ] Prediction plots show values in original target scale
-- [ ] Axis labels reflect original units (or at minimum, not [0,1])
-- [ ] R² metric computed on denormalized values matches plot
-- [ ] Works correctly when `--normalize-targets` is not used (no-op)
-- [ ] Add test for denormalized plot generation
-
-**Expected Impact:**
-- Interpretable prediction plots in original units
-- Easier model evaluation and communication of results
-
-**Files:** `aam/training/trainer.py`, `tests/test_trainer.py`
-
----
-
-### PYT-21.1: Deconvolute Target Loss with Configurable Weight
-**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Not Started
-
-**Problem:**
-Currently, `target_loss` has an implicit weight of 1.0 in the total loss calculation, while `unifrac_loss` and `nuc_loss` have configurable penalties (`--penalty`, `--nuc-penalty`). This inconsistency makes loss tuning difficult and obscures the target loss contribution during multi-task learning.
+1. `target_loss` has an implicit weight of 1.0, while `unifrac_loss` and `nuc_loss` have configurable penalties. This inconsistency makes loss tuning difficult.
+2. `--normalize-targets` should be the default for regression tasks (better training dynamics).
 
 Current formula:
 ```python
@@ -100,22 +71,22 @@ total_loss = target_loss + count_loss + unifrac_loss * penalty + nuc_loss * nuc_
 **Solution:**
 1. Add `target_penalty` parameter to `MultiTaskLoss` (default: 1.0 for backward compatibility)
 2. Add `--target-penalty` CLI flag to `train` command
-3. Log individual loss contributions (weighted and unweighted) to TensorBoard
-4. Add per-epoch summary showing loss component percentages
+3. Make `--normalize-targets` the default (add `--no-normalize-targets` to disable)
+4. Log individual loss contributions to TensorBoard
 
 **Acceptance Criteria:**
-- [ ] Add `target_penalty` parameter to `MultiTaskLoss.__init__()`
-- [ ] Update total_loss formula: `target_loss * target_penalty + count_loss + ...`
-- [ ] Add `--target-penalty` flag to CLI (default: 1.0)
-- [ ] Add TensorBoard scalars for weighted vs unweighted loss components
-- [ ] Add loss contribution breakdown logging (e.g., "Target: 45%, UniFrac: 35%, Nuc: 20%")
-- [ ] Update tests for new parameter
-- [ ] Document loss weighting strategy in help text
+- [x] Add `target_penalty` parameter to `MultiTaskLoss.__init__()`
+- [x] Update total_loss formula: `target_loss * target_penalty + count_loss + ...`
+- [x] Add `--target-penalty` flag to CLI (default: 1.0)
+- [x] Change `--normalize-targets` to default=True
+- [x] Add `--no-normalize-targets` flag to opt out
+- [x] Log loss weights at training start
+- [x] All tests pass
 
 **Expected Impact:**
 - Clearer loss contribution visibility for debugging
+- Better default training behavior with normalized targets
 - Ability to tune target loss weight relative to auxiliary tasks
-- Better understanding of what drives learning
 
 **Files:** `aam/training/losses.py`, `aam/cli.py`, `aam/training/trainer.py`, `tests/test_losses.py`
 
@@ -162,34 +133,59 @@ Enhance the regressor with configurable improvements:
 
 ---
 
-### PYT-21.4: Skip Auxiliary Loss Computation During Fine-Tuning
+### PYT-21.4: Update Training Progress Bar for Fine-Tuning
+**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Not Started
+
+**Problem:**
+During fine-tuning, the progress bar shows `NL` (nucleotide loss) and `NA` (nucleotide accuracy) which are irrelevant when `--freeze-base` is set. The target loss is shown as `TL` (total loss) which doesn't clearly indicate what's being optimized.
+
+Current display:
+```
+Epoch 1/100: TL=0.0608, LR=1.00e-04, UL=0.0011, NL=0.0597, NA=97.98%
+```
+
+**Solution:**
+1. Hide `NL` and `NA` from progress bar when `nuc_penalty=0` or `--freeze-base`
+2. Show task-specific loss label: `RL` (Regression Loss) or `CL` (Classification Loss)
+3. Keep `UL` (UniFrac Loss) visible as it's still computed
+4. Optionally skip nucleotide prediction computation entirely when not needed
+
+**Acceptance Criteria:**
+- [ ] Hide NL/NA from progress bar when nuc_penalty=0
+- [ ] Show `RL` for regression tasks or `CL` for classification tasks
+- [ ] Progress bar format during fine-tuning: `TL=X, LR=X, RL=X, UL=X`
+- [ ] Progress bar format during pretraining: `TL=X, LR=X, UL=X, NL=X, NA=X%`
+- [ ] Add tests for progress bar format
+
+**Expected Impact:**
+- Cleaner, more informative progress bar during fine-tuning
+- Clear indication of what loss is being optimized
+- Less confusion about irrelevant metrics
+
+**Files:** `aam/training/trainer.py`
+
+---
+
+### PYT-21.5: Skip Nucleotide Predictions During Fine-Tuning
 **Priority:** LOW | **Effort:** 2-3 hours | **Status:** Not Started
 
 **Problem:**
-When fine-tuning with `--freeze-base`, auxiliary losses (nucleotide, count) still:
-1. Compute predictions (wasting memory/compute)
-2. Get logged in progress bar (confusing monitoring)
-
-Note: PYT-21.2 already auto-disables `nuc_penalty` when `--freeze-base` is set, so the loss doesn't contribute to training. This ticket addresses the remaining compute/logging overhead.
+When fine-tuning with `--freeze-base`, nucleotide predictions are still computed even though they don't contribute to training (nuc_penalty=0). This wastes memory and compute.
 
 **Solution:**
-1. Add `--skip-auxiliary-predictions` flag (auto-enabled with `--freeze-base`)
-2. Skip nucleotide prediction computation when disabled
-3. Update progress bar to only show relevant losses
-4. Add `--keep-auxiliary-predictions` to force computation if needed for monitoring
+1. Add `predict_nucleotides` parameter to forward pass
+2. Auto-disable when `--freeze-base` is set
+3. Skip nucleotide head computation entirely when disabled
 
 **Acceptance Criteria:**
-- [ ] Add `--skip-auxiliary-predictions` flag
-- [ ] Auto-enable when `--freeze-base` is set
+- [ ] Add `--skip-nuc-predictions` flag (auto-enabled with `--freeze-base`)
 - [ ] Skip `nuc_predictions` computation in model forward when disabled
-- [ ] Update progress bar format to exclude disabled losses
-- [ ] Document the fine-tuning workflow in help text
+- [ ] Add `--keep-nuc-predictions` to force computation if needed
 - [ ] Add tests for flag behavior
 
 **Expected Impact:**
 - Faster fine-tuning (no unnecessary nucleotide prediction computation)
-- Cleaner progress bar during fine-tuning
-- Reduced memory usage
+- Reduced memory usage (~3.7 MB/sample saved)
 
 **Files:** `aam/cli.py`, `aam/models/sequence_predictor.py`, `aam/training/trainer.py`
 
@@ -414,11 +410,11 @@ Cache tokenized sequences at dataset initialization to avoid redundant tokenizat
 
 | Phase | Tickets | Est. Hours | Priority |
 |-------|---------|------------|----------|
-| 21 (Fine-Tuning) | 4 (1 complete) | 9-14 | **HIGH** |
+| 21 (Fine-Tuning) | 2 (2 complete) | 6-9 | **HIGH** |
 | 20 (SSL) | 0 (1 complete) | - | **DONE** |
 | 19 (Tests) | 0 (1 complete) | - | **DONE** |
 | 18 (Memory) | 5 | 16-23 | **HIGH** |
 | 10 | 1 | 8-12 | MEDIUM |
 | 12 | 2 (1 complete) | 16-22 | LOW |
 | 13-17 | 13 | 53-73 | LOW |
-| **Total** | **25** | **102-144** |
+| **Total** | **24** | **101-142** |
