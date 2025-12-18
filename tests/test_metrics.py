@@ -263,7 +263,7 @@ class TestStreamingRegressionMetrics:
         streaming = StreamingRegressionMetrics(max_plot_samples=1000)
         batch_size = 10
         for i in range(0, n_samples, batch_size):
-            streaming.update(y_pred[i:i+batch_size], y_true[i:i+batch_size])
+            streaming.update(y_pred[i : i + batch_size], y_true[i : i + batch_size])
 
         streaming_metrics = streaming.compute()
 
@@ -367,7 +367,7 @@ class TestStreamingClassificationMetrics:
         streaming = StreamingClassificationMetrics(num_classes=num_classes)
         batch_size = 10
         for i in range(0, n_samples, batch_size):
-            streaming.update(y_pred[i:i+batch_size], y_true[i:i+batch_size])
+            streaming.update(y_pred[i : i + batch_size], y_true[i : i + batch_size])
 
         streaming_metrics = streaming.compute()
 
@@ -445,11 +445,7 @@ class TestStreamingCountMetrics:
         streaming = StreamingCountMetrics()
         # Process in smaller chunks
         for i in range(batch_size):
-            streaming.update(
-                count_pred[i:i+1],
-                count_true[i:i+1],
-                mask[i:i+1]
-            )
+            streaming.update(count_pred[i : i + 1], count_true[i : i + 1], mask[i : i + 1])
 
         streaming_metrics = streaming.compute()
 
@@ -470,7 +466,7 @@ class TestStreamingCountMetrics:
         streaming.update(
             torch.randn(4, 10, 1),
             torch.randn(4, 10, 1),
-            torch.zeros(4, 10)  # All masked
+            torch.zeros(4, 10),  # All masked
         )
         metrics = streaming.compute()
 
@@ -496,11 +492,7 @@ class TestStreamingCountMetrics:
 
         # Add samples (4 batches * 10 valid per batch = 40 valid samples)
         for _ in range(4):
-            streaming.update(
-                torch.randn(2, 10, 1),
-                torch.randn(2, 10, 1),
-                torch.ones(2, 10)
-            )
+            streaming.update(torch.randn(2, 10, 1), torch.randn(2, 10, 1), torch.ones(2, 10))
 
         pred_samples, targ_samples = streaming.get_plot_data()
 
