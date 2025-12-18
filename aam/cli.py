@@ -183,6 +183,7 @@ def cli():
 )
 @click.option("--penalty", default=1.0, type=float, help="Weight for base/UniFrac loss")
 @click.option("--nuc-penalty", default=1.0, type=float, help="Weight for nucleotide loss")
+@click.option("--target-penalty", default=1.0, type=float, help="Weight for target loss (default: 1.0)")
 @click.option(
     "--nuc-mask-ratio",
     default=0.15,
@@ -267,9 +268,9 @@ def cli():
     "--asv-chunk-size", default=256, type=int, help="Process ASVs in chunks to reduce memory (default: 256, use 0 to disable)"
 )
 @click.option(
-    "--normalize-targets",
-    is_flag=True,
-    help="Normalize target and count values to [0, 1] range during training (recommended for regression tasks)",
+    "--normalize-targets/--no-normalize-targets",
+    default=True,
+    help="Normalize target and count values to [0, 1] range during training (default: enabled)",
 )
 @click.option(
     "--loss-type",
@@ -306,6 +307,7 @@ def train(
     unifrac_metric: str,
     penalty: float,
     nuc_penalty: float,
+    target_penalty: float,
     nuc_mask_ratio: float,
     nuc_mask_strategy: str,
     class_weights: Optional[str],
@@ -644,10 +646,12 @@ def train(
         loss_fn = MultiTaskLoss(
             penalty=penalty,
             nuc_penalty=effective_nuc_penalty,
+            target_penalty=target_penalty,
             class_weights=class_weights_tensor,
             target_loss_type=loss_type,
         )
         logger.info(f"Using {loss_type} loss for regression targets")
+        logger.info(f"Loss weights: target={target_penalty}, unifrac={penalty}, nuc={effective_nuc_penalty}")
 
         effective_batches_per_epoch = len(train_loader) // gradient_accumulation_steps
         num_training_steps = effective_batches_per_epoch * epochs

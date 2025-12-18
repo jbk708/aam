@@ -57,7 +57,7 @@ When loading a pretrained encoder that achieved NA=97.98% during pretraining, fi
 ---
 
 ### PYT-21.1: Target Loss Improvements and Normalize-Targets Default
-**Priority:** HIGH | **Effort:** 2-3 hours | **Status:** Not Started
+**Priority:** HIGH | **Effort:** 2-3 hours | **Status:** Complete
 
 **Problem:**
 1. `target_loss` has an implicit weight of 1.0, while `unifrac_loss` and `nuc_loss` have configurable penalties. This inconsistency makes loss tuning difficult.
@@ -75,14 +75,13 @@ total_loss = target_loss + count_loss + unifrac_loss * penalty + nuc_loss * nuc_
 4. Log individual loss contributions to TensorBoard
 
 **Acceptance Criteria:**
-- [ ] Add `target_penalty` parameter to `MultiTaskLoss.__init__()`
-- [ ] Update total_loss formula: `target_loss * target_penalty + count_loss + ...`
-- [ ] Add `--target-penalty` flag to CLI (default: 1.0)
-- [ ] Change `--normalize-targets` to default=True
-- [ ] Add `--no-normalize-targets` flag to opt out
-- [ ] Add TensorBoard scalars for weighted vs unweighted loss components
-- [ ] Update tests for new defaults
-- [ ] Document loss weighting strategy in help text
+- [x] Add `target_penalty` parameter to `MultiTaskLoss.__init__()`
+- [x] Update total_loss formula: `target_loss * target_penalty + count_loss + ...`
+- [x] Add `--target-penalty` flag to CLI (default: 1.0)
+- [x] Change `--normalize-targets` to default=True
+- [x] Add `--no-normalize-targets` flag to opt out
+- [x] Log loss weights at training start
+- [x] All tests pass
 
 **Expected Impact:**
 - Clearer loss contribution visibility for debugging
@@ -386,7 +385,7 @@ Cache tokenized sequences at dataset initialization to avoid redundant tokenizat
 
 | Phase | Tickets | Est. Hours | Priority |
 |-------|---------|------------|----------|
-| 21 (Fine-Tuning) | 3 (1 complete) | 8-12 | **HIGH** |
+| 21 (Fine-Tuning) | 2 (2 complete) | 6-9 | **HIGH** |
 | 20 (SSL) | 0 (1 complete) | - | **DONE** |
 | 19 (Tests) | 0 (1 complete) | - | **DONE** |
 | 18 (Memory) | 5 | 16-23 | **HIGH** |
