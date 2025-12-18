@@ -916,9 +916,7 @@ class TestLoadPretrainedEncoder:
 
         # Simulate torch.compile() checkpoint by adding _orig_mod. prefix
         original_state_dict = encoder.state_dict()
-        compiled_state_dict = {
-            f"_orig_mod.{k}": v for k, v in original_state_dict.items()
-        }
+        compiled_state_dict = {f"_orig_mod.{k}": v for k, v in original_state_dict.items()}
 
         checkpoint_path = tmp_path / "compiled_encoder.pt"
         torch.save({"model_state_dict": compiled_state_dict}, checkpoint_path)

@@ -1747,11 +1747,10 @@ def load_pretrained_encoder(
     has_compiled_prefix = any(k.startswith(compiled_prefix) for k in state_dict.keys())
     if has_compiled_prefix:
         logger.info(f"  Detected torch.compile() checkpoint (keys have '{compiled_prefix}' prefix)")
-        state_dict = {
-            k[len(compiled_prefix):] if k.startswith(compiled_prefix) else k: v
-            for k, v in state_dict.items()
-        }
-        logger.info(f"  Stripped prefix from {sum(1 for k in checkpoint.get('model_state_dict', checkpoint) if k.startswith(compiled_prefix))} keys")
+        state_dict = {k[len(compiled_prefix) :] if k.startswith(compiled_prefix) else k: v for k, v in state_dict.items()}
+        logger.info(
+            f"  Stripped prefix from {sum(1 for k in checkpoint.get('model_state_dict', checkpoint) if k.startswith(compiled_prefix))} keys"
+        )
 
     # Determine target module
     if hasattr(model, "base_model"):
@@ -1775,9 +1774,7 @@ def load_pretrained_encoder(
     shape_mismatches = []
     for key in matching_keys:
         if state_dict[key].shape != model_state_dict[key].shape:
-            shape_mismatches.append(
-                f"{key}: checkpoint={state_dict[key].shape}, model={model_state_dict[key].shape}"
-            )
+            shape_mismatches.append(f"{key}: checkpoint={state_dict[key].shape}, model={model_state_dict[key].shape}")
 
     # Log detailed information
     logger.info(f"Loading pretrained encoder from: {checkpoint_path}")
@@ -1825,13 +1822,13 @@ def load_pretrained_encoder(
         )
     elif len(matching_keys) < len(model_keys) * 0.5:
         logger.warning(
-            f"WARNING: Only {len(matching_keys)}/{len(model_keys)} keys loaded ({len(matching_keys)/len(model_keys)*100:.1f}%). "
+            f"WARNING: Only {len(matching_keys)}/{len(model_keys)} keys loaded ({len(matching_keys) / len(model_keys) * 100:.1f}%). "
             f"Check that pretrain and train configurations match."
         )
     else:
         logger.info(
             f"  Successfully loaded {len(matching_keys)}/{len(model_keys)} keys "
-            f"({loaded_params:,} parameters, {loaded_params/total_model_params*100:.1f}% of {target_name})"
+            f"({loaded_params:,} parameters, {loaded_params / total_model_params * 100:.1f}% of {target_name})"
         )
 
     return {
