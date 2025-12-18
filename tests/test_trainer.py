@@ -2145,3 +2145,254 @@ class TestTrainerTargetNormalization:
         denormalized = trainer._denormalize_targets(normalized)
         expected = torch.tensor([-50.0, 0.0, 50.0])
         torch.testing.assert_close(denormalized, expected)
+
+
+class TestProgressBarFormat:
+    """Test progress bar formatting for different training modes."""
+
+    @pytest.fixture
+    def small_classifier(self):
+        """Create a small SequencePredictor for classification testing."""
+        return SequencePredictor(
+            vocab_size=6,
+            embedding_dim=32,
+            max_bp=50,
+            token_limit=64,
+            asv_num_layers=1,
+            asv_num_heads=2,
+            sample_num_layers=1,
+            sample_num_heads=2,
+            encoder_num_layers=1,
+            encoder_num_heads=2,
+            count_num_layers=1,
+            count_num_heads=2,
+            target_num_layers=1,
+            target_num_heads=2,
+            out_dim=3,  # 3 classes
+            is_classifier=True,
+            freeze_base=False,
+            predict_nucleotides=False,
+            base_output_dim=None,
+        )
+
+    def test_nuc_metrics_hidden_when_nuc_penalty_zero(self, small_predictor, simple_dataloader, device):
+        """Test that NL/NA are not shown when nuc_penalty=0."""
+        from unittest.mock import patch, MagicMock
+
+        loss_fn = MultiTaskLoss(penalty=1.0, nuc_penalty=0.0)
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+        )
+
+        # Track postfix calls
+        postfix_calls = []
+
+        def capture_postfix(d):
+            postfix_calls.append(d.copy())
+
+        with patch("aam.training.trainer.tqdm") as mock_tqdm:
+            mock_pbar = MagicMock()
+            mock_pbar.set_postfix = capture_postfix
+            mock_pbar.__iter__ = lambda self: iter(simple_dataloader)
+            mock_tqdm.return_value = mock_pbar
+
+            trainer.train_epoch(simple_dataloader)
+
+        # Verify NL/NA are not in any postfix call
+        for postfix in postfix_calls:
+            assert "NL" not in postfix, "NL should not appear when nuc_penalty=0"
+            assert "NA" not in postfix, "NA should not appear when nuc_penalty=0"
+
+    def test_nuc_metrics_shown_when_nuc_penalty_positive(self, small_model, simple_dataloader_encoder, device):
+        """Test that NL/NA are shown when nuc_penalty > 0."""
+        from unittest.mock import patch, MagicMock
+
+        # Create encoder with nucleotide prediction
+        model = SequenceEncoder(
+            vocab_size=6,
+            embedding_dim=32,
+            max_bp=50,
+            token_limit=64,
+            asv_num_layers=1,
+            asv_num_heads=2,
+            sample_num_layers=1,
+            sample_num_heads=2,
+            encoder_num_layers=1,
+            encoder_num_heads=2,
+            base_output_dim=None,
+            encoder_type="unifrac",
+            predict_nucleotides=True,
+        )
+
+        loss_fn = MultiTaskLoss(penalty=1.0, nuc_penalty=1.0)
+        trainer = Trainer(
+            model=model,
+            loss_fn=loss_fn,
+            device=device,
+        )
+
+        # Track postfix calls
+        postfix_calls = []
+
+        def capture_postfix(d):
+            postfix_calls.append(d.copy())
+
+        with patch("aam.training.trainer.tqdm") as mock_tqdm:
+            mock_pbar = MagicMock()
+            mock_pbar.set_postfix = capture_postfix
+            mock_pbar.__iter__ = lambda self: iter(simple_dataloader_encoder)
+            mock_tqdm.return_value = mock_pbar
+
+            trainer.train_epoch(simple_dataloader_encoder)
+
+        # Verify NL/NA are in postfix calls (at least one should have them)
+        has_nuc_metrics = any("NL" in postfix or "NA" in postfix for postfix in postfix_calls)
+        assert has_nuc_metrics, "NL/NA should appear when nuc_penalty > 0"
+
+    def test_regression_loss_shown_during_finetuning(self, small_predictor, simple_dataloader, device):
+        """Test that RL (Regression Loss) is shown during fine-tuning."""
+        from unittest.mock import patch, MagicMock
+
+        loss_fn = MultiTaskLoss(penalty=1.0, nuc_penalty=0.0)
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+        )
+
+        # Track postfix calls
+        postfix_calls = []
+
+        def capture_postfix(d):
+            postfix_calls.append(d.copy())
+
+        with patch("aam.training.trainer.tqdm") as mock_tqdm:
+            mock_pbar = MagicMock()
+            mock_pbar.set_postfix = capture_postfix
+            mock_pbar.__iter__ = lambda self: iter(simple_dataloader)
+            mock_tqdm.return_value = mock_pbar
+
+            trainer.train_epoch(simple_dataloader)
+
+        # Verify RL is in postfix calls
+        has_rl = any("RL" in postfix for postfix in postfix_calls)
+        assert has_rl, "RL should appear during regression fine-tuning"
+
+        # Verify CL is not shown (this is regression, not classification)
+        has_cl = any("CL" in postfix for postfix in postfix_calls)
+        assert not has_cl, "CL should not appear during regression fine-tuning"
+
+    def test_classification_loss_shown_during_finetuning(self, small_classifier, device):
+        """Test that CL (Classification Loss) is shown during classification fine-tuning."""
+        from unittest.mock import patch, MagicMock
+        from aam.data.tokenizer import SequenceTokenizer
+
+        # Create dataloader with class targets
+        batch_size = 4
+        num_asvs = 10
+        seq_len = 50
+
+        tokens = torch.randint(1, 5, (batch_size * 2, num_asvs, seq_len))
+        tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
+        tokens = tokens.to(device)
+        counts = torch.rand(batch_size * 2, num_asvs, 1).to(device)
+        targets = torch.randint(0, 3, (batch_size * 2,)).to(device)  # Class labels
+
+        dataset = TensorDataset(tokens, counts, targets)
+        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+
+        loss_fn = MultiTaskLoss(penalty=1.0, nuc_penalty=0.0)
+        trainer = Trainer(
+            model=small_classifier,
+            loss_fn=loss_fn,
+            device=device,
+        )
+
+        # Track postfix calls
+        postfix_calls = []
+
+        def capture_postfix(d):
+            postfix_calls.append(d.copy())
+
+        with patch("aam.training.trainer.tqdm") as mock_tqdm:
+            mock_pbar = MagicMock()
+            mock_pbar.set_postfix = capture_postfix
+            mock_pbar.__iter__ = lambda self: iter(dataloader)
+            mock_tqdm.return_value = mock_pbar
+
+            trainer.train_epoch(dataloader)
+
+        # Verify CL is in postfix calls
+        has_cl = any("CL" in postfix for postfix in postfix_calls)
+        assert has_cl, "CL should appear during classification fine-tuning"
+
+        # Verify RL is not shown (this is classification, not regression)
+        has_rl = any("RL" in postfix for postfix in postfix_calls)
+        assert not has_rl, "RL should not appear during classification fine-tuning"
+
+    def test_no_target_loss_during_pretraining(self, small_model, simple_dataloader_encoder, device):
+        """Test that RL/CL are not shown during pretraining (SequenceEncoder)."""
+        from unittest.mock import patch, MagicMock
+
+        loss_fn = MultiTaskLoss(penalty=1.0, nuc_penalty=1.0)
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+        )
+
+        # Track postfix calls
+        postfix_calls = []
+
+        def capture_postfix(d):
+            postfix_calls.append(d.copy())
+
+        with patch("aam.training.trainer.tqdm") as mock_tqdm:
+            mock_pbar = MagicMock()
+            mock_pbar.set_postfix = capture_postfix
+            mock_pbar.__iter__ = lambda self: iter(simple_dataloader_encoder)
+            mock_tqdm.return_value = mock_pbar
+
+            trainer.train_epoch(simple_dataloader_encoder)
+
+        # Verify neither RL nor CL are in postfix calls during pretraining
+        has_rl = any("RL" in postfix for postfix in postfix_calls)
+        has_cl = any("CL" in postfix for postfix in postfix_calls)
+        assert not has_rl, "RL should not appear during pretraining"
+        assert not has_cl, "CL should not appear during pretraining"
+
+    def test_validation_progress_bar_same_behavior(self, small_predictor, simple_dataloader, device):
+        """Test that validation progress bar follows the same rules."""
+        from unittest.mock import patch, MagicMock
+
+        loss_fn = MultiTaskLoss(penalty=1.0, nuc_penalty=0.0)
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+        )
+
+        # Track postfix calls
+        postfix_calls = []
+
+        def capture_postfix(d):
+            postfix_calls.append(d.copy())
+
+        with patch("aam.training.trainer.tqdm") as mock_tqdm:
+            mock_pbar = MagicMock()
+            mock_pbar.set_postfix = capture_postfix
+            mock_pbar.__iter__ = lambda self: iter(simple_dataloader)
+            mock_tqdm.return_value = mock_pbar
+
+            trainer.validate_epoch(simple_dataloader)
+
+        # Verify RL is shown during validation
+        has_rl = any("RL" in postfix for postfix in postfix_calls)
+        assert has_rl, "RL should appear during regression validation"
+
+        # Verify NL/NA are hidden when nuc_penalty=0
+        for postfix in postfix_calls:
+            assert "NL" not in postfix, "NL should not appear when nuc_penalty=0"
+            assert "NA" not in postfix, "NA should not appear when nuc_penalty=0"

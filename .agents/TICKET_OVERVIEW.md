@@ -26,6 +26,7 @@
 - Phase 17: Docs, Tutorials, ONNX, Docker
 
 ## Recently Completed/Cancelled
+- PYT-21.4: Update Training Progress Bar for Fine-Tuning (hide NL/NA, show RL/CL)
 - PYT-18.4: Configurable FFN Intermediate Size (cancelled - memory not an issue)
 - PYT-18.3: Skip Nucleotide Predictions During Inference (already implemented)
 - PYT-12.3: Caching Mechanisms (sequence tokenization cache)
@@ -36,5 +37,4 @@
 
 ## Recommended Next Steps
 1. **PYT-21.3** - Regressor head optimization
-2. **PYT-21.4** - Update training progress bar for fine-tuning
-3. **PYT-10.6** - Multi-GPU training (if hardware available)
+2. **PYT-10.6** - Multi-GPU training (if hardware available)

@@ -134,7 +134,7 @@ Enhance the regressor with configurable improvements:
 ---
 
 ### PYT-21.4: Update Training Progress Bar for Fine-Tuning
-**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Complete
 
 **Problem:**
 During fine-tuning, the progress bar shows `NL` (nucleotide loss) and `NA` (nucleotide accuracy) which are irrelevant when `--freeze-base` is set. The target loss is shown as `TL` (total loss) which doesn't clearly indicate what's being optimized.
@@ -151,18 +151,18 @@ Epoch 1/100: TL=0.0608, LR=1.00e-04, UL=0.0011, NL=0.0597, NA=97.98%
 4. Optionally skip nucleotide prediction computation entirely when not needed
 
 **Acceptance Criteria:**
-- [ ] Hide NL/NA from progress bar when nuc_penalty=0
-- [ ] Show `RL` for regression tasks or `CL` for classification tasks
-- [ ] Progress bar format during fine-tuning: `TL=X, LR=X, RL=X, UL=X`
-- [ ] Progress bar format during pretraining: `TL=X, LR=X, UL=X, NL=X, NA=X%`
-- [ ] Add tests for progress bar format
+- [x] Hide NL/NA from progress bar when nuc_penalty=0
+- [x] Show `RL` for regression tasks or `CL` for classification tasks
+- [x] Progress bar format during fine-tuning: `TL=X, LR=X, RL=X, UL=X`
+- [x] Progress bar format during pretraining: `TL=X, LR=X, UL=X, NL=X, NA=X%`
+- [x] Add tests for progress bar format
 
 **Expected Impact:**
 - Cleaner, more informative progress bar during fine-tuning
 - Clear indication of what loss is being optimized
 - Less confusion about irrelevant metrics
 
-**Files:** `aam/training/trainer.py`
+**Files:** `aam/training/trainer.py`, `tests/test_trainer.py`
 
 ---
 
