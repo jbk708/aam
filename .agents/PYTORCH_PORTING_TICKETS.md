@@ -309,16 +309,24 @@ Replace O(dataset) memory accumulation with streaming metrics.
 ---
 
 ### PYT-18.3: Skip Nucleotide Predictions During Inference
-**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Complete
 
 Skip nucleotide head `[batch, 1024, 150, 6]` tensors when not needed.
 
-**Acceptance Criteria:**
-- [ ] Add `predict_nucleotides` flag to ASVEncoder
-- [ ] Auto-disable during eval/fine-tuning
-- [ ] Reduce memory by ~3.7 MB/sample during inference
+**Implementation Notes:**
+This functionality was already implemented as part of the base architecture:
+- `predict_nucleotides` constructor parameter controls whether nucleotide head exists
+- `return_nucleotides` forward parameter controls whether predictions are computed
+- Predict CLI passes `return_nucleotides=False` (line 1274 in cli.py)
+- Fine-tuning with `--freeze-base` auto-sets `nuc_penalty=0`, which sets `return_nucleotides=False`
+- Trainer dynamically sets `return_nucleotides` based on `nuc_penalty > 0` or nucleotide targets
 
-**Files:** `asv_encoder.py`, `sample_sequence_encoder.py`
+**Acceptance Criteria:**
+- [x] Add `predict_nucleotides` flag to ASVEncoder (already exists as constructor param)
+- [x] Auto-disable during eval/fine-tuning (via `return_nucleotides=False`)
+- [x] Reduce memory by ~3.7 MB/sample during inference
+
+**Files:** `asv_encoder.py`, `sample_sequence_encoder.py`, `cli.py`, `trainer.py`
 
 ---
 
