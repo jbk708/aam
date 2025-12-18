@@ -56,6 +56,36 @@ When loading a pretrained encoder that achieved NA=97.98% during pretraining, fi
 
 ---
 
+### PYT-21.5: Fix Prediction Plots to Show Denormalized Values
+**Priority:** HIGH | **Effort:** 1-2 hours | **Status:** Not Started
+
+**Problem:**
+When using `--normalize-targets`, the predicted vs actual plots show values in [0, 1] range instead of the original target scale. This makes it difficult to interpret model performance in meaningful units.
+
+**Evidence:**
+Prediction plots display all values between 0 and 1, even when original targets have different ranges (e.g., temperature in Celsius, concentrations, etc.).
+
+**Solution:**
+1. Pass denormalization parameters to the plotting functions
+2. Denormalize predictions and targets before creating plots
+3. Update axis labels to reflect original units
+4. Ensure R² and other metrics are computed on denormalized values
+
+**Acceptance Criteria:**
+- [ ] Prediction plots show values in original target scale
+- [ ] Axis labels reflect original units (or at minimum, not [0,1])
+- [ ] R² metric computed on denormalized values matches plot
+- [ ] Works correctly when `--normalize-targets` is not used (no-op)
+- [ ] Add test for denormalized plot generation
+
+**Expected Impact:**
+- Interpretable prediction plots in original units
+- Easier model evaluation and communication of results
+
+**Files:** `aam/training/trainer.py`, `tests/test_trainer.py`
+
+---
+
 ### PYT-21.1: Deconvolute Target Loss with Configurable Weight
 **Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Not Started
 
@@ -384,11 +414,11 @@ Cache tokenized sequences at dataset initialization to avoid redundant tokenizat
 
 | Phase | Tickets | Est. Hours | Priority |
 |-------|---------|------------|----------|
-| 21 (Fine-Tuning) | 3 (1 complete) | 8-12 | **HIGH** |
+| 21 (Fine-Tuning) | 4 (1 complete) | 9-14 | **HIGH** |
 | 20 (SSL) | 0 (1 complete) | - | **DONE** |
 | 19 (Tests) | 0 (1 complete) | - | **DONE** |
 | 18 (Memory) | 5 | 16-23 | **HIGH** |
 | 10 | 1 | 8-12 | MEDIUM |
 | 12 | 2 (1 complete) | 16-22 | LOW |
 | 13-17 | 13 | 53-73 | LOW |
-| **Total** | **24** | **101-142** |
+| **Total** | **25** | **102-144** |
