@@ -1127,17 +1127,27 @@ class Trainer:
                         running_avg_nuc_accuracy = nuc_accuracy_val
                         if "unifrac_loss" in losses:
                             unifrac_val = losses["unifrac_loss"]
-                            running_avg_unifrac_loss = unifrac_val.detach().item() if isinstance(unifrac_val, torch.Tensor) else float(unifrac_val)
+                            running_avg_unifrac_loss = (
+                                unifrac_val.detach().item() if isinstance(unifrac_val, torch.Tensor) else float(unifrac_val)
+                            )
                         if "nuc_loss" in losses:
                             nuc_val = losses["nuc_loss"]
-                            running_avg_nuc_loss = nuc_val.detach().item() if isinstance(nuc_val, torch.Tensor) else float(nuc_val)
+                            running_avg_nuc_loss = (
+                                nuc_val.detach().item() if isinstance(nuc_val, torch.Tensor) else float(nuc_val)
+                            )
                     else:
                         running_avg_loss = (running_avg_loss * num_batches + current_loss_val) / (num_batches + 1)
-                        running_avg_nuc_accuracy = (running_avg_nuc_accuracy * num_batches + nuc_accuracy_val) / (num_batches + 1)
+                        running_avg_nuc_accuracy = (running_avg_nuc_accuracy * num_batches + nuc_accuracy_val) / (
+                            num_batches + 1
+                        )
                         if "unifrac_loss" in losses:
                             unifrac_val = losses["unifrac_loss"]
-                            unifrac_val = unifrac_val.detach().item() if isinstance(unifrac_val, torch.Tensor) else float(unifrac_val)
-                            running_avg_unifrac_loss = (running_avg_unifrac_loss * num_batches + unifrac_val) / (num_batches + 1)
+                            unifrac_val = (
+                                unifrac_val.detach().item() if isinstance(unifrac_val, torch.Tensor) else float(unifrac_val)
+                            )
+                            running_avg_unifrac_loss = (running_avg_unifrac_loss * num_batches + unifrac_val) / (
+                                num_batches + 1
+                            )
                         if "nuc_loss" in losses:
                             nuc_val = losses["nuc_loss"]
                             nuc_val = nuc_val.detach().item() if isinstance(nuc_val, torch.Tensor) else float(nuc_val)
@@ -1148,9 +1158,15 @@ class Trainer:
                         "TL": f"{running_avg_loss:.6f}" if running_avg_loss < 0.0001 else f"{running_avg_loss:.4f}",
                     }
                     if "unifrac_loss" in losses:
-                        postfix_dict["UL"] = f"{running_avg_unifrac_loss:.6f}" if running_avg_unifrac_loss < 0.0001 else f"{running_avg_unifrac_loss:.4f}"
+                        postfix_dict["UL"] = (
+                            f"{running_avg_unifrac_loss:.6f}"
+                            if running_avg_unifrac_loss < 0.0001
+                            else f"{running_avg_unifrac_loss:.4f}"
+                        )
                     if "nuc_loss" in losses:
-                        postfix_dict["NL"] = f"{running_avg_nuc_loss:.6f}" if running_avg_nuc_loss < 0.0001 else f"{running_avg_nuc_loss:.4f}"
+                        postfix_dict["NL"] = (
+                            f"{running_avg_nuc_loss:.6f}" if running_avg_nuc_loss < 0.0001 else f"{running_avg_nuc_loss:.4f}"
+                        )
                     if "nuc_predictions" in outputs:
                         postfix_dict["NA"] = f"{running_avg_nuc_accuracy:.2%}"
 
@@ -1180,7 +1196,9 @@ class Trainer:
                                 # Extract upper triangle (excluding diagonal)
                                 if base_pred_batch.dim() == 2 and base_pred_batch.shape[0] == base_pred_batch.shape[1]:
                                     batch_size = base_pred_batch.shape[0]
-                                    triu_indices = torch.triu_indices(batch_size, batch_size, offset=1, device=base_pred_batch.device)
+                                    triu_indices = torch.triu_indices(
+                                        batch_size, batch_size, offset=1, device=base_pred_batch.device
+                                    )
                                     base_pred_flat = base_pred_batch[triu_indices[0], triu_indices[1]]
                                     base_true_flat = base_true_batch[triu_indices[0], triu_indices[1]]
                                 else:
@@ -1244,6 +1262,7 @@ class Trainer:
         # Debug logging if no predictions collected
         if compute_metrics and not (has_unifrac or has_target or has_count):
             import logging
+
             logger = logging.getLogger(__name__)
             target_keys = list(last_targets.keys()) if last_targets is not None else []
             output_keys = list(last_outputs.keys()) if last_outputs is not None else []

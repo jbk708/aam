@@ -56,7 +56,7 @@ class StreamingRegressionMetrics:
         # Update error sums
         errors = pred_flat - true_flat
         self.sum_abs_error += torch.abs(errors).sum().item()
-        self.sum_sq_error += (errors ** 2).sum().item()
+        self.sum_sq_error += (errors**2).sum().item()
 
         # Update mean of true values using Welford's algorithm (batch update)
         for val in true_flat.tolist():
@@ -169,10 +169,7 @@ class StreamingClassificationMetrics:
 
         # Infer num_classes if not set
         if self.num_classes is None:
-            self.num_classes = max(
-                int(pred_indices.max().item()) + 1,
-                int(true_indices.max().item()) + 1
-            )
+            self.num_classes = max(int(pred_indices.max().item()) + 1, int(true_indices.max().item()) + 1)
 
         # Expand confusion matrix if needed
         max_class = max(int(pred_indices.max().item()), int(true_indices.max().item()))
@@ -296,12 +293,7 @@ class StreamingCountMetrics:
         self.plot_targets = []
         self._reservoir_idx = 0
 
-    def update(
-        self,
-        predictions: torch.Tensor,
-        targets: torch.Tensor,
-        mask: torch.Tensor
-    ) -> None:
+    def update(self, predictions: torch.Tensor, targets: torch.Tensor, mask: torch.Tensor) -> None:
         """Update metrics with a new batch.
 
         Args:
@@ -330,7 +322,7 @@ class StreamingCountMetrics:
         # Update error sums
         errors = valid_pred - valid_true
         self.sum_abs_error += torch.abs(errors).sum().item()
-        self.sum_sq_error += (errors ** 2).sum().item()
+        self.sum_sq_error += (errors**2).sum().item()
         self.n += batch_valid
 
         # Reservoir sampling for plot data

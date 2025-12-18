@@ -138,6 +138,7 @@ class ASVDataset(Dataset):
         normalize_counts: bool = False,
         count_min: Optional[float] = None,
         count_max: Optional[float] = None,
+        cache_sequences: bool = True,
     ):
         """Initialize ASVDataset.
 
@@ -160,6 +161,7 @@ class ASVDataset(Dataset):
             normalize_counts: If True, normalize count values to [0, 1] range (default: False)
             count_min: Minimum count value for normalization (computed from data if None)
             count_max: Maximum count value for normalization (computed from data if None)
+            cache_sequences: If True, cache tokenized sequences at init for faster __getitem__ (default: True)
         """
         self.table = table
         self.metadata = metadata
@@ -203,6 +205,16 @@ class ASVDataset(Dataset):
         self.sequences = loader.get_sequences(table)
 
         self.sequence_to_idx = {seq: idx for idx, seq in enumerate(self.observation_ids)}
+
+        # Sequence cache: pre-tokenize and pad all sequences at init
+        self.cache_sequences = cache_sequences
+        self._sequence_cache: Optional[Dict[str, torch.Tensor]] = None
+        if cache_sequences:
+            self._sequence_cache = {}
+            for seq in self.sequences:
+                tokenized = self.tokenizer.tokenize(seq)
+                padded = self.tokenizer.pad_sequences([tokenized], self.max_bp + 1)[0]
+                self._sequence_cache[seq] = padded
 
         # Target normalization settings
         self.normalize_targets = normalize_targets
@@ -368,8 +380,11 @@ class ASVDataset(Dataset):
 
         for asv_idx in asv_indices:
             sequence = self.sequences[asv_idx]
-            tokenized = self.tokenizer.tokenize(sequence)
-            padded = self.tokenizer.pad_sequences([tokenized], self.max_bp + 1)[0]
+            if self._sequence_cache is not None:
+                padded = self._sequence_cache[sequence]
+            else:
+                tokenized = self.tokenizer.tokenize(sequence)
+                padded = self.tokenizer.pad_sequences([tokenized], self.max_bp + 1)[0]
             tokens_list.append(padded)
             counts_list.append(data[asv_idx])
 

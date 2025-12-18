@@ -195,9 +195,18 @@ Fully Sharded Data Parallel for memory-efficient distributed training.
 Dynamic batch sizing and automatic batch size finder.
 
 ### PYT-12.3: Caching Mechanisms
-**Priority:** LOW | **Effort:** 3-4 hours
+**Priority:** LOW | **Effort:** 3-4 hours | **Status:** Complete
 
-Cache tokenized sequences and expensive computations.
+Cache tokenized sequences at dataset initialization to avoid redundant tokenization.
+
+**Acceptance Criteria:**
+- [x] Add `cache_sequences` parameter to ASVDataset (default: True)
+- [x] Build sequence→tensor cache at init when enabled
+- [x] Use cached tensors in __getitem__ when available
+- [x] Add `--no-sequence-cache` CLI flag to train/pretrain/predict
+- [x] Tests for caching behavior
+
+**Files:** `aam/data/dataset.py`, `aam/cli.py`, `tests/test_dataset.py`
 
 ---
 
@@ -219,6 +228,6 @@ Cache tokenized sequences and expensive computations.
 | 19 (Tests) | 0 (1 complete) | - | **DONE** |
 | 18 (Memory) | 5 | 16-23 | **HIGH** |
 | 10 | 1 | 8-12 | MEDIUM |
-| 12 | 3 | 19-26 | LOW |
+| 12 | 2 (1 complete) | 16-22 | LOW |
 | 13-17 | 13 | 53-73 | LOW |
-| **Total** | **22** | **96-134** |
+| **Total** | **21** | **93-130** |
