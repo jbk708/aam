@@ -133,34 +133,59 @@ Enhance the regressor with configurable improvements:
 
 ---
 
-### PYT-21.4: Skip Auxiliary Loss Computation During Fine-Tuning
+### PYT-21.4: Update Training Progress Bar for Fine-Tuning
+**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Not Started
+
+**Problem:**
+During fine-tuning, the progress bar shows `NL` (nucleotide loss) and `NA` (nucleotide accuracy) which are irrelevant when `--freeze-base` is set. The target loss is shown as `TL` (total loss) which doesn't clearly indicate what's being optimized.
+
+Current display:
+```
+Epoch 1/100: TL=0.0608, LR=1.00e-04, UL=0.0011, NL=0.0597, NA=97.98%
+```
+
+**Solution:**
+1. Hide `NL` and `NA` from progress bar when `nuc_penalty=0` or `--freeze-base`
+2. Show task-specific loss label: `RL` (Regression Loss) or `CL` (Classification Loss)
+3. Keep `UL` (UniFrac Loss) visible as it's still computed
+4. Optionally skip nucleotide prediction computation entirely when not needed
+
+**Acceptance Criteria:**
+- [ ] Hide NL/NA from progress bar when nuc_penalty=0
+- [ ] Show `RL` for regression tasks or `CL` for classification tasks
+- [ ] Progress bar format during fine-tuning: `TL=X, LR=X, RL=X, UL=X`
+- [ ] Progress bar format during pretraining: `TL=X, LR=X, UL=X, NL=X, NA=X%`
+- [ ] Add tests for progress bar format
+
+**Expected Impact:**
+- Cleaner, more informative progress bar during fine-tuning
+- Clear indication of what loss is being optimized
+- Less confusion about irrelevant metrics
+
+**Files:** `aam/training/trainer.py`
+
+---
+
+### PYT-21.5: Skip Nucleotide Predictions During Fine-Tuning
 **Priority:** LOW | **Effort:** 2-3 hours | **Status:** Not Started
 
 **Problem:**
-When fine-tuning with `--freeze-base`, auxiliary losses (nucleotide, count) still:
-1. Compute predictions (wasting memory/compute)
-2. Get logged in progress bar (confusing monitoring)
-
-Note: PYT-21.2 already auto-disables `nuc_penalty` when `--freeze-base` is set, so the loss doesn't contribute to training. This ticket addresses the remaining compute/logging overhead.
+When fine-tuning with `--freeze-base`, nucleotide predictions are still computed even though they don't contribute to training (nuc_penalty=0). This wastes memory and compute.
 
 **Solution:**
-1. Add `--skip-auxiliary-predictions` flag (auto-enabled with `--freeze-base`)
-2. Skip nucleotide prediction computation when disabled
-3. Update progress bar to only show relevant losses
-4. Add `--keep-auxiliary-predictions` to force computation if needed for monitoring
+1. Add `predict_nucleotides` parameter to forward pass
+2. Auto-disable when `--freeze-base` is set
+3. Skip nucleotide head computation entirely when disabled
 
 **Acceptance Criteria:**
-- [ ] Add `--skip-auxiliary-predictions` flag
-- [ ] Auto-enable when `--freeze-base` is set
+- [ ] Add `--skip-nuc-predictions` flag (auto-enabled with `--freeze-base`)
 - [ ] Skip `nuc_predictions` computation in model forward when disabled
-- [ ] Update progress bar format to exclude disabled losses
-- [ ] Document the fine-tuning workflow in help text
+- [ ] Add `--keep-nuc-predictions` to force computation if needed
 - [ ] Add tests for flag behavior
 
 **Expected Impact:**
 - Faster fine-tuning (no unnecessary nucleotide prediction computation)
-- Cleaner progress bar during fine-tuning
-- Reduced memory usage
+- Reduced memory usage (~3.7 MB/sample saved)
 
 **Files:** `aam/cli.py`, `aam/models/sequence_predictor.py`, `aam/training/trainer.py`
 
