@@ -26,11 +26,9 @@ pip install -e ".[dev,docs,training]"
 
 ### Generating UniFrac Distance Matrices
 
-**Important:** AAM requires pre-computed UniFrac distance matrices. Generate them before training using `ssu` from [unifrac-binaries](https://github.com/biocore/unifrac-binaries/tree/main) (already included in environment requirements):
+**Important:** AAM requires pre-computed UniFrac distance matrices. Generate them before training using `ssu` from [unifrac-binaries](https://github.com/biocore/unifrac-binaries/tree/main) (included in environment):
 
 ```bash
-# Generate pairwise unweighted UniFrac distance matrix
-# Use unweighted_fp32 method for float32 precision (recommended for memory efficiency)
 ssu \
   -i <biom_file> \
   -t <tree_file> \
@@ -39,13 +37,10 @@ ssu \
   --format hdf5_fp32
 ```
 
-**Note:** 
-- `unifrac-binaries` (providing the `ssu` command) is already included in the environment dependencies
-- `unweighted_fp32` method produces float32 precision, which is recommended and fully supported
-- Float32 reduces memory usage by 50% compared to float64 while maintaining sufficient precision for training
-- Output format `hdf5_fp32` is supported by AAM's UniFracLoader
-
-**Alternative formats:** You can also generate matrices using `scikit-bio` or other tools, then save in `.npy`, `.h5`, or `.csv` format. The matrix should be symmetric for pairwise UniFrac (shape `[N_samples, N_samples]`) or a vector for Faith PD (shape `[N_samples]`).
+**Notes:**
+- `unweighted_fp32` produces float32 precision (recommended for memory efficiency)
+- Supported output formats: `.npy`, `.h5`, `.csv`
+- Matrix should be symmetric `[N_samples, N_samples]` for pairwise UniFrac
 
 ### Pre-training (Stage 1: Self-supervised)
 
@@ -79,8 +74,6 @@ python -m aam.cli train \
 
 ### Inference
 
-Run predictions on new data:
-
 ```bash
 python -m aam.cli predict \
   --model <model_checkpoint.pt> \
@@ -88,96 +81,55 @@ python -m aam.cli predict \
   --output <predictions.tsv>
 ```
 
-### Key Options
+## Key Options
 
-**Training:**
-- `--pretrained-encoder`: Load pre-trained SequenceEncoder checkpoint
-- `--freeze-base`: Freeze base model parameters (faster training)
-- `--classifier`: Use classification mode (requires `--out-dim > 1`)
-- `--optimizer`: Optimizer type - 'adamw' (default), 'adam', or 'sgd'
-- `--scheduler`: Learning rate scheduler - 'warmup_cosine' (default), 'cosine', 'cosine_restarts', 'plateau', or 'onecycle'
-- `--lr`: Learning rate (default: 1e-4)
-- `--warmup-steps`: Warmup steps for warmup_cosine scheduler (default: 10000)
-- `--weight-decay`: Weight decay for optimizers (default: 0.01)
+### Training
 
-**Model:**
-- `--embedding-dim`: Embedding dimension (default: 128)
-- `--attention-heads`: Number of attention heads (default: 4)
-- `--attention-layers`: Number of transformer layers (default: 4)
-- `--max-bp`: Maximum base pairs per sequence (default: 150)
-- `--token-limit`: Maximum ASVs per sample (default: 1024, **critical for memory**)
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--pretrained-encoder` | Load pre-trained SequenceEncoder checkpoint | - |
+| `--freeze-base` | Freeze base model parameters | False |
+| `--classifier` | Classification mode (requires `--out-dim > 1`) | False |
+| `--normalize-targets` | Normalize regression targets to [0,1] | **True** |
+| `--lr` | Learning rate | 1e-4 |
+| `--optimizer` | 'adamw', 'adam', or 'sgd' | adamw |
+| `--scheduler` | LR scheduler (see below) | warmup_cosine |
 
-**UniFrac Distance Matrix:**
-- `--unifrac-matrix`: Path to pre-computed UniFrac distance matrix (required)
-  - Supported formats: `.npy` (NumPy array), `.h5` (HDF5), `.csv` (CSV)
-  - For pairwise UniFrac: symmetric matrix `[N_samples, N_samples]`
-  - For Faith PD: vector `[N_samples]` (per-sample values)
-- `--unifrac-metric`: 'unifrac' (pairwise unweighted UniFrac) or 'faith_pd' (per-sample Faith PD, default: 'unifrac')
-- **Note**: Matrices must be pre-computed using external tools (see "Generating UniFrac Distance Matrices" above)
+### Loss Weights
 
-**Memory Optimization:**
-- `--gradient-accumulation-steps`: Accumulate gradients over N steps (default: 1)
-- `--use-expandable-segments`: Enable PyTorch CUDA expandable segments (reduces fragmentation)
-- `--asv-chunk-size`: Process ASVs in chunks to reduce memory (optional)
-- **Important**: Reduce `--token-limit` from 1024 to 256-512 for 24GB GPUs (reduces memory by 4-16x)
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--penalty` | Weight for UniFrac loss | 1.0 |
+| `--nuc-penalty` | Weight for nucleotide loss | 1.0 |
+| `--target-penalty` | Weight for target loss | 1.0 |
 
-**Data:**
-- `--rarefy-depth`: Rarefaction depth (default: 5000)
-- `--test-size`: Validation split size (default: 0.2)
+### Masked Autoencoder (Nucleotide Prediction)
 
-See `python -m aam.cli <command> --help` for full options.
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--nuc-mask-ratio` | Fraction of positions to mask | 0.15 |
+| `--nuc-mask-strategy` | 'random' or 'span' masking | random |
 
-### Optimizer and Scheduler
+### Model Architecture
 
-**Optimizers:** `adamw` (default, recommended), `adam`, `sgd`  
-**Schedulers:** `warmup_cosine` (default), `cosine`, `cosine_restarts`, `plateau`, `onecycle`
-
-**Scheduler-Specific Parameters:**
-- `--scheduler-t0`: Initial restart period for `cosine_restarts` (default: num_training_steps // 4)
-- `--scheduler-t-mult`: Restart period multiplier for `cosine_restarts` (default: 2)
-- `--scheduler-eta-min`: Minimum learning rate for `cosine`/`cosine_restarts` (default: 0.0)
-- `--scheduler-patience`: Patience for `plateau` scheduler (epochs to wait before reducing LR, default: 5)
-- `--scheduler-factor`: LR reduction factor for `plateau` (default: 0.3)
-- `--scheduler-min-lr`: Minimum learning rate for `plateau` (default: 0.0)
-
-**Recommendations:**
-
-**For Pretraining:**
-- `adamw` + `warmup_cosine` (default) - Good for stable training with gradual decay
-- `adamw` + `cosine_restarts` - Helps escape local minima with periodic warm restarts
-  - Use when training stagnates around mid-epochs (e.g., epoch 34)
-  - Example: `--scheduler cosine_restarts --scheduler-t0 10000 --scheduler-t-mult 2`
-
-**For Fine-tuning:**
-- `adamw` + `plateau` - Adaptive LR reduction when validation loss plateaus (aggressive defaults: patience=5, factor=0.3)
-  - Automatically reduces LR when loss stops improving
-  - Good for fine-tuning when you want adaptive learning rate adjustment
-  - Example: `--scheduler plateau --scheduler-patience 5 --scheduler-factor 0.3`
-- `adamw` + `cosine_restarts` - Escapes local minima during fine-tuning
-  - Useful when fine-tuning gets stuck in suboptimal solutions
-
-**For Fast Experimentation:**
-- `adamw` + `onecycle` - Single cycle with peak LR in middle of training
-  - Good for quick hyperparameter searches
-
-**Escaping Local Minima:**
-If training stagnates (e.g., around epoch 34), try:
-1. **`cosine_restarts`** - Periodic warm restarts help escape local minima
-   ```bash
-   --scheduler cosine_restarts --scheduler-t0 10000 --scheduler-t-mult 2
-   ```
-2. **`plateau` with aggressive settings** - Faster LR reduction when loss plateaus
-   ```bash
-   --scheduler plateau --scheduler-patience 3 --scheduler-factor 0.2
-   ```
-3. **Combine with higher initial LR** - Sometimes a higher learning rate helps escape minima
-   ```bash
-   --lr 2e-4 --scheduler cosine_restarts
-   ```
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--embedding-dim` | Embedding dimension | 128 |
+| `--attention-heads` | Number of attention heads | 4 |
+| `--attention-layers` | Number of transformer layers | 4 |
+| `--max-bp` | Maximum base pairs per sequence | 150 |
+| `--token-limit` | Maximum ASVs per sample (**critical for memory**) | 1024 |
 
 ### Memory Optimization
 
-For limited GPU memory (e.g., 24GB):
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--gradient-checkpointing` | Trade compute for memory | **True** |
+| `--asv-chunk-size` | Process ASVs in chunks | 256 |
+| `--gradient-accumulation-steps` | Accumulate gradients over N steps | 1 |
+| `--token-limit` | Reduce from 1024 to 256-512 for 24GB GPUs | 1024 |
+
+**For limited GPU memory (24GB):**
 
 ```bash
 python -m aam.cli pretrain \
@@ -186,84 +138,61 @@ python -m aam.cli pretrain \
   --output-dir <output_dir> \
   --batch-size 2 \
   --gradient-accumulation-steps 16 \
-  --token-limit 256 \
-  --use-expandable-segments
+  --token-limit 256
 ```
 
-**Key optimizations:**
-- `--token-limit 256`: Reduces memory by 16x (most critical)
-- `--gradient-accumulation-steps 16`: Maintains effective batch size
-- `--use-expandable-segments`: Reduces memory fragmentation
+### Learning Rate Schedulers
 
-See [MEMORY_OPTIMIZATION.md](MEMORY_OPTIMIZATION.md) for detailed strategies.
+| Scheduler | Use Case |
+|-----------|----------|
+| `warmup_cosine` | Default, stable training with gradual decay |
+| `cosine_restarts` | Escape local minima with periodic warm restarts |
+| `plateau` | Adaptive LR reduction when validation loss plateaus |
+| `onecycle` | Fast experimentation |
 
-## Monitoring Training with TensorBoard
+**Scheduler-specific options:** `--scheduler-t0`, `--scheduler-t-mult`, `--scheduler-eta-min`, `--scheduler-patience`, `--scheduler-factor`
 
-TensorBoard is automatically enabled during training and logs are saved to `{output_dir}/tensorboard/`. Use it to monitor training progress, losses, metrics, and model weights.
+See `python -m aam.cli <command> --help` for full options.
 
-### Starting TensorBoard
+## Monitoring Training
+
+TensorBoard logs are saved to `{output_dir}/tensorboard/`:
 
 ```bash
-# Start TensorBoard server (run in separate terminal)
 tensorboard --logdir <output_dir>/tensorboard
-
-# Or specify port explicitly
-tensorboard --logdir <output_dir>/tensorboard --port 6006
 ```
 
-Then open your browser to `http://localhost:6006` (or the port you specified).
+### Progress Bar Labels
 
-### What's Logged
+| Mode | Format |
+|------|--------|
+| Pretraining | `TL, LR, UL, NL, NA%` |
+| Fine-tuning (regression) | `TL, LR, RL, UL` |
+| Fine-tuning (classification) | `TL, LR, CL, UL` |
 
-**Losses:** `train/total_loss`, `train/target_loss`, `train/unifrac_loss`, `train/nuc_loss`, `train/count_loss` (and validation equivalents)
+**Labels:** TL=Total Loss, LR=Learning Rate, UL=UniFrac Loss, NL=Nucleotide Loss, NA=Nucleotide Accuracy, RL=Regression Loss, CL=Classification Loss
 
-**Progress Bar:** TL (Total Loss), UL (UniFrac Loss), NL (Nucleotide Loss), LR (Learning Rate)
+**Note:** NL/NA are hidden during fine-tuning when `--freeze-base` is set (nuc_penalty=0).
 
-**Metrics (validation):** `val/mae`, `val/mse`, `val/r2` (regression), `val/accuracy`, `val/precision`, `val/recall`, `val/f1` (classification)
+### TensorBoard Metrics
 
-**Model:** Weight and gradient histograms (every 10 epochs), learning rate schedule
-
-### Interpreting Loss Values
-
-**Pretraining:** Epoch 1 total loss ~1.5-2.0 (random baseline), well-trained ~0.1-0.5  
-**Fine-tuning:** Monitor `target_loss` decreasing; `unifrac_loss`/`nuc_loss` stable if `freeze_base=True`
-
-**Tips:** Monitor trends (not absolute values), watch for overfitting (val_loss increasing), check learning rate schedule, verify gradients are well-distributed
+- **Losses:** `train/total_loss`, `train/target_loss`, `train/unifrac_loss`, `train/nuc_loss`
+- **Regression:** `val/mae`, `val/mse`, `val/r2`
+- **Classification:** `val/accuracy`, `val/precision`, `val/recall`, `val/f1`
 
 ## Testing
 
 ```bash
-# Run all tests
-pytest tests/ -v
-
-# Run with coverage
-pytest tests/ --cov=aam --cov-report=html
+pytest tests/ -v                           # Run all tests
+pytest tests/ --cov=aam --cov-report=html  # With coverage
 ```
 
-359+ tests covering data pipeline, models, training, and end-to-end workflows.
+611 tests covering data pipeline, models, training, and end-to-end workflows.
 
 ## Architecture
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed documentation.
 
-### Recent Improvements
-
-**Pre-computed UniFrac Matrices (PYT-11.4):**
-- UniFrac matrices are now pre-computed using external tools (unifrac-binaries, scikit-bio, etc.)
-- Faster training startup (no on-the-fly computation)
-- More flexible: use any UniFrac computation tool
-- Supports multiple formats: `.npy`, `.h5`, `.csv`
-
-**UniFrac Distance Prediction:**
-- Computes distances from embeddings (Euclidean) instead of direct prediction
-- Normalized to [0, 1] range for stable training
-- Eliminates boundary clustering and mode collapse issues
-
 ## Documentation
 
 Implementation details and design decisions are documented in `_design_plan/`.
-
-
-
-
-
