@@ -56,41 +56,12 @@ When loading a pretrained encoder that achieved NA=97.98% during pretraining, fi
 
 ---
 
-### PYT-21.5: Fix Prediction Plots to Show Denormalized Values
-**Priority:** HIGH | **Effort:** 1-2 hours | **Status:** Not Started
+### PYT-21.1: Target Loss Improvements and Normalize-Targets Default
+**Priority:** HIGH | **Effort:** 2-3 hours | **Status:** Not Started
 
 **Problem:**
-When using `--normalize-targets`, the predicted vs actual plots show values in [0, 1] range instead of the original target scale. This makes it difficult to interpret model performance in meaningful units.
-
-**Evidence:**
-Prediction plots display all values between 0 and 1, even when original targets have different ranges (e.g., temperature in Celsius, concentrations, etc.).
-
-**Solution:**
-1. Pass denormalization parameters to the plotting functions
-2. Denormalize predictions and targets before creating plots
-3. Update axis labels to reflect original units
-4. Ensure R² and other metrics are computed on denormalized values
-
-**Acceptance Criteria:**
-- [ ] Prediction plots show values in original target scale
-- [ ] Axis labels reflect original units (or at minimum, not [0,1])
-- [ ] R² metric computed on denormalized values matches plot
-- [ ] Works correctly when `--normalize-targets` is not used (no-op)
-- [ ] Add test for denormalized plot generation
-
-**Expected Impact:**
-- Interpretable prediction plots in original units
-- Easier model evaluation and communication of results
-
-**Files:** `aam/training/trainer.py`, `tests/test_trainer.py`
-
----
-
-### PYT-21.1: Deconvolute Target Loss with Configurable Weight
-**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Not Started
-
-**Problem:**
-Currently, `target_loss` has an implicit weight of 1.0 in the total loss calculation, while `unifrac_loss` and `nuc_loss` have configurable penalties (`--penalty`, `--nuc-penalty`). This inconsistency makes loss tuning difficult and obscures the target loss contribution during multi-task learning.
+1. `target_loss` has an implicit weight of 1.0, while `unifrac_loss` and `nuc_loss` have configurable penalties. This inconsistency makes loss tuning difficult.
+2. `--normalize-targets` should be the default for regression tasks (better training dynamics).
 
 Current formula:
 ```python
@@ -100,22 +71,23 @@ total_loss = target_loss + count_loss + unifrac_loss * penalty + nuc_loss * nuc_
 **Solution:**
 1. Add `target_penalty` parameter to `MultiTaskLoss` (default: 1.0 for backward compatibility)
 2. Add `--target-penalty` CLI flag to `train` command
-3. Log individual loss contributions (weighted and unweighted) to TensorBoard
-4. Add per-epoch summary showing loss component percentages
+3. Make `--normalize-targets` the default (add `--no-normalize-targets` to disable)
+4. Log individual loss contributions to TensorBoard
 
 **Acceptance Criteria:**
 - [ ] Add `target_penalty` parameter to `MultiTaskLoss.__init__()`
 - [ ] Update total_loss formula: `target_loss * target_penalty + count_loss + ...`
 - [ ] Add `--target-penalty` flag to CLI (default: 1.0)
+- [ ] Change `--normalize-targets` to default=True
+- [ ] Add `--no-normalize-targets` flag to opt out
 - [ ] Add TensorBoard scalars for weighted vs unweighted loss components
-- [ ] Add loss contribution breakdown logging (e.g., "Target: 45%, UniFrac: 35%, Nuc: 20%")
-- [ ] Update tests for new parameter
+- [ ] Update tests for new defaults
 - [ ] Document loss weighting strategy in help text
 
 **Expected Impact:**
 - Clearer loss contribution visibility for debugging
+- Better default training behavior with normalized targets
 - Ability to tune target loss weight relative to auxiliary tasks
-- Better understanding of what drives learning
 
 **Files:** `aam/training/losses.py`, `aam/cli.py`, `aam/training/trainer.py`, `tests/test_losses.py`
 
@@ -414,11 +386,11 @@ Cache tokenized sequences at dataset initialization to avoid redundant tokenizat
 
 | Phase | Tickets | Est. Hours | Priority |
 |-------|---------|------------|----------|
-| 21 (Fine-Tuning) | 4 (1 complete) | 9-14 | **HIGH** |
+| 21 (Fine-Tuning) | 3 (1 complete) | 8-12 | **HIGH** |
 | 20 (SSL) | 0 (1 complete) | - | **DONE** |
 | 19 (Tests) | 0 (1 complete) | - | **DONE** |
 | 18 (Memory) | 5 | 16-23 | **HIGH** |
 | 10 | 1 | 8-12 | MEDIUM |
 | 12 | 2 (1 complete) | 16-22 | LOW |
 | 13-17 | 13 | 53-73 | LOW |
-| **Total** | **25** | **102-144** |
+| **Total** | **24** | **101-142** |
