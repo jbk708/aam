@@ -331,9 +331,11 @@ This functionality was already implemented as part of the base architecture:
 ---
 
 ### PYT-18.4: Configurable FFN Intermediate Size
-**Priority:** MEDIUM | **Effort:** 3-4 hours | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** 3-4 hours | **Status:** Cancelled
 
 Add `--ffn-ratio` flag (default 4, can reduce to 2 for memory savings).
+
+**Cancellation Reason:** Memory savings have not become a practical issue with current usage patterns.
 
 **Acceptance Criteria:**
 - [ ] Add `ffn_ratio` parameter to transformers
