@@ -277,6 +277,11 @@ def cli():
     default="huber",
     help="Loss function for regression targets: mse, mae, or huber (default)",
 )
+@click.option(
+    "--no-sequence-cache",
+    is_flag=True,
+    help="Disable sequence tokenization cache (enabled by default for faster training)",
+)
 def train(
     table: str,
     unifrac_matrix: str,
@@ -329,6 +334,7 @@ def train(
     asv_chunk_size: int,
     normalize_targets: bool,
     loss_type: str,
+    no_sequence_cache: bool,
 ):
     """Train AAM model on microbial sequencing data."""
     try:
@@ -486,6 +492,7 @@ def train(
             reference_sample_ids=None,
             normalize_targets=normalize_targets,
             normalize_counts=normalize_targets,  # Normalize counts along with targets
+            cache_sequences=not no_sequence_cache,
         )
 
         # Get normalization parameters from training set
@@ -525,6 +532,7 @@ def train(
             # Use same count normalization params as training set for consistency
             count_min=train_dataset.count_min if normalize_targets else None,
             count_max=train_dataset.count_max if normalize_targets else None,
+            cache_sequences=not no_sequence_cache,
         )
 
         train_collate = partial(
@@ -812,6 +820,11 @@ def train(
 @click.option(
     "--asv-chunk-size", default=256, type=int, help="Process ASVs in chunks to reduce memory (default: 256, use 0 to disable)"
 )
+@click.option(
+    "--no-sequence-cache",
+    is_flag=True,
+    help="Disable sequence tokenization cache (enabled by default for faster training)",
+)
 def pretrain(
     table: str,
     unifrac_matrix: str,
@@ -855,6 +868,7 @@ def pretrain(
     gradient_checkpointing: bool,
     attn_implementation: str,
     asv_chunk_size: Optional[int],
+    no_sequence_cache: bool,
 ):
     """Pre-train SequenceEncoder on UniFrac and nucleotide prediction (self-supervised)."""
     try:
@@ -969,6 +983,7 @@ def pretrain(
             unifrac_computer=None,
             stripe_mode=False,
             reference_sample_ids=None,
+            cache_sequences=not no_sequence_cache,
         )
 
         val_dataset = ASVDataset(
@@ -983,6 +998,7 @@ def pretrain(
             unifrac_computer=None,
             stripe_mode=False,
             reference_sample_ids=None,
+            cache_sequences=not no_sequence_cache,
         )
 
         train_collate = partial(
@@ -1149,12 +1165,18 @@ def pretrain(
 @click.option("--output", required=True, type=click.Path(), help="Output file for predictions")
 @click.option("--batch-size", default=8, type=int, help="Batch size for inference")
 @click.option("--device", default="cuda", type=click.Choice(["cuda", "cpu"]), help="Device to use")
+@click.option(
+    "--no-sequence-cache",
+    is_flag=True,
+    help="Disable sequence tokenization cache (enabled by default for faster inference)",
+)
 def predict(
     model: str,
     table: str,
     output: str,
     batch_size: int,
     device: str,
+    no_sequence_cache: bool,
 ):
     """Run inference with trained AAM model."""
     try:
@@ -1187,6 +1209,7 @@ def predict(
             table=table_obj,
             max_bp=model_config.get("max_bp", 150),
             token_limit=model_config.get("token_limit", 1024),
+            cache_sequences=not no_sequence_cache,
         )
 
         inference_collate = partial(

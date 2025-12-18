@@ -1250,3 +1250,89 @@ class TestTargetNormalization:
         # All normalized values should be 0 (since target - min = 0)
         sample = dataset[0]
         assert sample["y_target"].item() == 0.0
+
+
+class TestSequenceCache:
+    """Test suite for sequence tokenization caching (PYT-12.3)."""
+
+    def test_cache_enabled_by_default(self, rarefied_table, tokenizer):
+        """Test that sequence caching is enabled by default."""
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            max_bp=150,
+            token_limit=1024,
+        )
+
+        assert dataset.cache_sequences is True
+        assert dataset._sequence_cache is not None
+        assert len(dataset._sequence_cache) > 0
+
+    def test_cache_disabled(self, rarefied_table, tokenizer):
+        """Test that sequence caching can be disabled."""
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            max_bp=150,
+            token_limit=1024,
+            cache_sequences=False,
+        )
+
+        assert dataset.cache_sequences is False
+        assert dataset._sequence_cache is None
+
+    def test_cache_contains_all_sequences(self, rarefied_table, tokenizer):
+        """Test that cache contains all sequences from the table."""
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            max_bp=150,
+            token_limit=1024,
+        )
+
+        # Cache should have entry for each sequence
+        assert len(dataset._sequence_cache) == len(dataset.sequences)
+        for seq in dataset.sequences:
+            assert seq in dataset._sequence_cache
+
+    def test_cache_produces_same_output(self, rarefied_table, tokenizer):
+        """Test that cached and non-cached datasets produce identical output."""
+        dataset_cached = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            max_bp=150,
+            token_limit=1024,
+            cache_sequences=True,
+        )
+
+        dataset_uncached = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            max_bp=150,
+            token_limit=1024,
+            cache_sequences=False,
+        )
+
+        # Compare output for each sample
+        for idx in range(len(dataset_cached)):
+            sample_cached = dataset_cached[idx]
+            sample_uncached = dataset_uncached[idx]
+
+            assert sample_cached["sample_id"] == sample_uncached["sample_id"]
+            torch.testing.assert_close(sample_cached["tokens"], sample_uncached["tokens"])
+            torch.testing.assert_close(sample_cached["counts"], sample_uncached["counts"])
+
+    def test_cache_tensor_shape(self, rarefied_table, tokenizer):
+        """Test that cached tensors have correct shape."""
+        max_bp = 150
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            max_bp=max_bp,
+            token_limit=1024,
+        )
+
+        # Each cached tensor should have shape [max_bp + 1] (including START token)
+        for seq, cached_tensor in dataset._sequence_cache.items():
+            assert cached_tensor.shape == (max_bp + 1,)
+            assert cached_tensor.dtype == torch.long
