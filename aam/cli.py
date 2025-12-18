@@ -623,10 +623,7 @@ def train(
         # Auto-disable nuc_penalty when freeze_base is True (frozen encoder can't improve)
         effective_nuc_penalty = nuc_penalty
         if freeze_base and nuc_penalty > 0:
-            logger.info(
-                f"Auto-disabling nucleotide loss (--freeze-base is set). "
-                f"Original nuc_penalty={nuc_penalty} -> 0.0"
-            )
+            logger.info(f"Auto-disabling nucleotide loss (--freeze-base is set). Original nuc_penalty={nuc_penalty} -> 0.0")
             effective_nuc_penalty = 0.0
 
         # Log parameter counts (frozen vs trainable)
@@ -636,7 +633,7 @@ def train(
         if total_params > 0:
             logger.info(
                 f"Parameters: Total={total_params:,}, Trainable={trainable_params:,} "
-                f"({trainable_params/total_params*100:.1f}%), Frozen={frozen_params:,}"
+                f"({trainable_params / total_params * 100:.1f}%), Frozen={frozen_params:,}"
             )
 
         class_weights_tensor = None
