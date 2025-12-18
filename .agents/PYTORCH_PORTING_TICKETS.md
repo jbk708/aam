@@ -56,6 +56,115 @@ When loading a pretrained encoder that achieved NA=97.98% during pretraining, fi
 
 ---
 
+### PYT-21.1: Deconvolute Target Loss with Configurable Weight
+**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Not Started
+
+**Problem:**
+Currently, `target_loss` has an implicit weight of 1.0 in the total loss calculation, while `unifrac_loss` and `nuc_loss` have configurable penalties (`--penalty`, `--nuc-penalty`). This inconsistency makes loss tuning difficult and obscures the target loss contribution during multi-task learning.
+
+Current formula:
+```python
+total_loss = target_loss + count_loss + unifrac_loss * penalty + nuc_loss * nuc_penalty
+```
+
+**Solution:**
+1. Add `target_penalty` parameter to `MultiTaskLoss` (default: 1.0 for backward compatibility)
+2. Add `--target-penalty` CLI flag to `train` command
+3. Log individual loss contributions (weighted and unweighted) to TensorBoard
+4. Add per-epoch summary showing loss component percentages
+
+**Acceptance Criteria:**
+- [ ] Add `target_penalty` parameter to `MultiTaskLoss.__init__()`
+- [ ] Update total_loss formula: `target_loss * target_penalty + count_loss + ...`
+- [ ] Add `--target-penalty` flag to CLI (default: 1.0)
+- [ ] Add TensorBoard scalars for weighted vs unweighted loss components
+- [ ] Add loss contribution breakdown logging (e.g., "Target: 45%, UniFrac: 35%, Nuc: 20%")
+- [ ] Update tests for new parameter
+- [ ] Document loss weighting strategy in help text
+
+**Expected Impact:**
+- Clearer loss contribution visibility for debugging
+- Ability to tune target loss weight relative to auxiliary tasks
+- Better understanding of what drives learning
+
+**Files:** `aam/training/losses.py`, `aam/cli.py`, `aam/training/trainer.py`, `tests/test_losses.py`
+
+---
+
+### PYT-21.3: Regressor Head Optimization
+**Priority:** MEDIUM | **Effort:** 4-6 hours | **Status:** Not Started
+
+**Problem:**
+The current target prediction head uses:
+- Sigmoid activation bounded to [0,1] (assumes normalized targets)
+- Simple linear projection after attention pooling
+- No learned temperature or scale adjustment
+- No residual connections in target_encoder
+
+This may limit performance for:
+- Targets with different scales or distributions
+- Multi-target regression where targets have varying ranges
+- Tasks where unbounded predictions are appropriate
+
+**Solution:**
+Enhance the regressor with configurable improvements:
+1. Add `--unbounded-targets` flag to disable sigmoid (for non-normalized targets)
+2. Add optional learnable output scaling: `pred = pred * scale + bias` after sigmoid
+3. Add optional LayerNorm before final projection
+4. Add residual connection option in target_encoder
+5. Improve initialization for regression head (Xavier/Kaiming)
+
+**Acceptance Criteria:**
+- [ ] Add `--unbounded-targets` flag (disables sigmoid, uses identity activation)
+- [ ] Add `--learnable-output-scale` flag with trainable scale/bias parameters
+- [ ] Add `--target-layer-norm` flag for LayerNorm before projection
+- [ ] Add proper weight initialization for regression head (`nn.init.xavier_uniform_`)
+- [ ] Log output statistics during validation (pred min/max/mean/std)
+- [ ] Add tests for each configuration option
+- [ ] Document when to use each option in CLI help
+
+**Expected Impact:**
+- Better out-of-the-box performance for various target distributions
+- Flexibility for different regression tasks
+- More stable training dynamics
+
+**Files:** `aam/models/sequence_predictor.py`, `aam/cli.py`, `tests/test_sequence_predictor.py`
+
+---
+
+### PYT-21.4: Skip Auxiliary Loss Computation During Fine-Tuning
+**Priority:** LOW | **Effort:** 2-3 hours | **Status:** Not Started
+
+**Problem:**
+When fine-tuning with `--freeze-base`, auxiliary losses (nucleotide, count) still:
+1. Compute predictions (wasting memory/compute)
+2. Get logged in progress bar (confusing monitoring)
+
+Note: PYT-21.2 already auto-disables `nuc_penalty` when `--freeze-base` is set, so the loss doesn't contribute to training. This ticket addresses the remaining compute/logging overhead.
+
+**Solution:**
+1. Add `--skip-auxiliary-predictions` flag (auto-enabled with `--freeze-base`)
+2. Skip nucleotide prediction computation when disabled
+3. Update progress bar to only show relevant losses
+4. Add `--keep-auxiliary-predictions` to force computation if needed for monitoring
+
+**Acceptance Criteria:**
+- [ ] Add `--skip-auxiliary-predictions` flag
+- [ ] Auto-enable when `--freeze-base` is set
+- [ ] Skip `nuc_predictions` computation in model forward when disabled
+- [ ] Update progress bar format to exclude disabled losses
+- [ ] Document the fine-tuning workflow in help text
+- [ ] Add tests for flag behavior
+
+**Expected Impact:**
+- Faster fine-tuning (no unnecessary nucleotide prediction computation)
+- Cleaner progress bar during fine-tuning
+- Reduced memory usage
+
+**Files:** `aam/cli.py`, `aam/models/sequence_predictor.py`, `aam/training/trainer.py`
+
+---
+
 ## Phase 20: Self-Supervised Learning Improvements (NEW - HIGH PRIORITY)
 
 ### PYT-20.1: Masked Autoencoder for Nucleotide Prediction
@@ -275,10 +384,11 @@ Cache tokenized sequences at dataset initialization to avoid redundant tokenizat
 
 | Phase | Tickets | Est. Hours | Priority |
 |-------|---------|------------|----------|
+| 21 (Fine-Tuning) | 3 (1 complete) | 8-12 | **HIGH** |
 | 20 (SSL) | 0 (1 complete) | - | **DONE** |
 | 19 (Tests) | 0 (1 complete) | - | **DONE** |
 | 18 (Memory) | 5 | 16-23 | **HIGH** |
 | 10 | 1 | 8-12 | MEDIUM |
 | 12 | 2 (1 complete) | 16-22 | LOW |
 | 13-17 | 13 | 53-73 | LOW |
-| **Total** | **21** | **93-130** |
+| **Total** | **24** | **101-142** |
