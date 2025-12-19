@@ -520,8 +520,6 @@ def train(
                 train_distance_matrix = unifrac_distances[train_indices]
                 val_distance_matrix = unifrac_distances[val_indices]
 
-        reference_sample_ids = None
-
         logger.info("Creating datasets...")
         train_dataset = ASVDataset(
             table=train_table,
@@ -531,10 +529,6 @@ def train(
             token_limit=token_limit,
             target_column=metadata_column,
             unifrac_metric=unifrac_metric_name,
-            lazy_unifrac=False,
-            unifrac_computer=None,
-            stripe_mode=False,
-            reference_sample_ids=None,
             normalize_targets=normalize_targets,
             normalize_counts=normalize_targets,  # Normalize counts along with targets
             cache_sequences=not no_sequence_cache,
@@ -565,10 +559,6 @@ def train(
             token_limit=token_limit,
             target_column=metadata_column,
             unifrac_metric=unifrac_metric_name,
-            lazy_unifrac=False,
-            unifrac_computer=None,
-            stripe_mode=False,
-            reference_sample_ids=None,
             normalize_targets=normalize_targets,
             # Use same normalization params as training set for consistency
             target_min=train_dataset.target_min if normalize_targets else None,
@@ -586,10 +576,6 @@ def train(
             unifrac_distances=train_distance_matrix,
             unifrac_metric=unifrac_metric_name,
             unifrac_loader=unifrac_loader,
-            lazy_unifrac=False,
-            stripe_mode=False,
-            reference_sample_ids=None,
-            all_sample_ids=None,
         )
         val_collate = partial(
             collate_fn,
@@ -597,10 +583,6 @@ def train(
             unifrac_distances=val_distance_matrix,
             unifrac_metric=unifrac_metric_name,
             unifrac_loader=unifrac_loader,
-            lazy_unifrac=False,
-            stripe_mode=False,
-            reference_sample_ids=None,
-            all_sample_ids=None,
         )
 
         # Create dataloaders (with distributed sampler if distributed)
@@ -1116,8 +1098,6 @@ def pretrain(
                 train_distance_matrix = unifrac_distances[train_indices]
                 val_distance_matrix = unifrac_distances[val_indices]
 
-        reference_sample_ids = None
-
         logger.info("Creating datasets...")
         train_dataset = ASVDataset(
             table=train_table,
@@ -1127,10 +1107,6 @@ def pretrain(
             token_limit=token_limit,
             target_column=None,
             unifrac_metric=unifrac_metric_name,
-            lazy_unifrac=False,
-            unifrac_computer=None,
-            stripe_mode=False,
-            reference_sample_ids=None,
             cache_sequences=not no_sequence_cache,
         )
 
@@ -1142,10 +1118,6 @@ def pretrain(
             token_limit=token_limit,
             target_column=None,
             unifrac_metric=unifrac_metric_name,
-            lazy_unifrac=False,
-            unifrac_computer=None,
-            stripe_mode=False,
-            reference_sample_ids=None,
             cache_sequences=not no_sequence_cache,
         )
 
@@ -1155,10 +1127,6 @@ def pretrain(
             unifrac_distances=train_distance_matrix,
             unifrac_metric=unifrac_metric_name,
             unifrac_loader=unifrac_loader,
-            lazy_unifrac=False,
-            stripe_mode=False,
-            reference_sample_ids=None,
-            all_sample_ids=None,
         )
         val_collate = partial(
             collate_fn,
@@ -1166,10 +1134,6 @@ def pretrain(
             unifrac_distances=val_distance_matrix,
             unifrac_metric=unifrac_metric_name,
             unifrac_loader=unifrac_loader,
-            lazy_unifrac=False,
-            stripe_mode=False,
-            reference_sample_ids=None,
-            all_sample_ids=None,
         )
 
         # Create dataloaders (with distributed sampler if distributed)

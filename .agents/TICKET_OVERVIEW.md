@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2025-12-19
-**Status:** 21 outstanding tickets (~55-84 hours)
+**Status:** 20 outstanding tickets (~53-82 hours)
 
 ## Quick Links
 - **Code cleanup:** `CLEANUP_TICKETS.md` (NEW)
@@ -14,11 +14,10 @@
 
 ## Outstanding Tickets by Priority
 
-### HIGH (5 tickets, ~12-18 hours)
+### HIGH (4 tickets, ~10-16 hours)
 
 | Ticket | Description | Effort |
 |--------|-------------|--------|
-| **CLN-2** | Remove Dead Code (stripe_mode, lazy_unifrac) | 1-2h |
 | **COS-1.2** | Cosmos Environment Setup Script | 2-3h |
 | **COS-3.1** | Create SLURM Job Scripts | 3-4h |
 | **COS-5.2** | Numerical Validation (CUDA vs ROCm) | 3-4h |
@@ -65,6 +64,7 @@ Future enhancement phases not yet broken into tickets:
 
 ## Recently Completed (2025-12-19)
 
+- **CLN-2:** Remove Dead Code (stripe_mode, lazy_unifrac) - ~200 lines removed
 - **CLN-1:** Remove Deprecated UniFrac Modules - Deleted 4165 lines (4 modules + 7 debug scripts)
 - **COS-2.1:** ROCm Compatibility Audit - No changes needed, code already compatible
 
@@ -84,7 +84,8 @@ Future enhancement phases not yet broken into tickets:
 
 ### Code Cleanup (Priority)
 1. ~~**CLN-1** - Remove deprecated UniFrac modules~~ ✅ COMPLETE
-2. **CLN-2** - Remove stripe_mode/lazy_unifrac dead code
+2. ~~**CLN-2** - Remove stripe_mode/lazy_unifrac dead code~~ ✅ COMPLETE
+3. **CLN-3** - Add __init__ exports (quick win)
 
 ### Cosmos Onboarding (After Cleanup)
 1. **COS-3.1** - SLURM job scripts (enables running jobs)
