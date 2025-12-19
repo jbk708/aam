@@ -1,7 +1,7 @@
 # Code Cleanup Tickets
 
 **Created:** 2025-12-18
-**Status:** 6 tickets (~12-16 hours)
+**Status:** 3/6 complete (~9-12 hours remaining)
 
 This file contains code cleanup and technical debt tickets.
 
@@ -65,7 +65,7 @@ Legacy flags `stripe_mode` and `lazy_unifrac` are hardcoded to `False` in 16 pla
 ---
 
 ### CLN-3: Add Package `__init__.py` Exports
-**Priority:** MEDIUM | **Effort:** 1 hour | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** 1 hour | **Status:** ✅ COMPLETE (2025-12-19)
 
 **Problem:**
 `aam/data/__init__.py` and `aam/models/__init__.py` are empty, requiring verbose imports like `from aam.data.dataset import ASVDataset`.
@@ -93,10 +93,10 @@ __all__ = ["SequencePredictor", "SequenceEncoder", "SampleSequenceEncoder", "ASV
 ```
 
 **Acceptance Criteria:**
-- [ ] Add exports to `aam/data/__init__.py`
-- [ ] Add exports to `aam/models/__init__.py`
-- [ ] Verify imports work: `from aam.data import ASVDataset`
-- [ ] All tests pass
+- [x] Add exports to `aam/data/__init__.py`
+- [x] Add exports to `aam/models/__init__.py`
+- [x] Verify imports work: `from aam.data import ASVDataset`
+- [x] All tests pass
 
 ---
 
