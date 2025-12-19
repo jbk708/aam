@@ -9,12 +9,19 @@ from aam.training.distributed import (
     is_distributed,
     is_main_process,
     get_rank,
+    get_local_rank,
     get_world_size,
+    reduce_tensor,
+    gather_tensors,
+    broadcast_object,
+    print_rank0,
+    sync_batch_norm,
     DistributedTrainer,
 )
 
 __all__ = [
     "LearningRateFinder",
+    # Distributed training
     "setup_distributed",
     "cleanup_distributed",
     "wrap_model_ddp",
@@ -22,6 +29,12 @@ __all__ = [
     "is_distributed",
     "is_main_process",
     "get_rank",
+    "get_local_rank",
     "get_world_size",
+    "reduce_tensor",
+    "gather_tensors",
+    "broadcast_object",
+    "print_rank0",
+    "sync_batch_norm",
     "DistributedTrainer",
 ]
