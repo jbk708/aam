@@ -10,7 +10,7 @@ This file contains code cleanup and technical debt tickets.
 ## Phase CLN: Code Cleanup
 
 ### CLN-1: Remove Deprecated UniFrac Computation Modules
-**Priority:** HIGH | **Effort:** 2-3 hours | **Status:** Not Started
+**Priority:** HIGH | **Effort:** 2-3 hours | **Status:** ✅ COMPLETE (2025-12-19)
 
 **Problem:**
 Several modules were deprecated in PYT-11.4 when we switched to pre-computed UniFrac matrices. These modules are no longer used and should be removed.
@@ -22,17 +22,18 @@ Several modules were deprecated in PYT-11.4 when we switched to pre-computed Uni
 - `aam/scripts/compute_unifrac_parallel.py` (259 lines) - uses deprecated UniFracComputer
 
 **Acceptance Criteria:**
-- [ ] Delete `aam/data/tree_pruner.py`
-- [ ] Delete `aam/data/unifrac.py`
-- [ ] Delete `aam/data/unifrac_cache.py`
-- [ ] Delete `aam/scripts/compute_unifrac_parallel.py`
-- [ ] Remove any test imports referencing deleted modules
-- [ ] Update documentation if referencing deprecated modules
-- [ ] All tests pass
+- [x] Delete `aam/data/tree_pruner.py`
+- [x] Delete `aam/data/unifrac.py`
+- [x] Delete `aam/data/unifrac_cache.py`
+- [x] Delete `aam/scripts/compute_unifrac_parallel.py`
+- [x] Remove any test imports referencing deleted modules
+- [x] Update documentation if referencing deprecated modules
+- [x] All tests pass
 
 **Notes:**
 - Keep `aam/data/unifrac_loader.py` - this is the current, supported module
 - The deprecated modules have deprecation warnings but are no longer imported anywhere in production code
+- Also deleted 7 debug scripts that imported deprecated modules (~4165 lines total)
 
 ---
 
