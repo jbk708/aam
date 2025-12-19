@@ -199,9 +199,17 @@ class TestDistributedTrainer:
         model = SimpleModel()
         loss_fn = MultiTaskLoss()
 
-        # Should not raise during init (actual distributed setup happens later)
-        with patch("aam.training.distributed.setup_distributed") as mock_setup:
+        # Mock all distributed state for testing (DDP constructor needs process group)
+        with patch("aam.training.distributed.setup_distributed") as mock_setup, \
+             patch("aam.training.distributed.wrap_model_ddp") as mock_wrap, \
+             patch("aam.training.distributed.is_main_process", return_value=True), \
+             patch("aam.training.distributed.get_local_rank", return_value=0):
             mock_setup.return_value = (0, 1, torch.device("cpu"))
+            # wrap_model_ddp returns a mock that delegates to the real model
+            mock_ddp = MagicMock(wraps=model)
+            mock_ddp.module = model
+            mock_ddp.parameters = model.parameters
+            mock_wrap.return_value = mock_ddp
 
             trainer = DistributedTrainer(
                 model=model,
@@ -211,6 +219,8 @@ class TestDistributedTrainer:
             )
 
             assert trainer is not None
+            mock_setup.assert_called_once()
+            mock_wrap.assert_called_once()
 
     def test_distributed_trainer_cleanup(self):
         """Test DistributedTrainer cleanup method."""
@@ -219,9 +229,18 @@ class TestDistributedTrainer:
         model = SimpleModel()
         loss_fn = MultiTaskLoss()
 
+        # Mock all distributed state for testing (DDP constructor needs process group)
         with patch("aam.training.distributed.setup_distributed") as mock_setup, \
-             patch("aam.training.distributed.cleanup_distributed") as mock_cleanup:
+             patch("aam.training.distributed.cleanup_distributed") as mock_cleanup, \
+             patch("aam.training.distributed.wrap_model_ddp") as mock_wrap, \
+             patch("aam.training.distributed.is_main_process", return_value=True), \
+             patch("aam.training.distributed.get_local_rank", return_value=0):
             mock_setup.return_value = (0, 1, torch.device("cpu"))
+            # wrap_model_ddp returns a mock that delegates to the real model
+            mock_ddp = MagicMock(wraps=model)
+            mock_ddp.module = model
+            mock_ddp.parameters = model.parameters
+            mock_wrap.return_value = mock_ddp
 
             trainer = DistributedTrainer(
                 model=model,
