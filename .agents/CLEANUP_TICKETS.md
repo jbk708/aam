@@ -1,0 +1,186 @@
+# Code Cleanup Tickets
+
+**Created:** 2025-12-18
+**Status:** 6 tickets (~12-16 hours)
+
+This file contains code cleanup and technical debt tickets.
+
+---
+
+## Phase CLN: Code Cleanup
+
+### CLN-1: Remove Deprecated UniFrac Computation Modules
+**Priority:** HIGH | **Effort:** 2-3 hours | **Status:** Not Started
+
+**Problem:**
+Several modules were deprecated in PYT-11.4 when we switched to pre-computed UniFrac matrices. These modules are no longer used and should be removed.
+
+**Files to Delete (~1665 lines):**
+- `aam/data/tree_pruner.py` (150 lines) - marked deprecated, only imported by unifrac.py
+- `aam/data/unifrac.py` (1002 lines) - UniFracComputer deprecated
+- `aam/data/unifrac_cache.py` (254 lines) - only used by deprecated modules
+- `aam/scripts/compute_unifrac_parallel.py` (259 lines) - uses deprecated UniFracComputer
+
+**Acceptance Criteria:**
+- [ ] Delete `aam/data/tree_pruner.py`
+- [ ] Delete `aam/data/unifrac.py`
+- [ ] Delete `aam/data/unifrac_cache.py`
+- [ ] Delete `aam/scripts/compute_unifrac_parallel.py`
+- [ ] Remove any test imports referencing deleted modules
+- [ ] Update documentation if referencing deprecated modules
+- [ ] All tests pass
+
+**Notes:**
+- Keep `aam/data/unifrac_loader.py` - this is the current, supported module
+- The deprecated modules have deprecation warnings but are no longer imported anywhere in production code
+
+---
+
+### CLN-2: Remove Dead Code Paths (stripe_mode, lazy_unifrac)
+**Priority:** HIGH | **Effort:** 1-2 hours | **Status:** Not Started
+
+**Problem:**
+Legacy flags `stripe_mode` and `lazy_unifrac` are hardcoded to `False` in 16 places in cli.py. These were deprecated with PYT-11.4 but the dead code paths remain.
+
+**Locations:**
+- `aam/cli.py` - 16 occurrences of `lazy_unifrac=False`, `stripe_mode=False`
+- `aam/training/losses.py` - stripe mode code paths (lines 320-365)
+- `aam/data/dataset.py` - may have stripe_mode/lazy_unifrac parameters
+
+**Acceptance Criteria:**
+- [ ] Remove `lazy_unifrac` parameter from ASVDataset calls in cli.py
+- [ ] Remove `stripe_mode` parameter from ASVDataset calls in cli.py
+- [ ] Remove stripe mode logic from `losses.py` (is_stripe_mode checks)
+- [ ] Remove parameters from ASVDataset if present
+- [ ] All tests pass
+
+---
+
+### CLN-3: Add Package `__init__.py` Exports
+**Priority:** MEDIUM | **Effort:** 1 hour | **Status:** Not Started
+
+**Problem:**
+`aam/data/__init__.py` and `aam/models/__init__.py` are empty, requiring verbose imports like `from aam.data.dataset import ASVDataset`.
+
+**Solution:**
+Add public API exports to enable cleaner imports like `from aam.data import ASVDataset`.
+
+**Changes:**
+```python
+# aam/data/__init__.py
+from aam.data.dataset import ASVDataset
+from aam.data.biom_loader import BIOMLoader
+from aam.data.unifrac_loader import UniFracLoader
+from aam.data.tokenizer import SequenceTokenizer
+
+__all__ = ["ASVDataset", "BIOMLoader", "UniFracLoader", "SequenceTokenizer"]
+
+# aam/models/__init__.py
+from aam.models.sequence_predictor import SequencePredictor
+from aam.models.sequence_encoder import SequenceEncoder
+from aam.models.sample_sequence_encoder import SampleSequenceEncoder
+from aam.models.asv_encoder import ASVEncoder
+
+__all__ = ["SequencePredictor", "SequenceEncoder", "SampleSequenceEncoder", "ASVEncoder"]
+```
+
+**Acceptance Criteria:**
+- [ ] Add exports to `aam/data/__init__.py`
+- [ ] Add exports to `aam/models/__init__.py`
+- [ ] Verify imports work: `from aam.data import ASVDataset`
+- [ ] All tests pass
+
+---
+
+### CLN-4: Fix Mypy Configuration
+**Priority:** MEDIUM | **Effort:** 1 hour | **Status:** Not Started
+
+**Problem:**
+Running `mypy aam/` fails with "Source file found twice under different module names" error.
+
+**Solution:**
+Add mypy configuration to `pyproject.toml`:
+
+```toml
+[tool.mypy]
+packages = ["aam"]
+explicit_package_bases = true
+ignore_missing_imports = true
+```
+
+**Acceptance Criteria:**
+- [ ] Add mypy config to pyproject.toml
+- [ ] `mypy aam/` runs without configuration errors
+- [ ] Document any type errors to fix (separate ticket if significant)
+
+---
+
+### CLN-5: Extract CLI Helper Modules
+**Priority:** LOW | **Effort:** 3-4 hours | **Status:** Not Started
+
+**Problem:**
+`cli.py` is 1483 lines with mixed concerns (setup utilities, train command, pretrain command, predict command).
+
+**Solution:**
+Refactor into a cli package:
+```
+aam/cli/
+├── __init__.py      # Main CLI group, imports commands
+├── utils.py         # setup_logging, setup_device, setup_random_seed, validate_*
+├── train.py         # train command
+├── pretrain.py      # pretrain command
+└── predict.py       # predict command
+```
+
+**Acceptance Criteria:**
+- [ ] Create `aam/cli/` package structure
+- [ ] Extract utility functions to `utils.py`
+- [ ] Extract train command to `train.py`
+- [ ] Extract pretrain command to `pretrain.py`
+- [ ] Extract predict command to `predict.py`
+- [ ] Update imports throughout codebase
+- [ ] CLI still works: `python -m aam.cli train --help`
+- [ ] All tests pass
+
+---
+
+### CLN-6: Extract Trainer Validation Logic
+**Priority:** LOW | **Effort:** 3-4 hours | **Status:** Not Started
+
+**Problem:**
+`trainer.py` is 1896 lines. Validation and evaluation logic could be extracted.
+
+**Solution:**
+Extract to `aam/training/evaluation.py`:
+- `validate_epoch()` method logic
+- Streaming metrics computation
+- Prediction collection and plotting
+
+**Acceptance Criteria:**
+- [ ] Create `aam/training/evaluation.py`
+- [ ] Extract validation logic
+- [ ] Trainer imports and uses evaluation module
+- [ ] All tests pass
+- [ ] No behavior changes
+
+---
+
+## Summary
+
+| Ticket | Priority | Effort | Lines Affected |
+|--------|----------|--------|----------------|
+| CLN-1 | HIGH | 2-3h | -1665 (delete) |
+| CLN-2 | HIGH | 1-2h | ~50 |
+| CLN-3 | MEDIUM | 1h | ~20 |
+| CLN-4 | MEDIUM | 1h | ~10 |
+| CLN-5 | LOW | 3-4h | ~1500 (refactor) |
+| CLN-6 | LOW | 3-4h | ~500 (refactor) |
+| **Total** | | **12-16h** | |
+
+## Recommended Order
+
+1. **CLN-1** - Remove deprecated modules (biggest impact, cleanest codebase)
+2. **CLN-2** - Remove dead code paths (depends on CLN-1 for unifrac.py removal)
+3. **CLN-3** - Add __init__ exports (quick win)
+4. **CLN-4** - Fix mypy (enables type checking)
+5. **CLN-5/6** - Refactoring (lower priority, larger effort)
