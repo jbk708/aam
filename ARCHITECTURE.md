@@ -185,12 +185,17 @@ aam/
 │   ├── asv_encoder.py        # ASV-level sequence encoder (NaN prevention for all-padding)
 │   ├── sample_sequence_encoder.py  # Sample-level encoder
 │   ├── sequence_encoder.py   # Base model with UniFrac prediction
-│   └── sequence_predictor.py # Main prediction model
+│   ├── sequence_predictor.py # Main prediction model
+│   ├── memory_utils.py       # Memory optimization utilities
+│   └── model_summary.py      # Model parameter counting and logging
 ├── training/
 │   ├── __init__.py
 │   ├── losses.py             # Multi-task loss functions
 │   ├── metrics.py            # Evaluation metrics
-│   └── trainer.py            # Training and validation loops
+│   ├── trainer.py            # Training and validation loops
+│   ├── evaluation.py         # Validation evaluation and prediction plots
+│   ├── distributed.py        # DDP/distributed training support
+│   └── lr_finder.py          # Learning rate finder utility
 └── cli/
     ├── __init__.py           # Main CLI group, command registration
     ├── __main__.py           # Entry point for python -m aam.cli
