@@ -105,6 +105,7 @@ class TestWrapModelDDP:
         """Test that wrapped model has correct type annotation."""
         # This is a compile-time type check, just verify the function signature
         import inspect
+
         sig = inspect.signature(wrap_model_ddp)
         # Check return type annotation exists
         assert "DDP" in str(sig.return_annotation) or sig.return_annotation != inspect.Parameter.empty
@@ -120,13 +121,12 @@ class TestDistributedDataLoader:
         dataset = TensorDataset(torch.randn(100, 10))
 
         # Mock distributed state
-        with patch("aam.training.distributed.is_distributed", return_value=True), \
-             patch("aam.training.distributed.get_rank", return_value=0), \
-             patch("aam.training.distributed.get_world_size", return_value=2):
-
-            dataloader, sampler = create_distributed_dataloader(
-                dataset, batch_size=8, shuffle=True
-            )
+        with (
+            patch("aam.training.distributed.is_distributed", return_value=True),
+            patch("aam.training.distributed.get_rank", return_value=0),
+            patch("aam.training.distributed.get_world_size", return_value=2),
+        ):
+            dataloader, sampler = create_distributed_dataloader(dataset, batch_size=8, shuffle=True)
 
             assert dataloader is not None
             assert sampler is not None
@@ -138,13 +138,12 @@ class TestDistributedDataLoader:
         dataset = TensorDataset(torch.randn(100, 10))
         batch_size = 8
 
-        with patch("aam.training.distributed.is_distributed", return_value=True), \
-             patch("aam.training.distributed.get_rank", return_value=0), \
-             patch("aam.training.distributed.get_world_size", return_value=2):
-
-            dataloader, _ = create_distributed_dataloader(
-                dataset, batch_size=batch_size
-            )
+        with (
+            patch("aam.training.distributed.is_distributed", return_value=True),
+            patch("aam.training.distributed.get_rank", return_value=0),
+            patch("aam.training.distributed.get_world_size", return_value=2),
+        ):
+            dataloader, _ = create_distributed_dataloader(dataset, batch_size=batch_size)
 
             assert dataloader.batch_size == batch_size
 
@@ -200,10 +199,12 @@ class TestDistributedTrainer:
         loss_fn = MultiTaskLoss()
 
         # Mock all distributed state for testing (DDP constructor needs process group)
-        with patch("aam.training.distributed.setup_distributed") as mock_setup, \
-             patch("aam.training.distributed.wrap_model_ddp") as mock_wrap, \
-             patch("aam.training.distributed.is_main_process", return_value=True), \
-             patch("aam.training.distributed.get_local_rank", return_value=0):
+        with (
+            patch("aam.training.distributed.setup_distributed") as mock_setup,
+            patch("aam.training.distributed.wrap_model_ddp") as mock_wrap,
+            patch("aam.training.distributed.is_main_process", return_value=True),
+            patch("aam.training.distributed.get_local_rank", return_value=0),
+        ):
             mock_setup.return_value = (0, 1, torch.device("cpu"))
             # wrap_model_ddp returns a mock that delegates to the real model
             mock_ddp = MagicMock(wraps=model)
@@ -230,11 +231,13 @@ class TestDistributedTrainer:
         loss_fn = MultiTaskLoss()
 
         # Mock all distributed state for testing (DDP constructor needs process group)
-        with patch("aam.training.distributed.setup_distributed") as mock_setup, \
-             patch("aam.training.distributed.cleanup_distributed") as mock_cleanup, \
-             patch("aam.training.distributed.wrap_model_ddp") as mock_wrap, \
-             patch("aam.training.distributed.is_main_process", return_value=True), \
-             patch("aam.training.distributed.get_local_rank", return_value=0):
+        with (
+            patch("aam.training.distributed.setup_distributed") as mock_setup,
+            patch("aam.training.distributed.cleanup_distributed") as mock_cleanup,
+            patch("aam.training.distributed.wrap_model_ddp") as mock_wrap,
+            patch("aam.training.distributed.is_main_process", return_value=True),
+            patch("aam.training.distributed.get_local_rank", return_value=0),
+        ):
             mock_setup.return_value = (0, 1, torch.device("cpu"))
             # wrap_model_ddp returns a mock that delegates to the real model
             mock_ddp = MagicMock(wraps=model)
@@ -252,10 +255,7 @@ class TestDistributedTrainer:
             mock_cleanup.assert_called_once()
 
 
-@pytest.mark.skipif(
-    not torch.cuda.is_available() or torch.cuda.device_count() < 2,
-    reason="Multi-GPU not available"
-)
+@pytest.mark.skipif(not torch.cuda.is_available() or torch.cuda.device_count() < 2, reason="Multi-GPU not available")
 class TestMultiGPUIntegration:
     """Integration tests requiring multiple GPUs."""
 

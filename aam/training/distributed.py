@@ -169,10 +169,7 @@ def wrap_model_ddp(
         RuntimeError: If distributed training is not initialized.
     """
     if not is_distributed():
-        raise RuntimeError(
-            "Cannot wrap model with DDP: distributed training not initialized. "
-            "Call setup_distributed() first."
-        )
+        raise RuntimeError("Cannot wrap model with DDP: distributed training not initialized. Call setup_distributed() first.")
 
     return DDP(
         model,

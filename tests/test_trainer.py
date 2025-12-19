@@ -1883,10 +1883,7 @@ class TestMixedPrecision:
         assert not torch.isnan(torch.tensor(losses["total_loss"]))
 
 
-@pytest.mark.skipif(
-    is_rocm(),
-    reason="torch.compile() with inductor backend has known Triton compatibility issues on ROCm"
-)
+@pytest.mark.skipif(is_rocm(), reason="torch.compile() with inductor backend has known Triton compatibility issues on ROCm")
 class TestModelCompilation:
     """Tests for model compilation with torch.compile()."""
 
