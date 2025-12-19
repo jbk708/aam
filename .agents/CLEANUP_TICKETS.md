@@ -1,7 +1,7 @@
 # Code Cleanup Tickets
 
 **Created:** 2025-12-18
-**Status:** 3/6 complete (~9-12 hours remaining)
+**Status:** 4/6 complete (~7-10 hours remaining)
 
 This file contains code cleanup and technical debt tickets.
 
@@ -101,7 +101,7 @@ __all__ = ["SequencePredictor", "SequenceEncoder", "SampleSequenceEncoder", "ASV
 ---
 
 ### CLN-4: Fix Type Errors (ty)
-**Priority:** MEDIUM | **Effort:** 1-2 hours | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** 1-2 hours | **Status:** ✅ COMPLETE (2025-12-19)
 
 **Problem:**
 Running `uvx ty check aam/` reports 19 type errors. Type checking is part of the CI workflow and these should be resolved.
@@ -113,8 +113,14 @@ Fix type errors identified by `ty`. Most are likely:
 - Union type handling
 
 **Acceptance Criteria:**
-- [ ] `uvx ty check aam/` passes with no errors
-- [ ] No behavior changes (type fixes only)
+- [x] `uvx ty check aam/` passes with no errors
+- [x] No behavior changes (type fixes only)
+
+**Notes:**
+- Fixed `validate_epoch` return type annotation (Dict instead of Optional[Tensor])
+- Added explicit type annotations for val_results, val_predictions_dict, val_targets_dict
+- Used `cast()` to narrow nn.Module attribute types (nuc_penalty, vocab_size)
+- Used `getattr()` for dynamic attribute access on model objects
 
 ---
 
