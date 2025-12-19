@@ -42,7 +42,7 @@ module load craype-accel-amd-gfx942 # MI300A target
 ## Phase 1: Environment Setup
 
 ### COS-1.0: Native ROCm Environment (No Container)
-**Priority:** HIGH | **Effort:** 1-2 hours | **Status:** Not Started
+**Priority:** HIGH | **Effort:** 1-2 hours | **Status:** Complete
 
 **Problem:**
 For rapid development and debugging, containers add overhead. A native virtual environment is faster to iterate with.
@@ -294,7 +294,7 @@ Need scripts to stage data to appropriate file systems (VAST for persistent, NVM
 
 ### COS-4.1: Implement DDP for ROCm/RCCL
 **Priority:** HIGH | **Effort:** 8-12 hours | **Status:** Not Started
-**Depends On:** PYT-10.6 (Multi-GPU Training)
+**Blocking:** Required for efficient use of 4 MI300A APUs per node
 
 **Problem:**
 Need distributed training support using ROCm's RCCL (AMD's NCCL equivalent).
@@ -491,14 +491,14 @@ Verify and optimize attention implementation for ROCm.
 ## Recommended Order
 
 ### Fast Path (Development)
-1. **COS-1.0** - Native environment setup (1-2 hours, start here!)
-2. **COS-2.1** - ROCm compatibility audit
-3. **COS-3.1** - SLURM job scripts
-4. **COS-5.2** - Numerical validation
+1. **COS-1.0** - Native environment setup ✅ COMPLETE
+2. **COS-4.1** - DDP for multi-GPU (use all 4 APUs!)
+3. **COS-2.1** - ROCm compatibility audit
+4. **COS-3.1** - SLURM job scripts
 
 ### Production Path (After Development)
-5. **COS-1.1** - Container definition (for reproducibility)
-6. **COS-4.1** - DDP for multi-GPU
+5. **COS-5.2** - Numerical validation
+6. **COS-1.1** - Container definition (for reproducibility)
 7. **COS-7.1** - Quick start guide
 8. Remaining tickets based on need
 
