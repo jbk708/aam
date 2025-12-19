@@ -59,6 +59,9 @@ class SequencePredictor(nn.Module):
         asv_chunk_size: Optional[int] = None,
         mask_ratio: float = 0.0,
         mask_strategy: str = "random",
+        target_layer_norm: bool = True,
+        bounded_targets: bool = False,
+        learnable_output_scale: bool = False,
     ):
         """Initialize SequencePredictor.
 
@@ -104,6 +107,9 @@ class SequencePredictor(nn.Module):
             asv_chunk_size: Process ASVs in chunks to reduce memory (None = process all)
             mask_ratio: Fraction of nucleotide positions to mask for MAE training (0.0 = no masking)
             mask_strategy: Masking strategy ('random' or 'span')
+            target_layer_norm: Apply LayerNorm before target projection (default: True)
+            bounded_targets: Apply sigmoid to bound regression output to [0, 1] (default: False)
+            learnable_output_scale: Add learnable scale and bias after target projection (default: False)
         """
         super().__init__()
 
@@ -180,7 +186,33 @@ class SequencePredictor(nn.Module):
         )
         
         self.target_pooling = AttentionPooling(hidden_dim=self.embedding_dim)
+
+        self.target_layer_norm_enabled = target_layer_norm
+        self.bounded_targets = bounded_targets
+        self.learnable_output_scale = learnable_output_scale
+
+        if target_layer_norm:
+            self.target_norm = nn.LayerNorm(self.embedding_dim)
+        else:
+            self.target_norm = None
+
         self.target_head = nn.Linear(self.embedding_dim, out_dim)
+
+        if learnable_output_scale:
+            self.output_scale = nn.Parameter(torch.ones(out_dim))
+            self.output_bias = nn.Parameter(torch.zeros(out_dim))
+        else:
+            self.output_scale = None
+            self.output_bias = None
+
+        self._init_weights()
+
+    def _init_weights(self) -> None:
+        """Initialize weights for target head and count head."""
+        nn.init.xavier_uniform_(self.target_head.weight)
+        nn.init.zeros_(self.target_head.bias)
+        nn.init.xavier_uniform_(self.count_head.weight)
+        nn.init.zeros_(self.count_head.bias)
 
     def forward(
         self,
@@ -219,13 +251,18 @@ class SequencePredictor(nn.Module):
 
         target_embeddings = self.target_encoder(base_embeddings, mask=asv_mask)
         pooled_target = self.target_pooling(target_embeddings, mask=asv_mask)
+
+        if self.target_norm is not None:
+            pooled_target = self.target_norm(pooled_target)
+
         target_prediction = self.target_head(pooled_target)
+
+        if self.output_scale is not None:
+            target_prediction = target_prediction * self.output_scale + self.output_bias
 
         if self.is_classifier:
             target_prediction = nn.functional.log_softmax(target_prediction, dim=-1)
-        else:
-            # Bound regression output to [0, 1] using sigmoid
-            # This works with normalized targets and ensures stable training
+        elif self.bounded_targets:
             target_prediction = torch.sigmoid(target_prediction)
 
         result = {
