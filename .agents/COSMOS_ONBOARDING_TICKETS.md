@@ -41,8 +41,50 @@ module load craype-accel-amd-gfx942 # MI300A target
 
 ## Phase 1: Environment Setup
 
+### COS-1.0: Native ROCm Environment (No Container)
+**Priority:** HIGH | **Effort:** 1-2 hours | **Status:** Not Started
+
+**Problem:**
+For rapid development and debugging, containers add overhead. A native virtual environment is faster to iterate with.
+
+**Solution:**
+Use Cosmos modules + pip-installed PyTorch ROCm in a virtual environment.
+
+```bash
+# Setup (one-time)
+module load rocm/6.3.0
+module load cray-python/3.11.7
+
+python -m venv ~/aam-rocm-env
+source ~/aam-rocm-env/bin/activate
+
+# PyTorch for ROCm 6.x (check pytorch.org for latest)
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.2
+
+# AAM and dependencies
+cd /cosmos/vast/scratch/$USER/aam
+pip install -e ".[training]"
+```
+
+**Acceptance Criteria:**
+- [ ] Document module load sequence
+- [ ] Create `scripts/cosmos_native_setup.sh` setup script
+- [ ] Verify `torch.cuda.is_available()` returns True
+- [ ] Verify model forward pass works on MI300A
+- [ ] Run test suite on native environment
+- [ ] Document any missing system dependencies
+
+**Files:** `scripts/cosmos_native_setup.sh`, `docs/cosmos_setup.md`
+
+**Notes:**
+- Faster iteration than containers for development
+- Use containers (COS-1.1) for production/reproducibility
+- May need `--break-system-packages` if not using venv
+
+---
+
 ### COS-1.1: Create ROCm Singularity Container Definition
-**Priority:** HIGH | **Effort:** 4-6 hours | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** 4-6 hours | **Status:** Not Started
 
 **Problem:**
 Cosmos uses Singularity containers with ROCm. Need a container definition that includes PyTorch ROCm, all AAM dependencies, and is optimized for MI300A.
@@ -428,22 +470,25 @@ Verify and optimize attention implementation for ROCm.
 
 | Phase | Tickets | Est. Hours | Priority |
 |-------|---------|------------|----------|
-| 1: Environment Setup | 2 | 6-9 | **HIGH** |
+| 1: Environment Setup | 3 | 7-11 | **HIGH** |
 | 2: ROCm Compatibility | 2 | 7-10 | **HIGH** |
 | 3: SLURM Integration | 2 | 5-7 | **HIGH** |
 | 4: Multi-GPU Training | 2 | 16-24 | **HIGH/LOW** |
 | 5: Testing & Validation | 2 | 7-10 | **MEDIUM/HIGH** |
 | 6: Performance | 2 | 8-12 | **MEDIUM** |
 | 7: Documentation | 2 | 4-6 | **HIGH/MEDIUM** |
-| **Total** | **14** | **53-78** | |
+| **Total** | **15** | **54-80** | |
 
 ## Recommended Order
 
-1. **COS-1.1** - Container definition (blocks everything)
-2. **COS-1.2** - Environment setup
-3. **COS-2.1** - ROCm compatibility audit
-4. **COS-3.1** - SLURM job scripts
-5. **COS-5.2** - Numerical validation
+### Fast Path (Development)
+1. **COS-1.0** - Native environment setup (1-2 hours, start here!)
+2. **COS-2.1** - ROCm compatibility audit
+3. **COS-3.1** - SLURM job scripts
+4. **COS-5.2** - Numerical validation
+
+### Production Path (After Development)
+5. **COS-1.1** - Container definition (for reproducibility)
 6. **COS-4.1** - DDP for multi-GPU
 7. **COS-7.1** - Quick start guide
 8. Remaining tickets based on need
