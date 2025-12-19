@@ -25,7 +25,7 @@ pytest tests/ --cov=aam --cov-report=html
 ruff check aam/
 
 # Type check
-mypy aam/
+uvx ty check aam/
 
 # Pre-training (Stage 1: self-supervised)
 python -m aam.cli pretrain --table <biom_file> --unifrac-matrix <matrix.npy> --output-dir <dir>

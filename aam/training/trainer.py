@@ -5,7 +5,7 @@ import torch.nn as nn
 from torch.cuda.amp import GradScaler
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
-from typing import Any, Dict, Optional, Union, Tuple, List
+from typing import Any, Dict, Optional, Union, Tuple, List, cast
 import os
 from pathlib import Path
 import math
@@ -684,7 +684,7 @@ class Trainer:
 
         # Determine what metrics to show based on training mode
         is_pretraining = self._is_pretraining()
-        show_nuc_metrics = float(self.loss_fn.nuc_penalty) > 0
+        show_nuc_metrics = cast(float, self.loss_fn.nuc_penalty) > 0
         is_classifier = self._get_is_classifier()
 
         self.optimizer.zero_grad()
@@ -707,11 +707,11 @@ class Trainer:
                 # Get vocab_size from model (supports both SequenceEncoder and SequencePredictor)
                 vocab_size: int
                 if hasattr(self.model, "vocab_size"):
-                    vocab_size = int(self.model.vocab_size)
-                elif hasattr(self.model, "base_model") and hasattr(self.model.base_model, "vocab_size"):
-                    vocab_size = int(self.model.base_model.vocab_size)
-                elif hasattr(self.model, "sample_encoder") and hasattr(self.model.sample_encoder, "asv_encoder"):
-                    vocab_size = int(self.model.sample_encoder.asv_encoder.vocab_size)
+                    vocab_size = int(getattr(self.model, "vocab_size"))
+                elif hasattr(self.model, "base_model") and hasattr(getattr(self.model, "base_model"), "vocab_size"):
+                    vocab_size = int(getattr(getattr(self.model, "base_model"), "vocab_size"))
+                elif hasattr(self.model, "sample_encoder") and hasattr(getattr(self.model, "sample_encoder"), "asv_encoder"):
+                    vocab_size = int(getattr(getattr(getattr(self.model, "sample_encoder"), "asv_encoder"), "vocab_size"))
                 else:
                     # Default to 6 if we can't find it (new default with START_TOKEN)
                     vocab_size = 6
@@ -732,7 +732,7 @@ class Trainer:
                     print("ERROR: NaN in tokens before model forward", file=sys.stderr, flush=True)
                     raise ValueError("NaN values found in tokens")
 
-                return_nucleotides = "nucleotides" in targets or float(self.loss_fn.nuc_penalty) > 0
+                return_nucleotides = "nucleotides" in targets or cast(float, self.loss_fn.nuc_penalty) > 0
 
                 # Mixed precision autocast for forward pass
                 autocast_dtype = None
@@ -1039,7 +1039,7 @@ class Trainer:
         epoch: int = 0,
         num_epochs: int = 1,
         return_predictions: bool = False,
-    ) -> Union[Dict[str, float], Tuple[Dict[str, float], Optional[torch.Tensor], Optional[torch.Tensor]]]:
+    ) -> Union[Dict[str, float], Tuple[Dict[str, float], Dict[str, torch.Tensor], Dict[str, torch.Tensor]]]:
         """Run one validation epoch with streaming metrics computation.
 
         Uses O(batch) memory instead of O(dataset) by computing metrics incrementally.
@@ -1095,14 +1095,14 @@ class Trainer:
             running_avg_target_loss = 0.0
 
             # Determine what metrics to show based on training mode
-            show_nuc_metrics = float(self.loss_fn.nuc_penalty) > 0
+            show_nuc_metrics = cast(float, self.loss_fn.nuc_penalty) > 0
 
             for step, batch in enumerate(pbar, 1):
                 try:
                     tokens, targets = self._prepare_batch(batch)
                     last_targets = targets
 
-                    return_nucleotides = "nucleotides" in targets or float(self.loss_fn.nuc_penalty) > 0
+                    return_nucleotides = "nucleotides" in targets or cast(float, self.loss_fn.nuc_penalty) > 0
 
                     # Mixed precision autocast for validation forward pass
                     autocast_dtype = None
@@ -1453,7 +1453,9 @@ class Trainer:
                 )
                 history["train_loss"].append(train_losses["total_loss"])
 
-                val_results = None
+                val_results: Optional[Dict[str, float]] = None
+                val_predictions_dict: Dict[str, torch.Tensor] = {}
+                val_targets_dict: Dict[str, torch.Tensor] = {}
                 if val_loader is not None:
                     # Return predictions if saving plots or logging to TensorBoard
                     return_predictions = save_plots or self.writer is not None
@@ -1465,12 +1467,13 @@ class Trainer:
                         return_predictions=return_predictions,
                     )
                     if return_predictions:
-                        val_results, val_predictions_dict, val_targets_dict = val_output  # type: ignore[misc]
+                        val_results, val_predictions_dict, val_targets_dict = cast(
+                            Tuple[Dict[str, float], Dict[str, torch.Tensor], Dict[str, torch.Tensor]],
+                            val_output,
+                        )
                     else:
-                        val_results = val_output  # type: ignore[assignment]
-                        val_predictions_dict = {}  # type: ignore[assignment]
-                        val_targets_dict = {}  # type: ignore[assignment]
-                    val_loss = val_results["total_loss"]  # type: ignore[index]
+                        val_results = cast(Dict[str, float], val_output)
+                    val_loss = val_results["total_loss"]
                     history["val_loss"].append(val_loss)
 
                     # Log prediction figures to TensorBoard at every epoch
