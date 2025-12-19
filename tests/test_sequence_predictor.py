@@ -396,3 +396,215 @@ class TestSequencePredictor:
 
         assert result1["target_prediction"].shape == result2["target_prediction"].shape
         assert result1["count_prediction"].shape == result2["count_prediction"].shape
+
+
+class TestRegressorHeadOptions:
+    """Test suite for regressor head configuration options."""
+
+    @pytest.fixture
+    def sample_tokens(self):
+        """Create sample tokens for testing."""
+        from aam.data.tokenizer import SequenceTokenizer
+
+        batch_size = 2
+        num_asvs = 10
+        seq_len = 50
+        tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
+        tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
+        tokens[:, :, 40:] = 0
+        return tokens
+
+    def test_default_has_layer_norm(self, sample_tokens):
+        """Test that LayerNorm is enabled by default."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+        )
+        assert model.target_layer_norm_enabled is True
+        assert model.target_norm is not None
+        assert isinstance(model.target_norm, nn.LayerNorm)
+
+    def test_disable_layer_norm(self, sample_tokens):
+        """Test disabling LayerNorm."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            target_layer_norm=False,
+        )
+        assert model.target_layer_norm_enabled is False
+        assert model.target_norm is None
+
+    def test_default_unbounded_regression(self, sample_tokens):
+        """Test that regression is unbounded by default (no sigmoid)."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            is_classifier=False,
+        )
+        assert model.bounded_targets is False
+
+        result = model(sample_tokens)
+        predictions = result["target_prediction"]
+        # Unbounded: values can be outside [0, 1]
+        # With random weights, outputs won't be constrained
+        assert predictions.shape == (2, 1)
+
+    def test_bounded_targets_applies_sigmoid(self, sample_tokens):
+        """Test that bounded_targets applies sigmoid."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            is_classifier=False,
+            bounded_targets=True,
+        )
+        assert model.bounded_targets is True
+
+        result = model(sample_tokens)
+        predictions = result["target_prediction"]
+        # Bounded: values must be in [0, 1]
+        assert (predictions >= 0).all()
+        assert (predictions <= 1).all()
+
+    def test_learnable_output_scale_disabled_by_default(self):
+        """Test that learnable output scale is disabled by default."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+        )
+        assert model.learnable_output_scale is False
+        assert model.output_scale is None
+        assert model.output_bias is None
+
+    def test_learnable_output_scale_enabled(self, sample_tokens):
+        """Test learnable output scale when enabled."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=3,
+            learnable_output_scale=True,
+        )
+        assert model.learnable_output_scale is True
+        assert model.output_scale is not None
+        assert model.output_bias is not None
+        assert model.output_scale.shape == (3,)
+        assert model.output_bias.shape == (3,)
+        # Check initial values
+        assert torch.allclose(model.output_scale, torch.ones(3))
+        assert torch.allclose(model.output_bias, torch.zeros(3))
+
+        result = model(sample_tokens)
+        assert result["target_prediction"].shape == (2, 3)
+
+    def test_learnable_scale_affects_output(self, sample_tokens):
+        """Test that learnable scale/bias affect the output."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            learnable_output_scale=True,
+        )
+
+        result_before = model(sample_tokens)
+
+        # Modify scale and bias
+        with torch.no_grad():
+            model.output_scale.fill_(2.0)
+            model.output_bias.fill_(1.0)
+
+        result_after = model(sample_tokens)
+
+        # Output should be different
+        assert not torch.allclose(
+            result_before["target_prediction"],
+            result_after["target_prediction"],
+        )
+
+    def test_weight_initialization(self):
+        """Test that weights are initialized correctly."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+        )
+        # Check that biases are zero-initialized
+        assert torch.allclose(model.target_head.bias, torch.zeros_like(model.target_head.bias))
+        assert torch.allclose(model.count_head.bias, torch.zeros_like(model.count_head.bias))
+        # Check that weights are not all zeros (Xavier should give non-zero values)
+        assert model.target_head.weight.abs().sum() > 0
+        assert model.count_head.weight.abs().sum() > 0
+
+    def test_classifier_ignores_bounded_targets(self, sample_tokens):
+        """Test that classifier mode ignores bounded_targets flag."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=5,
+            is_classifier=True,
+            bounded_targets=True,  # Should be ignored for classifiers
+        )
+
+        result = model(sample_tokens)
+        predictions = result["target_prediction"]
+        # Classifier uses log_softmax, so values should be <= 0
+        assert (predictions <= 0).all()
+        # Sum of exp should be 1 (log_softmax property)
+        assert torch.allclose(predictions.exp().sum(dim=-1), torch.ones(2), atol=1e-5)
+
+    def test_all_options_combined(self, sample_tokens):
+        """Test using all regressor options together."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=2,
+            target_layer_norm=True,
+            bounded_targets=True,
+            learnable_output_scale=True,
+        )
+
+        assert model.target_norm is not None
+        assert model.bounded_targets is True
+        assert model.output_scale is not None
+
+        result = model(sample_tokens)
+        predictions = result["target_prediction"]
+        assert predictions.shape == (2, 2)
+        assert (predictions >= 0).all()
+        assert (predictions <= 1).all()
+
+    def test_gradients_flow_through_new_layers(self, sample_tokens):
+        """Test that gradients flow through new layers."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            target_layer_norm=True,
+            learnable_output_scale=True,
+        )
+
+        result = model(sample_tokens)
+        loss = result["target_prediction"].sum()
+        loss.backward()
+
+        # Check LayerNorm gradients
+        assert model.target_norm.weight.grad is not None
+        assert model.target_norm.bias.grad is not None
+
+        # Check output scale/bias gradients
+        assert model.output_scale.grad is not None
+        assert model.output_bias.grad is not None
