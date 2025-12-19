@@ -961,7 +961,7 @@ class Trainer:
         Returns:
             Dictionary with checkpoint info (epoch, best_val_loss, metrics)
         """
-        checkpoint = torch.load(filepath, map_location=self.device)
+        checkpoint = torch.load(filepath, map_location=self.device, weights_only=True)
 
         self.model.load_state_dict(checkpoint["model_state_dict"])
 
@@ -1120,7 +1120,7 @@ def load_pretrained_encoder(
     if logger is None:
         logger = logging_module.getLogger(__name__)
 
-    checkpoint = torch.load(checkpoint_path, map_location="cpu")
+    checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=True)
 
     if "model_state_dict" in checkpoint:
         state_dict = checkpoint["model_state_dict"]

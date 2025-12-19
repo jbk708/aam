@@ -51,7 +51,7 @@ def predict(
         device_obj = setup_device(device)
 
         logger.info("Loading model...")
-        checkpoint = torch.load(model, map_location=device_obj)
+        checkpoint = torch.load(model, map_location=device_obj, weights_only=True)
 
         if "model_state_dict" in checkpoint:
             model_state = checkpoint["model_state_dict"]
