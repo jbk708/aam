@@ -679,6 +679,12 @@ class Trainer:
         running_avg_unifrac_loss = 0.0
         running_avg_nuc_loss = 0.0
         running_avg_nuc_accuracy = 0.0
+        running_avg_target_loss = 0.0
+
+        # Determine what metrics to show based on training mode
+        is_pretraining = self._is_pretraining()
+        show_nuc_metrics = self.loss_fn.nuc_penalty > 0
+        is_classifier = self._get_is_classifier()
 
         self.optimizer.zero_grad()
 
@@ -920,6 +926,12 @@ class Trainer:
                             running_avg_unifrac_loss = unifrac_val.detach().item()
                         else:
                             running_avg_unifrac_loss = float(unifrac_val)
+                    if "target_loss" in losses:
+                        target_val = losses["target_loss"]
+                        if isinstance(target_val, torch.Tensor):
+                            running_avg_target_loss = target_val.detach().item()
+                        else:
+                            running_avg_target_loss = float(target_val)
                     if "nuc_loss" in losses:
                         nuc_val = losses["nuc_loss"]
                         if isinstance(nuc_val, torch.Tensor):
@@ -937,6 +949,13 @@ class Trainer:
                         else:
                             unifrac_val = float(unifrac_val)
                         running_avg_unifrac_loss = (running_avg_unifrac_loss * num_batches + unifrac_val) / (num_batches + 1)
+                    if "target_loss" in losses:
+                        target_val = losses["target_loss"]
+                        if isinstance(target_val, torch.Tensor):
+                            target_val = target_val.detach().item()
+                        else:
+                            target_val = float(target_val)
+                        running_avg_target_loss = (running_avg_target_loss * num_batches + target_val) / (num_batches + 1)
                     if "nuc_loss" in losses:
                         nuc_val = losses["nuc_loss"]
                         if isinstance(nuc_val, torch.Tensor):
@@ -954,17 +973,26 @@ class Trainer:
                     "TL": f"{running_avg_loss:.6f}" if running_avg_loss < 0.0001 else f"{running_avg_loss:.4f}",
                     "LR": f"{current_lr:.2e}",
                 }
+                # Show task-specific loss (RL=Regression Loss, CL=Classification Loss) during fine-tuning
+                if not is_pretraining and "target_loss" in losses:
+                    loss_label = "CL" if is_classifier else "RL"
+                    postfix_dict[loss_label] = (
+                        f"{running_avg_target_loss:.6f}"
+                        if running_avg_target_loss < 0.0001
+                        else f"{running_avg_target_loss:.4f}"
+                    )
                 if "unifrac_loss" in losses:
                     postfix_dict["UL"] = (
                         f"{running_avg_unifrac_loss:.6f}"
                         if running_avg_unifrac_loss < 0.0001
                         else f"{running_avg_unifrac_loss:.4f}"
                     )
-                if "nuc_loss" in losses:
+                # Only show NL/NA when nucleotide loss is contributing to training
+                if show_nuc_metrics and "nuc_loss" in losses:
                     postfix_dict["NL"] = (
                         f"{running_avg_nuc_loss:.6f}" if running_avg_nuc_loss < 0.0001 else f"{running_avg_nuc_loss:.4f}"
                     )
-                if "nuc_accuracy" in losses:
+                if show_nuc_metrics and "nuc_accuracy" in losses:
                     postfix_dict["NA"] = f"{running_avg_nuc_accuracy:.2%}"
 
                 pbar.set_postfix(postfix_dict)
@@ -1062,6 +1090,10 @@ class Trainer:
             running_avg_unifrac_loss = 0.0
             running_avg_nuc_loss = 0.0
             running_avg_nuc_accuracy = 0.0
+            running_avg_target_loss = 0.0
+
+            # Determine what metrics to show based on training mode
+            show_nuc_metrics = self.loss_fn.nuc_penalty > 0
 
             for step, batch in enumerate(pbar, 1):
                 try:
@@ -1130,6 +1162,11 @@ class Trainer:
                             running_avg_unifrac_loss = (
                                 unifrac_val.detach().item() if isinstance(unifrac_val, torch.Tensor) else float(unifrac_val)
                             )
+                        if "target_loss" in losses:
+                            target_val = losses["target_loss"]
+                            running_avg_target_loss = (
+                                target_val.detach().item() if isinstance(target_val, torch.Tensor) else float(target_val)
+                            )
                         if "nuc_loss" in losses:
                             nuc_val = losses["nuc_loss"]
                             running_avg_nuc_loss = (
@@ -1148,6 +1185,12 @@ class Trainer:
                             running_avg_unifrac_loss = (running_avg_unifrac_loss * num_batches + unifrac_val) / (
                                 num_batches + 1
                             )
+                        if "target_loss" in losses:
+                            target_val = losses["target_loss"]
+                            target_val = (
+                                target_val.detach().item() if isinstance(target_val, torch.Tensor) else float(target_val)
+                            )
+                            running_avg_target_loss = (running_avg_target_loss * num_batches + target_val) / (num_batches + 1)
                         if "nuc_loss" in losses:
                             nuc_val = losses["nuc_loss"]
                             nuc_val = nuc_val.detach().item() if isinstance(nuc_val, torch.Tensor) else float(nuc_val)
@@ -1157,17 +1200,26 @@ class Trainer:
                     postfix_dict = {
                         "TL": f"{running_avg_loss:.6f}" if running_avg_loss < 0.0001 else f"{running_avg_loss:.4f}",
                     }
+                    # Show task-specific loss (RL=Regression Loss, CL=Classification Loss) during fine-tuning
+                    if not is_pretraining and "target_loss" in losses:
+                        loss_label = "CL" if is_classifier else "RL"
+                        postfix_dict[loss_label] = (
+                            f"{running_avg_target_loss:.6f}"
+                            if running_avg_target_loss < 0.0001
+                            else f"{running_avg_target_loss:.4f}"
+                        )
                     if "unifrac_loss" in losses:
                         postfix_dict["UL"] = (
                             f"{running_avg_unifrac_loss:.6f}"
                             if running_avg_unifrac_loss < 0.0001
                             else f"{running_avg_unifrac_loss:.4f}"
                         )
-                    if "nuc_loss" in losses:
+                    # Only show NL/NA when nucleotide loss is contributing to training
+                    if show_nuc_metrics and "nuc_loss" in losses:
                         postfix_dict["NL"] = (
                             f"{running_avg_nuc_loss:.6f}" if running_avg_nuc_loss < 0.0001 else f"{running_avg_nuc_loss:.4f}"
                         )
-                    if "nuc_predictions" in outputs:
+                    if show_nuc_metrics and "nuc_predictions" in outputs:
                         postfix_dict["NA"] = f"{running_avg_nuc_accuracy:.2%}"
 
                     pbar.set_postfix(postfix_dict)

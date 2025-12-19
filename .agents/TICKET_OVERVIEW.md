@@ -1,6 +1,6 @@
 # Ticket Overview
 
-**Status:** 19 outstanding tickets (~88-123 hours)
+**Status:** 18 outstanding tickets (~85-119 hours)
 
 ## Quick Links
 - **Outstanding work:** `PYTORCH_PORTING_TICKETS.md`
@@ -9,8 +9,8 @@
 
 ## Outstanding by Priority
 
-### HIGH (1)
-- PYT-18.4: Configurable FFN Intermediate Size
+### HIGH (0)
+(none)
 
 ### MEDIUM (1)
 - PYT-10.6: Multi-GPU Training (DDP)
@@ -25,7 +25,9 @@
 - Phase 16: Benchmarking, Error Analysis
 - Phase 17: Docs, Tutorials, ONNX, Docker
 
-## Recently Completed
+## Recently Completed/Cancelled
+- PYT-21.4: Update Training Progress Bar for Fine-Tuning (hide NL/NA, show RL/CL)
+- PYT-18.4: Configurable FFN Intermediate Size (cancelled - memory not an issue)
 - PYT-18.3: Skip Nucleotide Predictions During Inference (already implemented)
 - PYT-12.3: Caching Mechanisms (sequence tokenization cache)
 - PYT-18.2: Streaming Validation Metrics (O(batch) memory)
@@ -34,6 +36,5 @@
 - PYT-18.1: Memory-Efficient Defaults
 
 ## Recommended Next Steps
-1. **PYT-18.4** - Configurable FFN intermediate size
+1. **PYT-21.3** - Regressor head optimization
 2. **PYT-10.6** - Multi-GPU training (if hardware available)
-3. **PYT-21.3** - Regressor head optimization
