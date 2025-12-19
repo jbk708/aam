@@ -141,6 +141,16 @@ python -m aam.cli pretrain \
   --token-limit 256
 ```
 
+### SLURM/HPC Systems
+
+When using `--compile-model` on SLURM-based HPC systems, load a GCC module before running:
+
+```bash
+module load gcc
+```
+
+Without this, `torch.compile()` may fail with `fatal error: stdatomic.h: No such file or directory` because the system GCC lacks required headers for Triton compilation.
+
 ### Learning Rate Schedulers
 
 | Scheduler | Use Case |
