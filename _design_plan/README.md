@@ -8,10 +8,9 @@ Design documents for AAM (Attention All Microbes) PyTorch implementation. All co
 
 ## Document Structure
 
-- **00-13**: Core implementation (all complete)
-- **14**: Phase 8 training features (complete)
-- **19-22**: Analysis and fixes (complete)
+- **00-14**: Core implementation (all complete)
 - **FUTURE_WORK.md**: Outstanding enhancements
+- **archive/**: Historical analysis documents
 
 See [INDEX.md](INDEX.md) for navigation.
 
@@ -33,4 +32,4 @@ python -m aam.cli train --help
 
 ## Outstanding Work
 
-See `.agents/PYTORCH_PORTING_TICKETS.md` (17 tickets, ~80-115 hours)
+See `.agents/CLEANUP_TICKETS.md` for code cleanup (1 remaining ticket).
