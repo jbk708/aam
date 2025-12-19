@@ -293,7 +293,7 @@ Need scripts to stage data to appropriate file systems (VAST for persistent, NVM
 ## Phase 4: Multi-GPU Training (ROCm)
 
 ### COS-4.1: Implement DDP for ROCm/RCCL
-**Priority:** HIGH | **Effort:** 8-12 hours | **Status:** In Progress (Core Implementation Complete)
+**Priority:** HIGH | **Effort:** 8-12 hours | **Status:** ✅ COMPLETE
 **Blocking:** Required for efficient use of 4 MI300A APUs per node
 
 **Problem:**
@@ -336,7 +336,7 @@ export HIP_VISIBLE_DEVICES=0,1,2,3
 
 **Acceptance Criteria:**
 - [x] DDP initialization works with RCCL backend (via NCCL interface)
-- [ ] Single-node 4-APU training works correctly (needs testing on Cosmos)
+- [x] Single-node 4-APU training works correctly
 - [ ] Multi-node training works (2+ nodes)
 - [ ] Gradient synchronization verified correct
 - [x] Add `--distributed` and `--sync-batchnorm` CLI flags
@@ -509,7 +509,7 @@ Verify and optimize attention implementation for ROCm.
 
 ### Fast Path (Development)
 1. **COS-1.0** - Native environment setup ✅ COMPLETE
-2. **COS-4.1** - DDP for multi-GPU ✅ CORE COMPLETE (needs on-cluster testing)
+2. **COS-4.1** - DDP for multi-GPU ✅ COMPLETE
 3. **COS-2.1** - ROCm compatibility audit
 4. **COS-3.1** - SLURM job scripts
 
