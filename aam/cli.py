@@ -929,6 +929,16 @@ def train(
     is_flag=True,
     help="Disable sequence tokenization cache (enabled by default for faster training)",
 )
+@click.option(
+    "--distributed",
+    is_flag=True,
+    help="Enable distributed training with DDP. Use with torchrun: torchrun --nproc_per_node=4 -m aam.cli pretrain --distributed ...",
+)
+@click.option(
+    "--sync-batchnorm",
+    is_flag=True,
+    help="Convert BatchNorm to SyncBatchNorm for distributed training (recommended for small batch sizes)",
+)
 def pretrain(
     table: str,
     unifrac_matrix: str,
@@ -973,6 +983,8 @@ def pretrain(
     attn_implementation: str,
     asv_chunk_size: Optional[int],
     no_sequence_cache: bool,
+    distributed: bool,
+    sync_batchnorm: bool,
 ):
     """Pre-train SequenceEncoder on UniFrac and nucleotide prediction (self-supervised)."""
     try:
@@ -1000,7 +1012,17 @@ def pretrain(
         )
 
         setup_expandable_segments(use_expandable_segments)
-        device_obj = setup_device(device)
+
+        # Setup distributed training if enabled
+        train_sampler = None
+        val_sampler = None
+        if distributed:
+            rank, world_size, device_obj = setup_distributed(backend="nccl")
+            if is_main_process():
+                logger.info(f"Distributed training enabled: rank {rank}/{world_size}")
+        else:
+            device_obj = setup_device(device)
+
         setup_random_seed(seed)
 
         if gradient_accumulation_steps < 1:
@@ -1128,27 +1150,48 @@ def pretrain(
             all_sample_ids=None,
         )
 
-        train_loader = DataLoader(
-            train_dataset,
-            batch_size=batch_size,
-            shuffle=True,
-            num_workers=num_workers,
-            collate_fn=train_collate,
-            drop_last=True,
-            prefetch_factor=2 if num_workers > 0 else None,
-            pin_memory=device == "cuda",
-        )
+        # Create dataloaders (with distributed sampler if distributed)
+        if distributed:
+            train_loader, train_sampler = create_distributed_dataloader(
+                train_dataset,
+                batch_size=batch_size,
+                shuffle=True,
+                num_workers=num_workers,
+                pin_memory=True,
+                drop_last=True,
+                collate_fn=train_collate,
+            )
+            val_loader, val_sampler = create_distributed_dataloader(
+                val_dataset,
+                batch_size=batch_size,
+                shuffle=False,
+                num_workers=num_workers,
+                pin_memory=True,
+                drop_last=True,
+                collate_fn=val_collate,
+            )
+        else:
+            train_loader = DataLoader(
+                train_dataset,
+                batch_size=batch_size,
+                shuffle=True,
+                num_workers=num_workers,
+                collate_fn=train_collate,
+                drop_last=True,
+                prefetch_factor=2 if num_workers > 0 else None,
+                pin_memory=device == "cuda",
+            )
 
-        val_loader = DataLoader(
-            val_dataset,
-            batch_size=batch_size,
-            shuffle=False,
-            num_workers=num_workers,
-            collate_fn=val_collate,
-            drop_last=True,
-            prefetch_factor=2 if num_workers > 0 else None,
-            pin_memory=device == "cuda",
-        )
+            val_loader = DataLoader(
+                val_dataset,
+                batch_size=batch_size,
+                shuffle=False,
+                num_workers=num_workers,
+                collate_fn=val_collate,
+                drop_last=True,
+                prefetch_factor=2 if num_workers > 0 else None,
+                pin_memory=device == "cuda",
+            )
 
         logger.info("Creating model...")
         # Convert asv_chunk_size=0 to None (disabled)
@@ -1183,6 +1226,22 @@ def pretrain(
             target_loss_type="huber",  # Default for pretraining (not used, but consistent)
         )
 
+        # Handle distributed training setup
+        if distributed:
+            # Move model to device
+            model = model.to(device_obj)
+
+            # Convert BatchNorm to SyncBatchNorm if requested
+            if sync_batchnorm:
+                model = sync_batch_norm(model)
+                if is_main_process():
+                    logger.info("Converted BatchNorm to SyncBatchNorm for distributed training")
+
+            # Wrap model with DDP
+            model = wrap_model_ddp(model, device_id=get_local_rank())
+            if is_main_process():
+                logger.info("Model wrapped with DistributedDataParallel")
+
         num_training_steps = len(train_loader) * epochs
         optimizer_obj = create_optimizer(model, optimizer_type=optimizer, lr=lr, weight_decay=weight_decay, freeze_base=False)
         # Build scheduler kwargs based on scheduler type and provided options
@@ -1216,6 +1275,9 @@ def pretrain(
         # Normalize mixed_precision: "none" -> None
         mixed_precision_normalized = None if mixed_precision == "none" else mixed_precision
 
+        # Only log to TensorBoard on main process in distributed mode
+        tensorboard_dir = str(output_path) if (not distributed or is_main_process()) else None
+
         trainer = Trainer(
             model=model,
             loss_fn=loss_fn,
@@ -1223,7 +1285,7 @@ def pretrain(
             scheduler=scheduler_obj,
             device=device_obj,
             freeze_base=False,
-            tensorboard_dir=str(output_path),
+            tensorboard_dir=tensorboard_dir,
             max_grad_norm=max_grad_norm,
             mixed_precision=mixed_precision_normalized,
             compile_model=compile_model,
@@ -1251,15 +1313,24 @@ def pretrain(
         best_val_loss = min(history["val_loss"]) if history["val_loss"] else float("inf")
         logger.info(f"Best validation loss: {best_val_loss}")
 
-        final_model_path = output_path / "pretrained_encoder.pt"
-        trainer.save_checkpoint(str(final_model_path), epoch=epochs - 1, best_val_loss=best_val_loss, metrics=history)
-        logger.info(f"Pre-trained encoder saved to {final_model_path}")
+        # Only save final model on main process in distributed mode
+        if not distributed or is_main_process():
+            final_model_path = output_path / "pretrained_encoder.pt"
+            trainer.save_checkpoint(str(final_model_path), epoch=epochs - 1, best_val_loss=best_val_loss, metrics=history)
+            logger.info(f"Pre-trained encoder saved to {final_model_path}")
+
+        # Cleanup distributed training
+        if distributed:
+            cleanup_distributed()
 
     except Exception as e:
         if "logger" in locals():
             logger.error(f"Pre-training failed: {e}", exc_info=True)
         else:
             logging.error(f"Pre-training failed: {e}", exc_info=True)
+        # Cleanup distributed training on error
+        if distributed:
+            cleanup_distributed()
         raise click.ClickException(str(e))
 
 
