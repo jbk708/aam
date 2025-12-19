@@ -182,6 +182,21 @@ from aam.cli.utils import (
     is_flag=True,
     help="Convert BatchNorm to SyncBatchNorm for distributed training (recommended for small batch sizes)",
 )
+@click.option(
+    "--target-layer-norm/--no-target-layer-norm",
+    default=True,
+    help="Apply LayerNorm before target projection (default: enabled)",
+)
+@click.option(
+    "--bounded-targets",
+    is_flag=True,
+    help="Apply sigmoid to bound regression output to [0, 1] (default: unbounded)",
+)
+@click.option(
+    "--learnable-output-scale",
+    is_flag=True,
+    help="Add learnable scale and bias after target projection",
+)
 def train(
     table: str,
     unifrac_matrix: str,
@@ -238,6 +253,9 @@ def train(
     no_sequence_cache: bool,
     distributed: bool,
     sync_batchnorm: bool,
+    target_layer_norm: bool,
+    bounded_targets: bool,
+    learnable_output_scale: bool,
 ):
     """Train AAM model on microbial sequencing data."""
     try:
@@ -535,6 +553,9 @@ def train(
             asv_chunk_size=effective_asv_chunk_size,
             mask_ratio=nuc_mask_ratio,
             mask_strategy=nuc_mask_strategy,
+            target_layer_norm=target_layer_norm,
+            bounded_targets=bounded_targets,
+            learnable_output_scale=learnable_output_scale,
         )
 
         log_model_summary(model, logger)
