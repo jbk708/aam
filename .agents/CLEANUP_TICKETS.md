@@ -1,7 +1,7 @@
 # Code Cleanup Tickets
 
 **Created:** 2025-12-18
-**Status:** 4/6 complete (~7-10 hours remaining)
+**Status:** 5/6 complete (~3-4 hours remaining)
 
 This file contains code cleanup and technical debt tickets.
 
@@ -125,7 +125,7 @@ Fix type errors identified by `ty`. Most are likely:
 ---
 
 ### CLN-5: Extract CLI Helper Modules
-**Priority:** LOW | **Effort:** 3-4 hours | **Status:** Not Started
+**Priority:** LOW | **Effort:** 3-4 hours | **Status:** ✅ COMPLETE (2025-12-19)
 
 **Problem:**
 `cli.py` is 1483 lines with mixed concerns (setup utilities, train command, pretrain command, predict command).
@@ -142,14 +142,19 @@ aam/cli/
 ```
 
 **Acceptance Criteria:**
-- [ ] Create `aam/cli/` package structure
-- [ ] Extract utility functions to `utils.py`
-- [ ] Extract train command to `train.py`
-- [ ] Extract pretrain command to `pretrain.py`
-- [ ] Extract predict command to `predict.py`
-- [ ] Update imports throughout codebase
-- [ ] CLI still works: `python -m aam.cli train --help`
-- [ ] All tests pass
+- [x] Create `aam/cli/` package structure
+- [x] Extract utility functions to `utils.py`
+- [x] Extract train command to `train.py`
+- [x] Extract pretrain command to `pretrain.py`
+- [x] Extract predict command to `predict.py`
+- [x] Update imports throughout codebase
+- [x] CLI still works: `python -m aam.cli train --help`
+- [x] All tests pass
+
+**Notes:**
+- Refactored 1448-line monolithic cli.py into modular package
+- Updated test_cli.py patch paths to match new module structure
+- Added __main__.py for python -m aam.cli support
 
 ---
 
