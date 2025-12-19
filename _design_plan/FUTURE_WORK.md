@@ -3,40 +3,78 @@
 ## Completed
 
 - All core components (data pipeline, models, training, CLI)
-- Phase 8: Feature enhancements
-- Phase 9: UniFrac underfitting fixes
-- Phase 10: Performance optimizations (mixed precision, compilation, SDPA)
-- Phase 11: Critical fixes (target normalization, metadata handling, LR scheduling)
+- Memory-efficient defaults (gradient checkpointing, mem_efficient attention, ASV chunking)
+- Mixed precision training (fp16, bf16)
+- Model compilation (torch.compile)
+- Pre-computed UniFrac matrix loading
+- Modular CLI package structure
 
-## Outstanding (~80-115 hours)
+## Outstanding
 
-See `.agents/PYTORCH_PORTING_TICKETS.md` for detailed tickets.
+See `.agents/CLEANUP_TICKETS.md` for code cleanup work (1 remaining).
 
-### Performance (Phase 10, 12)
-- Multi-GPU training (DDP)
-- FSDP for large models
-- Batch size optimization
-- Caching mechanisms
+### Performance Optimizations
 
-### Model Improvements (Phase 13)
-- Attention visualization
-- Feature importance analysis
-- Additional encoder types (Bray-Curtis, Jaccard)
+**Multi-GPU Training (DDP)** - 8-12 hours
+- Distributed data parallel for multi-GPU training
+- Synchronization of batch normalization
 
-### Data Pipeline (Phase 14)
-- Streaming data loading
-- Data augmentation
+**FSDP** - 12-16 hours
+- Fully sharded data parallel for large models
 
-### Training (Phase 15)
-- Experiment tracking (W&B, MLflow)
-- Hyperparameter optimization (Optuna)
+**Streaming Validation** - 3-4 hours
+- Compute metrics incrementally instead of accumulating all predictions
+- Reduce validation memory from O(dataset) to O(batch)
 
-### Evaluation (Phase 16)
-- Benchmarking suite
-- Error analysis tools
+### Memory Optimizations
 
-### Documentation & Deployment (Phase 17)
-- Sphinx API docs
-- Tutorial notebooks
-- ONNX export
-- Docker containerization
+**Configurable FFN Ratio** - 3-4 hours
+- Add `--ffn-ratio` flag (default: 4, can reduce to 2)
+- Trade memory for capacity
+
+**Lazy Embedding Computation** - 4-6 hours
+- Only compute/return sample_embeddings when needed
+- Add `return_intermediates` flag
+
+### Model Improvements
+
+**Attention Visualization** - 4-6 hours
+- Tools to visualize attention patterns
+
+**Additional Metrics** - 4-6 hours
+- Bray-Curtis, Jaccard distance support
+
+### Data Pipeline
+
+**Streaming Data Loading** - 8-12 hours
+- Handle datasets larger than memory
+
+**Data Augmentation** - 4-6 hours
+- Sequence augmentation strategies
+
+### Experiment Tracking
+
+**W&B / MLflow Integration** - 4-6 hours
+- Experiment logging and comparison
+
+**Hyperparameter Optimization** - 6-8 hours
+- Optuna integration for automated tuning
+
+### Documentation & Deployment
+
+**Sphinx API Docs** - 4-6 hours
+- Auto-generated API documentation
+
+**ONNX Export** - 4-6 hours
+- Export models for inference optimization
+
+**Docker Containerization** - 2-4 hours
+- Reproducible deployment environment
+
+## Historical Analysis
+
+See `archive/` for completed analysis documents:
+- `19_unifrac_underfitting_analysis.md` - UniFrac architecture fixes
+- `20_optimization_plan.md` - Performance optimization tickets
+- `22_sigmoid_saturation_fix.md` - Distance normalization fix
+- `23_memory_optimization_plan.md` - Memory optimization proposals

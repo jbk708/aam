@@ -1,29 +1,67 @@
 # CLI Interface
 
-**Status:** ✅ Completed (Updated in PYT-11.4)
+**Status:** Complete
 
 ## Overview
-Command-line interface for training and inference. Implemented in `aam/cli.py`.
+Modular command-line interface for training and inference. Implemented in `aam/cli/` package.
+
+## Package Structure
+
+```
+aam/cli/
+├── __init__.py      # Main CLI group, command registration
+├── __main__.py      # Entry point for python -m aam.cli
+├── utils.py         # Shared utilities (setup_logging, setup_device, etc.)
+├── train.py         # Train command
+├── pretrain.py      # Pretrain command
+└── predict.py       # Predict command
+```
 
 ## Commands
-- **Training**: Full training with metadata targets
-- **Pre-training**: Stage 1 self-supervised training (UniFrac + nucleotide prediction)
-- **Inference**: Generate predictions from trained model
 
-## Features
+### train
+Full training with metadata targets.
+```bash
+python -m aam.cli train \
+  --table <biom_file> \
+  --unifrac-matrix <matrix.npy> \
+  --metadata <metadata.tsv> \
+  --metadata-column <target_column> \
+  --output-dir <output_dir>
+```
+
+### pretrain
+Stage 1 self-supervised training (UniFrac + nucleotide prediction).
+```bash
+python -m aam.cli pretrain \
+  --table <biom_file> \
+  --unifrac-matrix <matrix.npy> \
+  --output-dir <output_dir>
+```
+
+### predict
+Generate predictions from trained model.
+```bash
+python -m aam.cli predict \
+  --model <checkpoint.pt> \
+  --table <biom_file> \
+  --output <predictions.tsv>
+```
+
+## Key Features
 - Comprehensive argument validation and error handling
-- Support for transfer learning (pretrained encoder, freeze base)
+- Transfer learning support (pretrained encoder, freeze base)
 - Memory optimization options (gradient accumulation, chunked processing)
 - TensorBoard logging integration
 - Reproducibility support (random seed)
-- **Pre-computed UniFrac matrices**: Uses `--unifrac-matrix` to load pre-generated matrices (PYT-11.4)
+- Pre-computed UniFrac matrices via `--unifrac-matrix`
 
-## Implementation
-- **CLI**: `aam/cli.py` using `click` framework
-- **UniFrac Loading**: Uses `UniFracLoader` to load pre-computed matrices from disk
-- **Testing**: Comprehensive unit tests (updated for pre-computed matrices)
+## Shared Utilities (utils.py)
+- `setup_logging()` - Configure logging to console and file
+- `setup_device()` - Setup CPU or CUDA device
+- `setup_random_seed()` - Set seeds for reproducibility
+- `validate_file_path()` - Validate file existence
+- `validate_arguments()` - Validate CLI arguments
 
-## Changes in PYT-11.4
-- **Removed**: `--tree`, `--lazy-unifrac`, `--stripe-mode`, `--unifrac-threads`, `--prune-tree` flags
-- **Added**: `--unifrac-matrix` parameter (required for training/pretrain)
-- **Deprecated**: All UniFrac computation logic (users should generate matrices using unifrac-binaries)
+## Testing
+Comprehensive unit tests in `tests/test_cli.py` (63 tests, all passing).

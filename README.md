@@ -187,7 +187,7 @@ pytest tests/ -v                           # Run all tests
 pytest tests/ --cov=aam --cov-report=html  # With coverage
 ```
 
-611 tests covering data pipeline, models, training, and end-to-end workflows.
+635 tests covering data pipeline, models, training, and end-to-end workflows.
 
 ## Architecture
 

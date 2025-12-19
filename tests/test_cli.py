@@ -12,16 +12,18 @@ import inspect
 import pandas as pd
 
 from aam.cli import (
+    cli,
+)
+from aam.cli.utils import (
     setup_logging,
     setup_device,
     setup_random_seed,
     validate_file_path,
     validate_arguments,
-    cli,
-    train,
-    predict,
-    pretrain,
 )
+from aam.cli.train import train
+from aam.cli.pretrain import pretrain
+from aam.cli.predict import predict
 
 
 @pytest.fixture
@@ -414,16 +416,16 @@ class TestCLIIntegration:
         """Create CLI runner."""
         return CliRunner()
 
-    @patch("aam.cli.setup_logging")
-    @patch("aam.cli.setup_device")
-    @patch("aam.cli.setup_random_seed")
-    @patch("aam.cli.validate_file_path")
-    @patch("aam.cli.validate_arguments")
-    @patch("aam.data.biom_loader.BIOMLoader")
-    @patch("aam.data.unifrac_loader.UniFracLoader")
-    @patch("aam.data.dataset.ASVDataset")
-    @patch("aam.models.sequence_predictor.SequencePredictor")
-    @patch("aam.training.trainer.Trainer")
+    @patch("aam.cli.train.setup_logging")
+    @patch("aam.cli.train.setup_device")
+    @patch("aam.cli.train.setup_random_seed")
+    @patch("aam.cli.train.validate_file_path")
+    @patch("aam.cli.train.validate_arguments")
+    @patch("aam.cli.train.BIOMLoader")
+    @patch("aam.cli.train.UniFracLoader")
+    @patch("aam.cli.train.ASVDataset")
+    @patch("aam.cli.train.SequencePredictor")
+    @patch("aam.cli.train.Trainer")
     def test_train_command_integration(
         self,
         mock_trainer,
@@ -499,16 +501,16 @@ class TestCLIIntegration:
         assert mock_validate_file.called
         assert mock_validate_args.called
 
-    @patch("aam.cli.setup_logging")
-    @patch("aam.cli.setup_device")
-    @patch("aam.cli.setup_random_seed")
-    @patch("aam.cli.validate_file_path")
-    @patch("aam.cli.validate_arguments")
-    @patch("aam.data.biom_loader.BIOMLoader")
-    @patch("aam.data.unifrac_loader.UniFracLoader")
-    @patch("aam.data.dataset.ASVDataset")
-    @patch("aam.models.sequence_encoder.SequenceEncoder")
-    @patch("aam.training.trainer.Trainer")
+    @patch("aam.cli.pretrain.setup_logging")
+    @patch("aam.cli.pretrain.setup_device")
+    @patch("aam.cli.pretrain.setup_random_seed")
+    @patch("aam.cli.pretrain.validate_file_path")
+    @patch("aam.cli.pretrain.validate_arguments")
+    @patch("aam.cli.pretrain.BIOMLoader")
+    @patch("aam.cli.pretrain.UniFracLoader")
+    @patch("aam.cli.pretrain.ASVDataset")
+    @patch("aam.cli.pretrain.SequenceEncoder")
+    @patch("aam.cli.pretrain.Trainer")
     def test_pretrain_command_integration(
         self,
         mock_trainer,
@@ -589,13 +591,13 @@ class TestCLIIntegration:
         assert mock_validate_file.called
         assert mock_validate_args.called
 
-    @patch("aam.cli.setup_device")
-    @patch("aam.cli.validate_file_path")
-    @patch("torch.load")
-    @patch("aam.cli.SequencePredictor")
-    @patch("aam.cli.BIOMLoader")
-    @patch("aam.cli.ASVDataset")
-    @patch("aam.cli.DataLoader")
+    @patch("aam.cli.predict.setup_device")
+    @patch("aam.cli.predict.validate_file_path")
+    @patch("aam.cli.predict.torch.load")
+    @patch("aam.cli.predict.SequencePredictor")
+    @patch("aam.cli.predict.BIOMLoader")
+    @patch("aam.cli.predict.ASVDataset")
+    @patch("aam.cli.predict.DataLoader")
     def test_predict_command_integration(
         self,
         mock_dataloader,
@@ -675,22 +677,22 @@ class TestCLIIntegration:
                     mock_cudnn.deterministic = True
                     mock_cudnn.benchmark = False
 
-    @patch("aam.cli.pd.read_csv")
-    @patch("aam.cli.setup_logging")
-    @patch("aam.cli.setup_device")
-    @patch("aam.cli.setup_random_seed")
-    @patch("aam.cli.validate_file_path")
-    @patch("aam.cli.validate_arguments")
-    @patch("aam.cli.BIOMLoader")
-    @patch("aam.cli.UniFracLoader")
-    @patch("aam.cli.train_test_split")
-    @patch("aam.cli.ASVDataset")
-    @patch("aam.cli.DataLoader")
-    @patch("aam.cli.SequencePredictor")
-    @patch("aam.cli.create_optimizer")
-    @patch("aam.cli.create_scheduler")
-    @patch("aam.cli.MultiTaskLoss")
-    @patch("aam.cli.Trainer")
+    @patch("aam.cli.train.pd.read_csv")
+    @patch("aam.cli.train.setup_logging")
+    @patch("aam.cli.train.setup_device")
+    @patch("aam.cli.train.setup_random_seed")
+    @patch("aam.cli.train.validate_file_path")
+    @patch("aam.cli.train.validate_arguments")
+    @patch("aam.cli.train.BIOMLoader")
+    @patch("aam.cli.train.UniFracLoader")
+    @patch("aam.cli.train.train_test_split")
+    @patch("aam.cli.train.ASVDataset")
+    @patch("aam.cli.train.DataLoader")
+    @patch("aam.cli.train.SequencePredictor")
+    @patch("aam.cli.train.create_optimizer")
+    @patch("aam.cli.train.create_scheduler")
+    @patch("aam.cli.train.MultiTaskLoss")
+    @patch("aam.cli.train.Trainer")
     def test_train_command_full_flow(
         self,
         mock_trainer_class,
@@ -812,14 +814,14 @@ class TestCLIIntegration:
         assert mock_model_class.called
         assert mock_trainer_instance.train.called
 
-    @patch("aam.cli.setup_device")
-    @patch("aam.cli.validate_file_path")
-    @patch("torch.load")
-    @patch("aam.cli.SequencePredictor")
-    @patch("aam.cli.BIOMLoader")
-    @patch("aam.cli.ASVDataset")
-    @patch("aam.cli.DataLoader")
-    @patch("aam.cli.Path")
+    @patch("aam.cli.predict.setup_device")
+    @patch("aam.cli.predict.validate_file_path")
+    @patch("aam.cli.predict.torch.load")
+    @patch("aam.cli.predict.SequencePredictor")
+    @patch("aam.cli.predict.BIOMLoader")
+    @patch("aam.cli.predict.ASVDataset")
+    @patch("aam.cli.predict.DataLoader")
+    @patch("aam.cli.predict.Path")
     def test_predict_command_with_batches(
         self,
         mock_path_class,
@@ -897,7 +899,7 @@ class TestCLIIntegration:
         mock_output2 = {"target_prediction": mock_tensor2}
         mock_model_instance.side_effect = [mock_output1, mock_output2]
 
-        with patch("aam.cli.pd.DataFrame") as mock_df_class:
+        with patch("aam.cli.predict.pd.DataFrame") as mock_df_class:
             mock_df_instance = MagicMock()
             mock_df_class.return_value = mock_df_instance
 
@@ -918,13 +920,13 @@ class TestCLIIntegration:
             assert mock_model_instance.call_count == 2
             assert mock_df_instance.to_csv.called
 
-    @patch("aam.cli.setup_device")
-    @patch("aam.cli.validate_file_path")
-    @patch("torch.load")
-    @patch("aam.cli.SequencePredictor")
-    @patch("aam.cli.BIOMLoader")
-    @patch("aam.cli.ASVDataset")
-    @patch("aam.cli.DataLoader")
+    @patch("aam.cli.predict.setup_device")
+    @patch("aam.cli.predict.validate_file_path")
+    @patch("aam.cli.predict.torch.load")
+    @patch("aam.cli.predict.SequencePredictor")
+    @patch("aam.cli.predict.BIOMLoader")
+    @patch("aam.cli.predict.ASVDataset")
+    @patch("aam.cli.predict.DataLoader")
     def test_predict_command_multiclass_output(
         self,
         mock_dataloader_class,
@@ -986,7 +988,7 @@ class TestCLIIntegration:
         model_file = temp_dir / "model.pt"
         model_file.touch()
 
-        with patch("aam.cli.pd.DataFrame") as mock_df_class:
+        with patch("aam.cli.predict.pd.DataFrame") as mock_df_class:
             mock_df_instance = MagicMock()
             mock_df_class.return_value = mock_df_instance
 
@@ -1009,10 +1011,10 @@ class TestCLIIntegration:
                 df_data = call_args[0][0] if call_args[0] else {}
                 assert isinstance(df_data, dict)
 
-    @patch("aam.cli.setup_device")
-    @patch("aam.cli.validate_file_path")
-    @patch("torch.load")
-    @patch("aam.cli.SequencePredictor")
+    @patch("aam.cli.predict.setup_device")
+    @patch("aam.cli.predict.validate_file_path")
+    @patch("aam.cli.predict.torch.load")
+    @patch("aam.cli.predict.SequencePredictor")
     def test_predict_command_checkpoint_fallback(
         self,
         mock_model_class,
@@ -1033,7 +1035,7 @@ class TestCLIIntegration:
         model_file = temp_dir / "model.pt"
         model_file.touch()
 
-        with patch("aam.cli.BIOMLoader"), patch("aam.cli.ASVDataset"), patch("aam.cli.DataLoader"):
+        with patch("aam.cli.predict.BIOMLoader"), patch("aam.cli.predict.ASVDataset"), patch("aam.cli.predict.DataLoader"):
             result = runner.invoke(
                 cli,
                 [
@@ -1050,9 +1052,9 @@ class TestCLIIntegration:
             assert result.exit_code == 0
             assert mock_model_class.called
 
-    @patch("aam.cli.setup_device")
-    @patch("aam.cli.validate_file_path")
-    @patch("aam.cli.BIOMLoader")
+    @patch("aam.cli.train.setup_device")
+    @patch("aam.cli.train.validate_file_path")
+    @patch("aam.cli.train.BIOMLoader")
     def test_train_command_error_handling(
         self,
         mock_biom_loader_class,
@@ -1094,9 +1096,9 @@ class TestCLIIntegration:
 
         assert result.exit_code != 0
 
-    @patch("aam.cli.setup_device")
-    @patch("aam.cli.validate_file_path")
-    @patch("torch.load")
+    @patch("aam.cli.predict.setup_device")
+    @patch("aam.cli.predict.validate_file_path")
+    @patch("aam.cli.predict.torch.load")
     def test_predict_command_error_handling(
         self,
         mock_load,
@@ -1168,22 +1170,23 @@ class TestPretrainedEncoderLoading:
         )
         assert result.exit_code != 0
 
-    @patch("aam.cli.setup_logging")
-    @patch("aam.cli.setup_device")
-    @patch("aam.cli.setup_random_seed")
-    @patch("aam.cli.validate_file_path")
-    @patch("aam.cli.validate_arguments")
-    @patch("aam.cli.BIOMLoader")
-    @patch("aam.cli.train_test_split")
-    @patch("aam.cli.ASVDataset")
-    @patch("aam.cli.DataLoader")
-    @patch("aam.cli.SequencePredictor")
-    @patch("aam.cli.load_pretrained_encoder")
-    @patch("aam.cli.create_optimizer")
-    @patch("aam.cli.create_scheduler")
-    @patch("aam.cli.MultiTaskLoss")
-    @patch("aam.cli.Trainer")
-    @patch("aam.cli.pd.read_csv")
+    @patch("aam.cli.train.setup_logging")
+    @patch("aam.cli.train.setup_device")
+    @patch("aam.cli.train.setup_random_seed")
+    @patch("aam.cli.train.validate_file_path")
+    @patch("aam.cli.train.validate_arguments")
+    @patch("aam.cli.train.BIOMLoader")
+    @patch("aam.cli.train.UniFracLoader")
+    @patch("aam.cli.train.train_test_split")
+    @patch("aam.cli.train.ASVDataset")
+    @patch("aam.cli.train.DataLoader")
+    @patch("aam.cli.train.SequencePredictor")
+    @patch("aam.cli.train.load_pretrained_encoder")
+    @patch("aam.cli.train.create_optimizer")
+    @patch("aam.cli.train.create_scheduler")
+    @patch("aam.cli.train.MultiTaskLoss")
+    @patch("aam.cli.train.Trainer")
+    @patch("aam.cli.train.pd.read_csv")
     def test_train_command_loads_pretrained_encoder(
         self,
         mock_read_csv,
@@ -1196,6 +1199,7 @@ class TestPretrainedEncoderLoading:
         mock_dataloader_class,
         mock_dataset_class,
         mock_train_test_split,
+        mock_unifrac_loader_class,
         mock_biom_loader_class,
         mock_validate_args,
         mock_validate_file,
@@ -1233,8 +1237,17 @@ class TestPretrainedEncoderLoading:
         mock_biom_loader_instance.load_table.return_value = mock_table
         mock_biom_loader_instance.rarefy.return_value = mock_table
 
-        # UniFracComputer is no longer used - pre-computed matrices are loaded via UniFracLoader
-        # Mock UniFracLoader instead if needed
+        # Mock UniFracLoader
+        mock_unifrac_loader_instance = MagicMock()
+        mock_unifrac_loader_class.return_value = mock_unifrac_loader_instance
+        from skbio import DistanceMatrix
+        import numpy as np
+
+        dist_data = np.random.rand(4, 4)
+        dist_data = (dist_data + dist_data.T) / 2
+        np.fill_diagonal(dist_data, 0)
+        mock_distance_matrix = DistanceMatrix(dist_data, ids=["sample1", "sample2", "sample3", "sample4"])
+        mock_unifrac_loader_instance.load_matrix.return_value = mock_distance_matrix
 
         mock_train_ids = ["sample1", "sample2", "sample3"]
         mock_val_ids = ["sample4"]
@@ -1302,22 +1315,23 @@ class TestPretrainedEncoderLoading:
         assert call_args[0][1] == mock_model_instance
         assert call_args[1]["strict"] is False
 
-    @patch("aam.cli.setup_logging")
-    @patch("aam.cli.setup_device")
-    @patch("aam.cli.setup_random_seed")
-    @patch("aam.cli.validate_file_path")
-    @patch("aam.cli.validate_arguments")
-    @patch("aam.cli.BIOMLoader")
-    @patch("aam.cli.train_test_split")
-    @patch("aam.cli.ASVDataset")
-    @patch("aam.cli.DataLoader")
-    @patch("aam.cli.SequencePredictor")
-    @patch("aam.cli.load_pretrained_encoder")
-    @patch("aam.cli.create_optimizer")
-    @patch("aam.cli.create_scheduler")
-    @patch("aam.cli.MultiTaskLoss")
-    @patch("aam.cli.Trainer")
-    @patch("aam.cli.pd.read_csv")
+    @patch("aam.cli.train.setup_logging")
+    @patch("aam.cli.train.setup_device")
+    @patch("aam.cli.train.setup_random_seed")
+    @patch("aam.cli.train.validate_file_path")
+    @patch("aam.cli.train.validate_arguments")
+    @patch("aam.cli.train.BIOMLoader")
+    @patch("aam.cli.train.UniFracLoader")
+    @patch("aam.cli.train.train_test_split")
+    @patch("aam.cli.train.ASVDataset")
+    @patch("aam.cli.train.DataLoader")
+    @patch("aam.cli.train.SequencePredictor")
+    @patch("aam.cli.train.load_pretrained_encoder")
+    @patch("aam.cli.train.create_optimizer")
+    @patch("aam.cli.train.create_scheduler")
+    @patch("aam.cli.train.MultiTaskLoss")
+    @patch("aam.cli.train.Trainer")
+    @patch("aam.cli.train.pd.read_csv")
     def test_train_command_pretrained_encoder_with_freeze_base(
         self,
         mock_read_csv,
@@ -1330,6 +1344,7 @@ class TestPretrainedEncoderLoading:
         mock_dataloader_class,
         mock_dataset_class,
         mock_train_test_split,
+        mock_unifrac_loader_class,
         mock_biom_loader_class,
         mock_validate_args,
         mock_validate_file,
@@ -1367,8 +1382,17 @@ class TestPretrainedEncoderLoading:
         mock_biom_loader_instance.load_table.return_value = mock_table
         mock_biom_loader_instance.rarefy.return_value = mock_table
 
-        # UniFracComputer is no longer used - pre-computed matrices are loaded via UniFracLoader
-        # Mock UniFracLoader instead if needed
+        # Mock UniFracLoader
+        mock_unifrac_loader_instance = MagicMock()
+        mock_unifrac_loader_class.return_value = mock_unifrac_loader_instance
+        from skbio import DistanceMatrix
+        import numpy as np
+
+        dist_data = np.random.rand(4, 4)
+        dist_data = (dist_data + dist_data.T) / 2
+        np.fill_diagonal(dist_data, 0)
+        mock_distance_matrix = DistanceMatrix(dist_data, ids=["sample1", "sample2", "sample3", "sample4"])
+        mock_unifrac_loader_instance.load_matrix.return_value = mock_distance_matrix
 
         mock_train_ids = ["sample1", "sample2", "sample3"]
         mock_val_ids = ["sample4"]
@@ -1436,22 +1460,23 @@ class TestPretrainedEncoderLoading:
         optimizer_call_args = mock_create_optimizer.call_args
         assert optimizer_call_args[1]["freeze_base"] is True
 
-    @patch("aam.cli.setup_logging")
-    @patch("aam.cli.setup_device")
-    @patch("aam.cli.setup_random_seed")
-    @patch("aam.cli.validate_file_path")
-    @patch("aam.cli.validate_arguments")
-    @patch("aam.cli.BIOMLoader")
-    @patch("aam.cli.train_test_split")
-    @patch("aam.cli.ASVDataset")
-    @patch("aam.cli.DataLoader")
-    @patch("aam.cli.SequencePredictor")
-    @patch("aam.cli.load_pretrained_encoder")
-    @patch("aam.cli.create_optimizer")
-    @patch("aam.cli.create_scheduler")
-    @patch("aam.cli.MultiTaskLoss")
-    @patch("aam.cli.Trainer")
-    @patch("aam.cli.pd.read_csv")
+    @patch("aam.cli.train.setup_logging")
+    @patch("aam.cli.train.setup_device")
+    @patch("aam.cli.train.setup_random_seed")
+    @patch("aam.cli.train.validate_file_path")
+    @patch("aam.cli.train.validate_arguments")
+    @patch("aam.cli.train.BIOMLoader")
+    @patch("aam.cli.train.UniFracLoader")
+    @patch("aam.cli.train.train_test_split")
+    @patch("aam.cli.train.ASVDataset")
+    @patch("aam.cli.train.DataLoader")
+    @patch("aam.cli.train.SequencePredictor")
+    @patch("aam.cli.train.load_pretrained_encoder")
+    @patch("aam.cli.train.create_optimizer")
+    @patch("aam.cli.train.create_scheduler")
+    @patch("aam.cli.train.MultiTaskLoss")
+    @patch("aam.cli.train.Trainer")
+    @patch("aam.cli.train.pd.read_csv")
     def test_train_command_pretrained_encoder_load_error_handling(
         self,
         mock_read_csv,
@@ -1464,6 +1489,7 @@ class TestPretrainedEncoderLoading:
         mock_dataloader_class,
         mock_dataset_class,
         mock_train_test_split,
+        mock_unifrac_loader_class,
         mock_biom_loader_class,
         mock_validate_args,
         mock_validate_file,
@@ -1475,6 +1501,7 @@ class TestPretrainedEncoderLoading:
         sample_tree_file,
         sample_metadata_file,
         sample_output_dir,
+        sample_unifrac_matrix_file,
         temp_dir,
     ):
         """Test train command handles errors when loading pretrained encoder."""
@@ -1500,8 +1527,17 @@ class TestPretrainedEncoderLoading:
         mock_biom_loader_instance.load_table.return_value = mock_table
         mock_biom_loader_instance.rarefy.return_value = mock_table
 
-        # UniFracComputer is no longer used - pre-computed matrices are loaded via UniFracLoader
-        # Mock UniFracLoader instead if needed
+        # Mock UniFracLoader
+        mock_unifrac_loader_instance = MagicMock()
+        mock_unifrac_loader_class.return_value = mock_unifrac_loader_instance
+        from skbio import DistanceMatrix
+        import numpy as np
+
+        dist_data = np.random.rand(4, 4)
+        dist_data = (dist_data + dist_data.T) / 2
+        np.fill_diagonal(dist_data, 0)
+        mock_distance_matrix = DistanceMatrix(dist_data, ids=["sample1", "sample2", "sample3", "sample4"])
+        mock_unifrac_loader_instance.load_matrix.return_value = mock_distance_matrix
 
         mock_train_ids = ["sample1", "sample2", "sample3"]
         mock_val_ids = ["sample4"]

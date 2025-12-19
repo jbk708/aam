@@ -20,14 +20,13 @@ AAM processes nucleotide sequences at multiple levels (nucleotide, ASV, sample) 
 graph TB
     subgraph "Input Data"
         BIOM[BIOM Table<br/>.biom file]
-        PHYLO[Phylogenetic Tree<br/>.nwk file]
+        UNIFRAC_FILE[UniFrac Matrix<br/>.npy/.h5/.csv file<br/>pre-computed]
         META[Metadata<br/>.tsv file]
     end
-    
+
     subgraph "Data Processing Pipeline"
         BIOM --> LOAD[Load & Rarefy Table]
-        PHYLO --> UNIFRAC[Compute UniFrac Distances<br/>unweighted / Faith PD]
-        LOAD --> UNIFRAC
+        UNIFRAC_FILE --> UNIFRAC[Load UniFrac Distances<br/>unweighted / Faith PD]
         LOAD --> TOKENIZE[Tokenize Sequences<br/>A/C/G/T → 1/2/3/4]
         LOAD --> RAREFY[Rarefy to Depth]
         TOKENIZE --> PREPARE[Prepare Batches<br/>tokens, counts, targets, unifrac_targets]
@@ -82,7 +81,7 @@ graph TB
     end
     
     style BIOM fill:#e1f5ff
-    style PHYLO fill:#e1f5ff
+    style UNIFRAC_FILE fill:#e1f5ff
     style META fill:#e1f5ff
     style UNIFRAC fill:#fff4e1
     style SEQ_ENC fill:#e8f5e9
@@ -94,11 +93,13 @@ graph TB
 
 ### Data Pipeline
 - **BIOMLoader**: Loads and rarefies BIOM tables
-- **UniFracComputer**: Computes phylogenetic distances (unweighted UniFrac, Faith PD)
+- **UniFracLoader**: Loads pre-computed UniFrac distance matrices (.npy, .h5, .csv)
 - **SequenceTokenizer**: Converts nucleotide sequences (A/C/G/T) to tokens (1/2/3/4)
 - **ASVDataset**: PyTorch Dataset with custom collate function for variable ASV counts
   - **Data Validation**: Ensures samples have at least one ASV with count > 0 after truncation
   - **Truncation Safety**: Validates sample integrity when using `token_limit`
+
+**Note:** UniFrac distances must be pre-computed externally using `ssu` from [unifrac-binaries](https://github.com/biocore/unifrac-binaries).
 
 ### Model Architecture
 
@@ -173,7 +174,7 @@ aam/
 ├── data/
 │   ├── __init__.py
 │   ├── biom_loader.py        # BIOM table loading and rarefaction
-│   ├── unifrac.py            # UniFrac distance computation
+│   ├── unifrac_loader.py     # Pre-computed UniFrac matrix loading
 │   ├── tokenizer.py          # Sequence tokenization
 │   └── dataset.py            # PyTorch Dataset and collate function
 ├── models/
@@ -190,7 +191,13 @@ aam/
 │   ├── losses.py             # Multi-task loss functions
 │   ├── metrics.py            # Evaluation metrics
 │   └── trainer.py            # Training and validation loops
-└── cli.py                    # Command-line interface
+└── cli/
+    ├── __init__.py           # Main CLI group, command registration
+    ├── __main__.py           # Entry point for python -m aam.cli
+    ├── utils.py              # Shared utilities (setup, validation)
+    ├── train.py              # Train command
+    ├── pretrain.py           # Pretrain command
+    └── predict.py            # Predict command
 ```
 
 See `_design_plan/` for detailed implementation documentation.
