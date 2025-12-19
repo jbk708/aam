@@ -48,38 +48,47 @@ module load craype-accel-amd-gfx942 # MI300A target
 For rapid development and debugging, containers add overhead. A native virtual environment is faster to iterate with.
 
 **Solution:**
-Use Cosmos modules + pip-installed PyTorch ROCm in a virtual environment.
+Use mamba with PyTorch ROCm wheels for consistent environment management.
 
 ```bash
-# Setup (one-time)
+# 1. Install miniforge (if not already available)
+curl -L -O "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-$(uname)-$(uname -m).sh"
+bash Miniforge3-$(uname)-$(uname -m).sh -b -p ~/miniforge3
+~/miniforge3/bin/mamba init bash
+source ~/.bashrc
+
+# 2. Create ROCm environment
 module load rocm/6.3.0
-module load cray-python/3.11.7
 
-python -m venv ~/aam-rocm-env
-source ~/aam-rocm-env/bin/activate
+mamba create -n aam-rocm python=3.11 -y
+mamba activate aam-rocm
 
-# PyTorch for ROCm 6.x (check pytorch.org for latest)
+# 3. Install PyTorch for ROCm 6.x
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.2
 
-# AAM and dependencies
+# 4. Install AAM and dependencies
 cd /cosmos/vast/scratch/$USER/aam
 pip install -e ".[training]"
+
+# 5. Verify GPU detection
+python -c "import torch; print(f'ROCm: {torch.cuda.is_available()}, GPUs: {torch.cuda.device_count()}')"
 ```
 
 **Acceptance Criteria:**
-- [ ] Document module load sequence
-- [ ] Create `scripts/cosmos_native_setup.sh` setup script
+- [ ] Document miniforge installation for Cosmos
+- [ ] Create `scripts/cosmos_setup.sh` setup script
+- [ ] Create `environment-rocm.yml` for ROCm-specific deps
 - [ ] Verify `torch.cuda.is_available()` returns True
 - [ ] Verify model forward pass works on MI300A
 - [ ] Run test suite on native environment
-- [ ] Document any missing system dependencies
+- [ ] Document any ROCm-specific dependency issues
 
-**Files:** `scripts/cosmos_native_setup.sh`, `docs/cosmos_setup.md`
+**Files:** `scripts/cosmos_setup.sh`, `environment-rocm.yml`, `docs/cosmos_setup.md`
 
 **Notes:**
-- Faster iteration than containers for development
+- Mamba provides consistent environment across machines
+- PyTorch ROCm wheels installed via pip (not available in conda)
 - Use containers (COS-1.1) for production/reproducibility
-- May need `--break-system-packages` if not using venv
 
 ---
 
