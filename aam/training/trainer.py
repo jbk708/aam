@@ -24,6 +24,7 @@ from aam.training.metrics import (
     StreamingClassificationMetrics,
     StreamingCountMetrics,
 )
+from aam.training.distributed import is_main_process
 
 
 class WarmupCosineScheduler:
@@ -1479,7 +1480,8 @@ class Trainer:
                         best_val_loss = val_loss
                         patience_counter = 0
 
-                        if checkpoint_dir is not None:
+                        # Only save checkpoints and plots on main process (rank 0)
+                        if checkpoint_dir is not None and is_main_process():
                             checkpoint_path = Path(checkpoint_dir) / "best_model.pt"
                             if checkpoint_path.exists():
                                 checkpoint_path.unlink()
@@ -1490,8 +1492,8 @@ class Trainer:
                                 metrics=val_results,
                             )
 
-                        # Save all prediction plots
-                        if save_plots and val_predictions_dict:
+                        # Save all prediction plots (only on main process)
+                        if save_plots and val_predictions_dict and is_main_process():
                             is_pretraining = self._is_pretraining()
 
                             # Save target prediction plot
@@ -1539,7 +1541,8 @@ class Trainer:
                         best_val_loss = train_loss
                         patience_counter = 0
 
-                        if checkpoint_dir is not None:
+                        # Only save checkpoints on main process (rank 0)
+                        if checkpoint_dir is not None and is_main_process():
                             checkpoint_path = Path(checkpoint_dir) / "best_model.pt"
                             if checkpoint_path.exists():
                                 checkpoint_path.unlink()

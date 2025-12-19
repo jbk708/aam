@@ -23,6 +23,19 @@ from aam.training.losses import MultiTaskLoss
 from aam.training.metrics import compute_regression_metrics, compute_count_metrics
 
 
+def is_rocm() -> bool:
+    """Check if running on ROCm (AMD GPU) backend."""
+    if not torch.cuda.is_available():
+        return False
+    # ROCm uses HIP which reports as CUDA but with different version info
+    # Check for ROCm-specific attributes or version strings
+    try:
+        # torch.version.hip exists on ROCm builds
+        return hasattr(torch.version, "hip") and torch.version.hip is not None
+    except Exception:
+        return False
+
+
 @pytest.fixture
 def device():
     """Get device for testing."""
@@ -1870,6 +1883,10 @@ class TestMixedPrecision:
         assert not torch.isnan(torch.tensor(losses["total_loss"]))
 
 
+@pytest.mark.skipif(
+    is_rocm(),
+    reason="torch.compile() with inductor backend has known Triton compatibility issues on ROCm"
+)
 class TestModelCompilation:
     """Tests for model compilation with torch.compile()."""
 

@@ -616,6 +616,7 @@ class TestShuffledBatchDistances:
         expected_distances = loader.extract_batch_distances(simple_unifrac_distances, sample_ids, metric="unweighted")
         np.testing.assert_array_almost_equal(result["unifrac_target"].numpy(), expected_distances)
 
+    @pytest.mark.skip(reason="Faith PD is deprecated and not planned for use")
     def test_collate_fn_extracts_batch_distances_faith_pd(self, rarefied_table, tokenizer, tmp_path):
         """Test collate_fn extracts batch-specific distances for Faith PD."""
         computer = UniFracComputer()
