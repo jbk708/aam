@@ -38,7 +38,7 @@ Several modules were deprecated in PYT-11.4 when we switched to pre-computed Uni
 ---
 
 ### CLN-2: Remove Dead Code Paths (stripe_mode, lazy_unifrac)
-**Priority:** HIGH | **Effort:** 1-2 hours | **Status:** Not Started
+**Priority:** HIGH | **Effort:** 1-2 hours | **Status:** ✅ COMPLETE (2025-12-19)
 
 **Problem:**
 Legacy flags `stripe_mode` and `lazy_unifrac` are hardcoded to `False` in 16 places in cli.py. These were deprecated with PYT-11.4 but the dead code paths remain.
@@ -49,11 +49,18 @@ Legacy flags `stripe_mode` and `lazy_unifrac` are hardcoded to `False` in 16 pla
 - `aam/data/dataset.py` - may have stripe_mode/lazy_unifrac parameters
 
 **Acceptance Criteria:**
-- [ ] Remove `lazy_unifrac` parameter from ASVDataset calls in cli.py
-- [ ] Remove `stripe_mode` parameter from ASVDataset calls in cli.py
-- [ ] Remove stripe mode logic from `losses.py` (is_stripe_mode checks)
-- [ ] Remove parameters from ASVDataset if present
-- [ ] All tests pass
+- [x] Remove `lazy_unifrac` parameter from ASVDataset calls in cli.py
+- [x] Remove `stripe_mode` parameter from ASVDataset calls in cli.py
+- [x] Remove stripe mode logic from `losses.py` (is_stripe_mode checks)
+- [x] Remove parameters from ASVDataset if present
+- [x] All tests pass
+
+**Notes:**
+- Removed `compute_stripe_distances` function from losses.py
+- Removed `lazy_unifrac`, `stripe_mode`, `reference_sample_ids`, `all_sample_ids` parameters from collate_fn
+- Removed `lazy_unifrac`, `stripe_mode`, `reference_sample_ids`, `unifrac_computer` parameters from ASVDataset
+- Removed stripe mode tests from test_losses.py
+- ~200 lines removed across codebase
 
 ---
 

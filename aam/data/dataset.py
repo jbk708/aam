@@ -20,10 +20,6 @@ def collate_fn(
     unifrac_distances: Optional[Any] = None,  # DistanceMatrix, pd.Series, np.ndarray, or filtered variants
     unifrac_metric: str = "unweighted",
     unifrac_loader: Optional["UniFracLoader"] = None,
-    lazy_unifrac: bool = False,
-    stripe_mode: bool = False,
-    reference_sample_ids: Optional[List[str]] = None,
-    all_sample_ids: Optional[List[str]] = None,
 ) -> Dict[str, torch.Tensor]:
     """Custom collate function for batching samples with variable ASV counts.
 
@@ -33,10 +29,6 @@ def collate_fn(
         unifrac_distances: Optional full distance matrix/series/stripe matrix for batch extraction
         unifrac_metric: Type of UniFrac metric ("unweighted" or "faith_pd")
         unifrac_loader: UniFracLoader instance for batch extraction (optional, created if None)
-        lazy_unifrac: If True, compute distances on-the-fly (deprecated, should be False)
-        stripe_mode: If True, use stripe-based distances instead of pairwise (deprecated, should be False)
-        reference_sample_ids: List of reference sample IDs for stripe mode (deprecated)
-        all_sample_ids: List of all sample IDs for stripe extraction (deprecated)
 
     Returns:
         Batched dictionary with padded tensors
@@ -128,10 +120,6 @@ class ASVDataset(Dataset):
         token_limit: int = 1024,
         target_column: Optional[str] = None,
         unifrac_metric: str = "unweighted",
-        lazy_unifrac: bool = True,
-        unifrac_computer: Optional[UniFracLoader] = None,
-        stripe_mode: bool = True,
-        reference_sample_ids: Optional[List[str]] = None,
         normalize_targets: bool = False,
         target_min: Optional[float] = None,
         target_max: Optional[float] = None,
@@ -145,16 +133,12 @@ class ASVDataset(Dataset):
         Args:
             table: Rarefied biom.Table object
             metadata: Optional DataFrame with sample metadata and targets
-            unifrac_distances: Optional pre-computed UniFrac distances/stripe matrix (ignored if lazy_unifrac=True)
+            unifrac_distances: Optional pre-computed UniFrac distances
             tokenizer: SequenceTokenizer instance (creates default if None)
             max_bp: Maximum base pairs per sequence
             token_limit: Maximum ASVs per sample
             target_column: Column name in metadata for target values
             unifrac_metric: Type of UniFrac metric ("unweighted" or "faith_pd")
-            lazy_unifrac: If True, compute distances on-the-fly instead of using pre-computed distances (default: True)
-            unifrac_computer: UniFracLoader instance (deprecated, not used)
-            stripe_mode: If True, use stripe-based distances instead of pairwise (default: True)
-            reference_sample_ids: List of reference sample IDs for stripe mode (required if stripe_mode=True)
             normalize_targets: If True, normalize target values to [0, 1] range (default: False)
             target_min: Minimum target value for normalization (computed from data if None)
             target_max: Maximum target value for normalization (computed from data if None)
@@ -171,35 +155,9 @@ class ASVDataset(Dataset):
         self.token_limit = token_limit
         self.target_column = target_column
         self.unifrac_metric = unifrac_metric
-        self.lazy_unifrac = lazy_unifrac
-        # unifrac_computer is deprecated, kept for backward compatibility
-        self.unifrac_computer = unifrac_computer
-        self.stripe_mode = stripe_mode
-        self.reference_sample_ids = reference_sample_ids
 
         self.sample_ids = list(table.ids(axis="sample"))
         self.observation_ids = list(table.ids(axis="observation"))
-        
-        # Validate stripe mode parameters
-        if stripe_mode and reference_sample_ids is None:
-            # Auto-select reference samples if not provided (randomly pick 100 or all if < 100)
-            import random
-            if len(self.sample_ids) <= 100:
-                self.reference_sample_ids = self.sample_ids.copy()
-            else:
-                self.reference_sample_ids = random.sample(self.sample_ids, 100)
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.info(f"Auto-selected {len(self.reference_sample_ids)} random reference samples for stripe mode")
-        
-        if stripe_mode and reference_sample_ids is not None:
-            # Validate reference samples exist in table
-            # Skip validation if using lazy_unifrac (deprecated, always validate now)
-            if not lazy_unifrac:
-                table_sample_ids = set(self.sample_ids)
-                missing_ref = set(reference_sample_ids) - table_sample_ids
-                if missing_ref:
-                    raise ValueError(f"Reference sample IDs not found in table: {sorted(missing_ref)}")
 
         loader = BIOMLoader()
         self.sequences = loader.get_sequences(table)
