@@ -219,6 +219,7 @@ class StreamingClassificationMetrics:
         f1_sum = 0.0
         total_support = 0
 
+        assert self.num_classes is not None  # Set in update() before compute()
         for c in range(self.num_classes):
             tp = self.confusion_matrix[c, c]
             fp = self.confusion_matrix[:, c].sum() - tp

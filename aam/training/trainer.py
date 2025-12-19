@@ -5,7 +5,7 @@ import torch.nn as nn
 from torch.cuda.amp import GradScaler
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
-from typing import Dict, Optional, Union, Tuple, List
+from typing import Any, Dict, Optional, Union, Tuple, List
 import os
 from pathlib import Path
 import math
@@ -186,15 +186,15 @@ class Trainer:
     def _get_encoder_type(self) -> str:
         """Get encoder type from model."""
         if hasattr(self.model, "encoder_type"):
-            return self.model.encoder_type
+            return str(self.model.encoder_type)
         elif hasattr(self.model, "base_model") and hasattr(self.model.base_model, "encoder_type"):
-            return self.model.base_model.encoder_type
+            return str(self.model.base_model.encoder_type)
         return "unifrac"
 
     def _get_is_classifier(self) -> bool:
         """Check if model is a classifier."""
         if hasattr(self.model, "is_classifier"):
-            return self.model.is_classifier
+            return bool(self.model.is_classifier)
         return False
 
     def _is_pretraining(self) -> bool:
@@ -684,7 +684,7 @@ class Trainer:
 
         # Determine what metrics to show based on training mode
         is_pretraining = self._is_pretraining()
-        show_nuc_metrics = self.loss_fn.nuc_penalty > 0
+        show_nuc_metrics = float(self.loss_fn.nuc_penalty) > 0
         is_classifier = self._get_is_classifier()
 
         self.optimizer.zero_grad()
@@ -705,12 +705,13 @@ class Trainer:
                 import sys
 
                 # Get vocab_size from model (supports both SequenceEncoder and SequencePredictor)
+                vocab_size: int
                 if hasattr(self.model, "vocab_size"):
-                    vocab_size = self.model.vocab_size
+                    vocab_size = int(self.model.vocab_size)
                 elif hasattr(self.model, "base_model") and hasattr(self.model.base_model, "vocab_size"):
-                    vocab_size = self.model.base_model.vocab_size
+                    vocab_size = int(self.model.base_model.vocab_size)
                 elif hasattr(self.model, "sample_encoder") and hasattr(self.model.sample_encoder, "asv_encoder"):
-                    vocab_size = self.model.sample_encoder.asv_encoder.vocab_size
+                    vocab_size = int(self.model.sample_encoder.asv_encoder.vocab_size)
                 else:
                     # Default to 6 if we can't find it (new default with START_TOKEN)
                     vocab_size = 6
@@ -731,7 +732,7 @@ class Trainer:
                     print("ERROR: NaN in tokens before model forward", file=sys.stderr, flush=True)
                     raise ValueError("NaN values found in tokens")
 
-                return_nucleotides = "nucleotides" in targets or self.loss_fn.nuc_penalty > 0
+                return_nucleotides = "nucleotides" in targets or float(self.loss_fn.nuc_penalty) > 0
 
                 # Mixed precision autocast for forward pass
                 autocast_dtype = None
@@ -1094,14 +1095,14 @@ class Trainer:
             running_avg_target_loss = 0.0
 
             # Determine what metrics to show based on training mode
-            show_nuc_metrics = self.loss_fn.nuc_penalty > 0
+            show_nuc_metrics = float(self.loss_fn.nuc_penalty) > 0
 
             for step, batch in enumerate(pbar, 1):
                 try:
                     tokens, targets = self._prepare_batch(batch)
                     last_targets = targets
 
-                    return_nucleotides = "nucleotides" in targets or self.loss_fn.nuc_penalty > 0
+                    return_nucleotides = "nucleotides" in targets or float(self.loss_fn.nuc_penalty) > 0
 
                     # Mixed precision autocast for validation forward pass
                     autocast_dtype = None
@@ -1464,12 +1465,12 @@ class Trainer:
                         return_predictions=return_predictions,
                     )
                     if return_predictions:
-                        val_results, val_predictions_dict, val_targets_dict = val_output
+                        val_results, val_predictions_dict, val_targets_dict = val_output  # type: ignore[misc]
                     else:
-                        val_results = val_output
-                        val_predictions_dict = {}
-                        val_targets_dict = {}
-                    val_loss = val_results["total_loss"]
+                        val_results = val_output  # type: ignore[assignment]
+                        val_predictions_dict = {}  # type: ignore[assignment]
+                        val_targets_dict = {}  # type: ignore[assignment]
+                    val_loss = val_results["total_loss"]  # type: ignore[index]
                     history["val_loss"].append(val_loss)
 
                     # Log prediction figures to TensorBoard at every epoch
@@ -1588,7 +1589,7 @@ class Trainer:
         filepath: str,
         epoch: int,
         best_val_loss: float,
-        metrics: Optional[Dict[str, float]] = None,
+        metrics: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Save training checkpoint.
 
@@ -1596,7 +1597,7 @@ class Trainer:
             filepath: Path to save checkpoint
             epoch: Current epoch number
             best_val_loss: Best validation loss so far
-            metrics: Optional metrics dictionary
+            metrics: Optional metrics dictionary (can contain floats or lists)
         """
         checkpoint = {
             "epoch": epoch,
@@ -1698,7 +1699,7 @@ def create_scheduler(
     num_warmup_steps: int = 10000,
     num_training_steps: int = 100000,
     **kwargs,
-) -> Union[WarmupCosineScheduler, torch.optim.lr_scheduler._LRScheduler]:
+) -> Any:  # Returns various scheduler types (WarmupCosineScheduler, CosineAnnealingLR, ReduceLROnPlateau, etc.)
     """Create learning rate scheduler.
 
     Args:
@@ -1765,8 +1766,8 @@ def load_pretrained_encoder(
     checkpoint_path: str,
     model: nn.Module,
     strict: bool = True,
-    logger: Optional[any] = None,
-) -> Dict[str, any]:
+    logger: Optional[Any] = None,
+) -> Dict[str, Any]:
     """Load pre-trained SequenceEncoder checkpoint into model.
 
     Args:
@@ -1808,8 +1809,9 @@ def load_pretrained_encoder(
         )
 
     # Determine target module
+    target_module: nn.Module
     if hasattr(model, "base_model"):
-        target_module = model.base_model
+        target_module = model.base_model  # type: ignore[assignment]
         target_name = "base_model"
     else:
         target_module = model

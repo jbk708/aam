@@ -1,6 +1,6 @@
 """PyTorch Dataset for microbial sequencing data."""
 
-from typing import Dict, Optional, List, Union
+from typing import Any, Dict, Optional, List, Union
 import torch
 from torch.utils.data import Dataset
 import biom
@@ -17,7 +17,7 @@ from aam.data.unifrac_loader import UniFracLoader
 def collate_fn(
     batch: List[Dict[str, Union[torch.Tensor, str]]],
     token_limit: int,
-    unifrac_distances: Optional[Union[DistanceMatrix, pd.Series, np.ndarray]] = None,
+    unifrac_distances: Optional[Any] = None,  # DistanceMatrix, pd.Series, np.ndarray, or filtered variants
     unifrac_metric: str = "unweighted",
     unifrac_loader: Optional["UniFracLoader"] = None,
     lazy_unifrac: bool = False,
@@ -122,7 +122,7 @@ class ASVDataset(Dataset):
         self,
         table: Table,
         metadata: Optional[pd.DataFrame] = None,
-        unifrac_distances: Optional[Union[DistanceMatrix, pd.Series, np.ndarray]] = None,
+        unifrac_distances: Optional[Any] = None,  # DistanceMatrix, pd.Series, np.ndarray, or filtered variants
         tokenizer: Optional[SequenceTokenizer] = None,
         max_bp: int = 150,
         token_limit: int = 1024,

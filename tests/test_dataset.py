@@ -14,7 +14,6 @@ from aam.data.dataset import ASVDataset, collate_fn
 from aam.data.tokenizer import SequenceTokenizer
 from aam.data.biom_loader import BIOMLoader
 from aam.data.unifrac_loader import UniFracLoader
-from aam.data.unifrac import UniFracComputer
 
 
 def generate_150bp_sequence(seed=None):
@@ -614,45 +613,6 @@ class TestShuffledBatchDistances:
 
         loader = UniFracLoader()
         expected_distances = loader.extract_batch_distances(simple_unifrac_distances, sample_ids, metric="unweighted")
-        np.testing.assert_array_almost_equal(result["unifrac_target"].numpy(), expected_distances)
-
-    @pytest.mark.skip(reason="Faith PD is deprecated and not planned for use")
-    def test_collate_fn_extracts_batch_distances_faith_pd(self, rarefied_table, tokenizer, tmp_path):
-        """Test collate_fn extracts batch-specific distances for Faith PD."""
-        computer = UniFracComputer()
-        observation_ids = list(rarefied_table.ids(axis="observation"))
-        tree_file = create_simple_tree_file(tmp_path, observation_ids)
-        faith_pd = computer.compute_faith_pd(rarefied_table, tree_file)
-
-        batch = [
-            {
-                "tokens": torch.LongTensor([[1, 2, 3], [4, 1, 2]]),
-                "counts": torch.FloatTensor([[10.0], [20.0]]),
-                "sample_id": "sample1",
-            },
-            {
-                "tokens": torch.LongTensor([[2, 3, 4], [1, 2, 3]]),
-                "counts": torch.FloatTensor([[15.0], [25.0]]),
-                "sample_id": "sample2",
-            },
-        ]
-
-        token_limit = 5
-        result = collate_fn(
-            batch,
-            token_limit=token_limit,
-            unifrac_distances=faith_pd,
-            unifrac_metric="faith_pd",
-            stripe_mode=False,
-        )
-
-        assert "unifrac_target" in result
-        assert result["unifrac_target"].shape == (2, 1)
-        assert isinstance(result["unifrac_target"], torch.FloatTensor)
-
-        sample_ids = result["sample_ids"]
-        loader = UniFracLoader()
-        expected_distances = loader.extract_batch_distances(faith_pd, sample_ids, metric="faith_pd")
         np.testing.assert_array_almost_equal(result["unifrac_target"].numpy(), expected_distances)
 
     def test_dataloader_shuffled_batches(self, rarefied_table, tokenizer, simple_unifrac_distances):

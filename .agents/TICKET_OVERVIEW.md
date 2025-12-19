@@ -1,7 +1,7 @@
 # Ticket Overview
 
-**Last Updated:** 2025-12-18
-**Status:** 22 outstanding tickets (~58-87 hours)
+**Last Updated:** 2025-12-19
+**Status:** 21 outstanding tickets (~55-84 hours)
 
 ## Quick Links
 - **Code cleanup:** `CLEANUP_TICKETS.md` (NEW)
@@ -14,11 +14,10 @@
 
 ## Outstanding Tickets by Priority
 
-### HIGH (8 tickets, ~15-23 hours)
+### HIGH (5 tickets, ~12-18 hours)
 
 | Ticket | Description | Effort |
 |--------|-------------|--------|
-| **CLN-1** | Remove Deprecated UniFrac Modules (~1665 lines) | 2-3h |
 | **CLN-2** | Remove Dead Code (stripe_mode, lazy_unifrac) | 1-2h |
 | **COS-1.2** | Cosmos Environment Setup Script | 2-3h |
 | **COS-3.1** | Create SLURM Job Scripts | 3-4h |
@@ -64,8 +63,9 @@ Future enhancement phases not yet broken into tickets:
 
 ---
 
-## Recently Completed (2025-12-18)
+## Recently Completed (2025-12-19)
 
+- **CLN-1:** Remove Deprecated UniFrac Modules - Deleted 4165 lines (4 modules + 7 debug scripts)
 - **COS-2.1:** ROCm Compatibility Audit - No changes needed, code already compatible
 
 ## Previously Archived
@@ -83,7 +83,7 @@ Future enhancement phases not yet broken into tickets:
 ## Recommended Next Steps
 
 ### Code Cleanup (Priority)
-1. **CLN-1** - Remove deprecated UniFrac modules (~1665 lines deleted)
+1. ~~**CLN-1** - Remove deprecated UniFrac modules~~ ✅ COMPLETE
 2. **CLN-2** - Remove stripe_mode/lazy_unifrac dead code
 
 ### Cosmos Onboarding (After Cleanup)

@@ -6,7 +6,7 @@
 2. **Stub**: Create file structure, commit: `"PYT-{ticket}: Stub out {component}"`
 3. **Test**: Write tests, commit: `"PYT-{ticket}: Add tests for {component}"`
 4. **Implement**: Fill in stubs, commit: `"PYT-{ticket}: Implement {component}"`
-5. **Verify**: `pytest tests/ -v` and `ruff check aam/ tests/`
+5. **Verify**: `pytest tests/ -v`, `ruff check aam/ tests/`, `ruff format --check aam/ tests/`, and `uvx ty check aam/`
 6. **Update**: Mark ticket complete in `PYTORCH_PORTING_TICKETS.md`
 
 ## Principles

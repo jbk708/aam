@@ -648,7 +648,7 @@ def train(
 
         logger.info("Creating model...")
         # Convert asv_chunk_size=0 to None (disabled)
-        effective_asv_chunk_size = asv_chunk_size if asv_chunk_size > 0 else None
+        effective_asv_chunk_size = asv_chunk_size if asv_chunk_size is not None and asv_chunk_size > 0 else None
         model = SequencePredictor(
             encoder_type=encoder_type,
             vocab_size=7,
@@ -1217,7 +1217,7 @@ def pretrain(
 
         logger.info("Creating model...")
         # Convert asv_chunk_size=0 to None (disabled)
-        effective_asv_chunk_size = asv_chunk_size if asv_chunk_size > 0 else None
+        effective_asv_chunk_size = asv_chunk_size if asv_chunk_size is not None and asv_chunk_size > 0 else None
         model = SequenceEncoder(
             encoder_type=encoder_type,
             vocab_size=7,

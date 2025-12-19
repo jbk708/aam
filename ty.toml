@@ -1,0 +1,19 @@
+# ty type checker configuration
+# See: https://github.com/astral-sh/ty
+
+[rules]
+# Suppress warnings for torch.distributed and nn.Module dynamic attributes
+# These are false positives due to incomplete type stubs
+possibly-missing-attribute = "ignore"
+
+# Suppress unresolved attribute errors for matplotlib.cm and model dynamic attributes
+# matplotlib.cm.Blues exists at runtime but type stubs don't include it
+unresolved-attribute = "ignore"
+
+# Suppress unresolved import for optional dependencies
+# tensorboard.plugins.custom_scalars is an optional import
+unresolved-import = "ignore"
+
+# Suppress non-subscriptable errors for dynamic dict access patterns
+# These are false positives from union types with optional dicts
+non-subscriptable = "ignore"
