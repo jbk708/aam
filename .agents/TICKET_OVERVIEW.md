@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2025-12-19
-**Status:** 20 outstanding tickets (~90-130 hours)
+**Status:** 19 outstanding tickets (~85-125 hours)
 
 ## Quick Links
 - **PyTorch work:** `PYTORCH_PORTING_TICKETS.md`
@@ -22,7 +22,7 @@
 | **COS-5.2** | Numerical Validation (CUDA vs ROCm) | 3-4h |
 | **COS-7.1** | Cosmos Quick Start Guide | 2-3h |
 
-### MEDIUM (8 tickets, ~30-45 hours)
+### MEDIUM (7 tickets, ~25-40 hours)
 
 | Ticket | Description | Effort |
 |--------|-------------|--------|
@@ -33,7 +33,6 @@
 | **COS-6.1** | MI300A Performance Profiling | 4-6h |
 | **COS-6.2** | Flash Attention for ROCm | 4-6h |
 | **COS-7.2** | Cosmos Best Practices Guide | 2-3h |
-| **PYT-21.3** | Regressor Head Optimization | 4-6h |
 
 ### LOW (8 tickets, ~50-70 hours)
 
@@ -60,6 +59,12 @@ Future enhancement phases (~50+ hours):
 
 ## Recently Completed (2025-12-19)
 
+**PYT-21.3: Regressor Head Optimization**
+- Unbounded regression by default (no sigmoid)
+- LayerNorm before target projection (default: enabled)
+- Learnable output scale/bias (opt-in)
+- Xavier weight initialization
+
 **Code Cleanup Phase (CLN) - All 6 tickets complete:**
 - CLN-1: Remove Deprecated UniFrac Modules (~4165 lines deleted)
 - CLN-2: Remove Dead Code (stripe_mode, lazy_unifrac)
@@ -79,5 +84,5 @@ Future enhancement phases (~50+ hours):
 4. **COS-7.1** - Quick start guide
 
 ### PyTorch Improvements (As Needed)
-1. **PYT-21.3** - Regressor head optimization
+1. **PYT-21.5** - Skip nucleotide predictions during fine-tuning
 2. **PYT-10.6** - Multi-GPU DDP testing

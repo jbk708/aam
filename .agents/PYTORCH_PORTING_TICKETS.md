@@ -8,13 +8,13 @@
 ## Phase 21: Transfer Learning (1 remaining)
 
 ### PYT-21.3: Regressor Head Optimization
-**Priority:** MEDIUM | **Effort:** 4-6 hours | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** 4-6 hours | **Status:** Complete
 
-Enhance regressor with configurable improvements:
-- `--unbounded-targets` flag (disables sigmoid)
+Enhanced regressor with configurable improvements:
+- `--bounded-targets` flag (enables sigmoid, default: unbounded)
 - `--learnable-output-scale` with trainable scale/bias
-- `--target-layer-norm` for LayerNorm before projection
-- Proper weight initialization
+- `--target-layer-norm/--no-target-layer-norm` (default: enabled)
+- Xavier weight initialization for target/count heads
 
 **Files:** `aam/models/sequence_predictor.py`, `aam/cli/train.py`
 
@@ -83,7 +83,7 @@ Low priority future work:
 
 | Phase | Remaining | Est. Hours |
 |-------|-----------|------------|
-| 21 (Fine-Tuning) | 2 | 6-9 |
+| 21 (Fine-Tuning) | 1 | 2-3 |
 | 18 (Memory) | 2 | 8-12 |
 | 10 (Performance) | 1 | 8-12 |
 | 12 (Additional) | 2 | 16-22 |
