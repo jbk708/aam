@@ -1,7 +1,7 @@
 # Code Cleanup Tickets
 
 **Created:** 2025-12-18
-**Status:** 5/6 complete (~3-4 hours remaining)
+**Status:** 6/6 complete (all done!)
 
 This file contains code cleanup and technical debt tickets.
 
@@ -159,7 +159,7 @@ aam/cli/
 ---
 
 ### CLN-6: Extract Trainer Validation Logic
-**Priority:** LOW | **Effort:** 3-4 hours | **Status:** Not Started
+**Priority:** LOW | **Effort:** 3-4 hours | **Status:** ✅ COMPLETE (2025-12-19)
 
 **Problem:**
 `trainer.py` is 1896 lines. Validation and evaluation logic could be extracted.
@@ -171,11 +171,18 @@ Extract to `aam/training/evaluation.py`:
 - Prediction collection and plotting
 
 **Acceptance Criteria:**
-- [ ] Create `aam/training/evaluation.py`
-- [ ] Extract validation logic
-- [ ] Trainer imports and uses evaluation module
-- [ ] All tests pass
-- [ ] No behavior changes
+- [x] Create `aam/training/evaluation.py`
+- [x] Extract validation logic
+- [x] Trainer imports and uses evaluation module
+- [x] All tests pass
+- [x] No behavior changes
+
+**Notes:**
+- Created `aam/training/evaluation.py` with Evaluator class and plotting functions
+- Trainer now composes Evaluator instance and delegates validation
+- trainer.py reduced from 1896 to 1228 lines (~35% reduction)
+- evaluation.py is 791 lines (new module)
+- Updated tests to use new API
 
 ---
 
