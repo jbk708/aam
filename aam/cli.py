@@ -397,6 +397,17 @@ def train(
             rank, world_size, device_obj = setup_distributed(backend="nccl")
             if is_main_process():
                 logger.info(f"Distributed training enabled: rank {rank}/{world_size}")
+
+            # Validate batch size for distributed training
+            # UniFrac pairwise distances require at least 2 samples per GPU
+            per_gpu_batch_size = batch_size // world_size
+            if per_gpu_batch_size < 2:
+                raise click.ClickException(
+                    f"batch_size={batch_size} is too small for {world_size} GPUs. "
+                    f"Each GPU would only get {per_gpu_batch_size} sample(s), but UniFrac "
+                    f"requires at least 2 samples per GPU for pairwise distances. "
+                    f"Use --batch-size {world_size * 2} or higher."
+                )
         else:
             device_obj = setup_device(device)
 
@@ -1020,6 +1031,17 @@ def pretrain(
             rank, world_size, device_obj = setup_distributed(backend="nccl")
             if is_main_process():
                 logger.info(f"Distributed training enabled: rank {rank}/{world_size}")
+
+            # Validate batch size for distributed training
+            # UniFrac pairwise distances require at least 2 samples per GPU
+            per_gpu_batch_size = batch_size // world_size
+            if per_gpu_batch_size < 2:
+                raise click.ClickException(
+                    f"batch_size={batch_size} is too small for {world_size} GPUs. "
+                    f"Each GPU would only get {per_gpu_batch_size} sample(s), but UniFrac "
+                    f"requires at least 2 samples per GPU for pairwise distances. "
+                    f"Use --batch-size {world_size * 2} or higher."
+                )
         else:
             device_obj = setup_device(device)
 
