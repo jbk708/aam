@@ -5,26 +5,13 @@ import torch.nn as nn
 from torch.cuda.amp import GradScaler
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
-from typing import Any, Dict, Optional, Union, Tuple, List, cast
-import os
+from typing import Any, Dict, Optional, Union, Tuple, cast
 from pathlib import Path
 import math
 from tqdm import tqdm
-import matplotlib
 
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import numpy as np
-
-from aam.training.metrics import (
-    compute_regression_metrics,
-    compute_count_metrics,
-    compute_classification_metrics,
-    StreamingRegressionMetrics,
-    StreamingClassificationMetrics,
-    StreamingCountMetrics,
-)
 from aam.training.distributed import is_main_process
+from aam.training.evaluation import Evaluator
 
 
 class WarmupCosineScheduler:
@@ -145,6 +132,16 @@ class Trainer:
         if mixed_precision in ("fp16", "bf16") and self.device.type == "cuda":
             self.scaler = GradScaler()
 
+        # Initialize evaluator for validation
+        self.evaluator = Evaluator(
+            model=self.model,
+            loss_fn=self.loss_fn,
+            device=self.device,
+            mixed_precision=self.mixed_precision,
+            target_normalization_params=self.target_normalization_params,
+            count_normalization_params=self.count_normalization_params,
+        )
+
     def _prepare_batch(self, batch: Union[Dict, Tuple]) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
         """Prepare batch for model forward pass.
 
@@ -240,363 +237,6 @@ class Trainer:
         count_min = self.count_normalization_params["count_min"]
         count_scale = self.count_normalization_params["count_scale"]
         return values * count_scale + count_min
-
-    def _create_prediction_plot(
-        self,
-        predictions: torch.Tensor,
-        targets: torch.Tensor,
-        epoch: int,
-        r2: float,
-        mae: Optional[float] = None,
-        title_prefix: str = "Target",
-    ) -> plt.Figure:
-        """Create prediction vs actual scatter plot for regression tasks.
-
-        Args:
-            predictions: Predicted values [B, 1] or [B]
-            targets: Actual values [B, 1] or [B]
-            epoch: Current epoch number
-            r2: R² score
-            mae: Mean Absolute Error (optional)
-            title_prefix: Prefix for plot title (e.g., "Target", "Count", "UniFrac")
-
-        Returns:
-            Matplotlib figure
-        """
-        pred_np = np.array(predictions.detach().cpu().tolist()).flatten()
-        target_np = np.array(targets.detach().cpu().tolist()).flatten()
-
-        fig, ax = plt.subplots(figsize=(8, 6), dpi=100)
-        ax.scatter(target_np, pred_np, alpha=0.6, s=20)
-
-        min_val = min(target_np.min(), pred_np.min())
-        max_val = max(target_np.max(), pred_np.max())
-
-        ax.plot([min_val, max_val], [min_val, max_val], "k--", linewidth=1, label="Perfect Prediction", alpha=0.5)
-
-        # Build metrics string
-        metrics_str = f"R² = {r2:.4f}"
-        if mae is not None:
-            metrics_str += f", MAE = {mae:.4f}"
-
-        if len(target_np) > 1:
-            z = np.polyfit(target_np, pred_np, 1)
-            p = np.poly1d(z)
-            ax.plot(target_np, p(target_np), "b-", linewidth=2, label=f"Linear Fit, {metrics_str}")
-
-        ax.set_xlabel("Actual", fontsize=12)
-        ax.set_ylabel("Predicted", fontsize=12)
-        ax.set_title(f"{title_prefix} Prediction vs Actual (Epoch {epoch}, {metrics_str})", fontsize=14)
-        ax.legend(loc="upper left")
-        ax.grid(True, alpha=0.3)
-
-        plt.tight_layout()
-        return fig
-
-    def _create_unifrac_prediction_plot(
-        self,
-        predictions: torch.Tensor,
-        targets: torch.Tensor,
-        epoch: int,
-        r2: float,
-        mae: Optional[float] = None,
-    ) -> plt.Figure:
-        """Create prediction vs actual scatter plot for UniFrac predictions (pretraining).
-
-        Args:
-            predictions: Predicted UniFrac distances (1D array, already flattened upper triangle)
-            targets: Actual UniFrac distances (1D array, already flattened upper triangle)
-            epoch: Current epoch number
-            r2: R² score
-            mae: Mean Absolute Error (optional)
-
-        Returns:
-            Matplotlib figure
-        """
-        # Predictions and targets are already flattened (upper triangle only, diagonal excluded)
-        # Convert to numpy arrays
-        pred_np = predictions.detach().cpu()
-        target_np = targets.detach().cpu()
-
-        # Convert to numpy (handle both tensor and numpy)
-        try:
-            pred_flat = pred_np.numpy() if hasattr(pred_np, "numpy") else np.array(pred_np)
-            target_flat = target_np.numpy() if hasattr(target_np, "numpy") else np.array(target_np)
-        except RuntimeError:
-            # Fallback: convert to list then numpy
-            pred_flat = np.array(pred_np.tolist())
-            target_flat = np.array(target_np.tolist())
-
-        # Ensure 1D arrays
-        if pred_flat.ndim > 1:
-            pred_flat = pred_flat.flatten()
-        if target_flat.ndim > 1:
-            target_flat = target_flat.flatten()
-
-        fig, ax = plt.subplots(figsize=(8, 6), dpi=100)
-        ax.scatter(target_flat, pred_flat, alpha=0.6, s=20)
-
-        min_val = min(target_flat.min(), pred_flat.min())
-        max_val = max(target_flat.max(), pred_flat.max())
-
-        ax.plot([min_val, max_val], [min_val, max_val], "k--", linewidth=1, label="Perfect Prediction", alpha=0.5)
-
-        # Build metrics string
-        metrics_str = f"R² = {r2:.4f}"
-        if mae is not None:
-            metrics_str += f", MAE = {mae:.4f}"
-
-        if len(target_flat) > 1:
-            z = np.polyfit(target_flat, pred_flat, 1)
-            p = np.poly1d(z)
-            ax.plot(target_flat, p(target_flat), "b-", linewidth=2, label=f"Linear Fit, {metrics_str}")
-
-        ax.set_xlabel("Actual UniFrac Distance", fontsize=12)
-        ax.set_ylabel("Predicted UniFrac Distance", fontsize=12)
-        ax.set_title(f"UniFrac Prediction vs Actual (Epoch {epoch}, {metrics_str})", fontsize=14)
-        ax.legend(loc="upper left")
-        ax.grid(True, alpha=0.3)
-
-        plt.tight_layout()
-        return fig
-
-    def _create_confusion_matrix_plot(
-        self,
-        predictions: torch.Tensor,
-        targets: torch.Tensor,
-        epoch: int,
-        accuracy: float,
-        precision: float,
-        recall: float,
-        f1: float,
-    ) -> plt.Figure:
-        """Create confusion matrix plot for classification tasks.
-
-        Args:
-            predictions: Predicted class indices [B] or logits [B, num_classes]
-            targets: Actual class indices [B]
-            epoch: Current epoch number
-            accuracy: Accuracy score
-            precision: Precision score
-            recall: Recall score
-            f1: F1 score
-
-        Returns:
-            Matplotlib figure
-        """
-        from sklearn.metrics import confusion_matrix
-
-        target_np = np.array(targets.detach().cpu().tolist())
-
-        if predictions.dim() > 1 and predictions.size(-1) > 1:
-            pred_np = np.array(predictions.detach().cpu().argmax(dim=-1).tolist())
-        else:
-            pred_np = np.array(predictions.detach().cpu().tolist()).flatten()
-
-        num_classes = max(int(pred_np.max()), int(target_np.max())) + 1
-        cm = confusion_matrix(target_np, pred_np, labels=list(range(num_classes)))
-
-        fig, ax = plt.subplots(figsize=(8, 6), dpi=100)
-        im = ax.imshow(cm, interpolation="nearest", cmap=plt.cm.Blues)
-        ax.figure.colorbar(im, ax=ax)
-
-        ax.set(
-            xticks=np.arange(cm.shape[1]),
-            yticks=np.arange(cm.shape[0]),
-            xticklabels=list(range(num_classes)),
-            yticklabels=list(range(num_classes)),
-            ylabel="True Label",
-            xlabel="Predicted Label",
-        )
-
-        thresh = cm.max() / 2.0
-        for i in range(cm.shape[0]):
-            for j in range(cm.shape[1]):
-                ax.text(j, i, format(cm[i, j], "d"), ha="center", va="center", color="white" if cm[i, j] > thresh else "black")
-
-        metrics_text = f"Accuracy: {accuracy:.4f}\nPrecision: {precision:.4f}\nRecall: {recall:.4f}\nF1: {f1:.4f}"
-        ax.text(
-            0.98,
-            0.02,
-            metrics_text,
-            transform=ax.transAxes,
-            fontsize=10,
-            verticalalignment="bottom",
-            horizontalalignment="right",
-            bbox=dict(boxstyle="round", facecolor="wheat", alpha=0.5),
-        )
-
-        ax.set_title(f"Confusion Matrix (Epoch {epoch})", fontsize=14, pad=20)
-        plt.tight_layout()
-        return fig
-
-    def _save_prediction_plots(
-        self,
-        predictions: torch.Tensor,
-        targets: torch.Tensor,
-        epoch: int,
-        metrics: Dict[str, float],
-        checkpoint_dir: Optional[str],
-        is_unifrac: bool = False,
-        plot_type: str = "target",
-    ) -> None:
-        """Create and save prediction plots when validation improves.
-
-        Args:
-            predictions: Predicted values
-            targets: Actual values
-            epoch: Current epoch number
-            metrics: Metrics dictionary
-            checkpoint_dir: Directory to save plots
-            is_unifrac: Whether this is UniFrac prediction plot (pretraining)
-            plot_type: Type of plot ("target", "unifrac", "count")
-        """
-        if checkpoint_dir is None:
-            return
-
-        is_classifier = self._get_is_classifier()
-
-        plots_dir = Path(checkpoint_dir) / "plots"
-        plots_dir.mkdir(parents=True, exist_ok=True)
-
-        if is_classifier and plot_type == "target":
-            if "accuracy" not in metrics or "precision" not in metrics or "recall" not in metrics or "f1" not in metrics:
-                return
-            fig = self._create_confusion_matrix_plot(
-                predictions,
-                targets,
-                epoch,
-                metrics["accuracy"],
-                metrics["precision"],
-                metrics["recall"],
-                metrics["f1"],
-            )
-            plot_file = plots_dir / "prediction_plot_best.png"
-        elif plot_type == "unifrac" or is_unifrac:
-            if "r2" not in metrics:
-                return
-            mae = metrics.get("mae")
-            fig = self._create_unifrac_prediction_plot(predictions, targets, epoch, metrics["r2"], mae=mae)
-            plot_file = plots_dir / "unifrac_plot_best.png"
-        elif plot_type == "count":
-            # For count predictions, use count-specific metrics
-            r2 = metrics.get("count_r2", metrics.get("r2"))
-            mae = metrics.get("count_mae", metrics.get("mae"))
-            if r2 is None:
-                return
-            fig = self._create_prediction_plot(predictions, targets, epoch, r2, mae=mae, title_prefix="Count")
-            plot_file = plots_dir / "count_plot_best.png"
-        else:
-            # Default: target prediction
-            if "r2" not in metrics:
-                return
-            mae = metrics.get("mae")
-            fig = self._create_prediction_plot(predictions, targets, epoch, metrics["r2"], mae=mae, title_prefix="Target")
-            plot_file = plots_dir / "prediction_plot_best.png"
-
-        if plot_file.exists():
-            plot_file.unlink()
-
-        fig.savefig(plot_file, dpi=100, bbox_inches="tight")
-
-        # Note: TensorBoard logging is handled by _log_figures_to_tensorboard at every epoch
-        # to avoid duplicate figure entries
-
-        plt.close(fig)
-
-    def _log_figures_to_tensorboard(
-        self,
-        epoch: int,
-        predictions_dict: Dict[str, torch.Tensor],
-        targets_dict: Dict[str, torch.Tensor],
-        metrics: Dict[str, float],
-    ) -> None:
-        """Log prediction figures to TensorBoard at every epoch.
-
-        Args:
-            epoch: Current epoch number
-            predictions_dict: Dictionary of predictions by type (target, unifrac, count)
-            targets_dict: Dictionary of targets by type
-            metrics: Metrics dictionary
-        """
-        if self.writer is None:
-            return
-
-        is_classifier = self._get_is_classifier()
-
-        # Log target prediction figure (as "prediction_plot")
-        if "target" in predictions_dict:
-            if is_classifier:
-                if all(k in metrics for k in ["accuracy", "precision", "recall", "f1"]):
-                    fig = self._create_confusion_matrix_plot(
-                        predictions_dict["target"],
-                        targets_dict["target"],
-                        epoch,
-                        metrics["accuracy"],
-                        metrics["precision"],
-                        metrics["recall"],
-                        metrics["f1"],
-                    )
-                    self.writer.add_figure("validation/prediction_plot", fig, epoch)
-                    plt.close(fig)
-            else:
-                if "r2" in metrics:
-                    fig = self._create_prediction_plot(
-                        predictions_dict["target"],
-                        targets_dict["target"],
-                        epoch,
-                        metrics["r2"],
-                        mae=metrics.get("mae"),
-                        title_prefix="Target",
-                    )
-                    self.writer.add_figure("validation/prediction_plot", fig, epoch)
-                    plt.close(fig)
-
-        # Log UniFrac prediction figure (as "unifrac_plot")
-        if "unifrac" in predictions_dict:
-            r2 = metrics.get("r2") if "target" not in predictions_dict else None
-            # For fine-tuning, unifrac metrics might not be in the main metrics
-            if r2 is None:
-                # Compute R² for unifrac predictions
-                from sklearn.metrics import r2_score
-
-                try:
-                    pred_np = predictions_dict["unifrac"].cpu().numpy().flatten()
-                    true_np = targets_dict["unifrac"].cpu().numpy().flatten()
-                    r2 = r2_score(true_np, pred_np)
-                    mae = float(np.abs(pred_np - true_np).mean())
-                except Exception:
-                    r2 = None
-                    mae = None
-            else:
-                mae = metrics.get("mae")
-
-            if r2 is not None:
-                fig = self._create_unifrac_prediction_plot(
-                    predictions_dict["unifrac"],
-                    targets_dict["unifrac"],
-                    epoch,
-                    r2,
-                    mae=mae,
-                )
-                self.writer.add_figure("validation/unifrac_plot", fig, epoch)
-                plt.close(fig)
-
-        # Log count prediction figure (as "count_plot")
-        if "count" in predictions_dict:
-            r2 = metrics.get("count_r2")
-            mae = metrics.get("count_mae")
-            if r2 is not None:
-                fig = self._create_prediction_plot(
-                    predictions_dict["count"],
-                    targets_dict["count"],
-                    epoch,
-                    r2,
-                    mae=mae,
-                    title_prefix="Count",
-                )
-                self.writer.add_figure("validation/count_plot", fig, epoch)
-                plt.close(fig)
 
     def _log_to_tensorboard(self, epoch: int, train_losses: Dict[str, float], val_results: Optional[Dict[str, float]] = None):
         """Log metrics to TensorBoard.
@@ -1042,8 +682,7 @@ class Trainer:
     ) -> Union[Dict[str, float], Tuple[Dict[str, float], Dict[str, torch.Tensor], Dict[str, torch.Tensor]]]:
         """Run one validation epoch with streaming metrics computation.
 
-        Uses O(batch) memory instead of O(dataset) by computing metrics incrementally.
-        Plot data is retained via reservoir sampling (max 1000 samples by default).
+        Delegates to the Evaluator for validation logic.
 
         Args:
             dataloader: Validation data loader
@@ -1055,299 +694,13 @@ class Trainer:
         Returns:
             Dictionary with losses and metrics, optionally with prediction samples
         """
-        self.model.eval()
-        total_losses = {}
-        num_batches = 0
-        is_pretraining = self._is_pretraining()
-        is_classifier = self._get_is_classifier()
-        encoder_type = self._get_encoder_type()
-
-        # Initialize streaming metrics (O(1) memory for stats, O(max_plot_samples) for plots)
-        unifrac_metrics = StreamingRegressionMetrics(max_plot_samples=1000)
-        target_metrics = (
-            StreamingClassificationMetrics(max_plot_samples=1000)
-            if is_classifier
-            else StreamingRegressionMetrics(max_plot_samples=1000)
+        return self.evaluator.validate_epoch(
+            dataloader=dataloader,
+            compute_metrics=compute_metrics,
+            epoch=epoch,
+            num_epochs=num_epochs,
+            return_predictions=return_predictions,
         )
-        count_metrics = StreamingCountMetrics(max_plot_samples=1000)
-
-        # Track which metrics have data
-        has_unifrac = False
-        has_target = False
-        has_count = False
-
-        with torch.no_grad():
-            pbar = tqdm(
-                dataloader,
-                desc=f"Epoch {epoch + 1}/{num_epochs} [Val]",
-                leave=False,
-            )
-
-            # Store last batch info for debugging
-            last_targets = None
-            last_outputs = None
-
-            # Running averages for progress bar
-            running_avg_loss = 0.0
-            running_avg_unifrac_loss = 0.0
-            running_avg_nuc_loss = 0.0
-            running_avg_nuc_accuracy = 0.0
-            running_avg_target_loss = 0.0
-
-            # Determine what metrics to show based on training mode
-            show_nuc_metrics = cast(float, self.loss_fn.nuc_penalty) > 0
-
-            for step, batch in enumerate(pbar, 1):
-                try:
-                    tokens, targets = self._prepare_batch(batch)
-                    last_targets = targets
-
-                    return_nucleotides = "nucleotides" in targets or cast(float, self.loss_fn.nuc_penalty) > 0
-
-                    # Mixed precision autocast for validation forward pass
-                    autocast_dtype = None
-                    if self.mixed_precision == "fp16":
-                        autocast_dtype = torch.float16
-                    elif self.mixed_precision == "bf16":
-                        autocast_dtype = torch.bfloat16
-
-                    if autocast_dtype is not None and self.device.type == "cuda":
-                        with torch.amp.autocast(device_type="cuda", dtype=autocast_dtype):
-                            outputs = self.model(tokens, return_nucleotides=return_nucleotides)
-                    else:
-                        outputs = self.model(tokens, return_nucleotides=return_nucleotides)
-                    last_outputs = outputs
-
-                    losses = self.loss_fn(outputs, targets, is_classifier=is_classifier, encoder_type=encoder_type)
-
-                    current_loss_val = losses["total_loss"]
-                    if isinstance(current_loss_val, torch.Tensor):
-                        current_loss_val = current_loss_val.detach().item()
-                    else:
-                        current_loss_val = float(current_loss_val)
-
-                    for key, value in losses.items():
-                        if key not in total_losses:
-                            total_losses[key] = 0.0
-                        if isinstance(value, torch.Tensor):
-                            total_losses[key] += value.detach().item()
-                        else:
-                            total_losses[key] += float(value)
-
-                    # Compute nucleotide accuracy on masked/valid positions
-                    nuc_accuracy_val = 0.0
-                    if "nuc_predictions" in outputs:
-                        nuc_preds = outputs["nuc_predictions"]
-                        nuc_targets = targets.get("tokens", targets.get("nucleotides"))
-                        if nuc_targets is not None:
-                            predicted_tokens = nuc_preds.argmax(dim=-1)
-                            correct = predicted_tokens == nuc_targets
-
-                            mask_indices = outputs.get("mask_indices")
-                            if mask_indices is not None and mask_indices.any():
-                                nuc_accuracy_val = correct[mask_indices].float().mean().item()
-                            else:
-                                valid_mask = (nuc_targets >= 1) & (nuc_targets <= 4)
-                                if valid_mask.any():
-                                    nuc_accuracy_val = correct[valid_mask].float().mean().item()
-
-                        if "nuc_accuracy" not in total_losses:
-                            total_losses["nuc_accuracy"] = 0.0
-                        total_losses["nuc_accuracy"] += nuc_accuracy_val
-
-                    # Update running averages for progress bar
-                    if num_batches == 0:
-                        running_avg_loss = current_loss_val
-                        running_avg_nuc_accuracy = nuc_accuracy_val
-                        if "unifrac_loss" in losses:
-                            unifrac_val = losses["unifrac_loss"]
-                            running_avg_unifrac_loss = (
-                                unifrac_val.detach().item() if isinstance(unifrac_val, torch.Tensor) else float(unifrac_val)
-                            )
-                        if "target_loss" in losses:
-                            target_val = losses["target_loss"]
-                            running_avg_target_loss = (
-                                target_val.detach().item() if isinstance(target_val, torch.Tensor) else float(target_val)
-                            )
-                        if "nuc_loss" in losses:
-                            nuc_val = losses["nuc_loss"]
-                            running_avg_nuc_loss = (
-                                nuc_val.detach().item() if isinstance(nuc_val, torch.Tensor) else float(nuc_val)
-                            )
-                    else:
-                        running_avg_loss = (running_avg_loss * num_batches + current_loss_val) / (num_batches + 1)
-                        running_avg_nuc_accuracy = (running_avg_nuc_accuracy * num_batches + nuc_accuracy_val) / (
-                            num_batches + 1
-                        )
-                        if "unifrac_loss" in losses:
-                            unifrac_val = losses["unifrac_loss"]
-                            unifrac_val = (
-                                unifrac_val.detach().item() if isinstance(unifrac_val, torch.Tensor) else float(unifrac_val)
-                            )
-                            running_avg_unifrac_loss = (running_avg_unifrac_loss * num_batches + unifrac_val) / (
-                                num_batches + 1
-                            )
-                        if "target_loss" in losses:
-                            target_val = losses["target_loss"]
-                            target_val = (
-                                target_val.detach().item() if isinstance(target_val, torch.Tensor) else float(target_val)
-                            )
-                            running_avg_target_loss = (running_avg_target_loss * num_batches + target_val) / (num_batches + 1)
-                        if "nuc_loss" in losses:
-                            nuc_val = losses["nuc_loss"]
-                            nuc_val = nuc_val.detach().item() if isinstance(nuc_val, torch.Tensor) else float(nuc_val)
-                            running_avg_nuc_loss = (running_avg_nuc_loss * num_batches + nuc_val) / (num_batches + 1)
-
-                    # Format validation progress bar
-                    postfix_dict = {
-                        "TL": f"{running_avg_loss:.6f}" if running_avg_loss < 0.0001 else f"{running_avg_loss:.4f}",
-                    }
-                    # Show task-specific loss (RL=Regression Loss, CL=Classification Loss) during fine-tuning
-                    if not is_pretraining and "target_loss" in losses:
-                        loss_label = "CL" if is_classifier else "RL"
-                        postfix_dict[loss_label] = (
-                            f"{running_avg_target_loss:.6f}"
-                            if running_avg_target_loss < 0.0001
-                            else f"{running_avg_target_loss:.4f}"
-                        )
-                    if "unifrac_loss" in losses:
-                        postfix_dict["UL"] = (
-                            f"{running_avg_unifrac_loss:.6f}"
-                            if running_avg_unifrac_loss < 0.0001
-                            else f"{running_avg_unifrac_loss:.4f}"
-                        )
-                    # Only show NL/NA when nucleotide loss is contributing to training
-                    if show_nuc_metrics and "nuc_loss" in losses:
-                        postfix_dict["NL"] = (
-                            f"{running_avg_nuc_loss:.6f}" if running_avg_nuc_loss < 0.0001 else f"{running_avg_nuc_loss:.4f}"
-                        )
-                    if show_nuc_metrics and "nuc_predictions" in outputs:
-                        postfix_dict["NA"] = f"{running_avg_nuc_accuracy:.2%}"
-
-                    pbar.set_postfix(postfix_dict)
-
-                    # Update streaming metrics (O(batch) memory per update)
-                    if compute_metrics:
-                        # UniFrac metrics (pretraining or fine-tuning with unifrac)
-                        if "base_target" in targets:
-                            from aam.training.losses import compute_pairwise_distances
-
-                            base_pred_batch = None
-
-                            if encoder_type == "unifrac" and "embeddings" in outputs:
-                                embeddings = outputs["embeddings"]
-                                if embeddings is not None:
-                                    try:
-                                        base_pred_batch = compute_pairwise_distances(embeddings.detach()).detach()
-                                    except Exception:
-                                        base_pred_batch = None
-
-                            if base_pred_batch is None and "base_prediction" in outputs:
-                                base_pred_batch = outputs["base_prediction"]
-
-                            if base_pred_batch is not None:
-                                base_true_batch = targets["base_target"]
-                                # Extract upper triangle (excluding diagonal)
-                                if base_pred_batch.dim() == 2 and base_pred_batch.shape[0] == base_pred_batch.shape[1]:
-                                    batch_size = base_pred_batch.shape[0]
-                                    triu_indices = torch.triu_indices(
-                                        batch_size, batch_size, offset=1, device=base_pred_batch.device
-                                    )
-                                    base_pred_flat = base_pred_batch[triu_indices[0], triu_indices[1]]
-                                    base_true_flat = base_true_batch[triu_indices[0], triu_indices[1]]
-                                else:
-                                    base_pred_flat = base_pred_batch.flatten()
-                                    base_true_flat = base_true_batch.flatten()
-
-                                unifrac_metrics.update(base_pred_flat, base_true_flat)
-                                has_unifrac = True
-
-                        # Target metrics (fine-tuning)
-                        if not is_pretraining and "target_prediction" in outputs and "target" in targets:
-                            pred = outputs["target_prediction"]
-                            true = targets["target"]
-                            # Denormalize for metrics
-                            pred_denorm = self._denormalize_targets(pred)
-                            true_denorm = self._denormalize_targets(true)
-                            target_metrics.update(pred_denorm, true_denorm)
-                            has_target = True
-
-                        # Count metrics
-                        if "count_prediction" in outputs and "counts" in targets:
-                            count_pred = outputs["count_prediction"]
-                            count_true = targets["counts"]
-                            mask = targets.get("mask", (tokens.sum(dim=-1) > 0).long())
-                            # Denormalize for metrics
-                            count_pred_denorm = self._denormalize_counts(count_pred)
-                            count_true_denorm = self._denormalize_counts(count_true)
-                            count_metrics.update(count_pred_denorm, count_true_denorm, mask)
-                            has_count = True
-
-                    num_batches += 1
-
-                except torch.cuda.OutOfMemoryError as e:
-                    if torch.cuda.is_available():
-                        torch.cuda.empty_cache()
-                    error_msg = (
-                        "CUDA out of memory during validation. "
-                        "Try: (1) reducing batch_size, (2) reducing model size, "
-                        "(3) setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True"
-                    )
-                    raise RuntimeError(error_msg) from e
-
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-
-        avg_losses = {key: value / num_batches for key, value in total_losses.items()}
-
-        # Compute final metrics from streaming accumulators
-        if compute_metrics:
-            if is_pretraining and has_unifrac:
-                metrics = unifrac_metrics.compute()
-                avg_losses.update(metrics)
-            elif has_target:
-                metrics = target_metrics.compute()
-                avg_losses.update(metrics)
-
-            if has_count:
-                metrics = count_metrics.compute()
-                avg_losses.update({f"count_{k}": v for k, v in metrics.items()})
-
-        # Debug logging if no predictions collected
-        if compute_metrics and not (has_unifrac or has_target or has_count):
-            import logging
-
-            logger = logging.getLogger(__name__)
-            target_keys = list(last_targets.keys()) if last_targets is not None else []
-            output_keys = list(last_outputs.keys()) if last_outputs is not None else []
-            logger.warning(
-                f"No predictions collected for metrics computation at epoch {epoch}. "
-                f"Outputs keys: {output_keys}, Target keys: {target_keys}, is_pretraining: {is_pretraining}"
-            )
-
-        if return_predictions:
-            # Return sampled predictions for plotting (from reservoir sampling)
-            all_preds = {}
-            all_targs = {}
-
-            if has_unifrac:
-                pred_samples, targ_samples = unifrac_metrics.get_plot_data()
-                all_preds["unifrac"] = pred_samples
-                all_targs["unifrac"] = targ_samples
-
-            if has_target:
-                pred_samples, targ_samples = target_metrics.get_plot_data()
-                all_preds["target"] = pred_samples
-                all_targs["target"] = targ_samples
-
-            if has_count:
-                pred_samples, targ_samples = count_metrics.get_plot_data()
-                all_preds["count"] = pred_samples
-                all_targs["count"] = targ_samples
-
-            return avg_losses, all_preds, all_targs
-
-        return avg_losses
 
     def train(
         self,
@@ -1478,7 +831,9 @@ class Trainer:
 
                     # Log prediction figures to TensorBoard at every epoch
                     if self.writer is not None and val_predictions_dict:
-                        self._log_figures_to_tensorboard(epoch, val_predictions_dict, val_targets_dict, val_results)
+                        self.evaluator.log_figures_to_tensorboard(
+                            epoch, val_predictions_dict, val_targets_dict, val_results, self.writer
+                        )
 
                     if val_loss < best_val_loss:
                         best_val_loss = val_loss
@@ -1498,41 +853,13 @@ class Trainer:
 
                         # Save all prediction plots (only on main process)
                         if save_plots and val_predictions_dict and is_main_process():
-                            is_pretraining = self._is_pretraining()
-
-                            # Save target prediction plot
-                            if "target" in val_predictions_dict:
-                                self._save_prediction_plots(
-                                    val_predictions_dict["target"],
-                                    val_targets_dict["target"],
-                                    epoch,
-                                    val_results,
-                                    checkpoint_dir,
-                                    plot_type="target",
-                                )
-
-                            # Save UniFrac prediction plot
-                            if "unifrac" in val_predictions_dict:
-                                self._save_prediction_plots(
-                                    val_predictions_dict["unifrac"],
-                                    val_targets_dict["unifrac"],
-                                    epoch,
-                                    val_results,
-                                    checkpoint_dir,
-                                    plot_type="unifrac",
-                                    is_unifrac=True,
-                                )
-
-                            # Save count prediction plot
-                            if "count" in val_predictions_dict:
-                                self._save_prediction_plots(
-                                    val_predictions_dict["count"],
-                                    val_targets_dict["count"],
-                                    epoch,
-                                    val_results,
-                                    checkpoint_dir,
-                                    plot_type="count",
-                                )
+                            self.evaluator.save_prediction_plots(
+                                val_predictions_dict,
+                                val_targets_dict,
+                                epoch,
+                                val_results,
+                                checkpoint_dir,
+                            )
                     else:
                         patience_counter += 1
                         if patience_counter >= early_stopping_patience:

@@ -1,8 +1,19 @@
 # Archived Tickets - Completed Work
 
-**Last Updated:** 2025-12-18
+**Last Updated:** 2025-12-19
 
 This file contains completed tickets for historical reference. For active work, see `PYTORCH_PORTING_TICKETS.md` and `COSMOS_ONBOARDING_TICKETS.md`.
+
+---
+
+## Phase CLN: Code Cleanup (All Complete - 2025-12-19)
+
+- **CLN-1:** Remove Deprecated UniFrac Modules - Deleted `tree_pruner.py`, `unifrac.py`, `unifrac_cache.py`, `compute_unifrac_parallel.py` (~1665 lines)
+- **CLN-2:** Remove Dead Code Paths - Removed `stripe_mode`, `lazy_unifrac` parameters and logic (~200 lines)
+- **CLN-3:** Add Package `__init__.py` Exports - Added public API exports to `aam/data/` and `aam/models/`
+- **CLN-4:** Fix Type Errors (ty) - Fixed 19 type errors, `uvx ty check aam/` now passes
+- **CLN-5:** Extract CLI Helper Modules - Refactored 1448-line `cli.py` into `aam/cli/` package
+- **CLN-6:** Extract Trainer Validation Logic - Created `aam/training/evaluation.py`, reduced `trainer.py` by 35%
 
 ---
 

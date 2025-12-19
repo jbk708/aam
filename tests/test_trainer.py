@@ -17,6 +17,10 @@ from aam.training.trainer import (
     create_scheduler,
     load_pretrained_encoder,
 )
+from aam.training.evaluation import (
+    create_prediction_plot,
+    create_confusion_matrix_plot,
+)
 from aam.models.sequence_encoder import SequenceEncoder
 from aam.models.sequence_predictor import SequencePredictor
 from aam.training.losses import MultiTaskLoss
@@ -1418,17 +1422,11 @@ class TestPredictionPlots:
 
     def test_create_prediction_plot_regression(self, small_model, loss_fn, device):
         """Test creating regression prediction plot."""
-        trainer = Trainer(
-            model=small_model,
-            loss_fn=loss_fn,
-            device=device,
-        )
-
         predictions = torch.randn(100, 1).to(device)
         targets = predictions + torch.randn(100, 1).to(device) * 0.1
         r2 = 0.95
 
-        fig = trainer._create_prediction_plot(predictions, targets, epoch=5, r2=r2)
+        fig = create_prediction_plot(predictions, targets, epoch=5, r2=r2)
 
         assert fig is not None
         assert isinstance(fig, plt.Figure)
@@ -1436,36 +1434,6 @@ class TestPredictionPlots:
 
     def test_create_confusion_matrix_plot_classification(self, loss_fn, device):
         """Test creating classification confusion matrix plot."""
-        from aam.models.sequence_predictor import SequencePredictor
-
-        classifier_model = SequencePredictor(
-            vocab_size=6,
-            embedding_dim=32,
-            max_bp=50,
-            token_limit=64,
-            asv_num_layers=1,
-            asv_num_heads=2,
-            sample_num_layers=1,
-            sample_num_heads=2,
-            encoder_num_layers=1,
-            encoder_num_heads=2,
-            count_num_layers=1,
-            count_num_heads=2,
-            target_num_layers=1,
-            target_num_heads=2,
-            out_dim=3,
-            is_classifier=True,
-            freeze_base=False,
-            predict_nucleotides=False,
-            base_output_dim=None,  # UniFrac: no output_head, returns embeddings
-        )
-
-        trainer = Trainer(
-            model=classifier_model,
-            loss_fn=loss_fn,
-            device=device,
-        )
-
         predictions = torch.randint(0, 3, (100,)).to(device)
         targets = torch.randint(0, 3, (100,)).to(device)
         accuracy = 0.85
@@ -1473,7 +1441,7 @@ class TestPredictionPlots:
         recall = 0.80
         f1 = 0.81
 
-        fig = trainer._create_confusion_matrix_plot(
+        fig = create_confusion_matrix_plot(
             predictions, targets, epoch=5, accuracy=accuracy, precision=precision, recall=recall, f1=f1
         )
 
@@ -1532,8 +1500,12 @@ class TestPredictionPlots:
         targets = predictions + torch.randn(50, 1).to(device) * 0.1
         metrics = {"r2": 0.95, "mse": 0.05}
 
-        trainer._save_prediction_plots(
-            predictions, targets, epoch=5, metrics=metrics, checkpoint_dir=str(checkpoint_dir), plot_type="target"
+        trainer.evaluator.save_prediction_plots(
+            predictions_dict={"target": predictions},
+            targets_dict={"target": targets},
+            epoch=5,
+            metrics=metrics,
+            checkpoint_dir=str(checkpoint_dir),
         )
 
         plots_dir = checkpoint_dir / "plots"
@@ -1580,8 +1552,12 @@ class TestPredictionPlots:
         targets = torch.randint(0, 3, (50,)).to(device)
         metrics = {"accuracy": 0.85, "precision": 0.82, "recall": 0.80, "f1": 0.81}
 
-        trainer._save_prediction_plots(
-            predictions, targets, epoch=5, metrics=metrics, checkpoint_dir=str(checkpoint_dir), plot_type="target"
+        trainer.evaluator.save_prediction_plots(
+            predictions_dict={"target": predictions},
+            targets_dict={"target": targets},
+            epoch=5,
+            metrics=metrics,
+            checkpoint_dir=str(checkpoint_dir),
         )
 
         plots_dir = checkpoint_dir / "plots"
@@ -2394,7 +2370,7 @@ class TestProgressBarFormat:
         def capture_postfix(d):
             postfix_calls.append(d.copy())
 
-        with patch("aam.training.trainer.tqdm") as mock_tqdm:
+        with patch("aam.training.evaluation.tqdm") as mock_tqdm:
             mock_pbar = MagicMock()
             mock_pbar.set_postfix = capture_postfix
             mock_pbar.__iter__ = lambda self: iter(simple_dataloader)
