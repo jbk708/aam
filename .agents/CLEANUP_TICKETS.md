@@ -100,26 +100,21 @@ __all__ = ["SequencePredictor", "SequenceEncoder", "SampleSequenceEncoder", "ASV
 
 ---
 
-### CLN-4: Fix Mypy Configuration
-**Priority:** MEDIUM | **Effort:** 1 hour | **Status:** Not Started
+### CLN-4: Fix Type Errors (ty)
+**Priority:** MEDIUM | **Effort:** 1-2 hours | **Status:** Not Started
 
 **Problem:**
-Running `mypy aam/` fails with "Source file found twice under different module names" error.
+Running `uvx ty check aam/` reports 19 type errors. Type checking is part of the CI workflow and these should be resolved.
 
 **Solution:**
-Add mypy configuration to `pyproject.toml`:
-
-```toml
-[tool.mypy]
-packages = ["aam"]
-explicit_package_bases = true
-ignore_missing_imports = true
-```
+Fix type errors identified by `ty`. Most are likely:
+- Missing type annotations
+- Incorrect argument types (e.g., `float()` calls on tensors)
+- Union type handling
 
 **Acceptance Criteria:**
-- [ ] Add mypy config to pyproject.toml
-- [ ] `mypy aam/` runs without configuration errors
-- [ ] Document any type errors to fix (separate ticket if significant)
+- [ ] `uvx ty check aam/` passes with no errors
+- [ ] No behavior changes (type fixes only)
 
 ---
 
@@ -180,7 +175,7 @@ Extract to `aam/training/evaluation.py`:
 | CLN-1 | HIGH | 2-3h | -1665 (delete) |
 | CLN-2 | HIGH | 1-2h | ~50 |
 | CLN-3 | MEDIUM | 1h | ~20 |
-| CLN-4 | MEDIUM | 1h | ~10 |
+| CLN-4 | MEDIUM | 1-2h | ~50 |
 | CLN-5 | LOW | 3-4h | ~1500 (refactor) |
 | CLN-6 | LOW | 3-4h | ~500 (refactor) |
 | **Total** | | **12-16h** | |
@@ -190,5 +185,5 @@ Extract to `aam/training/evaluation.py`:
 1. **CLN-1** - Remove deprecated modules (biggest impact, cleanest codebase)
 2. **CLN-2** - Remove dead code paths (depends on CLN-1 for unifrac.py removal)
 3. **CLN-3** - Add __init__ exports (quick win)
-4. **CLN-4** - Fix mypy (enables type checking)
+4. **CLN-4** - Fix type errors (ty)
 5. **CLN-5/6** - Refactoring (lower priority, larger effort)
