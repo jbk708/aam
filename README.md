@@ -151,6 +151,43 @@ module load gcc
 
 Without this, `torch.compile()` may fail with `fatal error: stdatomic.h: No such file or directory` because the system GCC lacks required headers for Triton compilation.
 
+### Cosmos (SDSC AMD MI300A)
+
+AAM supports ROCm for AMD GPUs. For [SDSC Cosmos](https://www.sdsc.edu/systems/cosmos/user_guide.html) (168 AMD Instinct MI300A APUs):
+
+**Environment Setup:**
+
+```bash
+# Load ROCm-enabled PyTorch module
+module load pytorch/2.6.0
+
+# Create conda environment
+conda create -n aam python=3.11 -y
+conda activate aam
+
+# Install AAM
+cd /path/to/aam
+pip install -e ".[training]"
+
+# Verify ROCm detection
+python -c "import torch; print(f'ROCm available: {torch.cuda.is_available()}')"
+```
+
+**Running Jobs:**
+
+AAM automatically detects ROCm vs CUDA. Use standard commands:
+
+```bash
+# Single APU
+python -m aam.cli pretrain --table data.biom --unifrac-matrix unifrac.npy --output-dir output/
+
+# Multi-APU with DDP (4 APUs per node)
+torchrun --nproc_per_node=4 -m aam.cli pretrain \
+  --table data.biom --unifrac-matrix unifrac.npy --output-dir output/
+```
+
+**MI300A Memory:** Each APU has 128GB unified CPU/GPU memory. The default `--token-limit 1024` works well; increase for larger datasets.
+
 ### Learning Rate Schedulers
 
 | Scheduler | Use Case |

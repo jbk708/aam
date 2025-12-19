@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2025-12-19
-**Status:** 19 outstanding tickets (~85-125 hours)
+**Status:** 17 outstanding tickets (~75-110 hours)
 
 ## Quick Links
 - **PyTorch work:** `PYTORCH_PORTING_TICKETS.md`
@@ -13,14 +13,11 @@
 
 ## Outstanding Tickets by Priority
 
-### HIGH (4 tickets, ~10-14 hours)
+### HIGH (1 ticket, ~3-4 hours)
 
 | Ticket | Description | Effort |
 |--------|-------------|--------|
-| **COS-1.2** | Cosmos Environment Setup Script | 2-3h |
-| **COS-3.1** | Create SLURM Job Scripts | 3-4h |
 | **COS-5.2** | Numerical Validation (CUDA vs ROCm) | 3-4h |
-| **COS-7.1** | Cosmos Quick Start Guide | 2-3h |
 
 ### MEDIUM (7 tickets, ~25-40 hours)
 
@@ -34,10 +31,11 @@
 | **COS-6.2** | Flash Attention for ROCm | 4-6h |
 | **COS-7.2** | Cosmos Best Practices Guide | 2-3h |
 
-### LOW (8 tickets, ~50-70 hours)
+### LOW (9 tickets, ~53-77 hours)
 
 | Ticket | Description | Effort |
 |--------|-------------|--------|
+| **COS-3.1** | Create SLURM Job Scripts | 3-4h |
 | **PYT-10.6** | Multi-GPU Training (DDP) - CUDA | 8-12h |
 | **PYT-21.5** | Skip Nucleotide Predictions During Fine-Tuning | 2-3h |
 | **PYT-18.5** | Lazy Sample Embedding Computation | 4-6h |
@@ -59,6 +57,10 @@ Future enhancement phases (~50+ hours):
 
 ## Recently Completed (2025-12-19)
 
+**COS-1.2 & COS-7.1: Merged to README**
+- Cosmos setup instructions added to README (conda + pip install)
+- Quick start guide merged into setup section
+
 **PYT-21.3: Regressor Head Optimization**
 - Unbounded regression by default (no sigmoid)
 - LayerNorm before target projection (default: enabled)
@@ -78,10 +80,8 @@ Future enhancement phases (~50+ hours):
 ## Recommended Next Steps
 
 ### Cosmos Onboarding (Priority)
-1. **COS-3.1** - SLURM job scripts (enables running jobs)
-2. **COS-5.2** - Numerical validation (ensures correctness)
-3. **COS-1.2** - Environment setup script
-4. **COS-7.1** - Quick start guide
+1. **COS-5.2** - Numerical validation (ensures correctness)
+2. **COS-1.1** - Singularity container (reproducibility)
 
 ### PyTorch Improvements (As Needed)
 1. **PYT-21.5** - Skip nucleotide predictions during fine-tuning
