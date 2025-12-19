@@ -428,7 +428,7 @@ class DistributedTrainer:
         return self.trainer.train(
             train_loader,
             val_loader=val_loader,
-            epochs=epochs,
+            num_epochs=epochs,
             **train_kwargs,
         )
 

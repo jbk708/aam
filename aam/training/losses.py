@@ -205,6 +205,13 @@ class MultiTaskLoss(nn.Module):
 
     VALID_LOSS_TYPES = ("mse", "mae", "huber")
 
+    # Type annotations for attributes
+    penalty: float
+    nuc_penalty: float
+    target_penalty: float
+    target_loss_type: str
+    class_weights: Optional[torch.Tensor]
+
     def __init__(
         self,
         penalty: float = 1.0,
