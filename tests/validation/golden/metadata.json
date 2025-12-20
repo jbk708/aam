@@ -11,9 +11,11 @@
     "rtol": 0.0001
   },
   "platform_info": {
-    "torch_version": "2.9.1",
+    "torch_version": "2.5.1",
     "python_version": "3.12.12",
-    "platform": "macOS-15.6.1-arm64-arm-64bit",
-    "device": "cpu"
+    "platform": "Linux-3.10.0-1160.119.1.el7.x86_64-x86_64-with-glibc2.17",
+    "device": "cuda",
+    "cuda_version": "12.4",
+    "gpu_name": "NVIDIA GeForce RTX 3090"
   }
 }
