@@ -158,12 +158,12 @@ AAM supports ROCm for AMD GPUs. For [SDSC Cosmos](https://www.sdsc.edu/systems/c
 **Environment Setup:**
 
 ```bash
-# Load ROCm-enabled PyTorch module
-module load pytorch/2.6.0
-
 # Create conda environment
-conda create -n aam python=3.11 -y
-conda activate aam
+mamba create -n aam-rocm python=3.11 -y
+mamba activate aam-rocm
+
+# Install PyTorch with ROCm support (no module available)
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.2
 
 # Install AAM
 cd /path/to/aam
