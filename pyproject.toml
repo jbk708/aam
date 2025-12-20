@@ -41,7 +41,7 @@ dependencies = [
 keywords = ["aam", "pytorch", "deep-learning", "microbiome", "unifrac"]
 
 [project.scripts]
-attention = "aam.attention_cli:main"
+aam = "aam.cli:main"
 
 [project.urls]
 "Bug Tracker" = "https://github.com/jbk708/aam/issues"
