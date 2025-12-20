@@ -58,7 +58,7 @@ dev = [
     "pytest-cov >= 4.0",
     "pytest-xdist >= 3.0",
     "ruff >= 0.1.0",
-    "mypy >= 1.0",
+    "ty",
 ]
 docs = [
     "sphinx >= 5.0",
@@ -70,11 +70,8 @@ training = [
     "wandb >= 0.15.0",
     "tensorboard >= 2.13.0",
 ]
-compute = [
-    "unifrac",
-]
 all = [
-    "aam[dev,docs,training,compute]",
+    "aam[dev,docs,training]",
 ]
 
 
