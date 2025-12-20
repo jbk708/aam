@@ -75,9 +75,7 @@ class TestHelperFunctions:
         model2 = _create_model(config, device)
 
         # Same seed should produce identical weights
-        for (n1, p1), (n2, p2) in zip(
-            model1.named_parameters(), model2.named_parameters()
-        ):
+        for (n1, p1), (n2, p2) in zip(model1.named_parameters(), model2.named_parameters()):
             assert n1 == n2
             assert torch.allclose(p1, p2), f"Parameter {n1} differs"
 
@@ -228,9 +226,7 @@ class TestGoldenOutputComparison:
         config = ValidationConfig(golden_dir=tmp_path)
 
         with pytest.raises(FileNotFoundError):
-            compare_golden_outputs(
-                config=config, device=torch.device("cpu"), golden_dir=tmp_path
-            )
+            compare_golden_outputs(config=config, device=torch.device("cpu"), golden_dir=tmp_path)
 
 
 class TestValidationResult:
@@ -272,9 +268,7 @@ class TestRunValidation:
     def test_run_generate_mode(self, tmp_path):
         """Test running in generate mode."""
         config = ValidationConfig(golden_dir=tmp_path)
-        run_validation(
-            mode="generate", config=config, device=torch.device("cpu"), golden_dir=tmp_path
-        )
+        run_validation(mode="generate", config=config, device=torch.device("cpu"), golden_dir=tmp_path)
 
         assert (tmp_path / "forward_outputs.pt").exists()
 
@@ -283,14 +277,10 @@ class TestRunValidation:
         config = ValidationConfig(golden_dir=tmp_path)
 
         # First generate
-        run_validation(
-            mode="generate", config=config, device=torch.device("cpu"), golden_dir=tmp_path
-        )
+        run_validation(mode="generate", config=config, device=torch.device("cpu"), golden_dir=tmp_path)
 
         # Then compare (should not raise)
-        run_validation(
-            mode="compare", config=config, device=torch.device("cpu"), golden_dir=tmp_path
-        )
+        run_validation(mode="compare", config=config, device=torch.device("cpu"), golden_dir=tmp_path)
 
     def test_run_invalid_mode_raises(self, tmp_path):
         """Test that invalid mode raises error."""
@@ -313,9 +303,7 @@ class TestGradientValidation:
         config = ValidationConfig(golden_dir=tmp_path)
 
         # Generate with gradients
-        generate_golden_outputs(
-            config=config, device=torch.device("cpu")
-        )
+        generate_golden_outputs(config=config, device=torch.device("cpu"))
 
         # Check gradient info is saved
         outputs = torch.load(tmp_path / "forward_outputs.pt", weights_only=True)

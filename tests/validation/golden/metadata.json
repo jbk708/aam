@@ -1,0 +1,19 @@
+{
+  "config": {
+    "seed": 42,
+    "batch_size": 2,
+    "num_asvs": 8,
+    "seq_len": 150,
+    "embedding_dim": 64,
+    "vocab_size": 6,
+    "out_dim": 1,
+    "atol": 1e-05,
+    "rtol": 0.0001
+  },
+  "platform_info": {
+    "torch_version": "2.9.1",
+    "python_version": "3.12.12",
+    "platform": "macOS-15.6.1-arm64-arm-64bit",
+    "device": "cpu"
+  }
+}
