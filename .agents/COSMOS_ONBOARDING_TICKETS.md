@@ -4,7 +4,7 @@
 **Target System:** SDSC Cosmos - 168 AMD Instinct MI300A APUs (42 nodes × 4 APUs)
 **Reference:** [Cosmos User Guide](https://www.sdsc.edu/systems/cosmos/user_guide.html)
 
-**Completed:** COS-1.0 (Native ROCm), COS-1.2 (Setup - merged to README), COS-2.1 (Compatibility Audit), COS-4.1 (DDP), COS-7.1 (Quick Start - merged to README) - see `ARCHIVED_TICKETS.md`
+**Completed:** COS-1.0 (Native ROCm), COS-1.2 (Setup - merged to README), COS-2.1 (Compatibility Audit), COS-4.1 (DDP), COS-5.2 (Numerical Validation), COS-7.1 (Quick Start - merged to README) - see `ARCHIVED_TICKETS.md`
 
 ---
 
@@ -53,7 +53,7 @@ FSDP for very large models (may not be needed with 128GB/APU).
 
 ---
 
-## Phase 5: Testing & Validation (2 remaining)
+## Phase 5: Testing & Validation (1 remaining)
 
 ### COS-5.1: ROCm CI/CD Pipeline
 **Priority:** MEDIUM | **Effort:** 4-6 hours | **Status:** Not Started
@@ -61,9 +61,13 @@ FSDP for very large models (may not be needed with 128GB/APU).
 ROCm-specific tests and manual test procedure for Cosmos.
 
 ### COS-5.2: Numerical Validation (CUDA vs ROCm)
-**Priority:** HIGH | **Effort:** 3-4 hours | **Status:** Not Started
+**Priority:** HIGH | **Effort:** 3-4 hours | **Status:** Complete
 
-Verify equivalent results between CUDA and ROCm platforms.
+Golden file validation infrastructure in `tests/validation/`:
+- `generate_golden_outputs()`: creates reference outputs on one platform
+- `compare_golden_outputs()`: validates against golden on another platform
+- CLI: `python -m tests.validation.numerical_validation generate|compare`
+- Golden files generated on CPU (macOS arm64, torch 2.9.1)
 
 ---
 
@@ -98,13 +102,12 @@ Create `docs/cosmos_best_practices.md`.
 | 2: ROCm | 1 | 4-6 | MEDIUM |
 | 3: SLURM | 2 | 5-7 | LOW/MEDIUM |
 | 4: Multi-GPU | 1 | 8-12 | LOW |
-| 5: Testing | 2 | 7-10 | MEDIUM/HIGH |
+| 5: Testing | 1 | 4-6 | MEDIUM |
 | 6: Performance | 2 | 8-12 | MEDIUM |
 | 7: Documentation | 1 | 2-3 | MEDIUM |
-| **Total** | **10** | **38-56** | |
+| **Total** | **9** | **35-52** | |
 
 ## Recommended Order
 
-1. **COS-5.2** - Numerical validation
-2. **COS-1.1** - Singularity container (for reproducibility)
-3. Remaining based on need
+1. **COS-1.1** - Singularity container (for reproducibility)
+2. Remaining based on need
