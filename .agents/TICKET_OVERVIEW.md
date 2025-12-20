@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2025-12-19
-**Status:** 17 outstanding tickets (~75-110 hours)
+**Status:** 16 outstanding tickets (~72-106 hours)
 
 ## Quick Links
 - **PyTorch work:** `PYTORCH_PORTING_TICKETS.md`
@@ -13,11 +13,9 @@
 
 ## Outstanding Tickets by Priority
 
-### HIGH (1 ticket, ~3-4 hours)
+### HIGH (0 tickets)
 
-| Ticket | Description | Effort |
-|--------|-------------|--------|
-| **COS-5.2** | Numerical Validation (CUDA vs ROCm) | 3-4h |
+No high priority tickets remaining.
 
 ### MEDIUM (7 tickets, ~25-40 hours)
 
@@ -57,6 +55,12 @@ Future enhancement phases (~50+ hours):
 
 ## Recently Completed (2025-12-19)
 
+**COS-5.2: Numerical Validation (CUDA vs ROCm)**
+- Golden file validation infrastructure in `tests/validation/`
+- `generate_golden_outputs()`: creates reference outputs on one platform
+- `compare_golden_outputs()`: validates against golden on another platform
+- CLI: `python -m tests.validation.numerical_validation generate|compare`
+
 **COS-1.2 & COS-7.1: Merged to README**
 - Cosmos setup instructions added to README (conda + pip install)
 - Quick start guide merged into setup section
@@ -80,8 +84,8 @@ Future enhancement phases (~50+ hours):
 ## Recommended Next Steps
 
 ### Cosmos Onboarding (Priority)
-1. **COS-5.2** - Numerical validation (ensures correctness)
-2. **COS-1.1** - Singularity container (reproducibility)
+1. **COS-1.1** - Singularity container (reproducibility)
+2. **COS-5.1** - ROCm CI/CD pipeline
 
 ### PyTorch Improvements (As Needed)
 1. **PYT-21.5** - Skip nucleotide predictions during fine-tuning

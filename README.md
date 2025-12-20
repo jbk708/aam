@@ -47,7 +47,7 @@ ssu \
 Pre-train SequenceEncoder on UniFrac + nucleotide prediction:
 
 ```bash
-python -m aam.cli pretrain \
+aam pretrain \
   --table <biom_file> \
   --unifrac-matrix <unifrac_matrix.npy> \
   --output-dir <output_dir> \
@@ -60,7 +60,7 @@ python -m aam.cli pretrain \
 Train SequencePredictor with optional pre-trained encoder:
 
 ```bash
-python -m aam.cli train \
+aam train \
   --table <biom_file> \
   --unifrac-matrix <unifrac_matrix.npy> \
   --metadata <metadata.tsv> \
@@ -75,7 +75,7 @@ python -m aam.cli train \
 ### Inference
 
 ```bash
-python -m aam.cli predict \
+aam predict \
   --model <model_checkpoint.pt> \
   --table <biom_file> \
   --output <predictions.tsv>
@@ -132,7 +132,7 @@ python -m aam.cli predict \
 **For limited GPU memory (24GB):**
 
 ```bash
-python -m aam.cli pretrain \
+aam pretrain \
   --table <biom_file> \
   --unifrac-matrix <unifrac_matrix.npy> \
   --output-dir <output_dir> \
@@ -158,12 +158,12 @@ AAM supports ROCm for AMD GPUs. For [SDSC Cosmos](https://www.sdsc.edu/systems/c
 **Environment Setup:**
 
 ```bash
-# Load ROCm-enabled PyTorch module
-module load pytorch/2.6.0
-
 # Create conda environment
-conda create -n aam python=3.11 -y
-conda activate aam
+mamba create -n aam-rocm python=3.11 -y
+mamba activate aam-rocm
+
+# Install PyTorch with ROCm support (no module available)
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.2
 
 # Install AAM
 cd /path/to/aam
@@ -179,7 +179,7 @@ AAM automatically detects ROCm vs CUDA. Use standard commands:
 
 ```bash
 # Single APU
-python -m aam.cli pretrain --table data.biom --unifrac-matrix unifrac.npy --output-dir output/
+aam pretrain --table data.biom --unifrac-matrix unifrac.npy --output-dir output/
 
 # Multi-APU with DDP (4 APUs per node)
 torchrun --nproc_per_node=4 -m aam.cli pretrain \
@@ -199,7 +199,7 @@ torchrun --nproc_per_node=4 -m aam.cli pretrain \
 
 **Scheduler-specific options:** `--scheduler-t0`, `--scheduler-t-mult`, `--scheduler-eta-min`, `--scheduler-patience`, `--scheduler-factor`
 
-See `python -m aam.cli <command> --help` for full options.
+See `aam <command> --help` for full options.
 
 ## Monitoring Training
 
