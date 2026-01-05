@@ -80,9 +80,7 @@ class CategoricalEmbedder(nn.Module):
             embed_dims[col_name] = schema.get_embed_dim(col_name)
 
         # Filter cardinalities to only include columns in schema
-        filtered_cardinalities = {
-            col: cardinalities[col] for col in schema.column_names if col in cardinalities
-        }
+        filtered_cardinalities = {col: cardinalities[col] for col in schema.column_names if col in cardinalities}
 
         return cls(
             column_cardinalities=filtered_cardinalities,

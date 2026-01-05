@@ -64,9 +64,7 @@ class TestCategoricalEmbedderFromSchema:
 
     def test_from_schema_basic(self):
         """Test creating embedder from CategoricalSchema."""
-        schema = CategoricalSchema.from_column_names(
-            ["location", "season"], default_embed_dim=16
-        )
+        schema = CategoricalSchema.from_column_names(["location", "season"], default_embed_dim=16)
         cardinalities = {"location": 4, "season": 5}
 
         embedder = CategoricalEmbedder.from_schema(schema, cardinalities)
@@ -93,9 +91,7 @@ class TestCategoricalEmbedderFromSchema:
 
     def test_from_schema_uses_default_embed_dim(self):
         """Test from_schema uses schema default_embed_dim."""
-        schema = CategoricalSchema.from_column_names(
-            ["location"], default_embed_dim=24
-        )
+        schema = CategoricalSchema.from_column_names(["location"], default_embed_dim=24)
         cardinalities = {"location": 4}
 
         embedder = CategoricalEmbedder.from_schema(schema, cardinalities)
