@@ -72,6 +72,25 @@ aam train \
   --epochs 100
 ```
 
+### Categorical Metadata (Planned)
+
+Condition target predictions on categorical features like location or season:
+
+```python
+from aam.data import CategoricalSchema, CategoricalColumnConfig
+
+# Simple: auto-detect cardinality
+schema = CategoricalSchema.from_column_names(["location", "season"])
+
+# Advanced: explicit configuration
+schema = CategoricalSchema(columns=[
+    CategoricalColumnConfig(name="location", cardinality=10, embed_dim=8),
+    CategoricalColumnConfig(name="season", cardinality=4, required=True),
+], default_embed_dim=16)
+```
+
+Index 0 is reserved for unknown/missing categories.
+
 ### Inference
 
 ```bash
@@ -234,7 +253,7 @@ pytest tests/ -v                           # Run all tests
 pytest tests/ --cov=aam --cov-report=html  # With coverage
 ```
 
-635 tests covering data pipeline, models, training, and end-to-end workflows.
+679 tests covering data pipeline, models, training, and end-to-end workflows.
 
 ## Architecture
 

@@ -134,4 +134,9 @@ aam/
 
 All core components implemented and tested (635 tests, ~94% coverage).
 
-See **[FUTURE_WORK.md](FUTURE_WORK.md)** for potential enhancements.
+### Planned: Categorical Features
+
+Support for categorical metadata (location, season) that conditions target predictions.
+See **[15_categorical_features.md](15_categorical_features.md)** for design and `.agents/CATEGORICAL_FEATURE_TICKETS.md` for tickets.
+
+See **[FUTURE_WORK.md](FUTURE_WORK.md)** for other potential enhancements.

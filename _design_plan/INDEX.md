@@ -24,6 +24,10 @@
 - [13_testing.md](13_testing.md) - Testing strategy
 - [14_training_features.md](14_training_features.md) - Advanced training features
 
+## Planned Features
+
+- [15_categorical_features.md](15_categorical_features.md) - Categorical metadata integration (CAT-1 through CAT-7)
+
 ## Future Work
 
 - [FUTURE_WORK.md](FUTURE_WORK.md) - Outstanding enhancements
@@ -35,4 +39,5 @@ See `archive/` for completed analysis documents.
 ## Quick Start
 
 1. Read [00_overview.md](00_overview.md) for architecture
-2. See `.agents/CLEANUP_TICKETS.md` for outstanding work
+2. See `.agents/TICKET_OVERVIEW.md` for outstanding work
+3. See `.agents/CATEGORICAL_FEATURE_TICKETS.md` for categorical feature tickets

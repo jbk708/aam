@@ -11,7 +11,7 @@
 ## Phase 1: Environment Setup (1 remaining)
 
 ### COS-1.1: Create ROCm Singularity Container Definition
-**Priority:** MEDIUM | **Effort:** 4-6 hours | **Status:** Not Started
+**Priority:** LOW | **Effort:** 4-6 hours | **Status:** Not Started
 
 Create `singularity/aam-rocm.def` based on AMD Infinity Hub `rocm/pytorch` for reproducible production runs.
 
@@ -109,5 +109,6 @@ Create `docs/cosmos_best_practices.md`.
 
 ## Recommended Order
 
-1. **COS-1.1** - Singularity container (for reproducibility)
-2. Remaining based on need
+1. **COS-5.1** - ROCm CI/CD pipeline
+2. **COS-3.2** - Data management scripts
+3. Remaining based on need

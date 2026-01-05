@@ -5,7 +5,7 @@
 
 ---
 
-## Phase 21: Transfer Learning (1 remaining)
+## Phase 21: Transfer Learning (Complete)
 
 ### PYT-21.3: Regressor Head Optimization
 **Priority:** MEDIUM | **Effort:** 4-6 hours | **Status:** Complete
@@ -21,13 +21,14 @@ Enhanced regressor with configurable improvements:
 ---
 
 ### PYT-21.5: Skip Nucleotide Predictions During Fine-Tuning
-**Priority:** LOW | **Effort:** 2-3 hours | **Status:** Not Started
+**Priority:** LOW | **Effort:** 2-3 hours | **Status:** Complete
 
-When `--freeze-base`, skip nucleotide predictions entirely to save memory/compute.
-- Add `--skip-nuc-predictions` flag (auto-enabled with `--freeze-base`)
-- Add `--keep-nuc-predictions` to force computation
+Already implemented via existing logic chain:
+1. `train.py`: `--freeze-base` auto-disables `nuc_penalty` to 0.0
+2. `trainer.py`: `nuc_penalty=0` → `return_nucleotides=False`
+3. `sequence_encoder.py`: `return_nucleotides=False` → nucleotide prediction skipped
 
-**Files:** `aam/cli/train.py`, `aam/models/sequence_predictor.py`
+No additional flags needed; behavior works automatically.
 
 ---
 
@@ -83,7 +84,7 @@ Low priority future work:
 
 | Phase | Remaining | Est. Hours |
 |-------|-----------|------------|
-| 21 (Fine-Tuning) | 1 | 2-3 |
+| 21 (Fine-Tuning) | 0 | Complete |
 | 18 (Memory) | 2 | 8-12 |
 | 10 (Performance) | 1 | 8-12 |
 | 12 (Additional) | 2 | 16-22 |
