@@ -608,3 +608,321 @@ class TestRegressorHeadOptions:
         # Check output scale/bias gradients
         assert model.output_scale.grad is not None
         assert model.output_bias.grad is not None
+
+
+class TestCategoricalIntegration:
+    """Test suite for categorical conditioning in SequencePredictor."""
+
+    @pytest.fixture
+    def sample_tokens(self):
+        """Create sample tokens for testing."""
+        from aam.data.tokenizer import SequenceTokenizer
+
+        batch_size = 2
+        num_asvs = 10
+        seq_len = 50
+        tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
+        tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
+        tokens[:, :, 40:] = 0
+        return tokens
+
+    @pytest.fixture
+    def categorical_cardinalities(self):
+        """Create categorical cardinalities for testing."""
+        return {"location": 5, "season": 4}
+
+    @pytest.fixture
+    def categorical_ids(self):
+        """Create categorical ids for testing."""
+        return {
+            "location": torch.tensor([1, 2]),
+            "season": torch.tensor([3, 1]),
+        }
+
+    def test_init_with_categoricals_concat(self, categorical_cardinalities):
+        """Test initialization with categorical conditioning (concat fusion)."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_embed_dim=16,
+            categorical_fusion="concat",
+        )
+        assert model.categorical_embedder is not None
+        assert model.categorical_projection is not None
+        assert model.categorical_fusion == "concat"
+        # Projection: D + cat_dim -> D
+        total_cat_dim = 16 * 2  # 2 columns * 16 embed_dim
+        assert model.categorical_projection.in_features == 64 + total_cat_dim
+        assert model.categorical_projection.out_features == 64
+
+    def test_init_with_categoricals_add(self, categorical_cardinalities):
+        """Test initialization with categorical conditioning (add fusion)."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_embed_dim=16,
+            categorical_fusion="add",
+        )
+        assert model.categorical_embedder is not None
+        assert model.categorical_projection is not None
+        assert model.categorical_fusion == "add"
+        # Projection: cat_dim -> D
+        total_cat_dim = 16 * 2
+        assert model.categorical_projection.in_features == total_cat_dim
+        assert model.categorical_projection.out_features == 64
+
+    def test_init_without_categoricals(self):
+        """Test initialization without categorical conditioning (backward compat)."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+        )
+        assert model.categorical_embedder is None
+        assert model.categorical_projection is None
+
+    def test_invalid_fusion_strategy(self, categorical_cardinalities):
+        """Test that invalid fusion strategy raises ValueError."""
+        with pytest.raises(ValueError, match="categorical_fusion must be"):
+            SequencePredictor(
+                embedding_dim=64,
+                max_bp=150,
+                token_limit=1024,
+                out_dim=1,
+                categorical_cardinalities=categorical_cardinalities,
+                categorical_fusion="invalid",
+            )
+
+    def test_forward_with_categoricals_concat(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test forward pass with categorical conditioning (concat fusion)."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_fusion="concat",
+        )
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        assert "target_prediction" in result
+        assert "count_prediction" in result
+        assert result["target_prediction"].shape == (2, 1)
+        assert result["count_prediction"].shape == (2, 10, 1)
+
+    def test_forward_with_categoricals_add(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test forward pass with categorical conditioning (add fusion)."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_fusion="add",
+        )
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        assert "target_prediction" in result
+        assert "count_prediction" in result
+        assert result["target_prediction"].shape == (2, 1)
+        assert result["count_prediction"].shape == (2, 10, 1)
+
+    def test_forward_without_categorical_ids(self, sample_tokens, categorical_cardinalities):
+        """Test forward pass without providing categorical_ids."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+        )
+        # Should work without categorical_ids (graceful fallback)
+        result = model(sample_tokens, categorical_ids=None)
+        assert "target_prediction" in result
+        assert result["target_prediction"].shape == (2, 1)
+
+    def test_backward_compat_no_categoricals(self, sample_tokens):
+        """Test backward compatibility: model without categoricals works identically."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+        )
+        result = model(sample_tokens)
+        assert "target_prediction" in result
+        assert result["target_prediction"].shape == (2, 1)
+
+    def test_categorical_does_not_affect_count_encoder(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test that categorical embeddings don't affect count encoder pathway."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+        )
+        torch.manual_seed(42)
+        result_with_cat = model(sample_tokens, categorical_ids=categorical_ids)
+        torch.manual_seed(42)
+        result_without_cat = model(sample_tokens, categorical_ids=None)
+
+        # Count predictions should be identical
+        assert torch.allclose(
+            result_with_cat["count_prediction"],
+            result_without_cat["count_prediction"],
+        )
+        # Target predictions should be different
+        assert not torch.allclose(
+            result_with_cat["target_prediction"],
+            result_without_cat["target_prediction"],
+        )
+
+    def test_categorical_affects_target_prediction(self, sample_tokens, categorical_cardinalities):
+        """Test that different categorical values produce different predictions."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+        )
+        cat_ids_1 = {"location": torch.tensor([1, 1]), "season": torch.tensor([1, 1])}
+        cat_ids_2 = {"location": torch.tensor([2, 2]), "season": torch.tensor([2, 2])}
+
+        result_1 = model(sample_tokens, categorical_ids=cat_ids_1)
+        result_2 = model(sample_tokens, categorical_ids=cat_ids_2)
+
+        # Different categorical values should produce different predictions
+        assert not torch.allclose(
+            result_1["target_prediction"],
+            result_2["target_prediction"],
+        )
+
+    def test_gradients_flow_through_categorical_embedder(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test that gradients flow through categorical embedder."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+        )
+        model.train()
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        loss = result["target_prediction"].sum()
+        loss.backward()
+
+        # Check categorical embedder gradients
+        for name, param in model.categorical_embedder.named_parameters():
+            if param.requires_grad:
+                assert param.grad is not None, f"No gradient for {name}"
+                assert not torch.isnan(param.grad).any(), f"NaN gradient for {name}"
+
+        # Check categorical projection gradients
+        assert model.categorical_projection.weight.grad is not None
+        assert model.categorical_projection.bias.grad is not None
+
+    def test_gradients_flow_with_frozen_base(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test gradients flow to categorical embedder with frozen base model."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            freeze_base=True,
+            categorical_cardinalities=categorical_cardinalities,
+        )
+        model.train()
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        loss = result["target_prediction"].sum()
+        loss.backward()
+
+        # Base model should have no gradients
+        for param in model.base_model.parameters():
+            assert param.grad is None
+
+        # Categorical embedder should have gradients
+        has_categorical_grad = False
+        for param in model.categorical_embedder.parameters():
+            if param.requires_grad and param.grad is not None:
+                has_categorical_grad = True
+                break
+        assert has_categorical_grad
+
+        # Target encoder should have gradients
+        has_target_grad = False
+        for param in model.target_encoder.parameters():
+            if param.requires_grad and param.grad is not None:
+                has_target_grad = True
+                break
+        assert has_target_grad
+
+    def test_categorical_weight_initialization(self, categorical_cardinalities):
+        """Test that categorical projection weights are properly initialized."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+        )
+        # Bias should be zero-initialized
+        assert torch.allclose(
+            model.categorical_projection.bias,
+            torch.zeros_like(model.categorical_projection.bias),
+        )
+        # Weight should have non-zero values (Xavier init)
+        assert model.categorical_projection.weight.abs().sum() > 0
+
+    @pytest.mark.parametrize("fusion", ["concat", "add"])
+    def test_forward_no_nan_outputs(self, sample_tokens, categorical_cardinalities, categorical_ids, fusion):
+        """Test that forward pass produces no NaN outputs."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_fusion=fusion,
+        )
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        assert not torch.isnan(result["target_prediction"]).any()
+        assert not torch.isnan(result["count_prediction"]).any()
+
+    def test_categorical_with_classifier(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test categorical conditioning with classification mode."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=5,
+            is_classifier=True,
+            categorical_cardinalities=categorical_cardinalities,
+        )
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        predictions = result["target_prediction"]
+        # Log-softmax outputs should be <= 0
+        assert (predictions <= 0).all()
+        # Sum of exp should be 1
+        assert torch.allclose(predictions.exp().sum(dim=-1), torch.ones(2), atol=1e-5)
+
+    def test_categorical_with_bounded_targets(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test categorical conditioning with bounded regression."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            bounded_targets=True,
+            categorical_cardinalities=categorical_cardinalities,
+        )
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        predictions = result["target_prediction"]
+        assert (predictions >= 0).all()
+        assert (predictions <= 1).all()

@@ -1,6 +1,6 @@
 # Categorical Feature Integration
 
-**Status:** In Progress (CAT-1 complete, CAT-2 through CAT-7 planned)
+**Status:** In Progress (CAT-1 through CAT-3 complete, CAT-4 through CAT-7 planned)
 
 ## Overview
 
