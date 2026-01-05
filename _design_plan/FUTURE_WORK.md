@@ -9,9 +9,21 @@
 - Pre-computed UniFrac matrix loading
 - Modular CLI package structure
 
+## Planned: Categorical Features (CAT-1 through CAT-7)
+
+Support for categorical metadata features (location, season, site type) that condition target predictions. See [15_categorical_features.md](15_categorical_features.md) for detailed design.
+
+**Components:**
+- `CategoricalEncoder`: String → integer index encoding with serialization
+- `CategoricalEmbedder`: nn.Module for embedding categorical features
+- SequencePredictor integration with fusion strategies (concat/add)
+- CLI flags: `--categorical-columns`, `--categorical-embed-dim`, `--categorical-fusion`
+
+**Tickets:** `.agents/CATEGORICAL_FEATURE_TICKETS.md` (7 tickets, ~21-29 hours)
+
 ## Outstanding
 
-See `.agents/CLEANUP_TICKETS.md` for code cleanup work (1 remaining).
+See `.agents/TICKET_OVERVIEW.md` for all outstanding work.
 
 ### Performance Optimizations
 
