@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-05
-**Status:** 21 outstanding tickets (~88-129 hours)
+**Status:** 20 outstanding tickets (~85-125 hours)
 
 ## Quick Links
 - **Categorical features:** `CATEGORICAL_FEATURE_TICKETS.md`
@@ -14,19 +14,14 @@
 
 ## Outstanding Tickets by Priority
 
-### HIGH (3 tickets, ~10-14 hours)
+### HIGH (0 tickets)
+
+All categorical feature tickets complete through CAT-5.
+
+### MEDIUM (8 tickets, ~27-42 hours)
 
 | Ticket | Description | Effort |
 |--------|-------------|--------|
-| **CAT-2** | Dataset Pipeline — Categorical Encoding | 3-4h |
-| **CAT-3** | CategoricalEmbedder Module | 3-4h |
-| **CAT-4** | SequencePredictor Integration | 4-6h |
-
-### MEDIUM (9 tickets, ~30-46 hours)
-
-| Ticket | Description | Effort |
-|--------|-------------|--------|
-| **CAT-5** | CLI and Configuration Updates | 3-4h |
 | **CAT-6** | Checkpoint Compatibility and Transfer Learning | 3-4h |
 | **CAT-7** | Documentation and Testing | 3-4h |
 | **COS-2.2** | Unified Memory Optimization for MI300A | 4-6h |
@@ -61,6 +56,13 @@ Future enhancement phases (~50+ hours):
 ---
 
 ## Recently Completed
+
+**CAT-5: CLI and Configuration Updates** (2026-01-05)
+- `--categorical-columns`: comma-separated column names from metadata
+- `--categorical-embed-dim`: embedding dimension (default: 16)
+- `--categorical-fusion`: fusion strategy (concat or add)
+- Checkpoint serialization with encoder state
+- predict.py auto-loads categorical encoder from checkpoint
 
 **CAT-1: Categorical Metadata Schema Definition** (2026-01-05)
 - `CategoricalColumnConfig`: per-column settings (name, cardinality, embed_dim, required)
@@ -103,9 +105,12 @@ Future enhancement phases (~50+ hours):
 
 ### Categorical Features (In Progress)
 1. ~~**CAT-1** - Schema definition~~ ✓ Complete
-2. **CAT-2** - Dataset encoding (parallel with CAT-3)
-3. **CAT-3** - Embedder module (parallel with CAT-2)
-4. **CAT-4** - Model integration
+2. ~~**CAT-2** - Dataset encoding~~ ✓ Complete
+3. ~~**CAT-3** - Embedder module~~ ✓ Complete
+4. ~~**CAT-4** - Model integration~~ ✓ Complete
+5. ~~**CAT-5** - CLI updates~~ ✓ Complete
+6. **CAT-6** - Checkpoint compatibility
+7. **CAT-7** - Documentation and testing
 
 ### Cosmos Onboarding
 1. **COS-5.1** - ROCm CI/CD pipeline

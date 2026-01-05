@@ -105,7 +105,7 @@ Integrate categorical embeddings into SequencePredictor's target prediction path
 ## Phase 3: CLI & Checkpointing
 
 ### CAT-5: CLI and Configuration Updates
-**Priority:** MEDIUM | **Effort:** 3-4 hours | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** 3-4 hours | **Status:** Complete
 
 Expose categorical configuration through training CLI.
 
