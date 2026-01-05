@@ -35,10 +35,35 @@ class CategoricalSchema:
 
     columns: list[CategoricalColumnConfig] = field(default_factory=list)
     default_embed_dim: int = 16
+    _column_lookup: dict[str, CategoricalColumnConfig] = field(
+        default_factory=dict, init=False, repr=False
+    )
 
     def __post_init__(self) -> None:
         """Validate schema after initialization."""
-        raise NotImplementedError("CAT-1: Implement schema validation")
+        seen_names: set[str] = set()
+
+        for config in self.columns:
+            if not config.name:
+                raise ValueError("Column name cannot be empty")
+
+            if config.name in seen_names:
+                raise ValueError(f"Duplicate column name: {config.name}")
+            seen_names.add(config.name)
+
+            if config.cardinality is not None and config.cardinality <= 0:
+                raise ValueError(
+                    f"Column '{config.name}' has invalid cardinality {config.cardinality}. "
+                    "Must be positive or None for auto-detection."
+                )
+
+            if config.embed_dim is not None and config.embed_dim <= 0:
+                raise ValueError(
+                    f"Column '{config.name}' has invalid embed_dim {config.embed_dim}. "
+                    "Must be positive or None to use schema default."
+                )
+
+        self._column_lookup = {c.name: c for c in self.columns}
 
     def get_column(self, name: str) -> CategoricalColumnConfig:
         """Get configuration for a column by name.
@@ -52,7 +77,9 @@ class CategoricalSchema:
         Raises:
             KeyError: If column not found in schema.
         """
-        raise NotImplementedError("CAT-1: Implement column lookup")
+        if name not in self._column_lookup:
+            raise KeyError(f"Column '{name}' not found in schema")
+        return self._column_lookup[name]
 
     def get_embed_dim(self, name: str) -> int:
         """Get effective embedding dimension for a column.
@@ -65,17 +92,20 @@ class CategoricalSchema:
         Returns:
             Embedding dimension for the column.
         """
-        raise NotImplementedError("CAT-1: Implement embed_dim resolution")
+        config = self.get_column(name)
+        if config.embed_dim is not None:
+            return config.embed_dim
+        return self.default_embed_dim
 
     @property
     def total_embed_dim(self) -> int:
         """Total embedding dimension across all columns."""
-        raise NotImplementedError("CAT-1: Implement total_embed_dim")
+        return sum(self.get_embed_dim(c.name) for c in self.columns)
 
     @property
     def column_names(self) -> list[str]:
         """List of all column names in schema."""
-        raise NotImplementedError("CAT-1: Implement column_names property")
+        return [c.name for c in self.columns]
 
     def validate_metadata_columns(self, available_columns: list[str]) -> None:
         """Validate that required columns exist in metadata.
@@ -86,7 +116,13 @@ class CategoricalSchema:
         Raises:
             ValueError: If required column missing from available columns.
         """
-        raise NotImplementedError("CAT-1: Implement metadata column validation")
+        available_set = set(available_columns)
+        for config in self.columns:
+            if config.required and config.name not in available_set:
+                raise ValueError(
+                    f"Required categorical column '{config.name}' not found in metadata. "
+                    f"Available columns: {sorted(available_columns)}"
+                )
 
     @classmethod
     def from_column_names(
@@ -106,4 +142,5 @@ class CategoricalSchema:
         Returns:
             CategoricalSchema with one config per name.
         """
-        raise NotImplementedError("CAT-1: Implement from_column_names factory")
+        columns = [CategoricalColumnConfig(name=name) for name in names]
+        return cls(columns=columns, default_embed_dim=default_embed_dim)
