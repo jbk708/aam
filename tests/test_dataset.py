@@ -14,6 +14,7 @@ from aam.data.dataset import ASVDataset, collate_fn
 from aam.data.tokenizer import SequenceTokenizer
 from aam.data.biom_loader import BIOMLoader
 from aam.data.unifrac_loader import UniFracLoader
+from aam.data.categorical import CategoricalEncoder
 
 
 def generate_150bp_sequence(seed=None):
@@ -1272,3 +1273,172 @@ class TestSequenceCache:
         for seq, cached_tensor in dataset._sequence_cache.items():
             assert cached_tensor.shape == (max_bp + 1,)
             assert cached_tensor.dtype == torch.long
+
+
+class TestCategoricalIntegration:
+    """Test suite for categorical feature integration in ASVDataset."""
+
+    @pytest.fixture
+    def categorical_metadata(self):
+        """Create metadata with categorical columns."""
+        return pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3"],
+                "target": [1.0, 2.0, 3.0],
+                "location": ["outdoor", "indoor", "outdoor"],
+                "season": ["spring", "summer", "fall"],
+            }
+        )
+
+    @pytest.fixture
+    def fitted_encoder(self, categorical_metadata):
+        """Create a fitted CategoricalEncoder."""
+        encoder = CategoricalEncoder()
+        encoder.fit(categorical_metadata, columns=["location", "season"])
+        return encoder
+
+    def test_dataset_with_categorical_encoder(self, rarefied_table, tokenizer, categorical_metadata, fitted_encoder):
+        """Test dataset initialization with categorical encoder."""
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            max_bp=150,
+            token_limit=1024,
+            metadata=categorical_metadata,
+            target_column="target",
+            categorical_encoder=fitted_encoder,
+        )
+
+        assert dataset.categorical_encoder is fitted_encoder
+        assert dataset._categorical_cache is not None
+
+    def test_getitem_includes_categorical_ids(self, rarefied_table, tokenizer, categorical_metadata, fitted_encoder):
+        """Test that __getitem__ returns categorical_ids."""
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            max_bp=150,
+            token_limit=1024,
+            metadata=categorical_metadata,
+            target_column="target",
+            categorical_encoder=fitted_encoder,
+        )
+
+        sample = dataset[0]
+
+        assert "categorical_ids" in sample
+        assert isinstance(sample["categorical_ids"], dict)
+        assert "location" in sample["categorical_ids"]
+        assert "season" in sample["categorical_ids"]
+        assert isinstance(sample["categorical_ids"]["location"], int)
+        assert isinstance(sample["categorical_ids"]["season"], int)
+
+    def test_categorical_ids_consistent_mapping(self, rarefied_table, tokenizer, categorical_metadata, fitted_encoder):
+        """Test that same categories map to same indices."""
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            max_bp=150,
+            token_limit=1024,
+            metadata=categorical_metadata,
+            target_column="target",
+            categorical_encoder=fitted_encoder,
+        )
+
+        sample1 = dataset[0]  # sample1: outdoor
+        sample3 = dataset[2]  # sample3: outdoor
+
+        assert sample1["categorical_ids"]["location"] == sample3["categorical_ids"]["location"]
+
+    def test_collate_fn_batches_categorical_ids(self, rarefied_table, tokenizer, categorical_metadata, fitted_encoder):
+        """Test that collate_fn correctly batches categorical_ids."""
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            max_bp=150,
+            token_limit=1024,
+            metadata=categorical_metadata,
+            target_column="target",
+            categorical_encoder=fitted_encoder,
+        )
+
+        batch = [dataset[0], dataset[1]]
+        result = collate_fn(batch, token_limit=1024)
+
+        assert "categorical_ids" in result
+        assert isinstance(result["categorical_ids"], dict)
+        assert "location" in result["categorical_ids"]
+        assert "season" in result["categorical_ids"]
+        assert isinstance(result["categorical_ids"]["location"], torch.Tensor)
+        assert isinstance(result["categorical_ids"]["season"], torch.Tensor)
+        assert result["categorical_ids"]["location"].shape == (2,)
+        assert result["categorical_ids"]["season"].shape == (2,)
+
+    def test_dataloader_with_categorical(self, rarefied_table, tokenizer, categorical_metadata, fitted_encoder):
+        """Test DataLoader with categorical features."""
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            max_bp=150,
+            token_limit=1024,
+            metadata=categorical_metadata,
+            target_column="target",
+            categorical_encoder=fitted_encoder,
+        )
+
+        custom_collate = partial(collate_fn, token_limit=1024)
+        dataloader = DataLoader(dataset, batch_size=2, collate_fn=custom_collate, shuffle=False)
+
+        for batch in dataloader:
+            assert "categorical_ids" in batch
+            assert batch["categorical_ids"]["location"].shape[0] == 2
+            assert batch["categorical_ids"]["season"].shape[0] == 2
+            break
+
+    def test_dataset_without_categorical_encoder(self, rarefied_table, tokenizer, categorical_metadata):
+        """Test dataset works normally without categorical encoder."""
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            max_bp=150,
+            token_limit=1024,
+            metadata=categorical_metadata,
+            target_column="target",
+        )
+
+        assert dataset.categorical_encoder is None
+        assert dataset._categorical_cache is None
+
+        sample = dataset[0]
+        assert "categorical_ids" not in sample
+
+    def test_collate_fn_without_categorical(self, tokenizer):
+        """Test collate_fn works when no categorical data present."""
+        batch = [
+            {
+                "tokens": torch.LongTensor([[1, 2, 3], [4, 1, 2]]),
+                "counts": torch.FloatTensor([[10.0], [20.0]]),
+                "sample_id": "sample1",
+            },
+            {
+                "tokens": torch.LongTensor([[2, 3, 4], [1, 2, 3]]),
+                "counts": torch.FloatTensor([[15.0], [25.0]]),
+                "sample_id": "sample2",
+            },
+        ]
+
+        result = collate_fn(batch, token_limit=5)
+
+        assert "categorical_ids" not in result
+
+    def test_categorical_requires_metadata(self, rarefied_table, tokenizer, fitted_encoder):
+        """Test that categorical encoder requires metadata."""
+        with pytest.raises(ValueError, match="metadata"):
+            ASVDataset(
+                table=rarefied_table,
+                tokenizer=tokenizer,
+                max_bp=150,
+                token_limit=1024,
+                metadata=None,
+                categorical_encoder=fitted_encoder,
+            )

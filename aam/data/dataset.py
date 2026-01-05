@@ -12,6 +12,7 @@ from skbio import DistanceMatrix
 from aam.data.tokenizer import SequenceTokenizer
 from aam.data.biom_loader import BIOMLoader
 from aam.data.unifrac_loader import UniFracLoader
+from aam.data.categorical import CategoricalEncoder
 
 
 def collate_fn(
@@ -31,7 +32,13 @@ def collate_fn(
         unifrac_loader: UniFracLoader instance for batch extraction (optional, created if None)
 
     Returns:
-        Batched dictionary with padded tensors
+        Batched dictionary with padded tensors. Includes:
+        - tokens: [B, token_limit, max_bp]
+        - counts: [B, token_limit, 1]
+        - sample_ids: List[str]
+        - y_target: [B, 1] (if available)
+        - unifrac_target: [B*(B-1)/2] (if unifrac_distances provided)
+        - categorical_ids: dict[str, Tensor[B]] (if categorical data available)
     """
     batch_size = len(batch)
     max_bp = batch[0]["tokens"].shape[1]
@@ -40,6 +47,7 @@ def collate_fn(
     counts_list = []
     sample_ids = []
     y_targets = []
+    categorical_ids: Dict[str, List[int]] = {}
 
     for sample in batch:
         tokens = sample["tokens"]
@@ -74,7 +82,14 @@ def collate_fn(
         if "y_target" in sample:
             y_targets.append(sample["y_target"])
 
-    result = {
+        # Collect categorical indices from each sample
+        if "categorical_ids" in sample:
+            for col_name, idx in sample["categorical_ids"].items():
+                if col_name not in categorical_ids:
+                    categorical_ids[col_name] = []
+                categorical_ids[col_name].append(idx)
+
+    result: Dict[str, Any] = {
         "tokens": torch.stack(tokens_list),
         "counts": torch.stack(counts_list),
         "sample_ids": sample_ids,
@@ -83,12 +98,19 @@ def collate_fn(
     if y_targets:
         result["y_target"] = torch.stack(y_targets)
 
+    # Convert categorical indices to tensors
+    if categorical_ids:
+        result["categorical_ids"] = {
+            col: torch.tensor(indices, dtype=torch.long)
+            for col, indices in categorical_ids.items()
+        }
+
     if unifrac_distances is not None:
         # Extract batch distances from pre-computed matrix
         if unifrac_loader is None:
             unifrac_loader = UniFracLoader()
         batch_distances = unifrac_loader.extract_batch_distances(unifrac_distances, sample_ids, metric=unifrac_metric)
-        
+
         # Validate extracted distances
         if np.any(np.isnan(batch_distances)):
             import sys
@@ -101,7 +123,7 @@ def collate_fn(
             error_msg = f"Inf values found in extracted batch distances for sample_ids: {sample_ids}"
             print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
             raise ValueError(error_msg)
-        
+
         result["unifrac_target"] = torch.FloatTensor(batch_distances)
 
     return result
@@ -127,6 +149,7 @@ class ASVDataset(Dataset):
         count_min: Optional[float] = None,
         count_max: Optional[float] = None,
         cache_sequences: bool = True,
+        categorical_encoder: Optional[CategoricalEncoder] = None,
     ):
         """Initialize ASVDataset.
 
@@ -146,6 +169,7 @@ class ASVDataset(Dataset):
             count_min: Minimum count value for normalization (computed from data if None)
             count_max: Maximum count value for normalization (computed from data if None)
             cache_sequences: If True, cache tokenized sequences at init for faster __getitem__ (default: True)
+            categorical_encoder: Optional fitted CategoricalEncoder for categorical metadata
         """
         self.table = table
         self.metadata = metadata
@@ -240,6 +264,26 @@ class ASVDataset(Dataset):
         else:
             self.metadata_dict = None
 
+        # Categorical encoding
+        self.categorical_encoder = categorical_encoder
+        self._categorical_cache: Optional[Dict[str, Dict[str, int]]] = None
+        if categorical_encoder is not None and categorical_encoder.is_fitted:
+            if metadata is None:
+                raise ValueError(
+                    "metadata is required when using categorical_encoder"
+                )
+            # Pre-compute categorical indices for all samples
+            cat_indices = categorical_encoder.transform(
+                metadata, sample_ids=self.sample_ids
+            )
+            # Cache as sample_id -> {column -> index}
+            self._categorical_cache = {}
+            for i, sample_id in enumerate(self.sample_ids):
+                self._categorical_cache[sample_id] = {
+                    col: int(cat_indices[col][i])
+                    for col in categorical_encoder.column_names
+                }
+
     def __len__(self) -> int:
         """Return number of samples in dataset."""
         return len(self.sample_ids)
@@ -325,6 +369,7 @@ class ASVDataset(Dataset):
             - y_target: torch.FloatTensor [1] or [out_dim] (if metadata provided)
             - unifrac_target: torch.FloatTensor (if unifrac_distances provided)
             - sample_id: str
+            - categorical_ids: dict[str, int] (if categorical_encoder provided)
         """
         sample_id = self.sample_ids[idx]
         sample_ids_list = list(self.table.ids(axis="sample"))
@@ -382,5 +427,9 @@ class ASVDataset(Dataset):
                 target_float = (target_float - self.target_min) / self.target_scale
 
             result["y_target"] = torch.FloatTensor([target_float])
+
+        # Add categorical indices if available
+        if self._categorical_cache is not None and sample_id in self._categorical_cache:
+            result["categorical_ids"] = self._categorical_cache[sample_id]
 
         return result
