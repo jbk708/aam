@@ -457,7 +457,7 @@ class TestTrainEpoch:
 
         # Verify model produces valid embeddings before training
         for batch in simple_dataloader_encoder:
-            tokens, targets = trainer._prepare_batch(batch)
+            tokens, targets, _ = trainer._prepare_batch(batch)
             with torch.no_grad():
                 outputs = small_model(tokens, return_nucleotides=False)
                 if "embeddings" in outputs:
@@ -682,7 +682,7 @@ class TestTrainingLoop:
         embeddings_found = False
         with torch.no_grad():
             for batch in simple_dataloader_encoder:
-                tokens, targets = trainer._prepare_batch(batch)
+                tokens, targets, _ = trainer._prepare_batch(batch)
                 outputs = small_model(tokens, return_nucleotides=False)
 
                 # For UniFrac encoder, embeddings should always be present

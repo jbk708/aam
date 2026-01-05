@@ -14,6 +14,7 @@ from sklearn.model_selection import train_test_split
 from aam.data.biom_loader import BIOMLoader
 from aam.data.unifrac_loader import UniFracLoader
 from aam.data.dataset import ASVDataset, collate_fn
+from aam.data.categorical import CategoricalEncoder, CategoricalSchema
 from skbio import DistanceMatrix
 from aam.models.sequence_predictor import SequencePredictor
 from aam.training.losses import MultiTaskLoss
@@ -197,6 +198,23 @@ from aam.cli.utils import (
     is_flag=True,
     help="Add learnable scale and bias after target projection",
 )
+@click.option(
+    "--categorical-columns",
+    default=None,
+    help="Comma-separated categorical column names from metadata for conditioning target predictions",
+)
+@click.option(
+    "--categorical-embed-dim",
+    default=16,
+    type=int,
+    help="Embedding dimension for categorical features (default: 16)",
+)
+@click.option(
+    "--categorical-fusion",
+    default="concat",
+    type=click.Choice(["concat", "add"]),
+    help="Fusion strategy for categorical embeddings: concat (concatenate + project) or add (project + add). Default: concat",
+)
 def train(
     table: str,
     unifrac_matrix: str,
@@ -256,6 +274,9 @@ def train(
     target_layer_norm: bool,
     bounded_targets: bool,
     learnable_output_scale: bool,
+    categorical_columns: Optional[str],
+    categorical_embed_dim: int,
+    categorical_fusion: str,
 ):
     """Train AAM model on microbial sequencing data."""
     try:
@@ -336,6 +357,23 @@ def train(
                 f"Tip: Check for whitespace or encoding issues in column names."
             )
 
+        # Parse and validate categorical columns
+        categorical_column_list: list[str] = []
+        categorical_encoder: Optional[CategoricalEncoder] = None
+        categorical_cardinalities: Optional[dict[str, int]] = None
+
+        if categorical_columns:
+            categorical_column_list = [col.strip() for col in categorical_columns.split(",")]
+            found_columns = list(metadata_df.columns)
+            for col in categorical_column_list:
+                if col not in found_columns:
+                    raise ValueError(
+                        f"Categorical column '{col}' not found in metadata file.\n"
+                        f"Found columns: {found_columns}\n"
+                        f"Tip: Check for whitespace or encoding issues in column names."
+                    )
+            logger.info(f"Categorical columns: {categorical_column_list}")
+
         logger.info("Loading pre-computed UniFrac distance matrix...")
         unifrac_loader = UniFracLoader()
 
@@ -395,6 +433,13 @@ def train(
         train_metadata = metadata_df[metadata_df["sample_id"].isin(train_ids)]
         val_metadata = metadata_df[metadata_df["sample_id"].isin(val_ids)]
 
+        # Fit categorical encoder on training data only
+        if categorical_column_list:
+            categorical_encoder = CategoricalEncoder()
+            categorical_encoder.fit(train_metadata, columns=categorical_column_list)
+            categorical_cardinalities = categorical_encoder.get_cardinalities()
+            logger.info(f"Categorical cardinalities: {categorical_cardinalities}")
+
         # Extract train/val distance matrices
         train_distance_matrix = None
         val_distance_matrix = None
@@ -429,6 +474,7 @@ def train(
             normalize_targets=normalize_targets,
             normalize_counts=normalize_targets,  # Normalize counts along with targets
             cache_sequences=not no_sequence_cache,
+            categorical_encoder=categorical_encoder,
         )
 
         # Get normalization parameters from training set
@@ -465,6 +511,7 @@ def train(
             count_min=train_dataset.count_min if normalize_targets else None,
             count_max=train_dataset.count_max if normalize_targets else None,
             cache_sequences=not no_sequence_cache,
+            categorical_encoder=categorical_encoder,
         )
 
         train_collate = partial(
@@ -556,6 +603,9 @@ def train(
             target_layer_norm=target_layer_norm,
             bounded_targets=bounded_targets,
             learnable_output_scale=learnable_output_scale,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_embed_dim=categorical_embed_dim,
+            categorical_fusion=categorical_fusion,
         )
 
         log_model_summary(model, logger)
@@ -693,8 +743,34 @@ def train(
 
         # Only save final model on main process in distributed mode
         if not distributed or is_main_process():
+            # Build model config for inference
+            model_config = {
+                "encoder_type": encoder_type,
+                "embedding_dim": embedding_dim,
+                "max_bp": max_bp,
+                "token_limit": token_limit,
+                "out_dim": out_dim,
+                "is_classifier": classifier,
+                "attention_layers": attention_layers,
+                "attention_heads": attention_heads,
+                "target_layer_norm": target_layer_norm,
+                "bounded_targets": bounded_targets,
+                "learnable_output_scale": learnable_output_scale,
+                "categorical_embed_dim": categorical_embed_dim,
+                "categorical_fusion": categorical_fusion,
+            }
+            # Include categorical encoder state if categoricals are used
+            if categorical_encoder is not None:
+                model_config["categorical_encoder"] = categorical_encoder.to_dict()
+
             final_model_path = output_path / "final_model.pt"
-            trainer.save_checkpoint(str(final_model_path), epoch=epochs - 1, best_val_loss=best_val_loss, metrics=history)
+            trainer.save_checkpoint(
+                str(final_model_path),
+                epoch=epochs - 1,
+                best_val_loss=best_val_loss,
+                metrics=history,
+                config=model_config,
+            )
             logger.info(f"Final model saved to {final_model_path}")
 
         # Cleanup distributed training

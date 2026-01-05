@@ -278,15 +278,19 @@ class Evaluator:
         count_scale = self.count_normalization_params["count_scale"]
         return values * count_scale + count_min
 
-    def _prepare_batch(self, batch: Union[Dict, Tuple]) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+    def _prepare_batch(
+        self, batch: Union[Dict, Tuple]
+    ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor], Optional[Dict[str, torch.Tensor]]]:
         """Prepare batch for model forward pass.
 
         Args:
             batch: Batch from DataLoader (dict or tuple)
 
         Returns:
-            Tuple of (tokens, targets_dict)
+            Tuple of (tokens, targets_dict, categorical_ids)
         """
+        categorical_ids: Optional[Dict[str, torch.Tensor]] = None
+
         if isinstance(batch, dict):
             tokens = batch["tokens"].to(self.device)
             targets = {}
@@ -299,8 +303,10 @@ class Evaluator:
                 targets["base_target"] = batch["unifrac_target"].to(self.device)
             if "tokens" in batch:
                 targets["tokens"] = tokens
+            if "categorical_ids" in batch:
+                categorical_ids = {col: ids.to(self.device) for col, ids in batch["categorical_ids"].items()}
 
-            return tokens, targets
+            return tokens, targets, categorical_ids
         else:
             tokens = batch[0].to(self.device)
             targets = {"tokens": tokens}
@@ -314,7 +320,7 @@ class Evaluator:
                     if len(batch) >= 4:
                         targets["base_target"] = batch[3].to(self.device)
 
-            return tokens, targets
+            return tokens, targets, categorical_ids
 
     def validate_epoch(
         self,
@@ -378,7 +384,7 @@ class Evaluator:
 
             for step, batch in enumerate(pbar, 1):
                 try:
-                    tokens, targets = self._prepare_batch(batch)
+                    tokens, targets, categorical_ids = self._prepare_batch(batch)
                     last_targets = targets
 
                     return_nucleotides = "nucleotides" in targets or cast(float, self.loss_fn.nuc_penalty) > 0
@@ -389,11 +395,17 @@ class Evaluator:
                     elif self.mixed_precision == "bf16":
                         autocast_dtype = torch.bfloat16
 
+                    # Only pass categorical_ids if the model supports it (SequencePredictor has categorical_embedder)
+                    supports_categorical = hasattr(self.model, "categorical_embedder")
+                    forward_kwargs: Dict[str, Any] = {"return_nucleotides": return_nucleotides}
+                    if supports_categorical and categorical_ids is not None:
+                        forward_kwargs["categorical_ids"] = categorical_ids
+
                     if autocast_dtype is not None and self.device.type == "cuda":
                         with torch.amp.autocast(device_type="cuda", dtype=autocast_dtype):
-                            outputs = self.model(tokens, return_nucleotides=return_nucleotides)
+                            outputs = self.model(tokens, **forward_kwargs)
                     else:
-                        outputs = self.model(tokens, return_nucleotides=return_nucleotides)
+                        outputs = self.model(tokens, **forward_kwargs)
                     last_outputs = outputs
 
                     losses = self.loss_fn(outputs, targets, is_classifier=is_classifier, encoder_type=encoder_type)
