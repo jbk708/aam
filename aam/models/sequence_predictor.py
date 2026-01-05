@@ -158,17 +158,17 @@ class SequencePredictor(nn.Module):
         else:
             self.base_model = base_model
             self.embedding_dim = base_model.embedding_dim
-        
+
         self.out_dim = out_dim
         self.is_classifier = is_classifier
-        
+
         if freeze_base:
             for param in self.base_model.parameters():
                 param.requires_grad = False
-        
+
         if count_intermediate_size is None:
             count_intermediate_size = 4 * self.embedding_dim
-        
+
         self.count_encoder = TransformerEncoder(
             num_layers=count_num_layers,
             num_heads=count_num_heads,
@@ -179,12 +179,12 @@ class SequencePredictor(nn.Module):
             gradient_checkpointing=gradient_checkpointing,
             attn_implementation=attn_implementation,
         )
-        
+
         self.count_head = nn.Linear(self.embedding_dim, 1)
-        
+
         if target_intermediate_size is None:
             target_intermediate_size = 4 * self.embedding_dim
-        
+
         self.target_encoder = TransformerEncoder(
             num_layers=target_num_layers,
             num_heads=target_num_heads,
@@ -195,7 +195,7 @@ class SequencePredictor(nn.Module):
             gradient_checkpointing=gradient_checkpointing,
             attn_implementation=attn_implementation,
         )
-        
+
         self.target_pooling = AttentionPooling(hidden_dim=self.embedding_dim)
 
         self.target_layer_norm_enabled = target_layer_norm
@@ -219,9 +219,7 @@ class SequencePredictor(nn.Module):
         self.categorical_fusion = categorical_fusion
         if categorical_cardinalities:
             if categorical_fusion not in ("concat", "add"):
-                raise ValueError(
-                    f"categorical_fusion must be 'concat' or 'add', got '{categorical_fusion}'"
-                )
+                raise ValueError(f"categorical_fusion must be 'concat' or 'add', got '{categorical_fusion}'")
             self.categorical_embedder: Optional[CategoricalEmbedder] = CategoricalEmbedder(
                 column_cardinalities=categorical_cardinalities,
                 embed_dim=categorical_embed_dim,
