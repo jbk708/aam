@@ -44,9 +44,11 @@ class TestCategoricalEmbedderInit:
 
         # Should have embedding modules
         assert isinstance(embedder, nn.Module)
-        # Check that embeddings exist for each column
+        # Check that embeddings exist in ModuleDict for each column
+        assert hasattr(embedder, "embeddings")
         for col in cardinalities:
-            assert hasattr(embedder, f"embed_{col}") or col in str(embedder.modules())
+            assert col in embedder.embeddings
+            assert isinstance(embedder.embeddings[col], nn.Embedding)
 
     def test_init_empty_cardinalities(self):
         """Test initialization with empty cardinalities dict."""
