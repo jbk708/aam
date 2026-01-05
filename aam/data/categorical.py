@@ -1,5 +1,6 @@
 """Categorical metadata schema and encoding for conditioning target predictions."""
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional, Union
@@ -164,7 +165,14 @@ class CategoricalEncoder:
 
     def __init__(self, schema: Optional[CategoricalSchema] = None) -> None:
         """Initialize encoder with optional schema."""
-        raise NotImplementedError
+        self._schema = schema
+        self._mappings: Optional[dict[str, dict[str, int]]] = None
+        self._column_names: Optional[list[str]] = None
+
+    def _check_fitted(self) -> None:
+        """Raise if encoder is not fitted."""
+        if not self.is_fitted:
+            raise RuntimeError("Encoder has not been fit. Call fit() first.")
 
     def fit(
         self,
@@ -185,7 +193,33 @@ class CategoricalEncoder:
             ValueError: If no columns specified and no schema provided.
             ValueError: If required column missing from metadata.
         """
-        raise NotImplementedError
+        if columns is not None:
+            col_names = columns
+        elif self._schema is not None:
+            col_names = self._schema.column_names
+        else:
+            raise ValueError(
+                "No columns specified. Provide columns argument or create "
+                "encoder with a CategoricalSchema."
+            )
+
+        available_cols = list(metadata.columns)
+        for col in col_names:
+            if col not in available_cols:
+                raise ValueError(
+                    f"Column '{col}' not found in metadata. "
+                    f"Available columns: {available_cols}"
+                )
+
+        self._mappings = {}
+        self._column_names = list(col_names)
+
+        for col in col_names:
+            unique_values = metadata[col].dropna().unique()
+            str_values = sorted(str(v) for v in unique_values)
+            self._mappings[col] = {v: i + 1 for i, v in enumerate(str_values)}
+
+        return self
 
     def transform(
         self,
@@ -209,7 +243,27 @@ class CategoricalEncoder:
         Raises:
             RuntimeError: If encoder has not been fit.
         """
-        raise NotImplementedError
+        self._check_fitted()
+
+        if sample_ids is not None:
+            if "sample_id" in metadata.columns:
+                metadata = metadata.set_index("sample_id")
+            elif metadata.index.name != "sample_id":
+                metadata = metadata.copy()
+                metadata.index.name = "sample_id"
+            metadata = metadata.loc[sample_ids]
+
+        result: dict[str, np.ndarray] = {}
+        for col in self._column_names:  # type: ignore[union-attr]
+            mapping = self._mappings[col]  # type: ignore[index]
+            values = metadata[col]
+            indices = np.array(
+                [mapping.get(str(v), 0) if pd.notna(v) else 0 for v in values],
+                dtype=np.int64,
+            )
+            result[col] = indices
+
+        return result
 
     def fit_transform(
         self,
@@ -227,7 +281,8 @@ class CategoricalEncoder:
         Returns:
             Dictionary mapping column name to numpy array of indices.
         """
-        raise NotImplementedError
+        self.fit(metadata, columns=columns)
+        return self.transform(metadata, sample_ids=sample_ids)
 
     def get_cardinalities(self) -> dict[str, int]:
         """Get cardinality (number of categories + 1 for unknown) per column.
@@ -241,7 +296,8 @@ class CategoricalEncoder:
         Raises:
             RuntimeError: If encoder has not been fit.
         """
-        raise NotImplementedError
+        self._check_fitted()
+        return {col: len(mapping) + 1 for col, mapping in self._mappings.items()}  # type: ignore[union-attr]
 
     def get_mappings(self) -> dict[str, dict[str, int]]:
         """Get category-to-index mappings for all columns.
@@ -252,7 +308,8 @@ class CategoricalEncoder:
         Raises:
             RuntimeError: If encoder has not been fit.
         """
-        raise NotImplementedError
+        self._check_fitted()
+        return {col: dict(mapping) for col, mapping in self._mappings.items()}  # type: ignore[union-attr]
 
     def save(self, path: Union[str, Path]) -> None:
         """Save encoder state to JSON file.
@@ -263,7 +320,10 @@ class CategoricalEncoder:
         Raises:
             RuntimeError: If encoder has not been fit.
         """
-        raise NotImplementedError
+        self._check_fitted()
+        state = self.to_dict()
+        with open(path, "w") as f:
+            json.dump(state, f, indent=2)
 
     @classmethod
     def load(cls, path: Union[str, Path]) -> "CategoricalEncoder":
@@ -275,12 +335,14 @@ class CategoricalEncoder:
         Returns:
             CategoricalEncoder with restored state.
         """
-        raise NotImplementedError
+        with open(path) as f:
+            state = json.load(f)
+        return cls.from_dict(state)
 
     @property
     def is_fitted(self) -> bool:
         """Whether the encoder has been fit on data."""
-        raise NotImplementedError
+        return self._mappings is not None
 
     @property
     def column_names(self) -> list[str]:
@@ -289,7 +351,8 @@ class CategoricalEncoder:
         Raises:
             RuntimeError: If encoder has not been fit.
         """
-        raise NotImplementedError
+        self._check_fitted()
+        return list(self._column_names)  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, Any]:
         """Convert encoder state to dictionary for checkpoint serialization.
@@ -300,7 +363,11 @@ class CategoricalEncoder:
         Raises:
             RuntimeError: If encoder has not been fit.
         """
-        raise NotImplementedError
+        self._check_fitted()
+        return {
+            "mappings": self._mappings,
+            "column_names": self._column_names,
+        }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "CategoricalEncoder":
@@ -312,4 +379,7 @@ class CategoricalEncoder:
         Returns:
             CategoricalEncoder with restored state.
         """
-        raise NotImplementedError
+        encoder = cls()
+        encoder._mappings = data["mappings"]
+        encoder._column_names = data["column_names"]
+        return encoder
