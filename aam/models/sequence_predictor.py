@@ -7,6 +7,7 @@ from typing import Dict, Optional
 from aam.models.sequence_encoder import SequenceEncoder
 from aam.models.attention_pooling import AttentionPooling
 from aam.models.transformer import TransformerEncoder
+from aam.models.categorical_embedder import CategoricalEmbedder
 
 
 class SequencePredictor(nn.Module):
@@ -62,6 +63,10 @@ class SequencePredictor(nn.Module):
         target_layer_norm: bool = True,
         bounded_targets: bool = False,
         learnable_output_scale: bool = False,
+        categorical_cardinalities: Optional[Dict[str, int]] = None,
+        categorical_embed_dim: int = 16,
+        categorical_fusion: str = "concat",
+        categorical_dropout: float = 0.1,
     ):
         """Initialize SequencePredictor.
 
@@ -110,6 +115,12 @@ class SequencePredictor(nn.Module):
             target_layer_norm: Apply LayerNorm before target projection (default: True)
             bounded_targets: Apply sigmoid to bound regression output to [0, 1] (default: False)
             learnable_output_scale: Add learnable scale and bias after target projection (default: False)
+            categorical_cardinalities: Dict mapping column name to cardinality for categorical conditioning.
+                If None, no categorical conditioning is applied.
+            categorical_embed_dim: Embedding dimension per categorical column (default: 16)
+            categorical_fusion: Fusion strategy for combining categorical embeddings with base embeddings.
+                Options: 'concat' (concatenate + project) or 'add' (project + add). Default: 'concat'
+            categorical_dropout: Dropout applied to categorical embeddings (default: 0.1)
         """
         super().__init__()
 
@@ -205,24 +216,90 @@ class SequencePredictor(nn.Module):
             self.output_scale = None
             self.output_bias = None
 
+        self.categorical_fusion = categorical_fusion
+        if categorical_cardinalities:
+            if categorical_fusion not in ("concat", "add"):
+                raise ValueError(
+                    f"categorical_fusion must be 'concat' or 'add', got '{categorical_fusion}'"
+                )
+            self.categorical_embedder: Optional[CategoricalEmbedder] = CategoricalEmbedder(
+                column_cardinalities=categorical_cardinalities,
+                embed_dim=categorical_embed_dim,
+                dropout=categorical_dropout,
+            )
+            total_cat_dim = self.categorical_embedder.total_embed_dim
+            if categorical_fusion == "concat":
+                self.categorical_projection = nn.Linear(
+                    self.embedding_dim + total_cat_dim,
+                    self.embedding_dim,
+                )
+            else:  # add
+                self.categorical_projection = nn.Linear(
+                    total_cat_dim,
+                    self.embedding_dim,
+                )
+        else:
+            self.categorical_embedder = None
+            self.categorical_projection = None
+
         self._init_weights()
 
     def _init_weights(self) -> None:
-        """Initialize weights for target head and count head."""
+        """Initialize weights for target head, count head, and categorical projection."""
         nn.init.xavier_uniform_(self.target_head.weight)
         nn.init.zeros_(self.target_head.bias)
         nn.init.xavier_uniform_(self.count_head.weight)
         nn.init.zeros_(self.count_head.bias)
+        if self.categorical_projection is not None:
+            nn.init.xavier_uniform_(self.categorical_projection.weight)
+            nn.init.zeros_(self.categorical_projection.bias)
+
+    def _fuse_categorical(
+        self,
+        base_embeddings: torch.Tensor,
+        categorical_ids: Optional[Dict[str, torch.Tensor]],
+    ) -> torch.Tensor:
+        """Fuse categorical embeddings with base embeddings for target prediction.
+
+        Categorical embeddings are only applied to the target prediction pathway,
+        not the count encoder or base model.
+
+        Args:
+            base_embeddings: Base model embeddings [batch_size, num_asvs, embedding_dim]
+            categorical_ids: Dict mapping column name to category indices [batch_size],
+                or None if no categorical conditioning.
+
+        Returns:
+            Fused embeddings [batch_size, num_asvs, embedding_dim]
+        """
+        if self.categorical_embedder is None or categorical_ids is None:
+            return base_embeddings
+
+        assert self.categorical_projection is not None  # Type narrowing
+
+        cat_emb = self.categorical_embedder(categorical_ids)  # [B, cat_dim]
+        seq_len = base_embeddings.size(1)
+        cat_emb_seq = self.categorical_embedder.broadcast_to_sequence(cat_emb, seq_len)  # [B, S, cat_dim]
+
+        if self.categorical_fusion == "concat":
+            fused = torch.cat([base_embeddings, cat_emb_seq], dim=-1)  # [B, S, D + cat_dim]
+            return self.categorical_projection(fused)  # [B, S, D]
+        else:  # add
+            cat_proj = self.categorical_projection(cat_emb_seq)  # [B, S, D]
+            return base_embeddings + cat_proj
 
     def forward(
         self,
         tokens: torch.Tensor,
+        categorical_ids: Optional[Dict[str, torch.Tensor]] = None,
         return_nucleotides: bool = False,
     ) -> Dict[str, torch.Tensor]:
         """Forward pass.
 
         Args:
             tokens: Input tokens [batch_size, num_asvs, seq_len]
+            categorical_ids: Optional dict mapping column name to category indices [batch_size].
+                Used for categorical conditioning of target predictions.
             return_nucleotides: Whether to return nucleotide predictions
 
         Returns:
@@ -249,7 +326,9 @@ class SequencePredictor(nn.Module):
         count_embeddings = self.count_encoder(base_embeddings, mask=asv_mask)
         count_prediction = torch.sigmoid(self.count_head(count_embeddings))
 
-        target_embeddings = self.target_encoder(base_embeddings, mask=asv_mask)
+        target_input = self._fuse_categorical(base_embeddings, categorical_ids)
+
+        target_embeddings = self.target_encoder(target_input, mask=asv_mask)
         pooled_target = self.target_pooling(target_embeddings, mask=asv_mask)
 
         if self.target_norm is not None:
