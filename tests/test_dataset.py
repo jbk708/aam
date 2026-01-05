@@ -1281,12 +1281,14 @@ class TestCategoricalIntegration:
     @pytest.fixture
     def categorical_metadata(self):
         """Create metadata with categorical columns."""
-        return pd.DataFrame({
-            "sample_id": ["sample1", "sample2", "sample3"],
-            "target": [1.0, 2.0, 3.0],
-            "location": ["outdoor", "indoor", "outdoor"],
-            "season": ["spring", "summer", "fall"],
-        })
+        return pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3"],
+                "target": [1.0, 2.0, 3.0],
+                "location": ["outdoor", "indoor", "outdoor"],
+                "season": ["spring", "summer", "fall"],
+            }
+        )
 
     @pytest.fixture
     def fitted_encoder(self, categorical_metadata):
@@ -1295,9 +1297,7 @@ class TestCategoricalIntegration:
         encoder.fit(categorical_metadata, columns=["location", "season"])
         return encoder
 
-    def test_dataset_with_categorical_encoder(
-        self, rarefied_table, tokenizer, categorical_metadata, fitted_encoder
-    ):
+    def test_dataset_with_categorical_encoder(self, rarefied_table, tokenizer, categorical_metadata, fitted_encoder):
         """Test dataset initialization with categorical encoder."""
         dataset = ASVDataset(
             table=rarefied_table,
@@ -1312,9 +1312,7 @@ class TestCategoricalIntegration:
         assert dataset.categorical_encoder is fitted_encoder
         assert dataset._categorical_cache is not None
 
-    def test_getitem_includes_categorical_ids(
-        self, rarefied_table, tokenizer, categorical_metadata, fitted_encoder
-    ):
+    def test_getitem_includes_categorical_ids(self, rarefied_table, tokenizer, categorical_metadata, fitted_encoder):
         """Test that __getitem__ returns categorical_ids."""
         dataset = ASVDataset(
             table=rarefied_table,
@@ -1335,9 +1333,7 @@ class TestCategoricalIntegration:
         assert isinstance(sample["categorical_ids"]["location"], int)
         assert isinstance(sample["categorical_ids"]["season"], int)
 
-    def test_categorical_ids_consistent_mapping(
-        self, rarefied_table, tokenizer, categorical_metadata, fitted_encoder
-    ):
+    def test_categorical_ids_consistent_mapping(self, rarefied_table, tokenizer, categorical_metadata, fitted_encoder):
         """Test that same categories map to same indices."""
         dataset = ASVDataset(
             table=rarefied_table,
@@ -1354,9 +1350,7 @@ class TestCategoricalIntegration:
 
         assert sample1["categorical_ids"]["location"] == sample3["categorical_ids"]["location"]
 
-    def test_collate_fn_batches_categorical_ids(
-        self, rarefied_table, tokenizer, categorical_metadata, fitted_encoder
-    ):
+    def test_collate_fn_batches_categorical_ids(self, rarefied_table, tokenizer, categorical_metadata, fitted_encoder):
         """Test that collate_fn correctly batches categorical_ids."""
         dataset = ASVDataset(
             table=rarefied_table,
@@ -1380,9 +1374,7 @@ class TestCategoricalIntegration:
         assert result["categorical_ids"]["location"].shape == (2,)
         assert result["categorical_ids"]["season"].shape == (2,)
 
-    def test_dataloader_with_categorical(
-        self, rarefied_table, tokenizer, categorical_metadata, fitted_encoder
-    ):
+    def test_dataloader_with_categorical(self, rarefied_table, tokenizer, categorical_metadata, fitted_encoder):
         """Test DataLoader with categorical features."""
         dataset = ASVDataset(
             table=rarefied_table,
@@ -1403,9 +1395,7 @@ class TestCategoricalIntegration:
             assert batch["categorical_ids"]["season"].shape[0] == 2
             break
 
-    def test_dataset_without_categorical_encoder(
-        self, rarefied_table, tokenizer, categorical_metadata
-    ):
+    def test_dataset_without_categorical_encoder(self, rarefied_table, tokenizer, categorical_metadata):
         """Test dataset works normally without categorical encoder."""
         dataset = ASVDataset(
             table=rarefied_table,

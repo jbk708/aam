@@ -256,11 +256,13 @@ class TestCategoricalEncoder:
     @pytest.fixture
     def sample_metadata(self) -> pd.DataFrame:
         """Create sample metadata for testing."""
-        return pd.DataFrame({
-            "sample_id": ["s1", "s2", "s3", "s4"],
-            "location": ["outdoor", "indoor", "outdoor", "mixed"],
-            "season": ["spring", "summer", "fall", "winter"],
-        })
+        return pd.DataFrame(
+            {
+                "sample_id": ["s1", "s2", "s3", "s4"],
+                "location": ["outdoor", "indoor", "outdoor", "mixed"],
+                "season": ["spring", "summer", "fall", "winter"],
+            }
+        )
 
     @pytest.fixture
     def encoder(self) -> CategoricalEncoder:
@@ -364,10 +366,12 @@ class TestCategoricalEncoder:
         encoder.fit(sample_metadata, columns=["location"])
 
         # New data with unknown category
-        new_metadata = pd.DataFrame({
-            "sample_id": ["s5"],
-            "location": ["underwater"],  # not in training
-        })
+        new_metadata = pd.DataFrame(
+            {
+                "sample_id": ["s5"],
+                "location": ["underwater"],  # not in training
+            }
+        )
 
         result = encoder.transform(new_metadata)
 
@@ -379,10 +383,12 @@ class TestCategoricalEncoder:
         encoder.fit(sample_metadata, columns=["location"])
 
         # New data with missing value
-        new_metadata = pd.DataFrame({
-            "sample_id": ["s5"],
-            "location": [None],
-        })
+        new_metadata = pd.DataFrame(
+            {
+                "sample_id": ["s5"],
+                "location": [None],
+            }
+        )
 
         result = encoder.transform(new_metadata)
 
@@ -394,10 +400,12 @@ class TestCategoricalEncoder:
         encoder.fit(sample_metadata, columns=["location"])
 
         # New data with NaN
-        new_metadata = pd.DataFrame({
-            "sample_id": ["s5"],
-            "location": [np.nan],
-        })
+        new_metadata = pd.DataFrame(
+            {
+                "sample_id": ["s5"],
+                "location": [np.nan],
+            }
+        )
 
         result = encoder.transform(new_metadata)
 
@@ -467,11 +475,13 @@ class TestCategoricalEncoderSerialization:
     @pytest.fixture
     def fitted_encoder(self) -> CategoricalEncoder:
         """Create fitted encoder for serialization tests."""
-        metadata = pd.DataFrame({
-            "sample_id": ["s1", "s2", "s3"],
-            "location": ["outdoor", "indoor", "outdoor"],
-            "season": ["spring", "summer", "fall"],
-        })
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["s1", "s2", "s3"],
+                "location": ["outdoor", "indoor", "outdoor"],
+                "season": ["spring", "summer", "fall"],
+            }
+        )
         encoder = CategoricalEncoder()
         encoder.fit(metadata, columns=["location", "season"])
         return encoder
@@ -519,11 +529,13 @@ class TestCategoricalEncoderSerialization:
 
     def test_loaded_encoder_transforms_correctly(self, fitted_encoder):
         """Test loaded encoder produces same transforms."""
-        test_data = pd.DataFrame({
-            "sample_id": ["t1", "t2"],
-            "location": ["outdoor", "indoor"],
-            "season": ["spring", "unknown_season"],
-        })
+        test_data = pd.DataFrame(
+            {
+                "sample_id": ["t1", "t2"],
+                "location": ["outdoor", "indoor"],
+                "season": ["spring", "unknown_season"],
+            }
+        )
 
         original_result = fitted_encoder.transform(test_data)
 
@@ -558,10 +570,12 @@ class TestCategoricalEncoderEdgeCases:
 
     def test_single_category(self):
         """Test column with single category."""
-        metadata = pd.DataFrame({
-            "sample_id": ["s1", "s2", "s3"],
-            "location": ["outdoor", "outdoor", "outdoor"],
-        })
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["s1", "s2", "s3"],
+                "location": ["outdoor", "outdoor", "outdoor"],
+            }
+        )
         encoder = CategoricalEncoder()
         encoder.fit(metadata, columns=["location"])
 
@@ -570,10 +584,12 @@ class TestCategoricalEncoderEdgeCases:
 
     def test_all_missing_values(self):
         """Test column with all missing values."""
-        metadata = pd.DataFrame({
-            "sample_id": ["s1", "s2"],
-            "location": [None, np.nan],
-        })
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["s1", "s2"],
+                "location": [None, np.nan],
+            }
+        )
         encoder = CategoricalEncoder()
         encoder.fit(metadata, columns=["location"])
 
@@ -585,10 +601,12 @@ class TestCategoricalEncoderEdgeCases:
 
     def test_numeric_categories_converted_to_string(self):
         """Test numeric categories are handled correctly."""
-        metadata = pd.DataFrame({
-            "sample_id": ["s1", "s2", "s3"],
-            "year": [2020, 2021, 2020],
-        })
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["s1", "s2", "s3"],
+                "year": [2020, 2021, 2020],
+            }
+        )
         encoder = CategoricalEncoder()
         encoder.fit(metadata, columns=["year"])
 
@@ -600,10 +618,12 @@ class TestCategoricalEncoderEdgeCases:
 
     def test_transform_reorders_by_sample_id(self):
         """Test transform with sample_ids reorders correctly."""
-        metadata = pd.DataFrame({
-            "sample_id": ["s1", "s2", "s3"],
-            "location": ["A", "B", "C"],
-        })
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["s1", "s2", "s3"],
+                "location": ["A", "B", "C"],
+            }
+        )
         encoder = CategoricalEncoder()
         encoder.fit(metadata, columns=["location"])
 
@@ -617,9 +637,12 @@ class TestCategoricalEncoderEdgeCases:
 
     def test_sample_id_in_index(self):
         """Test transform works when sample_id is DataFrame index."""
-        metadata = pd.DataFrame({
-            "location": ["A", "B", "C"],
-        }, index=["s1", "s2", "s3"])
+        metadata = pd.DataFrame(
+            {
+                "location": ["A", "B", "C"],
+            },
+            index=["s1", "s2", "s3"],
+        )
         metadata.index.name = "sample_id"
 
         encoder = CategoricalEncoder()
@@ -630,10 +653,12 @@ class TestCategoricalEncoderEdgeCases:
 
     def test_whitespace_in_categories(self):
         """Test categories with whitespace are handled."""
-        metadata = pd.DataFrame({
-            "sample_id": ["s1", "s2", "s3"],
-            "location": [" outdoor ", "indoor", " outdoor "],
-        })
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["s1", "s2", "s3"],
+                "location": [" outdoor ", "indoor", " outdoor "],
+            }
+        )
         encoder = CategoricalEncoder()
         encoder.fit(metadata, columns=["location"])
 
