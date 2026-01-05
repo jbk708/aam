@@ -1,7 +1,11 @@
 """Categorical metadata schema and encoding for conditioning target predictions."""
 
 from dataclasses import dataclass, field
-from typing import Optional
+from pathlib import Path
+from typing import Any, Optional, Union
+
+import numpy as np
+import pandas as pd
 
 
 @dataclass
@@ -144,3 +148,168 @@ class CategoricalSchema:
         """
         columns = [CategoricalColumnConfig(name=name) for name in names]
         return cls(columns=columns, default_embed_dim=default_embed_dim)
+
+
+class CategoricalEncoder:
+    """Encodes categorical metadata columns to integer indices.
+
+    Index 0 is reserved for unknown/missing values across all columns.
+    Known categories are mapped to indices 1 through N where N is the
+    number of unique categories seen during fit.
+
+    Args:
+        schema: Optional CategoricalSchema defining column configurations.
+            If None, schema is inferred from data during fit.
+    """
+
+    def __init__(self, schema: Optional[CategoricalSchema] = None) -> None:
+        """Initialize encoder with optional schema."""
+        raise NotImplementedError
+
+    def fit(
+        self,
+        metadata: pd.DataFrame,
+        columns: Optional[list[str]] = None,
+    ) -> "CategoricalEncoder":
+        """Learn category mappings from training data.
+
+        Args:
+            metadata: DataFrame containing categorical columns.
+            columns: Column names to encode. If None, uses schema column names.
+                Required if encoder was created without schema.
+
+        Returns:
+            Self for method chaining.
+
+        Raises:
+            ValueError: If no columns specified and no schema provided.
+            ValueError: If required column missing from metadata.
+        """
+        raise NotImplementedError
+
+    def transform(
+        self,
+        metadata: pd.DataFrame,
+        sample_ids: Optional[list[str]] = None,
+    ) -> dict[str, np.ndarray]:
+        """Transform categorical values to integer indices.
+
+        Unknown categories (not seen during fit) are mapped to index 0.
+        Missing values (NaN, None) are also mapped to index 0.
+
+        Args:
+            metadata: DataFrame containing categorical columns.
+            sample_ids: Optional list of sample IDs to extract. If None,
+                uses all rows in order. If provided, metadata must have
+                'sample_id' column or index.
+
+        Returns:
+            Dictionary mapping column name to numpy array of indices.
+
+        Raises:
+            RuntimeError: If encoder has not been fit.
+        """
+        raise NotImplementedError
+
+    def fit_transform(
+        self,
+        metadata: pd.DataFrame,
+        columns: Optional[list[str]] = None,
+        sample_ids: Optional[list[str]] = None,
+    ) -> dict[str, np.ndarray]:
+        """Fit encoder and transform data in one step.
+
+        Args:
+            metadata: DataFrame containing categorical columns.
+            columns: Column names to encode (passed to fit).
+            sample_ids: Sample IDs to extract (passed to transform).
+
+        Returns:
+            Dictionary mapping column name to numpy array of indices.
+        """
+        raise NotImplementedError
+
+    def get_cardinalities(self) -> dict[str, int]:
+        """Get cardinality (number of categories + 1 for unknown) per column.
+
+        The cardinality includes the reserved index 0 for unknown/missing,
+        so for a column with N unique values, cardinality is N + 1.
+
+        Returns:
+            Dictionary mapping column name to cardinality.
+
+        Raises:
+            RuntimeError: If encoder has not been fit.
+        """
+        raise NotImplementedError
+
+    def get_mappings(self) -> dict[str, dict[str, int]]:
+        """Get category-to-index mappings for all columns.
+
+        Returns:
+            Dictionary mapping column name to category-to-index dict.
+
+        Raises:
+            RuntimeError: If encoder has not been fit.
+        """
+        raise NotImplementedError
+
+    def save(self, path: Union[str, Path]) -> None:
+        """Save encoder state to JSON file.
+
+        Args:
+            path: File path for saving encoder state.
+
+        Raises:
+            RuntimeError: If encoder has not been fit.
+        """
+        raise NotImplementedError
+
+    @classmethod
+    def load(cls, path: Union[str, Path]) -> "CategoricalEncoder":
+        """Load encoder from JSON file.
+
+        Args:
+            path: File path to load encoder from.
+
+        Returns:
+            CategoricalEncoder with restored state.
+        """
+        raise NotImplementedError
+
+    @property
+    def is_fitted(self) -> bool:
+        """Whether the encoder has been fit on data."""
+        raise NotImplementedError
+
+    @property
+    def column_names(self) -> list[str]:
+        """List of column names this encoder handles.
+
+        Raises:
+            RuntimeError: If encoder has not been fit.
+        """
+        raise NotImplementedError
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert encoder state to dictionary for checkpoint serialization.
+
+        Returns:
+            Dictionary containing encoder state.
+
+        Raises:
+            RuntimeError: If encoder has not been fit.
+        """
+        raise NotImplementedError
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "CategoricalEncoder":
+        """Restore encoder from dictionary state.
+
+        Args:
+            data: Dictionary containing encoder state from to_dict().
+
+        Returns:
+            CategoricalEncoder with restored state.
+        """
+        raise NotImplementedError
