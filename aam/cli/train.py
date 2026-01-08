@@ -717,6 +717,7 @@ def train(
             compile_model=compile_model,
             target_normalization_params=target_normalization_params,
             count_normalization_params=count_normalization_params,
+            train_sampler=train_sampler,
         )
 
         if resume_from is not None:

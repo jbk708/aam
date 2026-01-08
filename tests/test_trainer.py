@@ -2396,3 +2396,98 @@ class TestProgressBarFormat:
         for postfix in postfix_calls:
             assert "NL" not in postfix, "NL should not appear when nuc_penalty=0"
             assert "NA" not in postfix, "NA should not appear when nuc_penalty=0"
+
+
+class TestDistributedSamplerEpoch:
+    """Tests for distributed sampler set_epoch integration."""
+
+    def test_train_sampler_set_epoch_called(self, small_model, simple_dataloader, device):
+        """Test that set_epoch is called on train_sampler for each epoch."""
+        from unittest.mock import MagicMock
+
+        # Create a mock sampler
+        mock_sampler = MagicMock()
+
+        loss_fn = MultiTaskLoss(penalty=1.0)
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+            train_sampler=mock_sampler,
+        )
+
+        # Train for 3 epochs
+        trainer.train(
+            train_loader=simple_dataloader,
+            val_loader=None,
+            num_epochs=3,
+            early_stopping_patience=100,
+        )
+
+        # Verify set_epoch was called for each epoch
+        assert mock_sampler.set_epoch.call_count == 3
+        mock_sampler.set_epoch.assert_any_call(0)
+        mock_sampler.set_epoch.assert_any_call(1)
+        mock_sampler.set_epoch.assert_any_call(2)
+
+    def test_train_sampler_none_works(self, small_model, simple_dataloader, device):
+        """Test that training works when train_sampler is None (non-distributed)."""
+        loss_fn = MultiTaskLoss(penalty=1.0)
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+            train_sampler=None,  # Explicitly None
+        )
+
+        # Should train without error
+        history = trainer.train(
+            train_loader=simple_dataloader,
+            val_loader=None,
+            num_epochs=2,
+            early_stopping_patience=100,
+        )
+
+        assert len(history["train_loss"]) == 2
+
+    def test_train_sampler_epoch_starts_from_resume(self, small_model, simple_dataloader, device):
+        """Test that set_epoch uses correct epoch when resuming training."""
+        from unittest.mock import MagicMock
+
+        mock_sampler = MagicMock()
+
+        loss_fn = MultiTaskLoss(penalty=1.0)
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+            train_sampler=mock_sampler,
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            checkpoint_path = os.path.join(tmpdir, "checkpoint.pt")
+
+            # Train for 2 epochs and save
+            trainer.train(
+                train_loader=simple_dataloader,
+                val_loader=simple_dataloader,
+                num_epochs=2,
+                checkpoint_dir=tmpdir,
+            )
+
+            # Reset mock to track new calls
+            mock_sampler.reset_mock()
+
+            # Resume training from epoch 2
+            trainer.train(
+                train_loader=simple_dataloader,
+                val_loader=simple_dataloader,
+                num_epochs=5,
+                resume_from=os.path.join(tmpdir, "best_model.pt"),
+            )
+
+            # Should have called set_epoch for epochs 2, 3, 4 (resumed from 2)
+            epochs_called = [call[0][0] for call in mock_sampler.set_epoch.call_args_list]
+            assert 2 in epochs_called
+            assert 3 in epochs_called
+            assert 4 in epochs_called

@@ -38,7 +38,7 @@ def compute_pairwise_distances(
     Args:
         embeddings: Sample embeddings [batch_size, embedding_dim]
         normalize: If True, normalize distances to [0, 1] using tanh with fixed scale (default: True)
-        scale: Scaling factor for normalization (default: 5.0). Larger values make normalization more sensitive.
+        scale: Scaling factor for normalization (default: 10.0).
 
     Returns:
         Pairwise distance matrix [batch_size, batch_size]
