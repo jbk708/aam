@@ -31,14 +31,14 @@ def _format_tensor_stats(tensor: torch.Tensor) -> str:
 def compute_pairwise_distances(
     embeddings: torch.Tensor,
     normalize: bool = True,
-    scale: float = 10.0,
+    scale: float = 2.0,
 ) -> torch.Tensor:
     """Compute pairwise Euclidean distances from embeddings.
 
     Args:
         embeddings: Sample embeddings [batch_size, embedding_dim]
         normalize: If True, normalize distances to [0, 1] using tanh with fixed scale (default: True)
-        scale: Scaling factor for normalization (default: 5.0). Larger values make normalization more sensitive.
+        scale: Scaling factor for normalization (default: 2.0). Smaller values spread predictions more.
 
     Returns:
         Pairwise distance matrix [batch_size, batch_size]
