@@ -66,9 +66,15 @@ The 28% gap in nucleotide accuracy indicates a fundamental computation differenc
 4. Mixed precision handling
 5. Random number generation differences (even with same seed)
 
+**Known Issue:** `--attn-implementation math` fails with gradient checkpointing on ROCm:
+```
+torch.utils.checkpoint: Recomputed values for the following tensors
+have different metadata than during the forward pass.
+```
+Must use `--attn-implementation math --no-gradient-checkpointing` together.
+
 **Investigation Steps:**
-- [ ] Test with `--attn-implementation math` (no optimized kernels)
-- [ ] Test with `--no-gradient-checkpointing`
+- [ ] Test with `--attn-implementation math --no-gradient-checkpointing`
 - [ ] Test with `--mixed-precision none`
 - [ ] Compare intermediate activations between platforms
 - [ ] Profile with `rocprof` to identify divergent operations
