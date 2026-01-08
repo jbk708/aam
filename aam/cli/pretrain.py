@@ -241,7 +241,9 @@ def pretrain(
 
         # Validate mutual exclusivity of --distributed and --data-parallel
         if distributed and data_parallel:
-            raise click.ClickException("Cannot use --distributed and --data-parallel together. Use --distributed for DDP (multi-node) or --data-parallel for DataParallel (single-node with full pairwise UniFrac).")
+            raise click.ClickException(
+                "Cannot use --distributed and --data-parallel together. Use --distributed for DDP (multi-node) or --data-parallel for DataParallel (single-node with full pairwise UniFrac)."
+            )
 
         setup_expandable_segments(use_expandable_segments)
 

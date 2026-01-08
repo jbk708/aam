@@ -160,6 +160,31 @@ aam pretrain \
   --token-limit 256
 ```
 
+### Multi-GPU Training
+
+AAM supports two multi-GPU strategies with different trade-offs:
+
+| Strategy | Flag | Use Case |
+|----------|------|----------|
+| **DataParallel** | `--data-parallel` | Single-node pretraining (recommended for UniFrac) |
+| **DDP** | `--distributed` | Multi-node training, fine-tuning |
+
+**For pretraining with UniFrac loss, use DataParallel:**
+
+```bash
+# DataParallel gathers outputs to GPU 0, preserving full pairwise comparisons
+aam pretrain \
+  --table <biom_file> \
+  --unifrac-matrix <unifrac_matrix.npy> \
+  --output-dir <output_dir> \
+  --data-parallel \
+  --batch-size 32
+```
+
+**Why DataParallel for pretraining?** DDP computes pairwise UniFrac loss locally per GPU, missing cross-GPU comparisons. This causes predictions to converge toward the mean (~0.5) instead of learning the full distance distribution. DataParallel gathers all outputs to GPU 0 before loss computation, preserving the correct pairwise behavior.
+
+**Note:** GPU 0 has higher memory usage with DataParallel as it gathers all outputs. For fine-tuning (target prediction without pairwise loss), DDP is preferred for better scaling.
+
 ### SLURM/HPC Systems
 
 When using `--compile-model` on SLURM-based HPC systems, load a GCC module before running:

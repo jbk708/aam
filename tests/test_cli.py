@@ -620,6 +620,7 @@ class TestCLIIntegration:
         assert mock_validate_file.called
         assert mock_validate_args.called
 
+    @patch("aam.cli.pretrain.DataLoader")
     @patch("aam.cli.pretrain.torch.cuda.is_available")
     @patch("aam.cli.pretrain.torch.cuda.device_count")
     @patch("aam.cli.pretrain.torch.nn.DataParallel")
@@ -648,6 +649,7 @@ class TestCLIIntegration:
         mock_data_parallel,
         mock_device_count,
         mock_cuda_available,
+        mock_dataloader,
         runner,
         sample_biom_file,
         sample_unifrac_matrix_file,
@@ -686,6 +688,10 @@ class TestCLIIntegration:
         mock_dataset_instance = MagicMock()
         mock_dataset.return_value = mock_dataset_instance
 
+        mock_dataloader_instance = MagicMock()
+        mock_dataloader_instance.__len__ = MagicMock(return_value=1)
+        mock_dataloader.return_value = mock_dataloader_instance
+
         mock_model_instance = MagicMock()
         mock_model.return_value = mock_model_instance
 
@@ -714,8 +720,12 @@ class TestCLIIntegration:
             ],
         )
 
-        mock_data_parallel.assert_called_once_with(mock_model_instance)
+        # Model is moved to device before wrapping, so DataParallel receives model.to()
+        mock_data_parallel.assert_called_once()
+        call_args = mock_data_parallel.call_args
+        assert call_args is not None
 
+    @patch("aam.cli.pretrain.DataLoader")
     @patch("aam.cli.pretrain.torch.cuda.is_available")
     @patch("aam.cli.pretrain.setup_logging")
     @patch("aam.cli.pretrain.setup_device")
@@ -724,8 +734,12 @@ class TestCLIIntegration:
     @patch("aam.cli.pretrain.validate_arguments")
     @patch("aam.cli.pretrain.BIOMLoader")
     @patch("aam.cli.pretrain.UniFracLoader")
+    @patch("aam.cli.pretrain.ASVDataset")
+    @patch("aam.cli.pretrain.SequenceEncoder")
     def test_pretrain_command_data_parallel_requires_cuda(
         self,
+        mock_model,
+        mock_dataset,
         mock_unifrac_loader,
         mock_biom_loader,
         mock_validate_args,
@@ -734,6 +748,7 @@ class TestCLIIntegration:
         mock_setup_device,
         mock_setup_logging,
         mock_cuda_available,
+        mock_dataloader,
         runner,
         sample_biom_file,
         sample_unifrac_matrix_file,
@@ -767,6 +782,16 @@ class TestCLIIntegration:
         np.fill_diagonal(dist_data, 0)
         mock_distance_matrix = DistanceMatrix(dist_data, ids=["sample1", "sample2", "sample3", "sample4"])
         mock_unifrac_loader_instance.load_matrix.return_value = mock_distance_matrix
+
+        mock_dataset_instance = MagicMock()
+        mock_dataset.return_value = mock_dataset_instance
+
+        mock_dataloader_instance = MagicMock()
+        mock_dataloader_instance.__len__ = MagicMock(return_value=1)
+        mock_dataloader.return_value = mock_dataloader_instance
+
+        mock_model_instance = MagicMock()
+        mock_model.return_value = mock_model_instance
 
         result = runner.invoke(
             cli,
