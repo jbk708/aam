@@ -1,7 +1,7 @@
 # Ticket Overview
 
-**Last Updated:** 2026-01-05
-**Status:** 20 outstanding tickets (~85-125 hours)
+**Last Updated:** 2026-01-07
+**Status:** 16 outstanding tickets (~67-98 hours)
 
 ## Quick Links
 - **Categorical features:** `CATEGORICAL_FEATURE_TICKETS.md`
@@ -14,35 +14,38 @@
 
 ## Outstanding Tickets by Priority
 
-### HIGH (0 tickets)
+### HIGH (1 ticket, ~2-4 hours)
 
-All categorical feature tickets complete through CAT-5.
+| Ticket | Description | Effort | Domain |
+|--------|-------------|--------|--------|
+| **COS-8.1** | Fix torch.compile() on ROCm/Triton | 2-4h | Cosmos |
 
-### MEDIUM (8 tickets, ~27-42 hours)
+`--compile-model` fails with Triton type mismatch error. **Workaround:** omit `--compile-model` on ROCm.
 
-| Ticket | Description | Effort |
-|--------|-------------|--------|
-| **CAT-6** | Checkpoint Compatibility and Transfer Learning | 3-4h |
-| **CAT-7** | Documentation and Testing | 3-4h |
-| **COS-2.2** | Unified Memory Optimization for MI300A | 4-6h |
-| **COS-3.2** | Data Management Scripts | 2-3h |
-| **COS-5.1** | ROCm CI/CD Pipeline | 4-6h |
-| **COS-6.1** | MI300A Performance Profiling | 4-6h |
-| **COS-6.2** | Flash Attention for ROCm | 4-6h |
-| **COS-7.2** | Cosmos Best Practices Guide | 2-3h |
+### MEDIUM (8 tickets, ~25-38 hours)
 
-### LOW (9 tickets, ~55-80 hours)
+| Ticket | Description | Effort | Domain |
+|--------|-------------|--------|--------|
+| **CAT-6** | Checkpoint compatibility & transfer learning | 3-4h | Categorical |
+| **CAT-7** | Documentation and testing | 3-4h | Categorical |
+| **COS-2.2** | Unified memory optimization for MI300A | 4-6h | Cosmos |
+| **COS-3.2** | Data management scripts | 2-3h | Cosmos |
+| **COS-5.1** | ROCm CI/CD pipeline | 4-6h | Cosmos |
+| **COS-6.1** | MI300A performance profiling | 4-6h | Cosmos |
+| **COS-6.2** | Flash Attention for ROCm | 4-6h | Cosmos |
+| **COS-7.2** | Cosmos best practices guide | 2-3h | Cosmos |
 
-| Ticket | Description | Effort |
-|--------|-------------|--------|
-| **COS-1.1** | ROCm Singularity Container Definition | 4-6h |
-| **COS-3.1** | Create SLURM Job Scripts | 3-4h |
-| **PYT-10.6** | Multi-GPU Training (DDP) - CUDA | 8-12h |
-| **PYT-18.5** | Lazy Sample Embedding Computation | 4-6h |
-| **PYT-18.6** | Memory-Aware Dynamic Batching | 4-6h |
-| **PYT-12.1** | FSDP | 12-16h |
-| **PYT-12.2** | Batch Size Optimization | 4-6h |
-| **COS-4.2** | FSDP Support for Large Models | 8-12h |
+### LOW (7 tickets, ~40-56 hours)
+
+| Ticket | Description | Effort | Domain |
+|--------|-------------|--------|--------|
+| **COS-1.1** | ROCm Singularity container | 4-6h | Cosmos |
+| **COS-3.1** | SLURM job scripts | 3-4h | Cosmos |
+| **PYT-10.6** | Multi-GPU DDP validation (CUDA) | 8-12h | PyTorch |
+| **PYT-12.1** | FSDP (consolidated with COS-4.2) | 12-16h | PyTorch |
+| **PYT-12.2** | Batch size optimization | 4-6h | PyTorch |
+| **PYT-18.5** | Lazy sample embedding computation | 4-6h | PyTorch |
+| **PYT-18.6** | Memory-aware dynamic batching | 4-6h | PyTorch |
 
 ### BACKLOG (Phases 13-17)
 
@@ -55,66 +58,46 @@ Future enhancement phases (~50+ hours):
 
 ---
 
-## Recently Completed
+## Recently Completed (Archived 2026-01-07)
 
-**CAT-5: CLI and Configuration Updates** (2026-01-05)
-- `--categorical-columns`: comma-separated column names from metadata
-- `--categorical-embed-dim`: embedding dimension (default: 16)
-- `--categorical-fusion`: fusion strategy (concat or add)
-- Checkpoint serialization with encoder state
-- predict.py auto-loads categorical encoder from checkpoint
+**CAT-1 through CAT-5: Categorical Features** (2026-01-05)
+- Schema definition, dataset encoding, embedder module
+- SequencePredictor integration with concat/add fusion
+- CLI flags: `--categorical-columns`, `--categorical-embed-dim`, `--categorical-fusion`
 
-**CAT-1: Categorical Metadata Schema Definition** (2026-01-05)
-- `CategoricalColumnConfig`: per-column settings (name, cardinality, embed_dim, required)
-- `CategoricalSchema`: collection with validation (duplicates, invalid values, empty names)
-- Factory method `from_column_names()` for simple schemas
-- 24 new tests in `tests/test_categorical.py`
+**PYT-21: Transfer Learning** (2025-12-19)
+- Regressor head optimization (unbounded regression, LayerNorm)
+- Pretrained encoder loading fixes
+- Skip nucleotide predictions during fine-tuning
 
-**PYT-21.5: Skip Nucleotide Predictions During Fine-Tuning** (2026-01-05)
-- Already implemented via existing logic chain
-- `--freeze-base` auto-disables `nuc_penalty` → `return_nucleotides=False` → computation skipped
-- No additional flags needed; behavior works automatically
+**COS-5.2: Numerical Validation** (2025-12-19)
+- Golden file validation infrastructure for CUDA vs ROCm
 
-**COS-5.2: Numerical Validation (CUDA vs ROCm)** (2025-12-19)
-- Golden file validation infrastructure in `tests/validation/`
-- `generate_golden_outputs()`: creates reference outputs on one platform
-- `compare_golden_outputs()`: validates against golden on another platform
-- CLI: `python -m tests.validation.numerical_validation generate|compare`
-
-**COS-1.2 & COS-7.1: Merged to README**
-- Cosmos setup instructions added to README (conda + pip install)
-- Quick start guide merged into setup section
-
-**PYT-21.3: Regressor Head Optimization**
-- Unbounded regression by default (no sigmoid)
-- LayerNorm before target projection (default: enabled)
-- Learnable output scale/bias (opt-in)
-- Xavier weight initialization
-
-**Code Cleanup Phase (CLN) - All 6 tickets complete:**
-- CLN-1: Remove Deprecated UniFrac Modules (~4165 lines deleted)
-- CLN-2: Remove Dead Code (stripe_mode, lazy_unifrac)
-- CLN-3: Add Package `__init__.py` Exports
-- CLN-4: Fix Type Errors (ty)
-- CLN-5: Extract CLI Helper Modules
-- CLN-6: Extract Trainer Validation Logic
+**CLN-1 through CLN-6: Code Cleanup** (2025-12-19)
+- Removed deprecated UniFrac modules (~4165 lines)
+- Extracted CLI package and trainer validation logic
+- Fixed all type errors
 
 ---
 
 ## Recommended Next Steps
 
-### Categorical Features (In Progress)
-1. ~~**CAT-1** - Schema definition~~ ✓ Complete
-2. ~~**CAT-2** - Dataset encoding~~ ✓ Complete
-3. ~~**CAT-3** - Embedder module~~ ✓ Complete
-4. ~~**CAT-4** - Model integration~~ ✓ Complete
-5. ~~**CAT-5** - CLI updates~~ ✓ Complete
-6. **CAT-6** - Checkpoint compatibility
-7. **CAT-7** - Documentation and testing
+### 1. Fix ROCm Blocker (HIGH)
+- **COS-8.1** - Fix torch.compile() on ROCm (or document workaround)
 
-### Cosmos Onboarding
-1. **COS-5.1** - ROCm CI/CD pipeline
-2. **COS-3.2** - Data management scripts
+### 2. Complete Categorical Features
+- **CAT-6** → **CAT-7** (checkpoint compatibility, then docs/testing)
 
-### PyTorch Improvements (As Needed)
-1. **PYT-10.6** - Multi-GPU DDP testing
+### 3. Cosmos Onboarding
+- **COS-5.1** - ROCm CI/CD pipeline
+- **COS-3.2** - Data management scripts
+
+### 4. Performance (As Needed)
+- **PYT-10.6** - DDP validation on multi-GPU CUDA
+- **PYT-12.1** - FSDP if needed for large models
+
+---
+
+## Consolidation Notes
+
+**FSDP tickets merged:** COS-4.2 consolidated into PYT-12.1. Implement once, validate on both CUDA and ROCm. May be unnecessary given MI300A's 128GB unified memory.
