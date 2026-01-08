@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-08
-**Status:** 15 outstanding tickets (~64-94 hours)
+**Status:** 16 outstanding tickets (~68-102 hours)
 
 ## Quick Links
 - **Categorical features:** `CATEGORICAL_FEATURE_TICKETS.md`
@@ -14,13 +14,16 @@
 
 ## Outstanding Tickets by Priority
 
-### HIGH (1 ticket, ~2-4 hours)
+### HIGH (2 tickets, ~6-12 hours)
 
 | Ticket | Description | Effort | Domain |
 |--------|-------------|--------|--------|
+| **COS-8.2** | Investigate ROCm numerical divergence | 4-8h | Cosmos |
 | **COS-8.1** | Fix torch.compile() on ROCm/Triton | 2-4h | Cosmos |
 
-`--compile-model` fails with Triton type mismatch error. **Workaround:** omit `--compile-model` on ROCm.
+**COS-8.2:** ROCm produces significantly different results than CUDA (42% vs 70% nuc accuracy). Blocks production use on MI300A.
+
+**COS-8.1:** `--compile-model` fails with Triton type mismatch error. **Workaround:** omit `--compile-model` on ROCm.
 
 ### MEDIUM (8 tickets, ~25-38 hours)
 
@@ -86,7 +89,8 @@ Future enhancement phases (~50+ hours):
 
 ## Recommended Next Steps
 
-### 1. Fix ROCm Blocker (HIGH)
+### 1. Fix ROCm Blockers (HIGH)
+- **COS-8.2** - Investigate ROCm numerical divergence (training produces wrong results)
 - **COS-8.1** - Fix torch.compile() on ROCm (or document workaround)
 
 ### 2. Complete Categorical Features

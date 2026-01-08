@@ -42,6 +42,49 @@ but is re-assigned to <[1, 2], int8> in loop!')
 
 ---
 
+### COS-8.2: Investigate ROCm Numerical Divergence
+**Priority:** HIGH | **Effort:** 4-8 hours | **Status:** Not Started
+
+Significant numerical divergence observed between CUDA (NVIDIA 3090) and ROCm (MI300A) with identical parameters.
+
+**Observed Differences (same dataset, batch_size=2, single GPU):**
+
+| Metric | NVIDIA 3090 | ROCm MI300A |
+|--------|-------------|-------------|
+| Speed | 1.26s/it | 1.66s/it |
+| Total Loss | 0.76 | 1.35 |
+| UniFrac Loss | 0.013 | 0.035 |
+| Nuc Loss | 0.75 | 1.31 |
+| Nuc Accuracy | **70%** | **42%** |
+
+The 28% gap in nucleotide accuracy indicates a fundamental computation difference, not random variance.
+
+**Potential Causes:**
+1. Attention implementation differences (`--attn-implementation mem_efficient` default)
+2. ROCm kernel numerical precision
+3. Gradient checkpointing behavior differences
+4. Mixed precision handling
+5. Random number generation differences (even with same seed)
+
+**Investigation Steps:**
+- [ ] Test with `--attn-implementation math` (no optimized kernels)
+- [ ] Test with `--no-gradient-checkpointing`
+- [ ] Test with `--mixed-precision none`
+- [ ] Compare intermediate activations between platforms
+- [ ] Profile with `rocprof` to identify divergent operations
+- [ ] Check if specific layer types (attention, LayerNorm) show differences
+
+**Acceptance Criteria:**
+- Root cause identified and documented
+- Either fix applied OR known limitation documented with workaround
+- Training on ROCm produces comparable results to CUDA (within 5% metrics)
+
+**Files:** Potentially `aam/models/`, attention implementations, training loop
+
+**Related:** COS-6.1 (Performance Profiling), COS-6.2 (Flash Attention)
+
+---
+
 ## Phase 1: Environment Setup (1 remaining)
 
 ### COS-1.1: Create ROCm Singularity Container Definition
@@ -114,20 +157,21 @@ Create `docs/cosmos_best_practices.md`.
 
 | Phase | Remaining | Est. Hours | Priority |
 |-------|-----------|------------|----------|
-| **8: Blockers** | **1** | **2-4** | **HIGH** |
+| **8: Blockers** | **2** | **6-12** | **HIGH** |
 | 1: Environment | 1 | 4-6 | LOW |
 | 2: ROCm | 1 | 4-6 | MEDIUM |
 | 3: SLURM | 2 | 5-7 | LOW/MEDIUM |
 | 5: Testing | 1 | 4-6 | MEDIUM |
 | 6: Performance | 2 | 8-12 | MEDIUM |
 | 7: Documentation | 1 | 2-3 | MEDIUM |
-| **Total** | **9** | **29-44** | |
+| **Total** | **10** | **33-52** | |
 
 ## Recommended Order
 
-1. **COS-8.1** - Fix torch.compile() on ROCm (HIGH - blocks optimized training)
-2. **COS-5.1** - ROCm CI/CD pipeline
-3. **COS-3.2** - Data management scripts
-4. **COS-2.2** - Unified memory optimization
-5. **COS-6.1/6.2** - Performance profiling
-6. Remaining based on need
+1. **COS-8.2** - Investigate ROCm numerical divergence (HIGH - training produces wrong results)
+2. **COS-8.1** - Fix torch.compile() on ROCm (HIGH - blocks optimized training)
+3. **COS-5.1** - ROCm CI/CD pipeline
+4. **COS-3.2** - Data management scripts
+5. **COS-2.2** - Unified memory optimization
+6. **COS-6.1/6.2** - Performance profiling
+7. Remaining based on need
