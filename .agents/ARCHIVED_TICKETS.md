@@ -1,8 +1,30 @@
 # Archived Tickets - Completed Work
 
-**Last Updated:** 2025-12-19
+**Last Updated:** 2026-01-07
 
-This file contains completed tickets for historical reference. For active work, see `PYTORCH_PORTING_TICKETS.md` and `COSMOS_ONBOARDING_TICKETS.md`.
+This file contains completed tickets for historical reference. For active work, see `TICKET_OVERVIEW.md`.
+
+---
+
+## Categorical Features (CAT-1 through CAT-5 Complete - 2026-01-05)
+
+- **CAT-1:** Categorical Metadata Schema Definition - `CategoricalColumnConfig`, `CategoricalSchema` dataclasses with validation
+- **CAT-2:** Dataset Pipeline — Categorical Encoding - `CategoricalEncoder` class with fit/transform, index 0 reserved for unknown
+- **CAT-3:** CategoricalEmbedder Module - `nn.Module` for embedding categorical features with dropout
+- **CAT-4:** SequencePredictor Integration - Concat/add fusion strategies, backward compatible
+- **CAT-5:** CLI and Configuration Updates - `--categorical-columns`, `--categorical-embed-dim`, `--categorical-fusion` flags
+
+**Files:** `aam/data/categorical.py`, `aam/models/categorical_embedder.py`, `aam/models/sequence_predictor.py`, `aam/cli/train.py`, `aam/cli/predict.py`
+
+---
+
+## Phase 21: Transfer Learning & Fine-Tuning (All Complete - 2025-12-19)
+
+- **PYT-21.1:** Target Loss Improvements and Normalize-Targets Default
+- **PYT-21.2:** Fix Pretrained Encoder Loading and Freeze-Base Verification
+- **PYT-21.3:** Regressor Head Optimization - Unbounded regression, LayerNorm, learnable scale/bias
+- **PYT-21.4:** Update Training Progress Bar for Fine-Tuning
+- **PYT-21.5:** Skip Nucleotide Predictions During Fine-Tuning - Already implemented via existing logic chain
 
 ---
 
@@ -44,11 +66,14 @@ This file contains completed tickets for historical reference. For active work, 
 
 ---
 
-## Cosmos Onboarding (Partial - 3 Complete)
+## Cosmos Onboarding (5 Complete)
 
 - **COS-1.0:** Native ROCm Environment - mamba + PyTorch ROCm wheels
+- **COS-1.2:** Setup Instructions - Merged to README
 - **COS-2.1:** ROCm Compatibility Audit - No changes needed, code already compatible via HIP backend
 - **COS-4.1:** DDP for ROCm/RCCL - `--distributed`, `--sync-batchnorm` flags, `aam/training/distributed.py`
+- **COS-5.2:** Numerical Validation (CUDA vs ROCm) - Golden file validation in `tests/validation/`
+- **COS-7.1:** Quick Start Guide - Merged to README
 
 ---
 

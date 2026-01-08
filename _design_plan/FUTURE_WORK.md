@@ -8,18 +8,15 @@
 - Model compilation (torch.compile)
 - Pre-computed UniFrac matrix loading
 - Modular CLI package structure
+- Categorical features (CAT-1 through CAT-5): schema, encoding, embedder, model integration, CLI
 
-## Planned: Categorical Features (CAT-1 through CAT-7)
+## In Progress: Categorical Features (CAT-6, CAT-7)
 
-Support for categorical metadata features (location, season, site type) that condition target predictions. See [15_categorical_features.md](15_categorical_features.md) for detailed design.
+Remaining categorical work:
+- **CAT-6:** Checkpoint compatibility and transfer learning
+- **CAT-7:** Documentation and testing
 
-**Components:**
-- `CategoricalEncoder`: String → integer index encoding with serialization
-- `CategoricalEmbedder`: nn.Module for embedding categorical features
-- SequencePredictor integration with fusion strategies (concat/add)
-- CLI flags: `--categorical-columns`, `--categorical-embed-dim`, `--categorical-fusion`
-
-**Tickets:** `.agents/CATEGORICAL_FEATURE_TICKETS.md` (7 tickets, ~21-29 hours)
+See `.agents/CATEGORICAL_FEATURE_TICKETS.md` for details.
 
 ## Outstanding
 
@@ -27,12 +24,14 @@ See `.agents/TICKET_OVERVIEW.md` for all outstanding work.
 
 ### Performance Optimizations
 
-**Multi-GPU Training (DDP)** - 8-12 hours
-- Distributed data parallel for multi-GPU training
-- Synchronization of batch normalization
+**Multi-GPU Training (DDP)** - PYT-10.6, 8-12 hours
+- DDP infrastructure complete (COS-4.1)
+- Needs validation on multi-GPU CUDA systems
 
-**FSDP** - 12-16 hours
+**FSDP** - PYT-12.1, 12-16 hours
 - Fully sharded data parallel for large models
+- Consolidated with COS-4.2 (ROCm validation)
+- May be unnecessary given MI300A's 128GB unified memory
 
 **Streaming Validation** - 3-4 hours
 - Compute metrics incrementally instead of accumulating all predictions

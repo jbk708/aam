@@ -157,6 +157,11 @@ from aam.cli.utils import (
     help="Enable distributed training with DDP. Use with torchrun: torchrun --nproc_per_node=4 -m aam.cli pretrain --distributed ...",
 )
 @click.option(
+    "--data-parallel",
+    is_flag=True,
+    help="Enable DataParallel for multi-GPU pretraining on a single node. Unlike DDP, DataParallel preserves full pairwise comparisons for UniFrac loss. Note: GPU 0 has higher memory usage as it gathers all outputs.",
+)
+@click.option(
     "--sync-batchnorm",
     is_flag=True,
     help="Convert BatchNorm to SyncBatchNorm for distributed training (recommended for small batch sizes)",
@@ -206,6 +211,7 @@ def pretrain(
     asv_chunk_size: Optional[int],
     no_sequence_cache: bool,
     distributed: bool,
+    data_parallel: bool,
     sync_batchnorm: bool,
 ):
     """Pre-train SequenceEncoder on UniFrac and nucleotide prediction (self-supervised)."""
@@ -232,6 +238,12 @@ def pretrain(
             test_size=test_size,
             epochs=epochs,
         )
+
+        # Validate mutual exclusivity of --distributed and --data-parallel
+        if distributed and data_parallel:
+            raise click.ClickException(
+                "Cannot use --distributed and --data-parallel together. Use --distributed for DDP (multi-node) or --data-parallel for DataParallel (single-node with full pairwise UniFrac)."
+            )
 
         setup_expandable_segments(use_expandable_segments)
 
@@ -456,6 +468,27 @@ def pretrain(
             model = wrap_model_ddp(model, device_id=get_local_rank())
             if is_main_process():
                 logger.info("Model wrapped with DistributedDataParallel")
+
+        elif data_parallel:
+            # DataParallel for single-node multi-GPU pretraining
+            # Unlike DDP, DP gathers outputs to GPU 0 before loss computation,
+            # preserving full pairwise comparisons for UniFrac loss
+            if not torch.cuda.is_available():
+                raise click.ClickException("--data-parallel requires CUDA GPUs")
+
+            num_gpus = torch.cuda.device_count()
+            if num_gpus < 2:
+                logger.warning(f"--data-parallel specified but only {num_gpus} GPU(s) available. Running on single GPU.")
+
+            # Explicitly specify all available GPUs
+            device_ids = list(range(num_gpus))
+            logger.info(f"Using GPUs: {device_ids}")
+
+            # Move model to primary GPU (device_ids[0])
+            model = model.to(f"cuda:{device_ids[0]}")
+            model = torch.nn.DataParallel(model, device_ids=device_ids)
+            logger.info(f"Model wrapped with DataParallel across {num_gpus} GPU(s)")
+            logger.info("Note: GPU 0 has higher memory usage as it gathers all outputs for loss computation")
 
         num_training_steps = len(train_loader) * epochs
         optimizer_obj = create_optimizer(model, optimizer_type=optimizer, lr=lr, weight_decay=weight_decay, freeze_base=False)
