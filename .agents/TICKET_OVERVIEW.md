@@ -1,7 +1,7 @@
 # Ticket Overview
 
-**Last Updated:** 2026-01-07
-**Status:** 16 outstanding tickets (~67-98 hours)
+**Last Updated:** 2026-01-08
+**Status:** 15 outstanding tickets (~64-94 hours)
 
 ## Quick Links
 - **Categorical features:** `CATEGORICAL_FEATURE_TICKETS.md`
@@ -35,13 +35,12 @@
 | **COS-6.2** | Flash Attention for ROCm | 4-6h | Cosmos |
 | **COS-7.2** | Cosmos best practices guide | 2-3h | Cosmos |
 
-### LOW (7 tickets, ~40-56 hours)
+### LOW (6 tickets, ~36-52 hours)
 
 | Ticket | Description | Effort | Domain |
 |--------|-------------|--------|--------|
 | **COS-1.1** | ROCm Singularity container | 4-6h | Cosmos |
 | **COS-3.1** | SLURM job scripts | 3-4h | Cosmos |
-| **PYT-10.6** | Multi-GPU DDP validation (CUDA) | 8-12h | PyTorch |
 | **PYT-12.1** | FSDP (consolidated with COS-4.2) | 12-16h | PyTorch |
 | **PYT-12.2** | Batch size optimization | 4-6h | PyTorch |
 | **PYT-18.5** | Lazy sample embedding computation | 4-6h | PyTorch |
@@ -58,7 +57,12 @@ Future enhancement phases (~50+ hours):
 
 ---
 
-## Recently Completed (Archived 2026-01-07)
+## Recently Completed
+
+**PYT-10.7: DataParallel for Pretraining** (2026-01-08)
+- Added `--data-parallel` flag for single-node multi-GPU pretraining
+- DataParallel preserves full pairwise UniFrac comparisons (unlike DDP)
+- Documented DP vs DDP trade-offs in README
 
 **CAT-1 through CAT-5: Categorical Features** (2026-01-05)
 - Schema definition, dataset encoding, embedder module
@@ -93,7 +97,6 @@ Future enhancement phases (~50+ hours):
 - **COS-3.2** - Data management scripts
 
 ### 4. Performance (As Needed)
-- **PYT-10.6** - DDP validation on multi-GPU CUDA
 - **PYT-12.1** - FSDP if needed for large models
 
 ---
