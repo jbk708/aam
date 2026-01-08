@@ -480,8 +480,13 @@ def pretrain(
             if num_gpus < 2:
                 logger.warning(f"--data-parallel specified but only {num_gpus} GPU(s) available. Running on single GPU.")
 
-            model = model.to(device_obj)
-            model = torch.nn.DataParallel(model)
+            # Explicitly specify all available GPUs
+            device_ids = list(range(num_gpus))
+            logger.info(f"Using GPUs: {device_ids}")
+
+            # Move model to primary GPU (device_ids[0])
+            model = model.to(f"cuda:{device_ids[0]}")
+            model = torch.nn.DataParallel(model, device_ids=device_ids)
             logger.info(f"Model wrapped with DataParallel across {num_gpus} GPU(s)")
             logger.info("Note: GPU 0 has higher memory usage as it gathers all outputs for loss computation")
 

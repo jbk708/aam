@@ -225,8 +225,8 @@ AAM automatically detects ROCm vs CUDA. Use standard commands:
 # Single APU
 aam pretrain --table data.biom --unifrac-matrix unifrac.npy --output-dir output/
 
-# Multi-APU with DDP (4 APUs per node)
-torchrun --nproc_per_node=4 -m aam.cli pretrain \
+# Multi-APU pretraining (uses all visible GPUs)
+aam pretrain --data-parallel --batch-size 32 \
   --table data.biom --unifrac-matrix unifrac.npy --output-dir output/
 ```
 
