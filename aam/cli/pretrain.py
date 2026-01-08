@@ -504,6 +504,7 @@ def pretrain(
             max_grad_norm=max_grad_norm,
             mixed_precision=mixed_precision_normalized,
             compile_model=compile_model,
+            train_sampler=train_sampler,
         )
 
         if resume_from is not None:

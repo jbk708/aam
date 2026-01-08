@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 from torch.cuda.amp import GradScaler
 from torch.utils.data import DataLoader
+from torch.utils.data.distributed import DistributedSampler
 from torch.utils.tensorboard import SummaryWriter
 from typing import Any, Dict, Optional, Union, Tuple, cast
 from pathlib import Path
@@ -71,6 +72,7 @@ class Trainer:
         compile_model: bool = False,
         target_normalization_params: Optional[Dict[str, float]] = None,
         count_normalization_params: Optional[Dict[str, float]] = None,
+        train_sampler: Optional[DistributedSampler] = None,
     ):
         """Initialize Trainer.
 
@@ -89,6 +91,8 @@ class Trainer:
                 denormalizing predictions when computing metrics. If None, no denormalization is applied.
             count_normalization_params: Dict with 'count_min', 'count_max', 'count_scale' for
                 denormalizing count predictions when computing metrics. If None, no denormalization is applied.
+            train_sampler: DistributedSampler for distributed training. When provided,
+                set_epoch() is called at the start of each epoch for proper shuffling.
         """
         self.model = model.to(device)
 
@@ -116,6 +120,7 @@ class Trainer:
         self.compile_model = compile_model
         self.target_normalization_params = target_normalization_params
         self.count_normalization_params = count_normalization_params
+        self.train_sampler = train_sampler
         self.writer: Optional[SummaryWriter] = None
         self.log_histograms: bool = True
         self.histogram_frequency: int = 50
@@ -810,6 +815,9 @@ class Trainer:
 
         try:
             for epoch in range(start_epoch, num_epochs):
+                if self.train_sampler is not None:
+                    self.train_sampler.set_epoch(epoch)
+
                 train_losses = self.train_epoch(
                     train_loader,
                     gradient_accumulation_steps=gradient_accumulation_steps,
