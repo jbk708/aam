@@ -1,18 +1,22 @@
 """Training and validation loops for AAM model."""
 
+import logging
+import math
+from pathlib import Path
+from typing import Any, Dict, Optional, Union, Tuple, cast
+
 import torch
 import torch.nn as nn
 from torch.cuda.amp import GradScaler
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.tensorboard import SummaryWriter
-from typing import Any, Dict, Optional, Union, Tuple, cast
-from pathlib import Path
-import math
 from tqdm import tqdm
 
 from aam.training.distributed import is_main_process
 from aam.training.evaluation import Evaluator
+
+logger = logging.getLogger(__name__)
 
 
 class WarmupCosineScheduler:
@@ -303,6 +307,55 @@ class Trainer:
                     if grad_norm > 0:
                         self.writer.add_histogram(f"weights/{name}", param.data, epoch)
                         self.writer.add_histogram(f"gradients/{name}", param.grad.data, epoch)
+
+    def _log_epoch_results(
+        self,
+        epoch: int,
+        num_epochs: int,
+        train_losses: Dict[str, float],
+        val_results: Optional[Dict[str, float]] = None,
+    ):
+        """Log epoch results to the logger.
+
+        Args:
+            epoch: Current epoch number (0-indexed)
+            num_epochs: Total number of epochs
+            train_losses: Training losses dictionary
+            val_results: Validation results dictionary (optional)
+        """
+        # Format training metrics
+        train_parts = [f"train_loss={train_losses.get('total_loss', 0):.4f}"]
+        if "unifrac_loss" in train_losses:
+            train_parts.append(f"unifrac={train_losses['unifrac_loss']:.4f}")
+        if "nuc_loss" in train_losses:
+            train_parts.append(f"nuc_loss={train_losses['nuc_loss']:.4f}")
+        if "nuc_accuracy" in train_losses:
+            train_parts.append(f"nuc_acc={train_losses['nuc_accuracy']:.2%}")
+        if "target_loss" in train_losses:
+            train_parts.append(f"target={train_losses['target_loss']:.4f}")
+
+        train_str = ", ".join(train_parts)
+
+        # Format validation metrics if available
+        if val_results is not None:
+            val_parts = [f"val_loss={val_results.get('total_loss', 0):.4f}"]
+            if "unifrac_loss" in val_results:
+                val_parts.append(f"unifrac={val_results['unifrac_loss']:.4f}")
+            if "nuc_loss" in val_results:
+                val_parts.append(f"nuc_loss={val_results['nuc_loss']:.4f}")
+            if "nuc_accuracy" in val_results:
+                val_parts.append(f"nuc_acc={val_results['nuc_accuracy']:.2%}")
+            if "target_loss" in val_results:
+                val_parts.append(f"target={val_results['target_loss']:.4f}")
+            if "r2" in val_results:
+                val_parts.append(f"r2={val_results['r2']:.4f}")
+            if "mae" in val_results:
+                val_parts.append(f"mae={val_results['mae']:.4f}")
+
+            val_str = ", ".join(val_parts)
+            logger.info(f"Epoch {epoch + 1}/{num_epochs}: {train_str} | {val_str}")
+        else:
+            logger.info(f"Epoch {epoch + 1}/{num_epochs}: {train_str}")
 
     def train_epoch(
         self,
@@ -911,6 +964,9 @@ class Trainer:
 
                 if self.writer is not None:
                     self._log_to_tensorboard(epoch, train_losses, val_results)
+
+                # Log epoch results to file logger
+                self._log_epoch_results(epoch, num_epochs, train_losses, val_results)
 
                 if self.scheduler is not None:
                     if isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
