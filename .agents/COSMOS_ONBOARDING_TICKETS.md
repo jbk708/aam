@@ -79,23 +79,34 @@ but is re-assigned to <[1, 2], int8> in loop!')
 ---
 
 ### COS-9.3: Memory Profiling and Optimization
-**Priority:** HIGH | **Effort:** 4-6 hours | **Status:** Not Started
+**Priority:** HIGH | **Effort:** 4-6 hours | **Status:** In Progress
 
 Profile and optimize memory usage for ROCm `math` attention path.
 
-**Scope:**
-- Profile peak memory usage with `torch.cuda.max_memory_allocated()`
-- Compare memory footprint: `math` vs `mem_efficient` (on CUDA baseline)
-- Identify memory hotspots in forward/backward pass
-- Test `--use-expandable-segments` impact on ROCm
-- Evaluate gradient checkpointing alternatives (currently disabled for ROCm correctness)
+**Completed:**
+- [x] Added `--memory-profile` flag to pretrain command
+- [x] Created `MemoryProfiler` class in `aam/training/memory_profiler.py`
+- [x] Memory logging at key points: model creation, device transfer, training
+- [x] Peak memory and utilization reporting
+- [x] Unit tests for memory profiler
+
+**Remaining (requires Cosmos hardware):**
+- [ ] Profile peak memory usage with different batch sizes on MI300A
+- [ ] Compare memory footprint: `math` vs `mem_efficient` (on CUDA baseline)
+- [ ] Test `--use-expandable-segments` impact on ROCm
+- [ ] Document optimal batch sizes for MI300A (128GB)
 
 **Acceptance Criteria:**
-- Memory usage documented for various batch sizes
-- Recommendations for optimal batch size per GPU memory
-- Any quick wins implemented
+- [x] `--memory-profile` flag implemented and tested
+- [ ] Memory usage documented for various batch sizes (needs hardware)
+- [ ] Recommendations for optimal batch size per GPU memory
 
-**Files:** `aam/training/trainer.py`, model forward passes
+**Files:** `aam/training/memory_profiler.py`, `aam/cli/pretrain.py`
+
+**Usage:**
+```bash
+aam pretrain --memory-profile --batch-size 8 ...
+```
 
 ---
 

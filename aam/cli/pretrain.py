@@ -594,8 +594,8 @@ def pretrain(
             bytes_to_gb = 1024 * 1024 * 1024
             peak_allocated = torch.cuda.max_memory_allocated() / bytes_to_mb
             peak_reserved = torch.cuda.max_memory_reserved() / bytes_to_mb
-            logger.info(f"Peak memory allocated: {peak_allocated:.1f} MB ({peak_allocated/1024:.2f} GB)")
-            logger.info(f"Peak memory reserved:  {peak_reserved:.1f} MB ({peak_reserved/1024:.2f} GB)")
+            logger.info(f"Peak memory allocated: {peak_allocated:.1f} MB ({peak_allocated / 1024:.2f} GB)")
+            logger.info(f"Peak memory reserved:  {peak_reserved:.1f} MB ({peak_reserved / 1024:.2f} GB)")
             logger.info(f"Batch size: {batch_size}, Gradient accumulation: {gradient_accumulation_steps}")
             logger.info(f"Effective batch size: {batch_size * gradient_accumulation_steps}")
             logger.info(f"Attention implementation: {attn_implementation}")

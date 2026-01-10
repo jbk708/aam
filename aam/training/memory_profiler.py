@@ -161,7 +161,8 @@ class MemoryProfiler:
 
             avg_allocated = (
                 sum(self._epoch_allocated_samples) / len(self._epoch_allocated_samples)
-                if self._epoch_allocated_samples else 0.0
+                if self._epoch_allocated_samples
+                else 0.0
             )
 
             epoch_stats = EpochMemoryStats(
@@ -192,10 +193,7 @@ class MemoryProfiler:
             if stats["allocated_mb"] > self._epoch_peak:
                 self._epoch_peak = stats["allocated_mb"]
 
-            if (
-                self.log_every_n_batches > 0
-                and self._batch_count % self.log_every_n_batches == 0
-            ):
+            if self.log_every_n_batches > 0 and self._batch_count % self.log_every_n_batches == 0:
                 self.snapshot(f"batch_{self._batch_count}")
 
     def get_summary(self) -> Dict[str, float]:
@@ -291,13 +289,10 @@ class MemoryProfiler:
             )
         elif utilization > 0.9:
             recommendations.append(
-                f"Memory utilization is {utilization:.0%}. "
-                f"Consider reducing batch_size or enabling gradient checkpointing."
+                f"Memory utilization is {utilization:.0%}. Consider reducing batch_size or enabling gradient checkpointing."
             )
         else:
-            recommendations.append(
-                f"Memory utilization is {utilization:.0%} - good balance."
-            )
+            recommendations.append(f"Memory utilization is {utilization:.0%} - good balance.")
 
         return recommendations
 
