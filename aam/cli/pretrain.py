@@ -1,6 +1,7 @@
 """Pretrain command for AAM CLI."""
 
 import click
+import sys
 import torch
 import logging
 import numpy as np
@@ -234,6 +235,7 @@ def pretrain(
             logger.info("TensorFloat32 enabled for faster matrix multiplication")
 
         logger.info("Starting SequenceEncoder pre-training")
+        logger.info(f"Command: {' '.join(sys.argv)}")
         logger.info(f"Arguments: table={table}, unifrac_matrix={unifrac_matrix}")
 
         validate_file_path(table, "BIOM table")
@@ -318,6 +320,14 @@ def pretrain(
         logger.info("Splitting data...")
         train_ids, val_ids = train_test_split(sample_ids, test_size=test_size, random_state=seed)
         logger.info(f"Train samples: {len(train_ids)}, Validation samples: {len(val_ids)}")
+
+        # Log sample IDs for reproducibility
+        train_ids_file = output_path / "train_sample_ids.txt"
+        val_ids_file = output_path / "val_sample_ids.txt"
+        train_ids_file.write_text("\n".join(train_ids))
+        val_ids_file.write_text("\n".join(val_ids))
+        logger.info(f"Train sample IDs saved to: {train_ids_file}")
+        logger.info(f"Validation sample IDs saved to: {val_ids_file}")
 
         logger.info("Filtering tables for train/val splits...")
         train_table = table_obj.filter(train_ids, axis="sample", inplace=False)
