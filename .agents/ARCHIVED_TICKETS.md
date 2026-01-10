@@ -1,8 +1,18 @@
 # Archived Tickets - Completed Work
 
-**Last Updated:** 2026-01-07
+**Last Updated:** 2026-01-08
 
 This file contains completed tickets for historical reference. For active work, see `TICKET_OVERVIEW.md`.
+
+---
+
+## ROCm Numerical Divergence (COS-8.2 Resolved - 2026-01-08)
+
+- **COS-8.2:** ROCm Numerical Divergence - **RESOLVED**
+  - **Issue:** `mem_efficient` SDPA produced 42% nuc accuracy vs 70% on CUDA
+  - **Resolution:** Use `--attn-implementation math --no-gradient-checkpointing`
+  - **Trade-off:** Higher memory usage, slower iteration rate
+  - **Root Cause:** Numerical differences in memory-efficient attention kernel on HIP/ROCm
 
 ---
 

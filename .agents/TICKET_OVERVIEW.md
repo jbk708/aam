@@ -1,12 +1,12 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-08
-**Status:** 16 outstanding tickets (~68-102 hours)
+**Status:** 14 outstanding tickets (~48-68 hours)
 
 ## Quick Links
+- **ROCm optimization:** `COSMOS_ONBOARDING_TICKETS.md`
 - **Categorical features:** `CATEGORICAL_FEATURE_TICKETS.md`
 - **PyTorch work:** `PYTORCH_PORTING_TICKETS.md`
-- **Cosmos onboarding:** `COSMOS_ONBOARDING_TICKETS.md`
 - **Completed work:** `ARCHIVED_TICKETS.md`
 - **Workflow:** `WORKFLOW.md`
 
@@ -14,38 +14,38 @@
 
 ## Outstanding Tickets by Priority
 
-### HIGH (2 tickets, ~6-12 hours)
+### HIGH - ROCm Performance (3 tickets, ~12-20 hours)
 
 | Ticket | Description | Effort | Domain |
 |--------|-------------|--------|--------|
-| **COS-8.2** | Investigate ROCm numerical divergence | 4-8h | Cosmos |
-| **COS-8.1** | Fix torch.compile() on ROCm/Triton | 2-4h | Cosmos |
+| **COS-9.1** | ROCm-optimized attention implementation | 6-10h | Cosmos |
+| **COS-9.2** | Fix torch.compile() on ROCm/Triton | 2-4h | Cosmos |
+| **COS-9.3** | Memory profiling and optimization | 4-6h | Cosmos |
 
-**COS-8.2:** ROCm produces significantly different results than CUDA (42% vs 70% nuc accuracy). Blocks production use on MI300A.
+**COS-9.1:** The `math` attention works correctly but is ~30% slower with higher memory usage than `mem_efficient`. Need to fix `mem_efficient`/`flash` on ROCm or optimize `math` path.
 
-**COS-8.1:** `--compile-model` fails with Triton type mismatch error. **Workaround:** omit `--compile-model` on ROCm.
+**COS-9.2:** `--compile-model` fails with Triton type mismatch. **Workaround:** omit `--compile-model` on ROCm.
 
-### MEDIUM (8 tickets, ~25-38 hours)
+**COS-9.3:** Profile memory hotspots, establish baseline for optimization work.
+
+### MEDIUM (6 tickets, ~21-30 hours)
 
 | Ticket | Description | Effort | Domain |
 |--------|-------------|--------|--------|
+| **COS-9.4** | MI300A unified memory optimization | 4-6h | Cosmos |
+| **COS-9.5** | Kernel profiling with rocprof | 4-6h | Cosmos |
 | **CAT-6** | Checkpoint compatibility & transfer learning | 3-4h | Categorical |
 | **CAT-7** | Documentation and testing | 3-4h | Categorical |
-| **COS-2.2** | Unified memory optimization for MI300A | 4-6h | Cosmos |
-| **COS-3.2** | Data management scripts | 2-3h | Cosmos |
-| **COS-5.1** | ROCm CI/CD pipeline | 4-6h | Cosmos |
-| **COS-6.1** | MI300A performance profiling | 4-6h | Cosmos |
-| **COS-6.2** | Flash Attention for ROCm | 4-6h | Cosmos |
-| **COS-7.2** | Cosmos best practices guide | 2-3h | Cosmos |
+| **PYT-12.1** | FSDP (if needed for large models) | 12-16h | PyTorch |
+| **PYT-12.2** | Batch size optimization | 4-6h | PyTorch |
 
-### LOW (6 tickets, ~36-52 hours)
+### LOW (5 tickets, ~17-25 hours)
 
 | Ticket | Description | Effort | Domain |
 |--------|-------------|--------|--------|
-| **COS-1.1** | ROCm Singularity container | 4-6h | Cosmos |
-| **COS-3.1** | SLURM job scripts | 3-4h | Cosmos |
-| **PYT-12.1** | FSDP (consolidated with COS-4.2) | 12-16h | PyTorch |
-| **PYT-12.2** | Batch size optimization | 4-6h | PyTorch |
+| **COS-9.6** | SLURM job templates | 3-4h | Cosmos |
+| **COS-9.7** | ROCm Singularity container | 4-6h | Cosmos |
+| **COS-9.8** | ROCm documentation & best practices | 2-3h | Cosmos |
 | **PYT-18.5** | Lazy sample embedding computation | 4-6h | PyTorch |
 | **PYT-18.6** | Memory-aware dynamic batching | 4-6h | PyTorch |
 
@@ -62,49 +62,49 @@ Future enhancement phases (~50+ hours):
 
 ## Recently Completed
 
+**COS-8.2: ROCm Numerical Divergence** (2026-01-08) - RESOLVED
+- `mem_efficient` SDPA produced incorrect results (42% vs 70% nuc accuracy)
+- **Resolution:** Use `--attn-implementation math --no-gradient-checkpointing`
+- Trade-off: Higher memory, slower iteration rate
+- Renumbered remaining optimization work to COS-9.x series
+
 **PYT-10.7: DataParallel for Pretraining** (2026-01-08)
 - Added `--data-parallel` flag for single-node multi-GPU pretraining
 - DataParallel preserves full pairwise UniFrac comparisons (unlike DDP)
-- Documented DP vs DDP trade-offs in README
 
 **CAT-1 through CAT-5: Categorical Features** (2026-01-05)
 - Schema definition, dataset encoding, embedder module
 - SequencePredictor integration with concat/add fusion
 - CLI flags: `--categorical-columns`, `--categorical-embed-dim`, `--categorical-fusion`
 
-**PYT-21: Transfer Learning** (2025-12-19)
-- Regressor head optimization (unbounded regression, LayerNorm)
-- Pretrained encoder loading fixes
-- Skip nucleotide predictions during fine-tuning
-
-**COS-5.2: Numerical Validation** (2025-12-19)
-- Golden file validation infrastructure for CUDA vs ROCm
-
-**CLN-1 through CLN-6: Code Cleanup** (2025-12-19)
-- Removed deprecated UniFrac modules (~4165 lines)
-- Extracted CLI package and trainer validation logic
-- Fixed all type errors
-
 ---
 
 ## Recommended Next Steps
 
-### 1. Fix ROCm Blockers (HIGH)
-- **COS-8.2** - Investigate ROCm numerical divergence (training produces wrong results)
-- **COS-8.1** - Fix torch.compile() on ROCm (or document workaround)
+### 1. ROCm Performance Optimization (HIGH)
+- **COS-9.3** → **COS-9.1** → **COS-9.2** (profile first, then optimize attention, then compile)
 
 ### 2. Complete Categorical Features
 - **CAT-6** → **CAT-7** (checkpoint compatibility, then docs/testing)
 
-### 3. Cosmos Onboarding
-- **COS-5.1** - ROCm CI/CD pipeline
-- **COS-3.2** - Data management scripts
-
-### 4. Performance (As Needed)
-- **PYT-12.1** - FSDP if needed for large models
+### 3. Infrastructure (As Needed)
+- **COS-9.6** - SLURM templates for Cosmos
+- **COS-9.8** - Documentation
 
 ---
 
-## Consolidation Notes
+## Current ROCm Configuration
 
-**FSDP tickets merged:** COS-4.2 consolidated into PYT-12.1. Implement once, validate on both CUDA and ROCm. May be unnecessary given MI300A's 128GB unified memory.
+Working configuration for Cosmos MI300A:
+```bash
+aam pretrain \
+  --attn-implementation math \
+  --no-gradient-checkpointing \
+  --data-parallel \
+  # ... other flags
+```
+
+**Known limitations:**
+- `--compile-model` not supported (Triton bug)
+- `mem_efficient` attention produces incorrect results
+- Higher memory usage than optimized CUDA path
