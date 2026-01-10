@@ -357,6 +357,17 @@ class Trainer:
         else:
             logger.info(f"Epoch {epoch + 1}/{num_epochs}: {train_str}")
 
+        # Log GPU memory stats if available
+        if torch.cuda.is_available():
+            bytes_to_mb = 1024 * 1024
+            allocated = torch.cuda.memory_allocated() / bytes_to_mb
+            reserved = torch.cuda.memory_reserved() / bytes_to_mb
+            peak = torch.cuda.max_memory_allocated() / bytes_to_mb
+            logger.info(
+                f"Epoch {epoch + 1}/{num_epochs} memory: "
+                f"allocated={allocated:.0f}MB, reserved={reserved:.0f}MB, peak={peak:.0f}MB"
+            )
+
     def train_epoch(
         self,
         dataloader: DataLoader,
