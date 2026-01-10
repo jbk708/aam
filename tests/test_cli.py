@@ -1936,6 +1936,14 @@ class TestMemoryEfficientDefaults:
         assert "--asv-chunk-size" in result.output
         assert "--attn-implementation" in result.output
 
+    def test_pretrain_memory_profile_option_exists(self):
+        """Test that --memory-profile option is available in pretrain command."""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["pretrain", "--help"])
+        assert result.exit_code == 0
+        assert "--memory-profile" in result.output
+        assert "GPU memory profiling" in result.output
+
 
 class TestMetadataLoading:
     """Tests for metadata loading with column name variations."""

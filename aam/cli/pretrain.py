@@ -27,6 +27,7 @@ from aam.training.distributed import (
     sync_batch_norm,
     wrap_model_ddp,
 )
+from aam.training.memory_profiler import MemoryProfiler, log_gpu_memory_stats
 from aam.models.model_summary import log_model_summary
 from aam.cli.utils import (
     setup_logging,
@@ -166,6 +167,11 @@ from aam.cli.utils import (
     is_flag=True,
     help="Convert BatchNorm to SyncBatchNorm for distributed training (recommended for small batch sizes)",
 )
+@click.option(
+    "--memory-profile",
+    is_flag=True,
+    help="Enable GPU memory profiling. Logs peak memory usage per epoch and provides optimization recommendations.",
+)
 def pretrain(
     table: str,
     unifrac_matrix: str,
@@ -213,6 +219,7 @@ def pretrain(
     distributed: bool,
     data_parallel: bool,
     sync_batchnorm: bool,
+    memory_profile: bool,
 ):
     """Pre-train SequenceEncoder on UniFrac and nucleotide prediction (self-supervised)."""
     try:
@@ -446,6 +453,10 @@ def pretrain(
 
         log_model_summary(model, logger)
 
+        # Log memory after model creation (before moving to device)
+        if memory_profile and torch.cuda.is_available():
+            log_gpu_memory_stats(label="after_model_creation", logger=logger)
+
         loss_fn = MultiTaskLoss(
             penalty=penalty,
             nuc_penalty=nuc_penalty,
@@ -468,6 +479,8 @@ def pretrain(
             model = wrap_model_ddp(model, device_id=get_local_rank())
             if is_main_process():
                 logger.info("Model wrapped with DistributedDataParallel")
+                if memory_profile:
+                    log_gpu_memory_stats(label="after_model_to_device", logger=logger)
 
         elif data_parallel:
             # DataParallel for single-node multi-GPU pretraining
@@ -489,6 +502,9 @@ def pretrain(
             model = torch.nn.DataParallel(model, device_ids=device_ids)
             logger.info(f"Model wrapped with DataParallel across {num_gpus} GPU(s)")
             logger.info("Note: GPU 0 has higher memory usage as it gathers all outputs for loss computation")
+
+            if memory_profile:
+                log_gpu_memory_stats(label="after_model_to_device", logger=logger)
 
         num_training_steps = len(train_loader) * epochs
         optimizer_obj = create_optimizer(model, optimizer_type=optimizer, lr=lr, weight_decay=weight_decay, freeze_base=False)
@@ -548,6 +564,12 @@ def pretrain(
         checkpoint_dir = output_path / "checkpoints"
         checkpoint_dir.mkdir(exist_ok=True)
 
+        # Initialize memory profiler if enabled
+        profiler = MemoryProfiler(enabled=memory_profile)
+        if memory_profile and torch.cuda.is_available():
+            log_gpu_memory_stats(label="before_training", logger=logger)
+            logger.info("Memory profiling enabled - will log peak memory per epoch")
+
         history = trainer.train(
             train_loader=train_loader,
             val_loader=val_loader,
@@ -561,6 +583,30 @@ def pretrain(
         logger.info("Pre-training completed")
         best_val_loss = min(history["val_loss"]) if history["val_loss"] else float("inf")
         logger.info(f"Best validation loss: {best_val_loss}")
+
+        # Log final memory statistics if profiling enabled
+        if memory_profile and torch.cuda.is_available():
+            log_gpu_memory_stats(label="after_training", logger=logger)
+            logger.info("-" * 60)
+            logger.info("MEMORY PROFILING SUMMARY")
+            logger.info("-" * 60)
+            bytes_to_mb = 1024 * 1024
+            bytes_to_gb = 1024 * 1024 * 1024
+            peak_allocated = torch.cuda.max_memory_allocated() / bytes_to_mb
+            peak_reserved = torch.cuda.max_memory_reserved() / bytes_to_mb
+            logger.info(f"Peak memory allocated: {peak_allocated:.1f} MB ({peak_allocated/1024:.2f} GB)")
+            logger.info(f"Peak memory reserved:  {peak_reserved:.1f} MB ({peak_reserved/1024:.2f} GB)")
+            logger.info(f"Batch size: {batch_size}, Gradient accumulation: {gradient_accumulation_steps}")
+            logger.info(f"Effective batch size: {batch_size * gradient_accumulation_steps}")
+            logger.info(f"Attention implementation: {attn_implementation}")
+            logger.info(f"Gradient checkpointing: {gradient_checkpointing}")
+            # Get GPU info
+            gpu_props = torch.cuda.get_device_properties(0)
+            total_memory_gb = gpu_props.total_memory / bytes_to_gb
+            utilization = (peak_allocated / 1024) / total_memory_gb * 100
+            logger.info(f"GPU: {gpu_props.name} ({total_memory_gb:.1f} GB)")
+            logger.info(f"Memory utilization: {utilization:.1f}%")
+            logger.info("-" * 60)
 
         # Only save final model on main process in distributed mode
         if not distributed or is_main_process():
