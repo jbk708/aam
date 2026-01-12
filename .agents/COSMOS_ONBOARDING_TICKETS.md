@@ -1,6 +1,6 @@
 # ROCm Optimization Tickets (Cosmos MI300A)
 
-**Last Updated:** 2026-01-08
+**Last Updated:** 2026-01-12
 **Target System:** SDSC Cosmos - 168 AMD Instinct MI300A APUs (42 nodes × 4 APUs)
 **Reference:** [Cosmos User Guide](https://www.sdsc.edu/systems/cosmos/user_guide.html)
 
@@ -25,28 +25,42 @@ aam pretrain \
 ## HIGH PRIORITY - Performance Optimization
 
 ### COS-9.1: ROCm-Optimized Attention Implementation
-**Priority:** HIGH | **Effort:** 6-10 hours | **Status:** Not Started
+**Priority:** HIGH | **Effort:** 6-10 hours | **Status:** COMPLETE
 
 The `math` attention implementation works correctly but has performance/memory penalties compared to optimized backends.
 
-**Current State:**
-- `mem_efficient` (SDPA default): Numerical divergence on ROCm (42% vs 70% nuc accuracy)
-- `math`: Correct results but ~30% slower, higher memory usage
-- `flash`: Requires Flash Attention 2 with ROCm support
+**Root Cause Identified (2026-01-12):**
 
-**Investigation Steps:**
-- [ ] Profile `math` vs `mem_efficient` with `rocprof` to identify divergent operations
-- [ ] Test PyTorch 2.5+ ROCm SDPA improvements (if available)
-- [ ] Evaluate [Flash Attention 2 for ROCm](https://github.com/ROCm/flash-attention) compatibility
-- [ ] Test [xFormers](https://github.com/facebookresearch/xformers) ROCm backend
-- [ ] If unfixable: document as known limitation, optimize `math` path
+The `mem_efficient` SDPA backend produces **catastrophically wrong results when using attention masks** on ROCm. Diagnostic results (PyTorch 2.5.1+rocm6.2, MI300A gfx942):
 
-**Acceptance Criteria:**
-- Either fix `mem_efficient`/`flash` on ROCm OR
-- Optimize `math` implementation to reduce gap OR
-- Document performance baseline with recommended flags
+| Test | math vs mem_efficient | Status |
+|------|----------------------|--------|
+| fp32 no mask | max_diff=7.15e-07 | ✅ Fine |
+| fp16 no mask | max_diff=4.88e-04 | ✅ Fine |
+| **fp32 WITH mask** | **max_diff=1.73** | ❌ **BROKEN** |
 
-**Files:** `aam/models/attention_pooling.py`, `aam/models/asv_encoder.py`, `aam/models/transformers.py`
+Without attention masks, `mem_efficient` is numerically equivalent to `math`. With masks (which AAM uses for padding), results diverge catastrophically.
+
+**Performance Impact:**
+- `mem_efficient`: 4.85x faster, 7.5x less memory - but broken with masks
+- `math`: Baseline performance, correct results
+- `flash` (PyTorch native): "No available kernel" error on ROCm
+
+**Flash Attention Investigation:**
+- [ROCm/flash-attention](https://github.com/ROCm/flash-attention): Build fails on ROCm 6.2+ (missing `__builtin_amdgcn_mfma_f32_16x16x32_f16` intrinsic)
+- [kailums/flash-attention-rocm](https://github.com/kailums/flash-attention-rocm): Supports gfx942, but build takes 2+ hours on NFS
+- xFormers: Not tested (likely similar build issues)
+
+**Resolution:** Document `math` backend as required for ROCm. The 128GB MI300A memory accommodates the higher usage.
+
+**Completed:**
+- [x] Created diagnostic tool: `python -m aam.tools.rocm_attention_diagnostic`
+- [x] Identified root cause: `mem_efficient` SDPA mask handling bug on ROCm
+- [x] Tested Flash Attention for ROCm (incompatible with ROCm 6.2+)
+- [x] Updated README with required flags and explanation
+- [x] Documented performance baseline
+
+**Files:** `aam/tools/rocm_attention_diagnostic.py`, `README.md`
 
 ---
 
@@ -197,7 +211,7 @@ Document ROCm-specific configuration and best practices.
 
 | Ticket | Description | Effort | Priority |
 |--------|-------------|--------|----------|
-| **COS-9.1** | ROCm-optimized attention | 6-10h | HIGH |
+| **COS-9.1** | ROCm-optimized attention | 6-10h | COMPLETE |
 | **COS-9.2** | Fix torch.compile() | 2-4h | HIGH |
 | **COS-9.3** | Memory profiling | 4-6h | HIGH |
 | **COS-9.4** | Unified memory optimization | 4-6h | MEDIUM |
