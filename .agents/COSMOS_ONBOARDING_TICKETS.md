@@ -223,23 +223,18 @@ The `mem_efficient` SDPA backend produces incorrect results with attention masks
 - [Issue #132004](https://github.com/pytorch/pytorch/issues/132004): Memory efficient attention causes image corruption on MI300X/MI250
 - Fix merged via [PR #148433](https://github.com/pytorch/pytorch/pull/148433)
 
-**Key Finding: Fix requires ROCm 6.3**
+**Key Finding: Fix requires ROCm 6.3 ✅ Available on Cosmos**
 
 | ROCm | PyTorch Available | aotriton | SDPA Status |
 |------|-------------------|----------|-------------|
-| 6.2 (Cosmos current) | 2.5.1 stable | 0.7.x | ❌ Broken with masks |
-| **6.3** | **2.7.0 - 2.9.1** | **0.8.2+** | ✅ **Fixed** |
+| 6.2 | 2.5.1 stable | 0.7.x | ❌ Broken with masks |
+| **6.3 (Cosmos default)** | **2.7.0 - 2.9.1** | **0.8.2+** | ✅ **Fixed** |
 
-PyTorch 2.7+ (with the fix) is **only available for ROCm 6.3**. ROCm 6.2 is stuck on PyTorch 2.5.1.
-
-**Options to Test the Fix:**
-1. **Check if Cosmos supports ROCm 6.3** - may require system upgrade
-2. **Use ROCm 6.3 container** - if Singularity/Apptainer available
-3. **Wait for ROCm 6.3 on Cosmos** - track SDSC updates
+Cosmos has ROCm 6.3 as default (`module load rocm/6.3.0`). PyTorch 2.7+ with the fix is available.
 
 **Investigation Steps:**
 - [x] Check if PyTorch 2.7+rocm is available for ROCm 6.2 → **No, requires ROCm 6.3**
-- [ ] Check Cosmos ROCm 6.3 availability or container options
+- [x] Check Cosmos ROCm 6.3 availability → **Yes, rocm/6.3.0 is default**
 - [ ] If ROCm 6.3 available: install PyTorch 2.7+ and run diagnostic
 - [ ] Verify numerical comparison with mask passes (max_diff < 1e-3)
 - [ ] If fixed: benchmark `mem_efficient` vs `math` performance

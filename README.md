@@ -199,22 +199,27 @@ Without this, `torch.compile()` may fail with `fatal error: stdatomic.h: No such
 
 AAM supports ROCm for AMD GPUs. For [SDSC Cosmos](https://www.sdsc.edu/systems/cosmos/user_guide.html) (168 AMD Instinct MI300A APUs):
 
-**Environment Setup:**
+**Environment Setup (ROCm 6.3 + PyTorch 2.7.1):**
 
 ```bash
+# Load ROCm module (6.3 is default)
+module load rocm/6.3.0
+
 # Create conda environment
 mamba create -n aam-rocm python=3.11 -y
 mamba activate aam-rocm
 
-# Install PyTorch with ROCm support (no module available)
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.2
+# Install PyTorch 2.7.1 with ROCm 6.3 support
+# Note: Must specify exact versions to avoid dependency conflicts
+pip install torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1 \
+    --index-url https://download.pytorch.org/whl/rocm6.3
 
 # Install AAM
 cd /path/to/aam
 pip install -e ".[training]"
 
 # Verify ROCm detection
-python -c "import torch; print(f'ROCm available: {torch.cuda.is_available()}')"
+python -c "import torch; print(f'ROCm: {torch.version.hip}, PyTorch: {torch.__version__}')"
 ```
 
 **Running Jobs:**
