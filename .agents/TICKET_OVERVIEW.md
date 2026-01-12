@@ -1,7 +1,7 @@
 # Ticket Overview
 
-**Last Updated:** 2026-01-08
-**Status:** 14 outstanding tickets (~48-68 hours)
+**Last Updated:** 2026-01-12
+**Status:** 13 outstanding tickets (~42-58 hours)
 
 ## Quick Links
 - **ROCm optimization:** `COSMOS_ONBOARDING_TICKETS.md`
@@ -14,15 +14,12 @@
 
 ## Outstanding Tickets by Priority
 
-### HIGH - ROCm Performance (3 tickets, ~12-20 hours)
+### HIGH - ROCm Performance (2 tickets, ~6-10 hours)
 
 | Ticket | Description | Effort | Domain |
 |--------|-------------|--------|--------|
-| **COS-9.1** | ROCm-optimized attention implementation | 6-10h | Cosmos |
 | **COS-9.2** | Fix torch.compile() on ROCm/Triton | 2-4h | Cosmos |
 | **COS-9.3** | Memory profiling and optimization | 4-6h | Cosmos |
-
-**COS-9.1:** The `math` attention works correctly but is ~30% slower with higher memory usage than `mem_efficient`. Need to fix `mem_efficient`/`flash` on ROCm or optimize `math` path.
 
 **COS-9.2:** `--compile-model` fails with Triton type mismatch. **Workaround:** omit `--compile-model` on ROCm.
 
@@ -62,6 +59,13 @@ Future enhancement phases (~50+ hours):
 
 ## Recently Completed
 
+**COS-9.1: ROCm Attention Investigation** (2026-01-12) - COMPLETE
+- Root cause: `mem_efficient` SDPA produces wrong results WITH attention masks on ROCm
+- Without masks: max_diff=7e-7 (fine). With masks: max_diff=1.73 (broken)
+- Flash Attention for ROCm incompatible with ROCm 6.2+ (build fails)
+- Created diagnostic tool: `python -m aam.tools.rocm_attention_diagnostic`
+- **Resolution:** Use `--attn-implementation math` (required for correct results)
+
 **COS-8.2: ROCm Numerical Divergence** (2026-01-08) - RESOLVED
 - `mem_efficient` SDPA produced incorrect results (42% vs 70% nuc accuracy)
 - **Resolution:** Use `--attn-implementation math --no-gradient-checkpointing`
@@ -82,7 +86,7 @@ Future enhancement phases (~50+ hours):
 ## Recommended Next Steps
 
 ### 1. ROCm Performance Optimization (HIGH)
-- **COS-9.3** → **COS-9.1** → **COS-9.2** (profile first, then optimize attention, then compile)
+- **COS-9.2** → **COS-9.3** (fix compile, then profile memory)
 
 ### 2. Complete Categorical Features
 - **CAT-6** → **CAT-7** (checkpoint compatibility, then docs/testing)

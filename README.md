@@ -232,6 +232,25 @@ aam pretrain --data-parallel --batch-size 32 \
 
 **MI300A Memory:** Each APU has 128GB unified CPU/GPU memory. The default `--token-limit 1024` works well; increase for larger datasets.
 
+**Required Attention Flags for ROCm:**
+
+```bash
+aam pretrain \
+  --attn-implementation math \
+  --no-gradient-checkpointing \
+  --data-parallel \
+  # ... other flags
+```
+
+| Flag | Why Required |
+|------|--------------|
+| `--attn-implementation math` | The `mem_efficient` SDPA backend produces incorrect results with attention masks on ROCm (numerical divergence in masked positions). The `math` backend is slower but numerically correct. |
+| `--no-gradient-checkpointing` | Gradient checkpointing combined with ROCm attention can cause additional numerical issues. Disable for stability. |
+
+**Performance Impact:** The `math` backend uses ~5x more compute and ~7x more memory than `mem_efficient`. With MI300A's 128GB memory, this is acceptable. Flash Attention for ROCm is not yet compatible with ROCm 6.2+.
+
+**Diagnostic Tool:** Run `python -m aam.tools.rocm_attention_diagnostic` to verify SDPA backend behavior on your system.
+
 ### Learning Rate Schedulers
 
 | Scheduler | Use Case |
