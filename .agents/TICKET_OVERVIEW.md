@@ -14,16 +14,13 @@
 
 ## Outstanding Tickets by Priority
 
-### HIGH - ROCm Performance (2 tickets, ~6-10 hours)
+### HIGH - ROCm Performance (1 ticket, ~4-6 hours)
 
 | Ticket | Description | Effort | Domain |
 |--------|-------------|--------|--------|
-| **COS-9.2** | Fix torch.compile() on ROCm/Triton | 2-4h | Cosmos |
 | **COS-9.3** | Memory profiling and optimization | 4-6h | Cosmos |
 
-**COS-9.2:** `--compile-model` fails with Triton type mismatch. **Workaround:** omit `--compile-model` on ROCm.
-
-**COS-9.3:** Profile memory hotspots, establish baseline for optimization work.
+**COS-9.3:** Profile memory hotspots, establish baseline for optimization work. Code complete, needs Cosmos hardware testing.
 
 ### MEDIUM (6 tickets, ~21-30 hours)
 
@@ -58,6 +55,11 @@ Future enhancement phases (~50+ hours):
 ---
 
 ## Recently Completed
+
+**COS-9.2: Fix torch.compile() on ROCm** (2026-01-12) - COMPLETE
+- Added ROCm detection via `torch.version.hip`
+- `--compile-model` now skips gracefully on ROCm with warning
+- Updated README with ROCm limitations table
 
 **COS-9.1: ROCm Attention Investigation** (2026-01-12) - COMPLETE
 - Root cause: `mem_efficient` SDPA produces wrong results WITH attention masks on ROCm

@@ -247,7 +247,15 @@ aam pretrain \
 | `--attn-implementation math` | The `mem_efficient` SDPA backend produces incorrect results with attention masks on ROCm (numerical divergence in masked positions). The `math` backend is slower but numerically correct. |
 | `--no-gradient-checkpointing` | Gradient checkpointing combined with ROCm attention can cause additional numerical issues. Disable for stability. |
 
-**Performance Impact:** The `math` backend uses ~5x more compute and ~7x more memory than `mem_efficient`. With MI300A's 128GB memory, this is acceptable. Flash Attention for ROCm is not yet compatible with ROCm 6.2+.
+**Known ROCm Limitations:**
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| `--compile-model` | Not supported | Triton has type mismatch errors on ROCm. AAM automatically detects ROCm and skips compilation with a warning. |
+| `--attn-implementation mem_efficient` | Broken with masks | Use `math` backend instead |
+| Flash Attention | Build incompatible | ROCm 6.2+ not yet supported by ROCm Flash Attention fork |
+
+**Performance Impact:** The `math` backend uses ~5x more compute and ~7x more memory than `mem_efficient`. With MI300A's 128GB memory, this is acceptable.
 
 **Diagnostic Tool:** Run `python -m aam.tools.rocm_attention_diagnostic` to verify SDPA backend behavior on your system.
 

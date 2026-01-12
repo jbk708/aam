@@ -65,7 +65,7 @@ Without attention masks, `mem_efficient` is numerically equivalent to `math`. Wi
 ---
 
 ### COS-9.2: Fix torch.compile() on ROCm/Triton
-**Priority:** HIGH | **Effort:** 2-4 hours | **Status:** Not Started
+**Priority:** HIGH | **Effort:** 2-4 hours | **Status:** COMPLETE
 
 *(Renumbered from COS-8.1)*
 
@@ -78,17 +78,23 @@ AssertionError('Loop-carried variable _tmp2 has initial type <[1, 2], int1>
 but is re-assigned to <[1, 2], int8> in loop!')
 ```
 
-**Investigation Steps:**
-- [ ] Check if fixed in PyTorch 2.5+ / Triton updates
-- [ ] Test alternative backends: `torch.compile(backend="eager")`, `aot_eager`
-- [ ] Isolate which module triggers the error (likely `AttentionPooling`)
-- [ ] If upstream bug: add runtime detection to skip/warn on ROCm
+**Resolution:**
+- Added ROCm detection via `torch.version.hip` in Trainer
+- When ROCm is detected with `compile_model=True`, compilation is skipped gracefully with a warning
+- Also catches Triton-related RuntimeErrors as fallback for edge cases
+- Added `is_rocm()` utility function in `aam/cli/utils.py`
+- Updated README with ROCm limitations table documenting `--compile-model` status
+
+**Completed:**
+- [x] Add runtime detection to skip/warn on ROCm
+- [x] Document compilation status in README
+- [x] Add unit tests for ROCm compile handling
 
 **Acceptance Criteria:**
-- `--compile-model` either works on ROCm OR fails gracefully with clear message
-- Document compilation status in README
+- [x] `--compile-model` fails gracefully with clear message on ROCm
+- [x] Document compilation status in README
 
-**Files:** `aam/cli/pretrain.py`, `aam/cli/train.py`, potentially attention modules
+**Files:** `aam/training/trainer.py`, `aam/cli/utils.py`, `README.md`, `tests/test_trainer.py`, `tests/test_cli.py`
 
 ---
 
@@ -212,7 +218,7 @@ Document ROCm-specific configuration and best practices.
 | Ticket | Description | Effort | Priority |
 |--------|-------------|--------|----------|
 | **COS-9.1** | ROCm-optimized attention | 6-10h | COMPLETE |
-| **COS-9.2** | Fix torch.compile() | 2-4h | HIGH |
+| **COS-9.2** | Fix torch.compile() | 2-4h | COMPLETE |
 | **COS-9.3** | Memory profiling | 4-6h | HIGH |
 | **COS-9.4** | Unified memory optimization | 4-6h | MEDIUM |
 | **COS-9.5** | Kernel profiling (rocprof) | 4-6h | MEDIUM |

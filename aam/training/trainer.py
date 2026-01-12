@@ -101,19 +101,9 @@ class Trainer:
         self.model = model.to(device)
 
         # Compile model if requested (PyTorch 2.0+)
+        self._compile_skipped = False
         if compile_model:
-            try:
-                self.model = torch.compile(self.model)
-            except AttributeError:
-                raise RuntimeError("torch.compile() is not available. Requires PyTorch 2.0+")
-            except RuntimeError as e:
-                # Catch Python 3.12+ limitation or other runtime errors
-                if "Dynamo is not supported" in str(e) or "not supported" in str(e):
-                    raise RuntimeError(
-                        f"torch.compile() is not supported in this environment: {e}. "
-                        "Model compilation requires PyTorch 2.0+ and Python < 3.12, or PyTorch 2.3.0+ with Python 3.12+."
-                    ) from e
-                raise
+            self._compile_skipped = not self._try_compile_model()
 
         self.loss_fn = loss_fn
         self.device = torch.device(device) if isinstance(device, str) else device
@@ -150,6 +140,52 @@ class Trainer:
             target_normalization_params=self.target_normalization_params,
             count_normalization_params=self.count_normalization_params,
         )
+
+    def _is_rocm(self) -> bool:
+        """Check if running on AMD ROCm (HIP) backend."""
+        return torch.cuda.is_available() and hasattr(torch.version, "hip") and torch.version.hip is not None
+
+    def _try_compile_model(self) -> bool:
+        """Attempt to compile the model with torch.compile().
+
+        Returns:
+            True if compilation succeeded, False if skipped or failed gracefully.
+
+        Raises:
+            RuntimeError: If compilation fails for non-ROCm related reasons.
+        """
+        # Check for ROCm - compilation has known issues with Triton on ROCm
+        if self._is_rocm():
+            logger.warning(
+                "torch.compile() is not supported on ROCm due to Triton compatibility issues. "
+                "Continuing without model compilation. This does not affect correctness, only "
+                "potential performance optimizations. For details, see: "
+                "https://github.com/pytorch/pytorch/issues/113743"
+            )
+            return False
+
+        try:
+            self.model = torch.compile(self.model)
+            logger.info("Model compiled with torch.compile()")
+            return True
+        except AttributeError:
+            raise RuntimeError("torch.compile() is not available. Requires PyTorch 2.0+")
+        except RuntimeError as e:
+            error_str = str(e)
+            # Catch Python 3.12+ limitation or other runtime errors
+            if "Dynamo is not supported" in error_str or "not supported" in error_str:
+                raise RuntimeError(
+                    f"torch.compile() is not supported in this environment: {e}. "
+                    "Model compilation requires PyTorch 2.0+ and Python < 3.12, or PyTorch 2.3.0+ with Python 3.12+."
+                ) from e
+            # Catch Triton-related errors (can occur on ROCm even if not detected above)
+            if "triton" in error_str.lower() or "CompilationError" in error_str:
+                logger.warning(
+                    f"torch.compile() failed due to Triton error: {e}. "
+                    "Continuing without model compilation. This is common on ROCm systems."
+                )
+                return False
+            raise
 
     def _prepare_batch(
         self, batch: Union[Dict, Tuple]
