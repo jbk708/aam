@@ -20,6 +20,7 @@ from aam.cli.utils import (
     setup_random_seed,
     validate_file_path,
     validate_arguments,
+    is_rocm,
 )
 from aam.cli.train import train
 from aam.cli.pretrain import pretrain
@@ -213,6 +214,39 @@ class TestValidateArguments:
             validate_arguments(epochs=0)
         with pytest.raises(ValueError):
             validate_arguments(epochs=-1)
+
+
+class TestIsRocm:
+    """Tests for is_rocm() utility function (COS-9.2)."""
+
+    def test_is_rocm_returns_bool(self):
+        """Test that is_rocm returns a boolean."""
+        result = is_rocm()
+        assert isinstance(result, bool)
+
+    def test_is_rocm_false_when_no_cuda(self):
+        """Test that is_rocm returns False when CUDA is not available."""
+        with patch.object(torch.cuda, "is_available", return_value=False):
+            assert is_rocm() is False
+
+    def test_is_rocm_false_when_no_hip_attr(self):
+        """Test that is_rocm returns False when torch.version.hip doesn't exist."""
+        with patch.object(torch.cuda, "is_available", return_value=True):
+            # Mock torch.version without hip attribute
+            original_hip = getattr(torch.version, "hip", None)
+            try:
+                if hasattr(torch.version, "hip"):
+                    delattr(torch.version, "hip")
+                assert is_rocm() is False
+            finally:
+                if original_hip is not None:
+                    torch.version.hip = original_hip
+
+    def test_is_rocm_false_when_hip_is_none(self):
+        """Test that is_rocm returns False when torch.version.hip is None."""
+        with patch.object(torch.cuda, "is_available", return_value=True):
+            with patch.object(torch.version, "hip", None, create=True):
+                assert is_rocm() is False
 
 
 class TestCLICommands:

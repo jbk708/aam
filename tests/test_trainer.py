@@ -2070,6 +2070,101 @@ class TestModelCompilation:
             raise
 
 
+class TestROCmCompileHandling:
+    """Test suite for ROCm torch.compile() handling (COS-9.2)."""
+
+    def test_trainer_is_rocm_method_exists(self, small_model, loss_fn, device):
+        """Test that Trainer has _is_rocm method."""
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+            compile_model=False,
+        )
+        assert hasattr(trainer, "_is_rocm")
+        assert callable(trainer._is_rocm)
+
+    def test_trainer_is_rocm_returns_bool(self, small_model, loss_fn, device):
+        """Test that _is_rocm returns a boolean."""
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+            compile_model=False,
+        )
+        result = trainer._is_rocm()
+        assert isinstance(result, bool)
+
+    def test_trainer_compile_skipped_attribute(self, small_model, loss_fn, device):
+        """Test that Trainer has _compile_skipped attribute."""
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+            compile_model=False,
+        )
+        assert hasattr(trainer, "_compile_skipped")
+        # Should be False when compile_model=False
+        assert trainer._compile_skipped is False
+
+    def test_trainer_compile_skipped_false_when_not_requested(self, small_model, loss_fn, device):
+        """Test that _compile_skipped is False when compile_model=False."""
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+            compile_model=False,
+        )
+        assert trainer._compile_skipped is False
+
+    @pytest.mark.skipif(not is_rocm(), reason="Only runs on ROCm systems")
+    def test_trainer_compile_skipped_on_rocm(self, small_model, loss_fn, device):
+        """Test that compilation is skipped gracefully on ROCm."""
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+            compile_model=True,
+        )
+        # On ROCm, compilation should be skipped
+        assert trainer._compile_skipped is True
+        # Model should NOT be compiled (no _orig_mod attribute)
+        assert not hasattr(trainer.model, "_orig_mod")
+
+    @pytest.mark.skipif(not is_rocm(), reason="Only runs on ROCm systems")
+    def test_trainer_rocm_detection_correct(self, small_model, loss_fn, device):
+        """Test that ROCm detection is correct on ROCm systems."""
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+            compile_model=False,
+        )
+        assert trainer._is_rocm() is True
+
+    @pytest.mark.skipif(is_rocm(), reason="Only runs on non-ROCm systems")
+    def test_trainer_non_rocm_detection(self, small_model, loss_fn, device):
+        """Test that ROCm detection returns False on non-ROCm systems."""
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+            compile_model=False,
+        )
+        assert trainer._is_rocm() is False
+
+    def test_trainer_try_compile_model_method_exists(self, small_model, loss_fn, device):
+        """Test that Trainer has _try_compile_model method."""
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+            compile_model=False,
+        )
+        assert hasattr(trainer, "_try_compile_model")
+        assert callable(trainer._try_compile_model)
+
+
 class TestTrainerTargetNormalization:
     """Test suite for Trainer target normalization (PYT-11.9)."""
 

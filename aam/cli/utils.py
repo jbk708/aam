@@ -93,6 +93,15 @@ def validate_file_path(path: str, file_type: str = "file"):
         raise FileNotFoundError(f"{file_type} not found: {path}")
 
 
+def is_rocm() -> bool:
+    """Check if running on AMD ROCm (HIP) backend.
+
+    Returns:
+        True if PyTorch is using ROCm/HIP, False otherwise.
+    """
+    return torch.cuda.is_available() and hasattr(torch.version, "hip") and torch.version.hip is not None
+
+
 def validate_arguments(**kwargs):
     """Validate CLI arguments.
 
