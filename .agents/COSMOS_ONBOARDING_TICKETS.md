@@ -213,6 +213,48 @@ Document ROCm-specific configuration and best practices.
 
 ---
 
+### COS-9.9: Investigate PyTorch 2.7 / aotriton 0.8.2 for SDPA Fix
+**Priority:** MEDIUM | **Effort:** 2-4 hours | **Status:** Not Started
+
+The `mem_efficient` SDPA backend produces incorrect results with attention masks on ROCm (COS-9.1 root cause). This has been traced to a bug in **aotriton 0.8.0** which is fixed in **aotriton 0.8.2**.
+
+**Background:**
+- [Issue #147460](https://github.com/pytorch/pytorch/issues/147460): SDPA with custom attn_mask produces wrong outputs on ROCm 2.6.0
+- [Issue #132004](https://github.com/pytorch/pytorch/issues/132004): Memory efficient attention causes image corruption on MI300X/MI250
+- Fix merged via [PR #148433](https://github.com/pytorch/pytorch/pull/148433)
+
+**Version Matrix:**
+
+| PyTorch | aotriton | SDPA mem_efficient Status |
+|---------|----------|---------------------------|
+| 2.5.1+rocm6.2 | 0.7.x | Broken with masks |
+| 2.6.0+rocm6.2.4 | 0.8.0 | Broken with masks |
+| **2.7.0+rocm6.x** | **0.8.2** | **Fixed** |
+| Nightly | 0.8.2+ | Fixed |
+
+**Investigation Steps:**
+- [ ] Check if PyTorch 2.7+rocm is available for Cosmos ROCm 6.2
+- [ ] If available: install and run `python -m aam.tools.rocm_attention_diagnostic`
+- [ ] Verify numerical comparison with mask passes (max_diff < 1e-3)
+- [ ] If fixed: benchmark `mem_efficient` vs `math` performance
+- [ ] Update `--attn-implementation` default if `mem_efficient` works correctly
+
+**Potential Performance Gain:**
+- `mem_efficient`: 4.85x faster, 7.5x less memory than `math`
+- Would eliminate need for `--attn-implementation math` flag on ROCm
+
+**Acceptance Criteria:**
+- Determine if PyTorch 2.7+rocm fixes the attention mask issue on MI300A
+- Document findings and update recommended configuration if applicable
+
+**References:**
+- [PyTorch ROCm SDPA Issue #147460](https://github.com/pytorch/pytorch/issues/147460)
+- [Memory Efficient Attention Corruption #132004](https://github.com/pytorch/pytorch/issues/132004)
+- [ROCm Flash Attention](https://github.com/ROCm/flash-attention)
+- [kailums Flash Attention ROCm](https://github.com/kailums/flash-attention-rocm)
+
+---
+
 ## Summary
 
 | Ticket | Description | Effort | Priority |
@@ -225,16 +267,18 @@ Document ROCm-specific configuration and best practices.
 | **COS-9.6** | SLURM templates | 3-4h | LOW |
 | **COS-9.7** | Singularity container | 4-6h | LOW |
 | **COS-9.8** | Documentation | 2-3h | LOW |
-| **Total** | | **30-45h** | |
+| **COS-9.9** | PyTorch 2.7 SDPA fix investigation | 2-4h | MEDIUM |
+| **Total** | | **32-49h** | |
 
 ## Recommended Order
 
-1. **COS-9.3** - Memory profiling (quick baseline, informs other work)
-2. **COS-9.1** - Attention optimization (biggest potential gain)
-3. **COS-9.2** - torch.compile() (may provide significant speedup)
-4. **COS-9.5** - Kernel profiling (detailed analysis)
-5. **COS-9.4** - Unified memory (architecture-specific optimization)
-6. Remaining infrastructure as needed
+1. **COS-9.9** - PyTorch 2.7 SDPA fix (potential 4.85x speedup if mem_efficient works)
+2. **COS-9.3** - Memory profiling (quick baseline, informs other work)
+3. **COS-9.5** - Kernel profiling (detailed analysis)
+4. **COS-9.4** - Unified memory (architecture-specific optimization)
+5. Remaining infrastructure as needed
+
+**Note:** COS-9.1 (attention investigation) and COS-9.2 (torch.compile) are complete.
 
 ---
 

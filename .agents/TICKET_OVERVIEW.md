@@ -22,16 +22,19 @@
 
 **COS-9.3:** Profile memory hotspots, establish baseline for optimization work. Code complete, needs Cosmos hardware testing.
 
-### MEDIUM (6 tickets, ~21-30 hours)
+### MEDIUM (7 tickets, ~23-34 hours)
 
 | Ticket | Description | Effort | Domain |
 |--------|-------------|--------|--------|
 | **COS-9.4** | MI300A unified memory optimization | 4-6h | Cosmos |
 | **COS-9.5** | Kernel profiling with rocprof | 4-6h | Cosmos |
+| **COS-9.9** | PyTorch 2.7 SDPA fix investigation | 2-4h | Cosmos |
 | **CAT-6** | Checkpoint compatibility & transfer learning | 3-4h | Categorical |
 | **CAT-7** | Documentation and testing | 3-4h | Categorical |
 | **PYT-12.1** | FSDP (if needed for large models) | 12-16h | PyTorch |
 | **PYT-12.2** | Batch size optimization | 4-6h | PyTorch |
+
+**COS-9.9:** Test if PyTorch 2.7 (aotriton 0.8.2) fixes `mem_efficient` SDPA with attention masks on ROCm. Could enable 4.85x speedup.
 
 ### LOW (5 tickets, ~17-25 hours)
 
