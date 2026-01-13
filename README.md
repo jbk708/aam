@@ -187,10 +187,12 @@ aam predict \
 | `--learnable-output-scale` | Learnable scale and bias after target head | False |
 
 **Choosing an output constraint:**
-- **`--log-transform-targets`** (recommended for wide ranges): Use for non-negative targets with wide range (e.g., 0-600). Compresses range via log(y+1), predictions inverse-transformed via exp(x)-1. Automatically enables `--bounded-targets` when used with `--normalize-targets` to prevent exp() overflow.
+- **`--log-transform-targets --no-normalize-targets`** (recommended for wide ranges): Use for non-negative targets with wide range (e.g., 0-600). Compresses range via log(y+1) to ~[0, 6.4], model predicts directly in log space, exp(x)-1 gives original scale. No sigmoid needed since log range is small.
 - **`--bounded-targets`**: Use when targets are in [0, 1] range (e.g., normalized values, proportions)
 - **`--output-activation softplus`**: Use for non-negative targets without normalization. Note: may cause flat predictions near 0 when combined with `--normalize-targets`
 - **`--output-activation exp`**: Use for strictly positive targets, but can cause numerical instability
+
+**Note:** If using `--log-transform-targets` WITH `--normalize-targets` (not recommended), `--bounded-targets` is auto-enabled to prevent exp() overflow, but this can cause predictions to cluster at extremes due to sigmoid saturation.
 
 ### Masked Autoencoder (Nucleotide Prediction)
 
