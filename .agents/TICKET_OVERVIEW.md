@@ -1,7 +1,7 @@
 # Ticket Overview
 
-**Last Updated:** 2026-01-12
-**Status:** 10 outstanding tickets (~31-45 hours)
+**Last Updated:** 2026-01-13
+**Status:** 11 outstanding tickets (~35-51 hours)
 
 ## Quick Links
 - **ROCm optimization:** `COSMOS_ONBOARDING_TICKETS.md`
@@ -14,10 +14,11 @@
 
 ## Outstanding Tickets by Priority
 
-### HIGH - Categorical Features (1 ticket, ~3-4 hours)
+### HIGH (2 tickets, ~7-10 hours)
 
 | Ticket | Description | Effort | Domain |
 |--------|-------------|--------|--------|
+| **PYT-19.1** | Non-negative regression output constraints | 4-6h | PyTorch |
 | **CAT-7** | Documentation and testing | 3-4h | Categorical |
 
 ### MEDIUM (2 tickets, ~16-22 hours)
@@ -99,10 +100,13 @@ Future enhancement phases (~50+ hours):
 
 ## Recommended Next Steps
 
-### 1. Categorical Features (HIGH)
+### 1. Regression Optimization (HIGH)
+- **PYT-19.1** - Non-negative output constraints (fixes negative predictions)
+
+### 2. Categorical Features (HIGH)
 - **CAT-7** - Documentation and integration tests
 
-### 2. Infrastructure (As Needed)
+### 3. Infrastructure (As Needed)
 - **COS-9.6** - SLURM templates for Cosmos
 - **COS-9.8** - Documentation
 
