@@ -331,10 +331,13 @@ class TestUnwrapModel:
 class TestWrapModelFSDP:
     """Test FSDP model wrapping."""
 
-    def test_wrap_model_fsdp_stub_raises_not_implemented(self):
-        """Test wrap_model_fsdp raises NotImplementedError (stub)."""
+    def test_wrap_model_fsdp_requires_distributed(self):
+        """Test wrap_model_fsdp raises RuntimeError when not in distributed mode."""
+        if torch.distributed.is_initialized():
+            torch.distributed.destroy_process_group()
+
         model = SimpleModel()
-        with pytest.raises(NotImplementedError, match="FSDP model wrapping not yet implemented"):
+        with pytest.raises(RuntimeError, match="distributed training not initialized"):
             wrap_model_fsdp(model)
 
     def test_wrap_model_fsdp_accepts_sharding_strategy(self):
@@ -355,14 +358,37 @@ class TestWrapModelFSDP:
         # Return type is FullyShardedDataParallel (which is FSDP)
         assert "FullyShardedDataParallel" in str(sig.return_annotation)
 
+    def test_wrap_model_fsdp_default_sharding_strategy(self):
+        """Test wrap_model_fsdp defaults to FULL_SHARD strategy."""
+        import inspect
+
+        sig = inspect.signature(wrap_model_fsdp)
+        sharding_param = sig.parameters["sharding_strategy"]
+        assert sharding_param.default == ShardingStrategy.FULL_SHARD
+
 
 class TestGetFSDPWrapPolicy:
     """Test FSDP wrap policy generation."""
 
-    def test_get_fsdp_wrap_policy_stub_raises_not_implemented(self):
-        """Test get_fsdp_wrap_policy raises NotImplementedError (stub)."""
-        with pytest.raises(NotImplementedError, match="FSDP wrap policy not yet implemented"):
-            get_fsdp_wrap_policy()
+    def test_get_fsdp_wrap_policy_returns_module_wrap_policy(self):
+        """Test get_fsdp_wrap_policy returns a ModuleWrapPolicy."""
+        from torch.distributed.fsdp.wrap import ModuleWrapPolicy
+
+        policy = get_fsdp_wrap_policy()
+        assert isinstance(policy, ModuleWrapPolicy)
+
+    def test_get_fsdp_wrap_policy_default_wraps_transformer_encoder_layer(self):
+        """Test get_fsdp_wrap_policy wraps TransformerEncoderLayer by default."""
+        policy = get_fsdp_wrap_policy()
+        # ModuleWrapPolicy stores the classes in _module_classes
+        assert nn.TransformerEncoderLayer in policy._module_classes
+
+    def test_get_fsdp_wrap_policy_accepts_custom_classes(self):
+        """Test get_fsdp_wrap_policy can wrap custom module classes."""
+        custom_classes = {nn.Linear, nn.LayerNorm}
+        policy = get_fsdp_wrap_policy(transformer_layer_cls=custom_classes)
+        assert nn.Linear in policy._module_classes
+        assert nn.LayerNorm in policy._module_classes
 
     def test_get_fsdp_wrap_policy_accepts_transformer_layer_cls(self):
         """Test get_fsdp_wrap_policy signature accepts transformer_layer_cls parameter."""

@@ -198,12 +198,14 @@ def get_fsdp_wrap_policy(
 
     Args:
         transformer_layer_cls: Set of module classes to wrap. If None, uses
-            default transformer layer classes from aam.models.transformer.
+            default transformer layer classes (nn.TransformerEncoderLayer).
 
     Returns:
         ModuleWrapPolicy for FSDP auto-wrapping.
     """
-    raise NotImplementedError("FSDP wrap policy not yet implemented")
+    if transformer_layer_cls is None:
+        transformer_layer_cls = {nn.TransformerEncoderLayer}
+    return ModuleWrapPolicy(transformer_layer_cls)
 
 
 def wrap_model_fsdp(
@@ -246,7 +248,23 @@ def wrap_model_fsdp(
         ...     sharding_strategy=ShardingStrategy.FULL_SHARD,
         ... )
     """
-    raise NotImplementedError("FSDP model wrapping not yet implemented")
+    if not is_distributed():
+        raise RuntimeError("Cannot wrap model with FSDP: distributed training not initialized. Call setup_distributed() first.")
+
+    from torch.distributed.fsdp import CPUOffload
+
+    wrap_policy = get_fsdp_wrap_policy(transformer_layer_cls)
+
+    cpu_offload_config = CPUOffload(offload_params=cpu_offload) if cpu_offload else None
+
+    return FSDP(
+        model,
+        sharding_strategy=sharding_strategy,
+        auto_wrap_policy=wrap_policy,
+        mixed_precision=mixed_precision,
+        cpu_offload=cpu_offload_config,
+        device_id=torch.cuda.current_device() if torch.cuda.is_available() else None,
+    )
 
 
 def is_fsdp_model(model: nn.Module) -> bool:
@@ -283,7 +301,9 @@ def unwrap_model(model: nn.Module) -> nn.Module:
         The underlying model without the distributed wrapper.
     """
     if is_fsdp_model(model) or is_ddp_model(model):
-        return model.module
+        # DDP and FSDP store the wrapped module in .module attribute
+        inner: nn.Module = model.module  # type: ignore[union-attr]
+        return inner
     return model
 
 
