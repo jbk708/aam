@@ -1,35 +1,14 @@
 # Categorical Feature Integration Tickets
 
-**Last Updated:** 2026-01-07
-**Status:** CAT-1 through CAT-5 complete (see `ARCHIVED_TICKETS.md`), 2 remaining
+**Last Updated:** 2026-01-12
+**Status:** CAT-1 through CAT-6 complete (see `ARCHIVED_TICKETS.md`), 1 remaining
 
 ---
 
 ## Remaining Tickets
 
-### CAT-6: Checkpoint Compatibility and Transfer Learning
-**Priority:** MEDIUM | **Effort:** 3-4 hours | **Status:** Not Started
-
-Ensure categorical features work with staged training workflow.
-
-**Scope:**
-- Pretrained `SequenceEncoder` checkpoints load into `SequencePredictor` with categoricals
-- New categorical weights initialized appropriately
-- `--freeze-base` with categorical fine-tuning: only categorical embedder + target encoder train
-- Document weight initialization strategy
-
-**Acceptance Criteria:**
-- Stage 1 pretrain → Stage 2 with categoricals works without manual intervention
-- `--freeze-base` excludes base model but includes categorical embedder in optimization
-
-**Files:** `aam/training/trainer.py`, `aam/cli/train.py`
-
-**Dependencies:** CAT-4, CAT-5 (complete)
-
----
-
 ### CAT-7: Documentation and Testing
-**Priority:** MEDIUM | **Effort:** 3-4 hours | **Status:** Not Started
+**Priority:** HIGH | **Effort:** 3-4 hours | **Status:** Not Started
 
 Document usage and add integration tests.
 
@@ -58,14 +37,13 @@ Document usage and add integration tests.
 | CAT-3 | Embedder module | 3-4 | Complete |
 | CAT-4 | Model integration | 4-6 | Complete |
 | CAT-5 | CLI updates | 3-4 | Complete |
-| CAT-6 | Checkpoint compatibility | 3-4 | Not Started |
+| CAT-6 | Checkpoint compatibility | 3-4 | Complete |
 | CAT-7 | Documentation & testing | 3-4 | Not Started |
-| **Remaining** | | **6-8** | |
+| **Remaining** | | **3-4** | |
 
 ## Recommended Order
 
-1. **CAT-6** - Checkpoint compatibility (enables staged training with categoricals)
-2. **CAT-7** - Documentation and testing
+1. **CAT-7** - Documentation and testing
 
 ---
 
