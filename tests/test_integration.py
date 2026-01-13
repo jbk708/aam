@@ -778,3 +778,194 @@ class TestEndToEnd:
         trainer.load_checkpoint(str(checkpoint_path))
 
         assert loaded_model is not None
+
+
+class TestCategoricalIntegration:
+    """Test categorical feature integration through full training loop."""
+
+    @pytest.fixture
+    def categorical_predictor_config(self, small_predictor_config):
+        """Predictor config with categorical features enabled."""
+        config = small_predictor_config.copy()
+        config["categorical_cardinalities"] = {"location": 4, "season": 5}
+        config["categorical_embed_dim"] = 8
+        config["categorical_fusion"] = "concat"
+        return config
+
+    @pytest.fixture
+    def synthetic_categorical_data(self):
+        """Create synthetic data with 2 categorical columns."""
+        batch_size = 4
+        num_asvs = 10
+        seq_len = 50
+
+        from aam.data.tokenizer import SequenceTokenizer
+
+        tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
+        tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
+
+        categorical_ids = {
+            "location": torch.tensor([1, 2, 1, 3]),
+            "season": torch.tensor([1, 2, 3, 4]),
+        }
+
+        counts = torch.rand(batch_size, num_asvs, 1)
+        target = torch.randn(batch_size, 1)
+
+        return {
+            "tokens": tokens,
+            "categorical_ids": categorical_ids,
+            "counts": counts,
+            "target": target,
+        }
+
+    def test_categorical_training_loop(self, device, categorical_predictor_config, synthetic_categorical_data):
+        """Test full training loop with synthetic categorical data."""
+        model = SequencePredictor(**categorical_predictor_config).to(device)
+        loss_fn = MultiTaskLoss(penalty=1.0, nuc_penalty=0.0, target_penalty=1.0)
+        optimizer = create_optimizer(model, lr=1e-4)
+
+        data = synthetic_categorical_data
+        tokens = data["tokens"].to(device)
+        categorical_ids = {k: v.to(device) for k, v in data["categorical_ids"].items()}
+        counts = data["counts"].to(device)
+        target = data["target"].to(device)
+
+        model.train()
+        initial_loss = None
+
+        for step in range(3):
+            optimizer.zero_grad()
+
+            outputs = model(tokens, categorical_ids=categorical_ids)
+
+            targets = {
+                "target": target,
+                "counts": counts,
+                "tokens": tokens,
+            }
+
+            loss_dict = loss_fn(
+                outputs=outputs,
+                targets=targets,
+                is_classifier=False,
+                encoder_type="faith_pd",
+            )
+
+            loss_dict["total_loss"].backward()
+            optimizer.step()
+
+            if initial_loss is None:
+                initial_loss = loss_dict["total_loss"].item()
+
+        assert initial_loss is not None
+        assert initial_loss >= 0
+        assert "target_prediction" in outputs
+        assert outputs["target_prediction"].shape == (4, 1)
+
+    def test_categorical_checkpoint_roundtrip(self, device, categorical_predictor_config, synthetic_categorical_data, tmp_path):
+        """Test categorical encoder state saved and loaded in checkpoints."""
+        import pandas as pd
+        from aam.data.categorical import CategoricalEncoder
+
+        train_metadata = pd.DataFrame(
+            {
+                "sample_id": ["s1", "s2", "s3", "s4"],
+                "location": ["outdoor", "indoor", "outdoor", "mixed"],
+                "season": ["spring", "summer", "fall", "winter"],
+            }
+        )
+        encoder = CategoricalEncoder()
+        encoder.fit(train_metadata, columns=["location", "season"])
+
+        model = SequencePredictor(**categorical_predictor_config).to(device)
+        loss_fn = MultiTaskLoss(penalty=1.0, nuc_penalty=0.0, target_penalty=1.0)
+        optimizer = create_optimizer(model, lr=1e-4)
+
+        trainer = Trainer(
+            model=model,
+            loss_fn=loss_fn,
+            optimizer=optimizer,
+            device=device,
+        )
+
+        checkpoint_path = tmp_path / "categorical_checkpoint.pt"
+        model_config = {
+            "categorical_encoder": encoder.to_dict(),
+            "categorical_embed_dim": 8,
+            "categorical_fusion": "concat",
+        }
+        trainer.save_checkpoint(
+            str(checkpoint_path),
+            epoch=1,
+            best_val_loss=0.5,
+            config=model_config,
+        )
+
+        assert checkpoint_path.exists()
+
+        checkpoint = torch.load(checkpoint_path, weights_only=False)
+        assert "config" in checkpoint
+        assert "categorical_encoder" in checkpoint["config"]
+
+        restored_encoder = CategoricalEncoder.from_dict(checkpoint["config"]["categorical_encoder"])
+        assert restored_encoder.is_fitted
+        assert restored_encoder.column_names == encoder.column_names
+        assert restored_encoder.get_cardinalities() == encoder.get_cardinalities()
+        assert restored_encoder.get_mappings() == encoder.get_mappings()
+
+    def test_categorical_unknown_categories_at_inference(
+        self, device, categorical_predictor_config, synthetic_categorical_data
+    ):
+        """Test unknown categories map to index 0 during inference."""
+        import pandas as pd
+        from aam.data.categorical import CategoricalEncoder
+
+        train_metadata = pd.DataFrame(
+            {
+                "sample_id": ["s1", "s2", "s3"],
+                "location": ["outdoor", "indoor", "outdoor"],
+                "season": ["spring", "summer", "fall"],
+            }
+        )
+        encoder = CategoricalEncoder()
+        encoder.fit(train_metadata, columns=["location", "season"])
+
+        inference_metadata = pd.DataFrame(
+            {
+                "sample_id": ["t1", "t2"],
+                "location": ["underwater", "outdoor"],
+                "season": ["monsoon", "spring"],
+            }
+        )
+        inference_ids = encoder.transform(inference_metadata)
+
+        assert inference_ids["location"][0] == 0
+        assert inference_ids["location"][1] >= 1
+        assert inference_ids["season"][0] == 0
+        assert inference_ids["season"][1] >= 1
+
+        model = SequencePredictor(**categorical_predictor_config).to(device)
+        model.eval()
+
+        batch_size = 2
+        num_asvs = 10
+        seq_len = 50
+
+        from aam.data.tokenizer import SequenceTokenizer
+
+        tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
+        tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
+        tokens = tokens.to(device)
+
+        categorical_ids = {
+            "location": torch.tensor(inference_ids["location"]).to(device),
+            "season": torch.tensor(inference_ids["season"]).to(device),
+        }
+
+        with torch.no_grad():
+            outputs = model(tokens, categorical_ids=categorical_ids)
+
+        assert "target_prediction" in outputs
+        assert outputs["target_prediction"].shape == (batch_size, 1)
+        assert not torch.isnan(outputs["target_prediction"]).any()
