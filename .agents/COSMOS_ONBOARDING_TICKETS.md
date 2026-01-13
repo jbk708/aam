@@ -214,7 +214,7 @@ Document ROCm-specific configuration and best practices.
 ---
 
 ### COS-9.9: Investigate PyTorch 2.7 / aotriton 0.8.2 for SDPA Fix
-**Priority:** MEDIUM | **Effort:** 2-4 hours | **Status:** In Progress
+**Priority:** MEDIUM | **Effort:** 2-4 hours | **Status:** COMPLETE ✅
 
 The `mem_efficient` SDPA backend produces incorrect results with attention masks on ROCm (COS-9.1 root cause). This has been traced to a bug in **aotriton 0.8.0** which is fixed in **aotriton 0.8.2**.
 
@@ -235,25 +235,25 @@ Cosmos has ROCm 6.3 as default (`module load rocm/6.3.0`). PyTorch 2.7+ with the
 **Investigation Steps:**
 - [x] Check if PyTorch 2.7+rocm is available for ROCm 6.2 → **No, requires ROCm 6.3**
 - [x] Check Cosmos ROCm 6.3 availability → **Yes, rocm/6.3.0 is default**
-- [ ] If ROCm 6.3 available: install PyTorch 2.7+ and run diagnostic
-- [ ] Verify numerical comparison with mask passes (max_diff < 1e-3)
-- [ ] If fixed: benchmark `mem_efficient` vs `math` performance
-- [ ] Update `--attn-implementation` default if `mem_efficient` works correctly
+- [x] Install PyTorch 2.7.1 and run diagnostic → **Completed**
+- [x] Verify numerical comparison with mask passes → **max_diff: 1.10e-06 ✅**
+- [x] Benchmark `mem_efficient` vs `math` → **3.76x faster, 4.4x less memory**
+- [ ] Update `--attn-implementation` default for ROCm 6.3
 
-**Testing Commands (once ROCm 6.3 + PyTorch 2.7+ available):**
-```bash
-# Install PyTorch 2.7+ for ROCm 6.3
-pip install torch==2.7.1 --index-url https://download.pytorch.org/whl/rocm6.3
+**Results (PyTorch 2.7.1 + ROCm 6.3 on MI300A):**
 
-# Run diagnostic
-python -m aam.tools.rocm_attention_diagnostic
+| Metric | ROCm 6.2 (broken) | ROCm 6.3 (fixed) |
+|--------|-------------------|------------------|
+| Masked attention max_diff | ~1.73 | **1.10e-06** ✅ |
+| mem_efficient speedup | N/A (broken) | **3.76x** vs math |
+| mem_efficient memory | N/A (broken) | **0.23x** vs math |
 
-# Expected: "numerical_masked" max_diff < 1e-3 (currently ~1.73 on ROCm 6.2)
-```
+**Conclusion:** The aotriton 0.8.2 fix in PyTorch 2.7.1 resolves the SDPA attention mask issue on ROCm.
+`--attn-implementation math` is no longer required on ROCm 6.3 + PyTorch 2.7+.
 
-**Potential Performance Gain:**
-- `mem_efficient`: 4.85x faster, 7.5x less memory than `math`
-- Would eliminate need for `--attn-implementation math` flag on ROCm
+**Remaining Work:**
+- Update README to reflect ROCm 6.3 no longer needs `--attn-implementation math`
+- Consider making `mem_efficient` the default on ROCm 6.3+
 
 **Acceptance Criteria:**
 - Determine if PyTorch 2.7+rocm6.3 fixes the attention mask issue on MI300A
@@ -279,7 +279,7 @@ python -m aam.tools.rocm_attention_diagnostic
 | **COS-9.6** | SLURM templates | 3-4h | LOW |
 | **COS-9.7** | Singularity container | 4-6h | LOW |
 | **COS-9.8** | Documentation | 2-3h | LOW |
-| **COS-9.9** | PyTorch 2.7 SDPA fix investigation | 2-4h | MEDIUM |
+| **COS-9.9** | PyTorch 2.7 SDPA fix investigation | 2-4h | COMPLETE |
 | **Total** | | **32-49h** | |
 
 ## Recommended Order
