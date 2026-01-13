@@ -344,6 +344,59 @@ class Trainer:
                         self.writer.add_histogram(f"weights/{name}", param.data, epoch)
                         self.writer.add_histogram(f"gradients/{name}", param.grad.data, epoch)
 
+        # Log categorical embedding statistics
+        self._log_categorical_stats(epoch)
+
+    def _log_categorical_stats(self, epoch: int) -> None:
+        """Log categorical embedding statistics to TensorBoard.
+
+        Args:
+            epoch: Current epoch number
+        """
+        if self.writer is None:
+            return
+
+        # Get the underlying model (unwrap DDP if needed)
+        model = self.model.module if hasattr(self.model, "module") else self.model
+
+        # Check if model has categorical embedder
+        if not hasattr(model, "categorical_embedder") or model.categorical_embedder is None:
+            return
+
+        cat_embedder = model.categorical_embedder
+
+        # Log embedding weight norms per column
+        total_norm = 0.0
+        for col_name in cat_embedder.column_names:
+            if col_name in cat_embedder.embeddings:
+                emb_weight = cat_embedder.embeddings[col_name].weight
+                # Exclude padding index (row 0) from norm computation
+                if emb_weight.shape[0] > 1:
+                    non_padding_weights = emb_weight[1:]  # Skip index 0
+                    col_norm = non_padding_weights.norm().item()
+                else:
+                    col_norm = 0.0
+                total_norm += col_norm
+                self.writer.add_scalar(f"categorical/{col_name}_embed_norm", col_norm, epoch)
+
+        # Log total categorical embedding norm
+        self.writer.add_scalar("categorical/total_embed_norm", total_norm, epoch)
+
+        # Log categorical projection weight norm if it exists
+        if hasattr(model, "categorical_projection") and model.categorical_projection is not None:
+            proj_norm = model.categorical_projection.weight.norm().item()
+            self.writer.add_scalar("categorical/projection_norm", proj_norm, epoch)
+
+        # Log gradient norms for categorical parameters (if gradients available)
+        for name, param in model.named_parameters():
+            if "categorical" in name and param.grad is not None:
+                grad_norm = param.grad.norm().item()
+                # Simplify name for logging
+                short_name = name.replace("categorical_embedder.embeddings.", "").replace(".weight", "")
+                if "projection" in name:
+                    short_name = "projection"
+                self.writer.add_scalar(f"categorical/{short_name}_grad_norm", grad_norm, epoch)
+
     def _log_epoch_results(
         self,
         epoch: int,
