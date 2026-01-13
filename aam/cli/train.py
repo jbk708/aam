@@ -346,33 +346,19 @@ def train(
         # Setup distributed training if enabled
         train_sampler = None
         val_sampler = None
-        if fsdp:
-            # FSDP requires distributed environment
+        if fsdp or distributed:
             rank, world_size, device_obj = setup_distributed(backend="nccl")
+            mode = "FSDP" if fsdp else "Distributed"
             if is_main_process():
-                logger.info(f"FSDP training enabled: rank {rank}/{world_size}")
+                logger.info(f"{mode} training enabled: rank {rank}/{world_size}")
 
             # Validate batch size for distributed training
             per_gpu_batch_size = batch_size // world_size
             if per_gpu_batch_size < 2:
+                unifrac_note = " UniFrac requires at least 2 samples per GPU for pairwise distances." if distributed else ""
                 raise click.ClickException(
                     f"batch_size={batch_size} is too small for {world_size} GPUs. "
-                    f"Each GPU would only get {per_gpu_batch_size} sample(s). "
-                    f"Use --batch-size {world_size * 2} or higher."
-                )
-        elif distributed:
-            rank, world_size, device_obj = setup_distributed(backend="nccl")
-            if is_main_process():
-                logger.info(f"Distributed training enabled: rank {rank}/{world_size}")
-
-            # Validate batch size for distributed training
-            # UniFrac pairwise distances require at least 2 samples per GPU
-            per_gpu_batch_size = batch_size // world_size
-            if per_gpu_batch_size < 2:
-                raise click.ClickException(
-                    f"batch_size={batch_size} is too small for {world_size} GPUs. "
-                    f"Each GPU would only get {per_gpu_batch_size} sample(s), but UniFrac "
-                    f"requires at least 2 samples per GPU for pairwise distances. "
+                    f"Each GPU would only get {per_gpu_batch_size} sample(s).{unifrac_note} "
                     f"Use --batch-size {world_size * 2} or higher."
                 )
         else:

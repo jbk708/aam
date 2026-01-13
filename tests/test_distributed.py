@@ -309,11 +309,12 @@ class TestUnwrapModel:
         mock_ddp.__class__ = type("DistributedDataParallel", (nn.Module,), {})
         mock_ddp.module = inner_model
 
-        # Patch is_ddp_model to return True for our mock
-        with patch("aam.training.distributed.is_ddp_model", return_value=True):
-            with patch("aam.training.distributed.is_fsdp_model", return_value=False):
-                result = unwrap_model(mock_ddp)
-                assert result is inner_model
+        with (
+            patch("aam.training.distributed.is_ddp_model", return_value=True),
+            patch("aam.training.distributed.is_fsdp_model", return_value=False),
+        ):
+            result = unwrap_model(mock_ddp)
+            assert result is inner_model
 
     def test_unwrap_fsdp_model_returns_module(self):
         """Test unwrap_model returns .module for FSDP model."""

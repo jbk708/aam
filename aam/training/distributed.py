@@ -538,19 +538,6 @@ class DistributedTrainer:
         Returns:
             Training results from Trainer.train().
         """
-        # Get samplers if they exist
-        train_sampler = getattr(train_loader, "sampler", None)
-        val_sampler = getattr(val_loader, "sampler", None) if val_loader else None
-
-        # For each epoch, set sampler epoch for proper shuffling
-        original_train = self.trainer.train
-
-        def train_with_epoch_sampler(*args, **kwargs):
-            # Hook into epoch loop to set sampler epoch
-            # This is a simplified version - full implementation would
-            # need to modify the training loop
-            return original_train(*args, **kwargs)
-
         return self.trainer.train(
             train_loader,
             val_loader=val_loader,
