@@ -778,3 +778,22 @@ class TestEndToEnd:
         trainer.load_checkpoint(str(checkpoint_path))
 
         assert loaded_model is not None
+
+
+class TestCategoricalIntegration:
+    """Test categorical feature integration through full training loop."""
+
+    def test_categorical_training_loop(self, device, small_predictor_config):
+        """Test full training loop with synthetic categorical data."""
+        # TODO: Implement - synthetic data with 2 categorical columns through train loop
+        pass
+
+    def test_categorical_checkpoint_roundtrip(self, device, small_predictor_config, tmp_path):
+        """Test categorical encoder state saved and loaded in checkpoints."""
+        # TODO: Implement - verify encoder state preserved across checkpoint save/load
+        pass
+
+    def test_categorical_unknown_categories_at_inference(self, device, small_predictor_config):
+        """Test unknown categories map to index 0 during inference."""
+        # TODO: Implement - train with known cats, infer with unknown cats
+        pass
