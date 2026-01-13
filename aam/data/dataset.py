@@ -63,6 +63,7 @@ def collate_fn(
         # This prevents all-padding samples that cause NaN in attention pooling
         if num_asvs == 0 or (counts.sum() == 0).all():
             import sys
+
             error_msg = (
                 f"Sample {sample['sample_id']} has no ASVs with count > 0 "
                 f"(num_asvs={num_asvs}, counts_sum={counts.sum().item()})"
@@ -100,10 +101,7 @@ def collate_fn(
 
     # Convert categorical indices to tensors
     if categorical_ids:
-        result["categorical_ids"] = {
-            col: torch.tensor(indices, dtype=torch.long)
-            for col, indices in categorical_ids.items()
-        }
+        result["categorical_ids"] = {col: torch.tensor(indices, dtype=torch.long) for col, indices in categorical_ids.items()}
 
     if unifrac_distances is not None:
         # Extract batch distances from pre-computed matrix
@@ -114,12 +112,18 @@ def collate_fn(
         # Validate extracted distances
         if np.any(np.isnan(batch_distances)):
             import sys
+
             error_msg = f"NaN values found in extracted batch distances for sample_ids: {sample_ids}"
             print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
-            print(f"batch_distances shape={batch_distances.shape}, min={np.nanmin(batch_distances)}, max={np.nanmax(batch_distances)}", file=sys.stderr, flush=True)
+            print(
+                f"batch_distances shape={batch_distances.shape}, min={np.nanmin(batch_distances)}, max={np.nanmax(batch_distances)}",
+                file=sys.stderr,
+                flush=True,
+            )
             raise ValueError(error_msg)
         if np.any(np.isinf(batch_distances)):
             import sys
+
             error_msg = f"Inf values found in extracted batch distances for sample_ids: {sample_ids}"
             print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
             raise ValueError(error_msg)
@@ -145,6 +149,7 @@ class ASVDataset(Dataset):
         normalize_targets: bool = False,
         target_min: Optional[float] = None,
         target_max: Optional[float] = None,
+        log_transform_targets: bool = False,
         normalize_counts: bool = False,
         count_min: Optional[float] = None,
         count_max: Optional[float] = None,
@@ -165,6 +170,8 @@ class ASVDataset(Dataset):
             normalize_targets: If True, normalize target values to [0, 1] range (default: False)
             target_min: Minimum target value for normalization (computed from data if None)
             target_max: Maximum target value for normalization (computed from data if None)
+            log_transform_targets: If True, apply log(y + 1) transform to targets (default: False).
+                Useful for non-negative targets with wide range. Inverse is exp(pred) - 1.
             normalize_counts: If True, normalize count values to [0, 1] range (default: False)
             count_min: Minimum count value for normalization (computed from data if None)
             count_max: Maximum count value for normalization (computed from data if None)
@@ -203,6 +210,7 @@ class ASVDataset(Dataset):
         self.target_min = target_min
         self.target_max = target_max
         self.target_scale = None  # Computed as (target_max - target_min)
+        self.log_transform_targets = log_transform_targets
 
         # Count normalization settings
         self.normalize_counts = normalize_counts
@@ -225,10 +233,10 @@ class ASVDataset(Dataset):
                 if self.count_scale == 0:
                     self.count_scale = 1.0
                     import logging
+
                     logger = logging.getLogger(__name__)
                     logger.warning(
-                        f"All count values are identical ({self.count_min}). "
-                        f"Count normalization will have no effect."
+                        f"All count values are identical ({self.count_min}). Count normalization will have no effect."
                     )
 
         if metadata is not None and target_column is not None:
@@ -246,6 +254,11 @@ class ASVDataset(Dataset):
             # Compute normalization parameters if normalizing targets
             if normalize_targets:
                 target_values = [float(v) for v in self.metadata_dict.values() if v is not None]
+                # If log transform is enabled, compute min/max from log-transformed values
+                if log_transform_targets and target_values:
+                    import math
+
+                    target_values = [math.log(v + 1) for v in target_values]
                 if target_values:
                     if self.target_min is None:
                         self.target_min = float(min(target_values))
@@ -256,10 +269,10 @@ class ASVDataset(Dataset):
                     if self.target_scale == 0:
                         self.target_scale = 1.0
                         import logging
+
                         logger = logging.getLogger(__name__)
                         logger.warning(
-                            f"All target values are identical ({self.target_min}). "
-                            f"Target normalization will have no effect."
+                            f"All target values are identical ({self.target_min}). Target normalization will have no effect."
                         )
         else:
             self.metadata_dict = None
@@ -269,58 +282,74 @@ class ASVDataset(Dataset):
         self._categorical_cache: Optional[Dict[str, Dict[str, int]]] = None
         if categorical_encoder is not None and categorical_encoder.is_fitted:
             if metadata is None:
-                raise ValueError(
-                    "metadata is required when using categorical_encoder"
-                )
+                raise ValueError("metadata is required when using categorical_encoder")
             # Pre-compute categorical indices for all samples
-            cat_indices = categorical_encoder.transform(
-                metadata, sample_ids=self.sample_ids
-            )
+            cat_indices = categorical_encoder.transform(metadata, sample_ids=self.sample_ids)
             # Cache as sample_id -> {column -> index}
             self._categorical_cache = {}
             for i, sample_id in enumerate(self.sample_ids):
-                self._categorical_cache[sample_id] = {
-                    col: int(cat_indices[col][i])
-                    for col in categorical_encoder.column_names
-                }
+                self._categorical_cache[sample_id] = {col: int(cat_indices[col][i]) for col in categorical_encoder.column_names}
 
     def __len__(self) -> int:
         """Return number of samples in dataset."""
         return len(self.sample_ids)
 
-    def get_normalization_params(self) -> Optional[Dict[str, float]]:
+    def get_normalization_params(self) -> Optional[Dict[str, Any]]:
         """Get target normalization parameters.
 
         Returns:
-            Dictionary with 'target_min', 'target_max', 'target_scale' if normalization
-            is enabled, None otherwise.
+            Dictionary with normalization params if any transform is enabled, None otherwise.
+            May include: 'target_min', 'target_max', 'target_scale', 'log_transform'.
         """
+        params: Dict[str, Any] = {}
         if self.normalize_targets and self.target_scale is not None:
-            return {
-                "target_min": self.target_min,
-                "target_max": self.target_max,
-                "target_scale": self.target_scale,
-            }
-        return None
+            params["target_min"] = self.target_min
+            params["target_max"] = self.target_max
+            params["target_scale"] = self.target_scale
+        if self.log_transform_targets:
+            params["log_transform"] = True
+        return params if params else None
 
-    def denormalize_targets(self, normalized_values: Union[torch.Tensor, np.ndarray, float]) -> Union[torch.Tensor, np.ndarray, float]:
-        """Denormalize target values back to original scale.
+    def denormalize_targets(
+        self, transformed_values: Union[torch.Tensor, np.ndarray, float]
+    ) -> Union[torch.Tensor, np.ndarray, float]:
+        """Denormalize/inverse-transform target values back to original scale.
+
+        Applies inverse transforms in reverse order:
+        1. If normalize_targets: denormalize from [0,1] to [target_min, target_max]
+        2. If log_transform_targets: apply exp(x) - 1
 
         Args:
-            normalized_values: Normalized values in [0, 1] range
+            transformed_values: Transformed values (normalized and/or log-transformed)
 
         Returns:
-            Denormalized values in original target range
+            Values in original target range
         """
-        if not self.normalize_targets or self.target_scale is None:
-            return normalized_values
+        result = transformed_values
 
-        if isinstance(normalized_values, torch.Tensor):
-            return normalized_values * self.target_scale + self.target_min
-        elif isinstance(normalized_values, np.ndarray):
-            return normalized_values * self.target_scale + self.target_min
-        else:
-            return float(normalized_values) * self.target_scale + self.target_min
+        # First, denormalize if normalization was applied
+        if self.normalize_targets and self.target_scale is not None:
+            if isinstance(result, torch.Tensor):
+                result = result * self.target_scale + self.target_min
+            elif isinstance(result, np.ndarray):
+                result = result * self.target_scale + self.target_min
+            else:
+                result = float(result) * self.target_scale + self.target_min
+
+        # Then, inverse log transform if it was applied
+        if self.log_transform_targets:
+            # Clamp to prevent exp() overflow (exp(88.7) overflows float32)
+            MAX_EXP_INPUT = 88.0
+            if isinstance(result, torch.Tensor):
+                result = torch.exp(torch.clamp(result, max=MAX_EXP_INPUT)) - 1
+            elif isinstance(result, np.ndarray):
+                result = np.exp(np.clip(result, a_min=None, a_max=MAX_EXP_INPUT)) - 1
+            else:
+                import math
+
+                result = math.exp(min(float(result), MAX_EXP_INPUT)) - 1
+
+        return result
 
     def get_count_normalization_params(self) -> Optional[Dict[str, float]]:
         """Get count normalization parameters.
@@ -337,7 +366,9 @@ class ASVDataset(Dataset):
             }
         return None
 
-    def denormalize_counts(self, normalized_values: Union[torch.Tensor, np.ndarray, float]) -> Union[torch.Tensor, np.ndarray, float]:
+    def denormalize_counts(
+        self, normalized_values: Union[torch.Tensor, np.ndarray, float]
+    ) -> Union[torch.Tensor, np.ndarray, float]:
         """Denormalize count values back to original scale.
 
         Args:
@@ -395,13 +426,14 @@ class ASVDataset(Dataset):
         # If not, this is a data quality issue that should be caught
         if not tokens_list:
             import sys
+
             error_msg = (
                 f"Sample {sample_id} has no ASVs with count > 0. "
                 f"This sample should be filtered out before creating the dataset."
             )
             print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
             raise ValueError(error_msg)
-        
+
         tokens = torch.stack(tokens_list)
         counts = torch.FloatTensor(counts_list).unsqueeze(1)
 
@@ -422,7 +454,13 @@ class ASVDataset(Dataset):
             else:
                 target_float = float(target_value)
 
-            # Apply normalization if enabled
+            # Apply log transform if enabled (before normalization)
+            if self.log_transform_targets:
+                import math
+
+                target_float = math.log(target_float + 1)
+
+            # Apply normalization if enabled (after log transform)
             if self.normalize_targets and self.target_scale is not None:
                 target_float = (target_float - self.target_min) / self.target_scale
 

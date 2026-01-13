@@ -926,3 +926,202 @@ class TestCategoricalIntegration:
         predictions = result["target_prediction"]
         assert (predictions >= 0).all()
         assert (predictions <= 1).all()
+
+
+class TestOutputActivation:
+    """Test suite for output activation constraints in SequencePredictor."""
+
+    @pytest.fixture
+    def sample_tokens(self):
+        """Create sample tokens for testing."""
+        from aam.data.tokenizer import SequenceTokenizer
+
+        batch_size = 4
+        num_asvs = 10
+        seq_len = 50
+        tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
+        tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
+        tokens[:, :, 40:] = 0
+        return tokens
+
+    def test_default_no_activation(self, sample_tokens):
+        """Test that default is no output activation."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+        )
+        assert model.output_activation == "none"
+
+    def test_relu_produces_non_negative(self, sample_tokens):
+        """Test that relu activation produces non-negative outputs."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            output_activation="relu",
+        )
+        result = model(sample_tokens)
+        predictions = result["target_prediction"]
+        assert (predictions >= 0).all()
+
+    def test_softplus_produces_non_negative(self, sample_tokens):
+        """Test that softplus activation produces non-negative outputs."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            output_activation="softplus",
+        )
+        result = model(sample_tokens)
+        predictions = result["target_prediction"]
+        assert (predictions >= 0).all()
+
+    def test_exp_produces_positive(self, sample_tokens):
+        """Test that exp activation produces strictly positive outputs."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            output_activation="exp",
+        )
+        result = model(sample_tokens)
+        predictions = result["target_prediction"]
+        assert (predictions > 0).all()
+
+    def test_invalid_activation_raises(self):
+        """Test that invalid activation raises ValueError."""
+        with pytest.raises(ValueError, match="output_activation must be one of"):
+            SequencePredictor(
+                embedding_dim=64,
+                max_bp=150,
+                token_limit=1024,
+                out_dim=1,
+                output_activation="invalid",
+            )
+
+    def test_activation_with_bounded_targets_raises(self):
+        """Test that using output_activation with bounded_targets raises ValueError."""
+        with pytest.raises(ValueError, match="Cannot use output_activation with bounded_targets"):
+            SequencePredictor(
+                embedding_dim=64,
+                max_bp=150,
+                token_limit=1024,
+                out_dim=1,
+                output_activation="softplus",
+                bounded_targets=True,
+            )
+
+    def test_activation_with_classifier_raises(self):
+        """Test that using output_activation with is_classifier raises ValueError."""
+        with pytest.raises(ValueError, match="Cannot use output_activation with is_classifier"):
+            SequencePredictor(
+                embedding_dim=64,
+                max_bp=150,
+                token_limit=1024,
+                out_dim=5,
+                output_activation="softplus",
+                is_classifier=True,
+            )
+
+    def test_softplus_gradients_flow(self, sample_tokens):
+        """Test that gradients flow through softplus activation."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            output_activation="softplus",
+        )
+        model.train()
+        result = model(sample_tokens)
+        loss = result["target_prediction"].sum()
+        loss.backward()
+
+        # Check target head gradients exist
+        assert model.target_head.weight.grad is not None
+        assert not torch.isnan(model.target_head.weight.grad).any()
+
+    def test_relu_gradients_flow(self, sample_tokens):
+        """Test that gradients flow through relu activation (when positive)."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            output_activation="relu",
+        )
+        model.train()
+        result = model(sample_tokens)
+        loss = result["target_prediction"].sum()
+        loss.backward()
+
+        assert model.target_head.weight.grad is not None
+
+    @pytest.mark.parametrize("activation", ["relu", "softplus", "exp"])
+    def test_activation_with_multi_output(self, sample_tokens, activation):
+        """Test output activations work with multiple output dimensions."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=3,
+            output_activation=activation,
+        )
+        result = model(sample_tokens)
+        predictions = result["target_prediction"]
+        assert predictions.shape == (4, 3)
+        if activation == "exp":
+            assert (predictions > 0).all()
+        else:
+            assert (predictions >= 0).all()
+
+    def test_softplus_with_learnable_scale(self, sample_tokens):
+        """Test softplus works with learnable output scale."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            output_activation="softplus",
+            learnable_output_scale=True,
+        )
+        result = model(sample_tokens)
+        predictions = result["target_prediction"]
+        assert (predictions >= 0).all()
+
+    def test_softplus_with_layer_norm(self, sample_tokens):
+        """Test softplus works with target layer norm."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            output_activation="softplus",
+            target_layer_norm=True,
+        )
+        result = model(sample_tokens)
+        predictions = result["target_prediction"]
+        assert (predictions >= 0).all()
+
+    def test_none_activation_allows_negative(self, sample_tokens):
+        """Test that 'none' activation allows negative values."""
+        # Force negative output by setting bias to large negative value
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            output_activation="none",
+        )
+        with torch.no_grad():
+            model.target_head.bias.fill_(-100.0)
+
+        result = model(sample_tokens)
+        predictions = result["target_prediction"]
+        # Should allow negative values
+        assert (predictions < 0).any()

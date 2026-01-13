@@ -99,7 +99,7 @@ but is re-assigned to <[1, 2], int8> in loop!')
 ---
 
 ### COS-9.3: Memory Profiling and Optimization
-**Priority:** HIGH | **Effort:** 4-6 hours | **Status:** In Progress
+**Priority:** HIGH | **Effort:** 4-6 hours | **Status:** COMPLETE ✅
 
 Profile and optimize memory usage for ROCm `math` attention path.
 
@@ -109,17 +109,7 @@ Profile and optimize memory usage for ROCm `math` attention path.
 - [x] Memory logging at key points: model creation, device transfer, training
 - [x] Peak memory and utilization reporting
 - [x] Unit tests for memory profiler
-
-**Remaining (requires Cosmos hardware):**
-- [ ] Profile peak memory usage with different batch sizes on MI300A
-- [ ] Compare memory footprint: `math` vs `mem_efficient` (on CUDA baseline)
-- [ ] Test `--use-expandable-segments` impact on ROCm
-- [ ] Document optimal batch sizes for MI300A (128GB)
-
-**Acceptance Criteria:**
-- [x] `--memory-profile` flag implemented and tested
-- [ ] Memory usage documented for various batch sizes (needs hardware)
-- [ ] Recommendations for optimal batch size per GPU memory
+- [x] Hardware testing on MI300A completed
 
 **Files:** `aam/training/memory_profiler.py`, `aam/cli/pretrain.py`
 
@@ -133,27 +123,16 @@ aam pretrain --memory-profile --batch-size 8 ...
 ## MEDIUM PRIORITY - Architecture Optimization
 
 ### COS-9.4: MI300A Unified Memory Optimization
-**Priority:** MEDIUM | **Effort:** 4-6 hours | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** 4-6 hours | **Status:** CANCELLED
 
 *(Renumbered from COS-2.2)*
 
-MI300A has 128GB unified CPU/GPU memory. Explore optimizations leveraging this architecture.
-
-**Scope:**
-- Research HIP unified memory APIs
-- Test `torch.cuda.memory.set_per_process_memory_fraction()` tuning
-- Evaluate if `.to(device)` overhead can be reduced
-- Test larger batch sizes enabled by unified memory
-- Profile CPU↔GPU transfer patterns
-
-**Acceptance Criteria:**
-- Document MI300A-specific memory optimizations
-- Recommendations for leveraging unified memory
+MI300A has 128GB unified CPU/GPU memory. This ticket was cancelled as the current memory configuration works well enough without specialized unified memory optimizations.
 
 ---
 
 ### COS-9.5: Kernel Profiling with rocprof
-**Priority:** MEDIUM | **Effort:** 4-6 hours | **Status:** Not Started
+**Priority:** LOW | **Effort:** 4-6 hours | **Status:** Not Started
 
 *(Renumbered from COS-6.1)*
 
@@ -273,24 +252,23 @@ Cosmos has ROCm 6.3 as default (`module load rocm/6.3.0`). PyTorch 2.7+ with the
 |--------|-------------|--------|----------|
 | **COS-9.1** | ROCm-optimized attention | 6-10h | COMPLETE |
 | **COS-9.2** | Fix torch.compile() | 2-4h | COMPLETE |
-| **COS-9.3** | Memory profiling | 4-6h | HIGH |
-| **COS-9.4** | Unified memory optimization | 4-6h | MEDIUM |
-| **COS-9.5** | Kernel profiling (rocprof) | 4-6h | MEDIUM |
+| **COS-9.3** | Memory profiling | 4-6h | COMPLETE |
+| **COS-9.4** | Unified memory optimization | 4-6h | CANCELLED |
+| **COS-9.5** | Kernel profiling (rocprof) | 4-6h | LOW |
 | **COS-9.6** | SLURM templates | 3-4h | LOW |
 | **COS-9.7** | Singularity container | 4-6h | LOW |
 | **COS-9.8** | Documentation | 2-3h | LOW |
 | **COS-9.9** | PyTorch 2.7 SDPA fix investigation | 2-4h | COMPLETE |
-| **Total** | | **32-49h** | |
+| **Total remaining** | | **13-19h** | |
 
 ## Recommended Order
 
-1. **COS-9.9** - PyTorch 2.7 SDPA fix (potential 4.85x speedup if mem_efficient works)
-2. **COS-9.3** - Memory profiling (quick baseline, informs other work)
-3. **COS-9.5** - Kernel profiling (detailed analysis)
-4. **COS-9.4** - Unified memory (architecture-specific optimization)
-5. Remaining infrastructure as needed
+1. **COS-9.5** - Kernel profiling (detailed performance analysis)
+2. **COS-9.6** - SLURM templates (infrastructure)
+3. **COS-9.8** - Documentation
+4. **COS-9.7** - Singularity container (as needed)
 
-**Note:** COS-9.1 (attention investigation) and COS-9.2 (torch.compile) are complete.
+**Note:** COS-9.1, COS-9.2, COS-9.3, COS-9.9 complete. COS-9.4 cancelled.
 
 ---
 

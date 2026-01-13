@@ -1189,6 +1189,290 @@ class TestTargetNormalization:
         assert sample["y_target"].item() == 0.0
 
 
+class TestLogTransformTargets:
+    """Test suite for log transform targets (PYT-19.1)."""
+
+    def test_log_transform_disabled_by_default(self, rarefied_table, tokenizer, simple_metadata):
+        """Test that log transform is disabled by default."""
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            metadata=simple_metadata,
+            target_column="target",
+        )
+
+        assert dataset.log_transform_targets is False
+        params = dataset.get_normalization_params()
+        assert params is None or "log_transform" not in params
+
+    def test_log_transform_enabled(self, rarefied_table, tokenizer):
+        """Test that log transform applies log(y+1) to targets."""
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3"],
+                "target": [0.0, 99.0, 599.0],  # Range 0-600 style
+            }
+        )
+
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            metadata=metadata,
+            target_column="target",
+            log_transform_targets=True,
+        )
+
+        assert dataset.log_transform_targets is True
+        params = dataset.get_normalization_params()
+        assert params is not None
+        assert params.get("log_transform") is True
+
+        # Check transformed values
+        import math
+
+        sample_ids = dataset.sample_ids
+        for i, sample_id in enumerate(sample_ids):
+            sample = dataset[i]
+            expected_raw = metadata[metadata["sample_id"] == sample_id]["target"].values[0]
+            expected_log = math.log(expected_raw + 1)
+            np.testing.assert_almost_equal(sample["y_target"].item(), expected_log, decimal=5)
+
+    def test_log_transform_with_normalize(self, rarefied_table, tokenizer):
+        """Test log transform combined with normalization."""
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3"],
+                "target": [0.0, 100.0, 600.0],
+            }
+        )
+
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            metadata=metadata,
+            target_column="target",
+            log_transform_targets=True,
+            normalize_targets=True,
+        )
+
+        params = dataset.get_normalization_params()
+        assert params.get("log_transform") is True
+        assert "target_scale" in params
+
+        # log(0+1) = 0, log(600+1) = 6.398
+        import math
+
+        log_min = math.log(1)  # 0
+        log_max = math.log(601)  # ~6.398
+
+        # Sample with target=0 should be normalized to 0
+        sample1_idx = dataset.sample_ids.index("sample1")
+        sample = dataset[sample1_idx]
+        np.testing.assert_almost_equal(sample["y_target"].item(), 0.0, decimal=5)
+
+    def test_denormalize_log_transform_only(self, rarefied_table, tokenizer):
+        """Test denormalize with log transform (no normalization)."""
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3"],
+                "target": [0.0, 99.0, 599.0],
+            }
+        )
+
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            metadata=metadata,
+            target_column="target",
+            log_transform_targets=True,
+            normalize_targets=False,
+        )
+
+        # Test with tensor
+        import math
+
+        log_values = torch.tensor([math.log(1), math.log(100), math.log(600)])
+        denormalized = dataset.denormalize_targets(log_values)
+        expected = torch.tensor([0.0, 99.0, 599.0])
+        torch.testing.assert_close(denormalized, expected, atol=1e-4, rtol=1e-4)
+
+    def test_denormalize_log_transform_with_normalize(self, rarefied_table, tokenizer):
+        """Test denormalize with both log transform and normalization."""
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3"],
+                "target": [0.0, 100.0, 600.0],
+            }
+        )
+
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            metadata=metadata,
+            target_column="target",
+            log_transform_targets=True,
+            normalize_targets=True,
+        )
+
+        # Normalized values [0, 0.5, 1] should denormalize back to original
+        normalized = torch.tensor([0.0, 0.5, 1.0])
+        denormalized = dataset.denormalize_targets(normalized)
+
+        # After denormalization from [0,1] and then exp() - 1
+        # We should get approximately the original values (with some rounding)
+        assert denormalized[0].item() == pytest.approx(0.0, abs=0.1)
+        # Middle value won't be exactly 100 due to non-linearity of log
+        assert denormalized[2].item() == pytest.approx(600.0, abs=0.1)
+
+    def test_denormalize_numpy(self, rarefied_table, tokenizer):
+        """Test denormalize with numpy array and log transform."""
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3"],
+                "target": [0.0, 99.0, 599.0],
+            }
+        )
+
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            metadata=metadata,
+            target_column="target",
+            log_transform_targets=True,
+        )
+
+        import math
+
+        log_values = np.array([math.log(1), math.log(100), math.log(600)])
+        denormalized = dataset.denormalize_targets(log_values)
+        expected = np.array([0.0, 99.0, 599.0])
+        np.testing.assert_array_almost_equal(denormalized, expected, decimal=4)
+
+    def test_denormalize_float(self, rarefied_table, tokenizer):
+        """Test denormalize with float and log transform."""
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3"],
+                "target": [0.0, 99.0, 599.0],
+            }
+        )
+
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            metadata=metadata,
+            target_column="target",
+            log_transform_targets=True,
+        )
+
+        import math
+
+        log_value = math.log(100)  # log(100) = 4.605
+        denormalized = dataset.denormalize_targets(log_value)
+        assert denormalized == pytest.approx(99.0, abs=0.01)
+
+    def test_log_transform_compresses_range(self, rarefied_table, tokenizer):
+        """Test that log transform compresses wide target range."""
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3"],
+                "target": [0.0, 100.0, 600.0],
+            }
+        )
+
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            metadata=metadata,
+            target_column="target",
+            log_transform_targets=True,
+        )
+
+        # Original range: 0-600
+        # Log range: log(1) to log(601) = 0 to ~6.4
+        import math
+
+        samples = [dataset[i] for i in range(len(dataset))]
+        targets = [s["y_target"].item() for s in samples]
+
+        assert min(targets) == pytest.approx(0.0, abs=0.01)
+        assert max(targets) == pytest.approx(math.log(601), abs=0.01)
+        assert max(targets) < 7  # Compressed from 600 to ~6.4
+
+    def test_denormalize_overflow_protection(self, rarefied_table, tokenizer):
+        """Test that denormalize_targets clamps values to prevent exp() overflow."""
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3"],
+                "target": [0.0, 99.0, 599.0],
+            }
+        )
+
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            metadata=metadata,
+            target_column="target",
+            log_transform_targets=True,
+        )
+
+        # Values > 88 would overflow float32 without clamping
+        large_values = torch.tensor([100.0, 200.0, 500.0])
+        denormalized = dataset.denormalize_targets(large_values)
+
+        # Should be clamped to exp(88) - 1, not inf
+        assert not torch.isinf(denormalized).any(), "Overflow protection should prevent inf values"
+        assert not torch.isnan(denormalized).any(), "Overflow protection should prevent NaN values"
+
+    def test_denormalize_overflow_protection_numpy(self, rarefied_table, tokenizer):
+        """Test overflow protection with numpy arrays."""
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3"],
+                "target": [0.0, 99.0, 599.0],
+            }
+        )
+
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            metadata=metadata,
+            target_column="target",
+            log_transform_targets=True,
+        )
+
+        large_values = np.array([100.0, 200.0, 500.0])
+        denormalized = dataset.denormalize_targets(large_values)
+
+        assert not np.isinf(denormalized).any(), "Overflow protection should prevent inf values"
+        assert not np.isnan(denormalized).any(), "Overflow protection should prevent NaN values"
+
+    def test_denormalize_overflow_protection_float(self, rarefied_table, tokenizer):
+        """Test overflow protection with float values."""
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3"],
+                "target": [0.0, 99.0, 599.0],
+            }
+        )
+
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            metadata=metadata,
+            target_column="target",
+            log_transform_targets=True,
+        )
+
+        large_value = 100.0  # Would overflow without clamping
+        denormalized = dataset.denormalize_targets(large_value)
+
+        import math
+
+        assert not math.isinf(denormalized), "Overflow protection should prevent inf values"
+        assert not math.isnan(denormalized), "Overflow protection should prevent NaN values"
+
+
 class TestSequenceCache:
     """Test suite for sequence tokenization caching (PYT-12.3)."""
 

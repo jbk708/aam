@@ -2281,6 +2281,79 @@ class TestTrainerTargetNormalization:
         expected = torch.tensor([-50.0, 0.0, 50.0])
         torch.testing.assert_close(denormalized, expected)
 
+    def test_trainer_denormalize_with_log_transform(self, small_predictor, loss_fn, device):
+        """Test Trainer._denormalize_targets with log_transform (no normalization)."""
+        import math
+
+        normalization_params = {
+            "log_transform": True,
+        }
+
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+            target_normalization_params=normalization_params,
+        )
+
+        # log(100) should become exp(log(100)) - 1 = 99
+        log_values = torch.tensor([math.log(1), math.log(100), math.log(600)])
+        denormalized = trainer._denormalize_targets(log_values)
+        expected = torch.tensor([0.0, 99.0, 599.0])
+        torch.testing.assert_close(denormalized, expected, atol=1e-4, rtol=1e-4)
+
+    def test_trainer_denormalize_with_log_transform_and_normalize(self, small_predictor, loss_fn, device):
+        """Test Trainer._denormalize_targets with both log transform and normalization."""
+        import math
+
+        # Simulate log-transformed then normalized: log(0+1)=0, log(600+1)=6.398
+        log_min = math.log(1)  # 0
+        log_max = math.log(601)  # ~6.398
+
+        normalization_params = {
+            "target_min": log_min,
+            "target_max": log_max,
+            "target_scale": log_max - log_min,
+            "log_transform": True,
+        }
+
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+            target_normalization_params=normalization_params,
+        )
+
+        # 0.0 (normalized min) -> log(1) -> exp(0) - 1 = 0
+        # 1.0 (normalized max) -> log(601) -> exp(log(601)) - 1 = 600
+        normalized = torch.tensor([0.0, 1.0])
+        denormalized = trainer._denormalize_targets(normalized)
+        expected = torch.tensor([0.0, 600.0])
+        torch.testing.assert_close(denormalized, expected, atol=1.0, rtol=1e-2)
+
+    def test_trainer_denormalize_log_transform_overflow_protection(self, small_predictor, loss_fn, device):
+        """Test that denormalization clamps values to prevent exp() overflow."""
+        normalization_params = {
+            "log_transform": True,
+        }
+
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+            target_normalization_params=normalization_params,
+        )
+
+        # Values > 88 would overflow float32 without clamping
+        large_values = torch.tensor([100.0, 200.0, 500.0])
+        denormalized = trainer._denormalize_targets(large_values)
+
+        # Should be clamped to exp(88) - 1, not inf
+        assert not torch.isinf(denormalized).any(), "Overflow protection should prevent inf values"
+        assert not torch.isnan(denormalized).any(), "Overflow protection should prevent NaN values"
+        # exp(88) is approximately 1.65e38
+        assert (denormalized > 1e30).all(), "Large values should still produce large outputs"
+
 
 class TestProgressBarFormat:
     """Test progress bar formatting for different training modes."""

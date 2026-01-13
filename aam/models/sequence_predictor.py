@@ -63,6 +63,7 @@ class SequencePredictor(nn.Module):
         target_layer_norm: bool = True,
         bounded_targets: bool = False,
         learnable_output_scale: bool = False,
+        output_activation: str = "none",
         categorical_cardinalities: Optional[Dict[str, int]] = None,
         categorical_embed_dim: int = 16,
         categorical_fusion: str = "concat",
@@ -115,6 +116,8 @@ class SequencePredictor(nn.Module):
             target_layer_norm: Apply LayerNorm before target projection (default: True)
             bounded_targets: Apply sigmoid to bound regression output to [0, 1] (default: False)
             learnable_output_scale: Add learnable scale and bias after target projection (default: False)
+            output_activation: Activation for non-negative regression outputs. Options: 'none' (default),
+                'relu', 'softplus', 'exp'. Cannot be used with bounded_targets or is_classifier.
             categorical_cardinalities: Dict mapping column name to cardinality for categorical conditioning.
                 If None, no categorical conditioning is applied.
             categorical_embed_dim: Embedding dimension per categorical column (default: 16)
@@ -201,6 +204,15 @@ class SequencePredictor(nn.Module):
         self.target_layer_norm_enabled = target_layer_norm
         self.bounded_targets = bounded_targets
         self.learnable_output_scale = learnable_output_scale
+        self.output_activation = output_activation
+
+        valid_activations = ("none", "relu", "softplus", "exp")
+        if output_activation not in valid_activations:
+            raise ValueError(f"output_activation must be one of {valid_activations}, got '{output_activation}'")
+        if output_activation != "none" and bounded_targets:
+            raise ValueError("Cannot use output_activation with bounded_targets (both constrain output)")
+        if output_activation != "none" and is_classifier:
+            raise ValueError("Cannot use output_activation with is_classifier (use for regression only)")
 
         if target_layer_norm:
             self.target_norm = nn.LayerNorm(self.embedding_dim)
@@ -286,6 +298,23 @@ class SequencePredictor(nn.Module):
             cat_proj = self.categorical_projection(cat_emb_seq)  # [B, S, D]
             return base_embeddings + cat_proj
 
+    def _apply_output_activation(self, x: torch.Tensor) -> torch.Tensor:
+        """Apply output activation for non-negative regression.
+
+        Args:
+            x: Raw predictions [batch_size, out_dim]
+
+        Returns:
+            Activated predictions with non-negative values
+        """
+        if self.output_activation == "relu":
+            return nn.functional.relu(x)
+        elif self.output_activation == "softplus":
+            return nn.functional.softplus(x)
+        elif self.output_activation == "exp":
+            return torch.exp(x)
+        return x
+
     def forward(
         self,
         tokens: torch.Tensor,
@@ -341,6 +370,8 @@ class SequencePredictor(nn.Module):
             target_prediction = nn.functional.log_softmax(target_prediction, dim=-1)
         elif self.bounded_targets:
             target_prediction = torch.sigmoid(target_prediction)
+        elif self.output_activation != "none":
+            target_prediction = self._apply_output_activation(target_prediction)
 
         result = {
             "target_prediction": target_prediction,
