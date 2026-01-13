@@ -215,6 +215,12 @@ from aam.cli.utils import (
     type=click.Choice(["concat", "add"]),
     help="Fusion strategy for categorical embeddings: concat (concatenate + project) or add (project + add). Default: concat",
 )
+@click.option(
+    "--output-activation",
+    default="none",
+    type=click.Choice(["none", "relu", "softplus", "exp"]),
+    help="Output activation for non-negative regression: none (default), relu, softplus (recommended), exp. Cannot be used with --bounded-targets or --classifier.",
+)
 def train(
     table: str,
     unifrac_matrix: str,
@@ -277,6 +283,7 @@ def train(
     categorical_columns: Optional[str],
     categorical_embed_dim: int,
     categorical_fusion: str,
+    output_activation: str,
 ):
     """Train AAM model on microbial sequencing data."""
     try:
@@ -616,6 +623,7 @@ def train(
             categorical_cardinalities=categorical_cardinalities,
             categorical_embed_dim=categorical_embed_dim,
             categorical_fusion=categorical_fusion,
+            output_activation=output_activation,
         )
 
         log_model_summary(model, logger)
@@ -775,6 +783,7 @@ def train(
                 "learnable_output_scale": learnable_output_scale,
                 "categorical_embed_dim": categorical_embed_dim,
                 "categorical_fusion": categorical_fusion,
+                "output_activation": output_activation,
             }
             # Include categorical encoder state if categoricals are used
             if categorical_encoder is not None:
