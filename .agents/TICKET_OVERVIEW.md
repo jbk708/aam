@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-13
-**Status:** 11 outstanding tickets (~35-51 hours)
+**Status:** 10 outstanding tickets (~32-47 hours)
 
 ## Quick Links
 - **ROCm optimization:** `COSMOS_ONBOARDING_TICKETS.md`
@@ -14,12 +14,9 @@
 
 ## Outstanding Tickets by Priority
 
-### HIGH (2 tickets, ~7-10 hours)
+### HIGH (0 tickets)
 
-| Ticket | Description | Effort | Domain |
-|--------|-------------|--------|--------|
-| **PYT-19.1** | Non-negative regression output constraints | 4-6h | PyTorch |
-| **CAT-7** | Documentation and testing | 3-4h | Categorical |
+All high priority tickets complete.
 
 ### MEDIUM (2 tickets, ~16-22 hours)
 
@@ -51,6 +48,11 @@ Future enhancement phases (~50+ hours):
 ---
 
 ## Recently Completed
+
+**CAT-7: Documentation and Testing** (2026-01-13) - COMPLETE
+- Added best practices to README for embedding dim selection and rare categories
+- Added TestCategoricalIntegration with 3 integration tests
+- All categorical feature work now complete
 
 **CAT-6: Checkpoint Compatibility and Transfer Learning** (2026-01-12) - COMPLETE
 - Verified pretrained encoder loads into model with categorical features
@@ -100,15 +102,17 @@ Future enhancement phases (~50+ hours):
 
 ## Recommended Next Steps
 
-### 1. Regression Optimization (HIGH)
-- **PYT-19.1** - Non-negative output constraints (fixes negative predictions)
-
-### 2. Categorical Features (HIGH)
-- **CAT-7** - Documentation and integration tests
-
-### 3. Infrastructure (As Needed)
+### 1. Infrastructure (As Needed)
 - **COS-9.6** - SLURM templates for Cosmos
-- **COS-9.8** - Documentation
+- **COS-9.8** - ROCm documentation
+
+### 2. Distributed Training (MEDIUM)
+- **PYT-12.1** - FSDP for large models (if needed)
+- **PYT-12.2** - Batch size optimization
+
+### 3. Memory Optimization (LOW)
+- **PYT-18.5** - Lazy sample embedding computation
+- **PYT-18.6** - Memory-aware dynamic batching
 
 ---
 
