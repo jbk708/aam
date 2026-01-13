@@ -91,47 +91,36 @@ Add `--max-memory-gb` flag for dynamic batch adjustment.
 
 ---
 
-## Phase 19: Regression Optimization (1 ticket)
+## Phase 19: Regression Optimization (2 tickets)
 
 ### PYT-19.1: Non-Negative Regression Output Constraints
-**Priority:** HIGH | **Effort:** 4-6 hours | **Status:** Not Started
+**Priority:** HIGH | **Effort:** 4-6 hours | **Status:** COMPLETE
 
 Model predicts negative values for targets that should be non-negative (e.g., concentrations, counts, distances). Need output constraints to enforce valid prediction ranges.
 
-**Problem:**
-- Regression targets are >= 0 (e.g., `add_0c` column)
-- Model predicts negative values which are physically invalid
-- Current `--bounded-targets` uses sigmoid for [0,1] but doesn't handle unbounded non-negative targets
+**Completed:**
+- Added `--output-activation` flag: `none` (default), `relu`, `softplus`, `exp`
+- Validates mutual exclusion with `--bounded-targets` and `--classifier`
+- Documented in README under "Regression Options"
 
-**Scope:**
-- Add `--output-activation` flag: `none` (default), `relu`, `softplus`, `exp`
-- `softplus` recommended for smooth non-negative outputs: `log(1 + exp(x))`
-- Consider asymmetric loss penalties for negative predictions
-- Document when to use each activation
-
-**Implementation Options:**
-1. **Output activation** (simplest): Apply activation after target_head
-   - `relu`: Hard clamp at 0, but gradient dies for negative inputs
-   - `softplus`: Smooth approximation to ReLU, always positive, gradient flows
-   - `exp`: For strictly positive targets, but can explode
-
-2. **Asymmetric loss**: Penalize negative predictions more heavily
-   ```python
-   loss = mse_loss + lambda * relu(-predictions).mean()
-   ```
-
-3. **Target transformation**: Train on `log(y + eps)`, predict in log-space
-   - Requires inverse transform at inference
+**Files Modified:**
+- `aam/models/sequence_predictor.py` - Added `output_activation` parameter and `_apply_output_activation()` method
+- `aam/cli/train.py` - Added `--output-activation` flag
+- `tests/test_sequence_predictor.py` - Added TestOutputActivation test class with 15 tests
+- `README.md` - Added "Regression Options" section
 
 **Acceptance Criteria:**
-- [ ] `--output-activation softplus` produces non-negative predictions
-- [ ] Validation metrics comparable or better than unconstrained
-- [ ] Document in README under "Regression Options"
+- [x] `--output-activation softplus` produces non-negative predictions
+- [x] Validation metrics comparable or better than unconstrained
+- [x] Document in README under "Regression Options"
 
-**Files:**
-- `aam/models/sequence_predictor.py` - Add activation after target_head
-- `aam/cli/train.py` - Add `--output-activation` flag
-- `tests/test_sequence_predictor.py` - Test output constraints
+### PYT-19.2: Categorical Data Integration Improvements
+**Priority:** MEDIUM | **Effort:** 4-6 hours | **Status:** Not Started
+
+Improve integration of categorical metadata features for conditioning target predictions.
+
+**Scope:**
+- TBD based on user requirements
 
 ---
 
