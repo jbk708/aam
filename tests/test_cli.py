@@ -475,6 +475,36 @@ class TestCLICommands:
         assert result.exit_code != 0
         assert "Cannot use --distributed and --fsdp together" in result.output
 
+    def test_train_command_fsdp_sharded_checkpoint_option_exists(self, runner):
+        """Test that --fsdp-sharded-checkpoint option appears in train help."""
+        result = runner.invoke(cli, ["train", "--help"])
+        assert result.exit_code == 0
+        assert "--fsdp-sharded-checkpoint" in result.output
+
+    def test_train_command_fsdp_sharded_checkpoint_requires_fsdp(
+        self, runner, sample_biom_file, sample_unifrac_matrix_file, sample_metadata_file, sample_output_dir
+    ):
+        """Test that --fsdp-sharded-checkpoint requires --fsdp."""
+        result = runner.invoke(
+            cli,
+            [
+                "train",
+                "--table",
+                sample_biom_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
+                "--metadata",
+                sample_metadata_file,
+                "--metadata-column",
+                "target",
+                "--output-dir",
+                sample_output_dir,
+                "--fsdp-sharded-checkpoint",
+            ],
+        )
+        assert result.exit_code != 0
+        assert "--fsdp-sharded-checkpoint requires --fsdp" in result.output
+
     def test_predict_command_help(self, runner):
         """Test predict command help."""
         result = runner.invoke(cli, ["predict", "--help"])

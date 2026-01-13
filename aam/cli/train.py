@@ -194,6 +194,11 @@ from aam.cli.utils import (
     help="Enable FSDP (Fully Sharded Data Parallel) for memory-efficient distributed training. Use with torchrun: torchrun --nproc_per_node=4 -m aam.cli train --fsdp ...",
 )
 @click.option(
+    "--fsdp-sharded-checkpoint",
+    is_flag=True,
+    help="Save FSDP checkpoints in sharded format (each rank saves its own shard). Faster for large models but requires same world size to load. Default: save full state dict on rank 0 for checkpoint compatibility.",
+)
+@click.option(
     "--target-layer-norm/--no-target-layer-norm",
     default=True,
     help="Apply LayerNorm before target projection (default: enabled)",
@@ -289,6 +294,7 @@ def train(
     distributed: bool,
     sync_batchnorm: bool,
     fsdp: bool,
+    fsdp_sharded_checkpoint: bool,
     target_layer_norm: bool,
     bounded_targets: bool,
     learnable_output_scale: bool,
@@ -342,6 +348,10 @@ def train(
                 "Cannot use --distributed and --fsdp together. "
                 "Use --distributed for DDP or --fsdp for FSDP (Fully Sharded Data Parallel)."
             )
+
+        # Validate --fsdp-sharded-checkpoint requires --fsdp
+        if fsdp_sharded_checkpoint and not fsdp:
+            raise click.ClickException("--fsdp-sharded-checkpoint requires --fsdp to be enabled.")
 
         # Setup distributed training if enabled
         train_sampler = None
@@ -809,6 +819,7 @@ def train(
             target_normalization_params=target_normalization_params,
             count_normalization_params=count_normalization_params,
             train_sampler=train_sampler,
+            use_sharded_checkpoint=fsdp_sharded_checkpoint,
         )
 
         if resume_from is not None:
