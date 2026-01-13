@@ -72,24 +72,79 @@ aam train \
   --epochs 100
 ```
 
-### Categorical Metadata (Planned)
+### Categorical Metadata
 
-Condition target predictions on categorical features like location or season:
+Condition target predictions on categorical features like location, season, or site type. Categorical embeddings are fused with sample embeddings before the target prediction head.
+
+**CLI Usage:**
+
+```bash
+aam train \
+  --table <biom_file> \
+  --unifrac-matrix <unifrac_matrix.npy> \
+  --metadata <metadata.tsv> \
+  --metadata-column <target_column> \
+  --categorical-columns "location,season" \
+  --categorical-embed-dim 16 \
+  --categorical-fusion concat \
+  --output-dir <output_dir>
+```
+
+**Options:**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--categorical-columns` | Comma-separated column names from metadata | - |
+| `--categorical-embed-dim` | Embedding dimension per category | 16 |
+| `--categorical-fusion` | `concat` (concatenate + project) or `add` (project + add) | concat |
+
+**Staged Training with Categoricals:**
+
+Categorical features work seamlessly with pretrained encoders:
+
+```bash
+# Stage 1: Pretrain encoder (no categoricals needed)
+aam pretrain \
+  --table <biom_file> \
+  --unifrac-matrix <unifrac_matrix.npy> \
+  --output-dir pretrain_output/
+
+# Stage 2: Fine-tune with categoricals
+aam train \
+  --table <biom_file> \
+  --unifrac-matrix <unifrac_matrix.npy> \
+  --metadata <metadata.tsv> \
+  --metadata-column <target_column> \
+  --pretrained-encoder pretrain_output/checkpoints/best_model.pt \
+  --freeze-base \
+  --categorical-columns "location,season" \
+  --output-dir finetune_output/
+```
+
+With `--freeze-base`, only the categorical embedder and target prediction head are trained while the pretrained encoder remains frozen.
+
+**Programmatic API:**
 
 ```python
-from aam.data import CategoricalSchema, CategoricalColumnConfig
+from aam.data import CategoricalSchema, CategoricalColumnConfig, CategoricalEncoder
 
-# Simple: auto-detect cardinality
-schema = CategoricalSchema.from_column_names(["location", "season"])
+# Simple: auto-detect cardinality from data
+encoder = CategoricalEncoder()
+encoder.fit(metadata_df, columns=["location", "season"])
+cardinalities = encoder.get_cardinalities()  # {"location": 5, "season": 4}
 
-# Advanced: explicit configuration
+# Advanced: explicit schema configuration
 schema = CategoricalSchema(columns=[
     CategoricalColumnConfig(name="location", cardinality=10, embed_dim=8),
     CategoricalColumnConfig(name="season", cardinality=4, required=True),
 ], default_embed_dim=16)
 ```
 
-Index 0 is reserved for unknown/missing categories.
+**Notes:**
+- Index 0 is reserved for unknown/missing categories
+- Encoder is fitted on training data only to prevent leakage
+- Unknown categories at inference time map to the unknown embedding (index 0)
+- Categorical encoder state is saved in checkpoints for inference
 
 ### Inference
 
