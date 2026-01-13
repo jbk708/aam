@@ -671,7 +671,13 @@ def train(
                     logger.info("Converted BatchNorm to SyncBatchNorm for distributed training")
 
             # Wrap model with DDP
-            model = wrap_model_ddp(model, device_id=get_local_rank())
+            # find_unused_parameters needed when freeze_base=True (base model params unused)
+            # or when categorical features may not always contribute to loss
+            model = wrap_model_ddp(
+                model,
+                device_id=get_local_rank(),
+                find_unused_parameters=freeze_base or bool(categorical_column_list),
+            )
             if is_main_process():
                 logger.info("Model wrapped with DistributedDataParallel")
 
