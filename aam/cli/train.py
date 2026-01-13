@@ -702,6 +702,14 @@ def train(
 
         # Handle distributed training setup
         if fsdp:
+            # FSDP requires CUDA - validate upfront with clear message
+            if not torch.cuda.is_available():
+                raise click.ClickException(
+                    "FSDP requires CUDA but no GPU is available. "
+                    "Use --distributed for DDP (which supports CPU via gloo backend), "
+                    "or ensure CUDA is properly installed (run 'nvidia-smi' to check)."
+                )
+
             # FSDP handles device placement internally, don't move model beforehand
             # Convert BatchNorm to SyncBatchNorm if requested
             if sync_batchnorm:
@@ -709,10 +717,21 @@ def train(
                 if is_main_process():
                     logger.info("Converted BatchNorm to SyncBatchNorm for FSDP training")
 
-            # Wrap model with FSDP (stub - not yet implemented)
+            # Wrap model with FSDP for memory-efficient distributed training
             from aam.training.distributed import wrap_model_fsdp
 
-            model = wrap_model_fsdp(model)
+            try:
+                model = wrap_model_fsdp(model)
+            except Exception as e:
+                logger.error(f"Failed to wrap model with FSDP: {e}", exc_info=True)
+                raise click.ClickException(
+                    f"FSDP model wrapping failed: {e}\n"
+                    "Common causes:\n"
+                    "  - Model contains unsupported layer types\n"
+                    "  - Insufficient GPU memory for FSDP initialization\n"
+                    "  - Distributed process group not properly initialized\n"
+                    "Try using --distributed (DDP) instead, or reduce model size."
+                )
             if is_main_process():
                 logger.info("Model wrapped with FullyShardedDataParallel")
 
@@ -815,7 +834,7 @@ def train(
         logger.info(f"Best validation loss: {best_val_loss}")
 
         # Only save final model on main process in distributed mode
-        if not distributed or is_main_process():
+        if not (distributed or fsdp) or is_main_process():
             # Build model config for inference
             model_config = {
                 "encoder_type": encoder_type,

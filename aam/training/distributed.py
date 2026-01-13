@@ -251,6 +251,13 @@ def wrap_model_fsdp(
     if not is_distributed():
         raise RuntimeError("Cannot wrap model with FSDP: distributed training not initialized. Call setup_distributed() first.")
 
+    if not torch.cuda.is_available():
+        raise RuntimeError(
+            "Cannot wrap model with FSDP: CUDA is not available. "
+            "FSDP requires GPU training. Ensure CUDA drivers are installed "
+            "and GPUs are visible (run 'nvidia-smi' to verify)."
+        )
+
     from torch.distributed.fsdp import CPUOffload
 
     wrap_policy = get_fsdp_wrap_policy(transformer_layer_cls)
@@ -263,7 +270,7 @@ def wrap_model_fsdp(
         auto_wrap_policy=wrap_policy,
         mixed_precision=mixed_precision,
         cpu_offload=cpu_offload_config,
-        device_id=torch.cuda.current_device() if torch.cuda.is_available() else None,
+        device_id=torch.cuda.current_device(),
     )
 
 

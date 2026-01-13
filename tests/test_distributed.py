@@ -367,6 +367,60 @@ class TestWrapModelFSDP:
         sharding_param = sig.parameters["sharding_strategy"]
         assert sharding_param.default == ShardingStrategy.FULL_SHARD
 
+    def test_wrap_model_fsdp_requires_cuda(self):
+        """Test wrap_model_fsdp raises RuntimeError when CUDA is not available."""
+        model = SimpleModel()
+
+        with (
+            patch("aam.training.distributed.is_distributed", return_value=True),
+            patch("aam.training.distributed.torch.cuda.is_available", return_value=False),
+        ):
+            with pytest.raises(RuntimeError, match="CUDA is not available"):
+                wrap_model_fsdp(model)
+
+    def test_wrap_model_fsdp_calls_fsdp_constructor(self):
+        """Test wrap_model_fsdp calls FSDP with correct arguments."""
+        model = SimpleModel()
+
+        with (
+            patch("aam.training.distributed.is_distributed", return_value=True),
+            patch("aam.training.distributed.torch.cuda.is_available", return_value=True),
+            patch("aam.training.distributed.torch.cuda.current_device", return_value=0),
+            patch("aam.training.distributed.FSDP") as mock_fsdp,
+        ):
+            mock_fsdp.return_value = MagicMock(spec=FSDP)
+            result = wrap_model_fsdp(model)
+
+            # Verify FSDP was called
+            mock_fsdp.assert_called_once()
+
+            # Verify key arguments
+            call_kwargs = mock_fsdp.call_args[1]
+            assert call_kwargs["sharding_strategy"] == ShardingStrategy.FULL_SHARD
+            assert call_kwargs["device_id"] == 0
+            assert call_kwargs["cpu_offload"] is None
+
+            # Verify result is the FSDP-wrapped model
+            assert result is mock_fsdp.return_value
+
+    def test_wrap_model_fsdp_with_cpu_offload(self):
+        """Test wrap_model_fsdp enables CPU offload when requested."""
+        model = SimpleModel()
+
+        with (
+            patch("aam.training.distributed.is_distributed", return_value=True),
+            patch("aam.training.distributed.torch.cuda.is_available", return_value=True),
+            patch("aam.training.distributed.torch.cuda.current_device", return_value=0),
+            patch("aam.training.distributed.FSDP") as mock_fsdp,
+        ):
+            mock_fsdp.return_value = MagicMock(spec=FSDP)
+            wrap_model_fsdp(model, cpu_offload=True)
+
+            # Verify cpu_offload is set
+            call_kwargs = mock_fsdp.call_args[1]
+            assert call_kwargs["cpu_offload"] is not None
+            assert call_kwargs["cpu_offload"].offload_params is True
+
 
 class TestGetFSDPWrapPolicy:
     """Test FSDP wrap policy generation."""
