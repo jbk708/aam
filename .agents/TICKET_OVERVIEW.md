@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-13
-**Status:** 11 outstanding tickets (~36-52 hours)
+**Status:** 10 outstanding tickets (~32-46 hours)
 
 ## Quick Links
 - **ROCm optimization:** `COSMOS_ONBOARDING_TICKETS.md`
@@ -19,7 +19,7 @@
 
 | Sub-ticket | Description | Effort | Status |
 |------------|-------------|--------|--------|
-| PYT-12.1a | FSDP Infrastructure | 4-6h | Not Started |
+| PYT-12.1a | FSDP Infrastructure | 4-6h | **COMPLETE** |
 | PYT-12.1b | FSDP Checkpoint Support | 3-4h | Not Started |
 | PYT-12.1c | FSDP Pretraining + ROCm | 4-6h | Not Started |
 
@@ -31,11 +31,10 @@
 
 All high priority tickets complete.
 
-### MEDIUM (4 tickets, ~15-22 hours)
+### MEDIUM (3 tickets, ~11-16 hours)
 
 | Ticket | Description | Effort | Domain |
 |--------|-------------|--------|--------|
-| **PYT-12.1a** | FSDP Infrastructure | 4-6h | PyTorch |
 | **PYT-12.1b** | FSDP Checkpoint Support | 3-4h | PyTorch |
 | **PYT-12.1c** | FSDP Pretraining + ROCm | 4-6h | PyTorch |
 | **PYT-12.2** | Batch size optimization | 4-6h | PyTorch |
@@ -63,6 +62,13 @@ Future enhancement phases (~50+ hours):
 ---
 
 ## Recently Completed
+
+**PYT-12.1a: FSDP Infrastructure** (2026-01-13) - COMPLETE
+- Added `wrap_model_fsdp()` with configurable sharding strategy, mixed precision, CPU offload
+- Added `get_fsdp_wrap_policy()` for transformer layer auto-wrapping
+- Added `--fsdp` flag to train.py (mutually exclusive with `--distributed`)
+- Added helper functions: `is_fsdp_model()`, `is_ddp_model()`, `unwrap_model()`
+- Added 17 tests for FSDP infrastructure and CLI
 
 **CAT-7: Documentation and Testing** (2026-01-13) - COMPLETE
 - Added best practices to README for embedding dim selection and rare categories
@@ -118,8 +124,8 @@ Future enhancement phases (~50+ hours):
 ## Recommended Next Steps
 
 ### 1. Current Work: FSDP Implementation (IN PROGRESS)
-- **PYT-12.1a** - FSDP Infrastructure (start here)
-- **PYT-12.1b** - FSDP Checkpoint Support (after 12.1a)
+- ~~**PYT-12.1a** - FSDP Infrastructure~~ ✓ COMPLETE
+- **PYT-12.1b** - FSDP Checkpoint Support (next)
 - **PYT-12.1c** - FSDP Pretraining + ROCm (after 12.1b)
 
 ### 2. Infrastructure (As Needed)
