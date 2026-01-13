@@ -546,7 +546,9 @@ class Trainer:
                     autocast_dtype = torch.bfloat16
 
                 # Only pass categorical_ids if the model supports it (SequencePredictor has categorical_embedder)
-                supports_categorical = hasattr(self.model, "categorical_embedder")
+                # Need to check underlying model for DDP-wrapped models
+                underlying_model = self.model.module if hasattr(self.model, "module") else self.model
+                supports_categorical = hasattr(underlying_model, "categorical_embedder") and underlying_model.categorical_embedder is not None
                 forward_kwargs: Dict[str, Any] = {"return_nucleotides": return_nucleotides}
                 if supports_categorical and categorical_ids is not None:
                     forward_kwargs["categorical_ids"] = categorical_ids
