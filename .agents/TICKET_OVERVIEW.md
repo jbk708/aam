@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-13
-**Status:** 10 outstanding tickets (~32-47 hours)
+**Status:** 11 outstanding tickets (~36-52 hours)
 
 ## Quick Links
 - **ROCm optimization:** `COSMOS_ONBOARDING_TICKETS.md`
@@ -12,17 +12,32 @@
 
 ---
 
+## In Progress
+
+### PYT-12.1: FSDP Implementation
+**Branch:** `pyt-12.1-fsdp-implementation`
+
+| Sub-ticket | Description | Effort | Status |
+|------------|-------------|--------|--------|
+| PYT-12.1a | FSDP Infrastructure | 4-6h | Not Started |
+| PYT-12.1b | FSDP Checkpoint Support | 3-4h | Not Started |
+| PYT-12.1c | FSDP Pretraining + ROCm | 4-6h | Not Started |
+
+---
+
 ## Outstanding Tickets by Priority
 
 ### HIGH (0 tickets)
 
 All high priority tickets complete.
 
-### MEDIUM (2 tickets, ~16-22 hours)
+### MEDIUM (4 tickets, ~15-22 hours)
 
 | Ticket | Description | Effort | Domain |
 |--------|-------------|--------|--------|
-| **PYT-12.1** | FSDP (if needed for large models) | 12-16h | PyTorch |
+| **PYT-12.1a** | FSDP Infrastructure | 4-6h | PyTorch |
+| **PYT-12.1b** | FSDP Checkpoint Support | 3-4h | PyTorch |
+| **PYT-12.1c** | FSDP Pretraining + ROCm | 4-6h | PyTorch |
 | **PYT-12.2** | Batch size optimization | 4-6h | PyTorch |
 
 ### LOW (6 tickets, ~21-31 hours)
@@ -102,15 +117,19 @@ Future enhancement phases (~50+ hours):
 
 ## Recommended Next Steps
 
-### 1. Infrastructure (As Needed)
+### 1. Current Work: FSDP Implementation (IN PROGRESS)
+- **PYT-12.1a** - FSDP Infrastructure (start here)
+- **PYT-12.1b** - FSDP Checkpoint Support (after 12.1a)
+- **PYT-12.1c** - FSDP Pretraining + ROCm (after 12.1b)
+
+### 2. Infrastructure (As Needed)
 - **COS-9.6** - SLURM templates for Cosmos
 - **COS-9.8** - ROCm documentation
 
-### 2. Distributed Training (MEDIUM)
-- **PYT-12.1** - FSDP for large models (if needed)
+### 3. After FSDP
 - **PYT-12.2** - Batch size optimization
 
-### 3. Memory Optimization (LOW)
+### 4. Memory Optimization (LOW)
 - **PYT-18.5** - Lazy sample embedding computation
 - **PYT-18.6** - Memory-aware dynamic batching
 
