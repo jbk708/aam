@@ -819,9 +819,7 @@ class TestCategoricalIntegration:
             "target": target,
         }
 
-    def test_categorical_training_loop(
-        self, device, categorical_predictor_config, synthetic_categorical_data
-    ):
+    def test_categorical_training_loop(self, device, categorical_predictor_config, synthetic_categorical_data):
         """Test full training loop with synthetic categorical data."""
         model = SequencePredictor(**categorical_predictor_config).to(device)
         loss_fn = MultiTaskLoss(penalty=1.0, nuc_penalty=0.0, target_penalty=1.0)
@@ -865,18 +863,18 @@ class TestCategoricalIntegration:
         assert "target_prediction" in outputs
         assert outputs["target_prediction"].shape == (4, 1)
 
-    def test_categorical_checkpoint_roundtrip(
-        self, device, categorical_predictor_config, synthetic_categorical_data, tmp_path
-    ):
+    def test_categorical_checkpoint_roundtrip(self, device, categorical_predictor_config, synthetic_categorical_data, tmp_path):
         """Test categorical encoder state saved and loaded in checkpoints."""
         import pandas as pd
         from aam.data.categorical import CategoricalEncoder
 
-        train_metadata = pd.DataFrame({
-            "sample_id": ["s1", "s2", "s3", "s4"],
-            "location": ["outdoor", "indoor", "outdoor", "mixed"],
-            "season": ["spring", "summer", "fall", "winter"],
-        })
+        train_metadata = pd.DataFrame(
+            {
+                "sample_id": ["s1", "s2", "s3", "s4"],
+                "location": ["outdoor", "indoor", "outdoor", "mixed"],
+                "season": ["spring", "summer", "fall", "winter"],
+            }
+        )
         encoder = CategoricalEncoder()
         encoder.fit(train_metadata, columns=["location", "season"])
 
@@ -923,19 +921,23 @@ class TestCategoricalIntegration:
         import pandas as pd
         from aam.data.categorical import CategoricalEncoder
 
-        train_metadata = pd.DataFrame({
-            "sample_id": ["s1", "s2", "s3"],
-            "location": ["outdoor", "indoor", "outdoor"],
-            "season": ["spring", "summer", "fall"],
-        })
+        train_metadata = pd.DataFrame(
+            {
+                "sample_id": ["s1", "s2", "s3"],
+                "location": ["outdoor", "indoor", "outdoor"],
+                "season": ["spring", "summer", "fall"],
+            }
+        )
         encoder = CategoricalEncoder()
         encoder.fit(train_metadata, columns=["location", "season"])
 
-        inference_metadata = pd.DataFrame({
-            "sample_id": ["t1", "t2"],
-            "location": ["underwater", "outdoor"],
-            "season": ["monsoon", "spring"],
-        })
+        inference_metadata = pd.DataFrame(
+            {
+                "sample_id": ["t1", "t2"],
+                "location": ["underwater", "outdoor"],
+                "season": ["monsoon", "spring"],
+            }
+        )
         inference_ids = encoder.transform(inference_metadata)
 
         assert inference_ids["location"][0] == 0

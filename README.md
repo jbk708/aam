@@ -146,6 +146,20 @@ schema = CategoricalSchema(columns=[
 - Unknown categories at inference time map to the unknown embedding (index 0)
 - Categorical encoder state is saved in checkpoints for inference
 
+**Best Practices:**
+
+*Embedding dimension selection:*
+- Start with `--categorical-embed-dim 16` (default) for most cases
+- For high-cardinality columns (>50 categories), consider 32-64 to capture more nuance
+- For low-cardinality columns (<10 categories), 8-16 is sufficient
+- Rule of thumb: `embed_dim ≈ min(50, cardinality / 2)` for high-cardinality columns
+
+*Handling rare categories:*
+- Categories appearing <5 times in training may not learn meaningful embeddings
+- Consider grouping rare categories into an "other" category before training
+- The unknown embedding (index 0) provides a fallback for unseen categories at inference
+- Monitor validation performance across category frequencies to detect underfitting
+
 ### Inference
 
 ```bash
