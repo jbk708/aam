@@ -1393,6 +1393,78 @@ class TestLogTransformTargets:
         assert max(targets) == pytest.approx(math.log(601), abs=0.01)
         assert max(targets) < 7  # Compressed from 600 to ~6.4
 
+    def test_denormalize_overflow_protection(self, rarefied_table, tokenizer):
+        """Test that denormalize_targets clamps values to prevent exp() overflow."""
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3"],
+                "target": [0.0, 99.0, 599.0],
+            }
+        )
+
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            metadata=metadata,
+            target_column="target",
+            log_transform_targets=True,
+        )
+
+        # Values > 88 would overflow float32 without clamping
+        large_values = torch.tensor([100.0, 200.0, 500.0])
+        denormalized = dataset.denormalize_targets(large_values)
+
+        # Should be clamped to exp(88) - 1, not inf
+        assert not torch.isinf(denormalized).any(), "Overflow protection should prevent inf values"
+        assert not torch.isnan(denormalized).any(), "Overflow protection should prevent NaN values"
+
+    def test_denormalize_overflow_protection_numpy(self, rarefied_table, tokenizer):
+        """Test overflow protection with numpy arrays."""
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3"],
+                "target": [0.0, 99.0, 599.0],
+            }
+        )
+
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            metadata=metadata,
+            target_column="target",
+            log_transform_targets=True,
+        )
+
+        large_values = np.array([100.0, 200.0, 500.0])
+        denormalized = dataset.denormalize_targets(large_values)
+
+        assert not np.isinf(denormalized).any(), "Overflow protection should prevent inf values"
+        assert not np.isnan(denormalized).any(), "Overflow protection should prevent NaN values"
+
+    def test_denormalize_overflow_protection_float(self, rarefied_table, tokenizer):
+        """Test overflow protection with float values."""
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3"],
+                "target": [0.0, 99.0, 599.0],
+            }
+        )
+
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            metadata=metadata,
+            target_column="target",
+            log_transform_targets=True,
+        )
+
+        large_value = 100.0  # Would overflow without clamping
+        denormalized = dataset.denormalize_targets(large_value)
+
+        import math
+        assert not math.isinf(denormalized), "Overflow protection should prevent inf values"
+        assert not math.isnan(denormalized), "Overflow protection should prevent NaN values"
+
 
 class TestSequenceCache:
     """Test suite for sequence tokenization caching (PYT-12.3)."""

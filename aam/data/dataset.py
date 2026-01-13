@@ -338,14 +338,16 @@ class ASVDataset(Dataset):
 
         # Then, inverse log transform if it was applied
         if self.log_transform_targets:
+            # Clamp to prevent exp() overflow (exp(88.7) overflows float32)
+            MAX_EXP_INPUT = 88.0
             if isinstance(result, torch.Tensor):
-                result = torch.exp(result) - 1
+                result = torch.exp(torch.clamp(result, max=MAX_EXP_INPUT)) - 1
             elif isinstance(result, np.ndarray):
-                result = np.exp(result) - 1
+                result = np.exp(np.clip(result, a_min=None, a_max=MAX_EXP_INPUT)) - 1
             else:
                 import math
 
-                result = math.exp(float(result)) - 1
+                result = math.exp(min(float(result), MAX_EXP_INPUT)) - 1
 
         return result
 

@@ -283,7 +283,9 @@ class Trainer:
 
         # Then, inverse log transform if it was applied
         if self.target_normalization_params.get("log_transform", False):
-            result = torch.exp(result) - 1
+            # Clamp to prevent exp() overflow (exp(88.7) overflows float32)
+            MAX_EXP_INPUT = 88.0
+            result = torch.exp(torch.clamp(result, max=MAX_EXP_INPUT)) - 1
 
         return result
 
