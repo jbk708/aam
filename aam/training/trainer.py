@@ -1264,6 +1264,16 @@ def load_pretrained_encoder(
             f"  Stripped prefix from {sum(1 for k in checkpoint.get('model_state_dict', checkpoint) if k.startswith(compiled_prefix))} keys"
         )
 
+    # Handle DataParallel/DDP prefix: wrapped models have "module." prefix
+    # Strip this prefix so checkpoints from DataParallel/DDP can be loaded into unwrapped models
+    module_prefix = "module."
+    has_module_prefix = any(k.startswith(module_prefix) for k in state_dict.keys())
+    if has_module_prefix:
+        logger.info(f"  Detected DataParallel/DDP checkpoint (keys have '{module_prefix}' prefix)")
+        num_stripped = sum(1 for k in state_dict if k.startswith(module_prefix))
+        state_dict = {k[len(module_prefix) :] if k.startswith(module_prefix) else k: v for k, v in state_dict.items()}
+        logger.info(f"  Stripped prefix from {num_stripped} keys")
+
     # Determine target module
     target_module: nn.Module
     if hasattr(model, "base_model"):

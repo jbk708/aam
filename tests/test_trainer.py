@@ -953,6 +953,46 @@ class TestLoadPretrainedEncoder:
             if name in predictor_base_params:
                 assert torch.allclose(param, predictor_base_params[name])
 
+    def test_load_dataparallel_checkpoint(self, small_predictor, device, tmp_path):
+        """Test loading checkpoint from DataParallel/DDP model (has module. prefix)."""
+        encoder = SequenceEncoder(
+            vocab_size=6,
+            embedding_dim=32,
+            max_bp=50,
+            token_limit=64,
+            asv_num_layers=1,
+            asv_num_heads=2,
+            sample_num_layers=1,
+            sample_num_heads=2,
+            encoder_num_layers=1,
+            encoder_num_heads=2,
+            base_output_dim=None,
+            encoder_type="unifrac",
+            predict_nucleotides=False,
+        ).to(device)
+
+        # Simulate DataParallel/DDP checkpoint by adding module. prefix
+        original_state_dict = encoder.state_dict()
+        dp_state_dict = {f"module.{k}": v for k, v in original_state_dict.items()}
+
+        checkpoint_path = tmp_path / "dp_encoder.pt"
+        torch.save({"model_state_dict": dp_state_dict}, checkpoint_path)
+
+        small_predictor = small_predictor.to(device)
+        result = load_pretrained_encoder(str(checkpoint_path), small_predictor, strict=False)
+
+        # Verify all keys were loaded after prefix stripping
+        assert result["loaded_keys"] == len(original_state_dict)
+        assert len(result["missing_keys"]) == 0
+        assert len(result["unexpected_keys"]) == 0
+
+        # Verify weights match
+        encoder_params = dict(encoder.named_parameters())
+        predictor_base_params = dict(small_predictor.base_model.named_parameters())
+        for name, param in encoder_params.items():
+            if name in predictor_base_params:
+                assert torch.allclose(param, predictor_base_params[name])
+
     def test_load_pretrained_encoder_returns_stats(self, small_predictor, device, tmp_path):
         """Test that load_pretrained_encoder returns loading statistics."""
         encoder = SequenceEncoder(
