@@ -247,63 +247,20 @@ class Trainer:
 
     def _is_pretraining(self) -> bool:
         """Check if model is SequenceEncoder (pretraining mode)."""
-        # Use string comparison to avoid circular import
-        # Handle compiled models (torch.compile wraps the model)
         model_class_name = self.model.__class__.__name__
         if model_class_name == "SequenceEncoder":
             return True
-        # Check if model is wrapped by torch.compile (has _orig_mod attribute)
         if hasattr(self.model, "_orig_mod"):
             return self.model._orig_mod.__class__.__name__ == "SequenceEncoder"
         return False
 
     def _denormalize_targets(self, values: torch.Tensor) -> torch.Tensor:
-        """Denormalize/inverse-transform target values back to original scale.
-
-        Applies inverse transforms in reverse order:
-        1. If normalized: denormalize from [0,1] to [target_min, target_max]
-        2. If log-transformed: apply exp(x) - 1
-
-        Args:
-            values: Transformed values (predictions or targets)
-
-        Returns:
-            Values in original target range
-        """
-        if self.target_normalization_params is None:
-            return values
-
-        result = values
-
-        # First, denormalize if normalization was applied
-        if "target_scale" in self.target_normalization_params:
-            target_min = self.target_normalization_params["target_min"]
-            target_scale = self.target_normalization_params["target_scale"]
-            result = result * target_scale + target_min
-
-        # Then, inverse log transform if it was applied
-        if self.target_normalization_params.get("log_transform", False):
-            # Clamp to prevent exp() overflow (exp(88.7) overflows float32)
-            MAX_EXP_INPUT = 88.0
-            result = torch.exp(torch.clamp(result, max=MAX_EXP_INPUT)) - 1
-
-        return result
+        """Denormalize target values back to original scale. Delegates to Evaluator."""
+        return self.evaluator._denormalize_targets(values)
 
     def _denormalize_counts(self, values: torch.Tensor) -> torch.Tensor:
-        """Denormalize count values back to original scale.
-
-        Args:
-            values: Normalized values (predictions or targets)
-
-        Returns:
-            Denormalized values in original count range
-        """
-        if self.count_normalization_params is None:
-            return values
-
-        count_min = self.count_normalization_params["count_min"]
-        count_scale = self.count_normalization_params["count_scale"]
-        return values * count_scale + count_min
+        """Denormalize count values back to original scale. Delegates to Evaluator."""
+        return self.evaluator._denormalize_counts(values)
 
     def _log_to_tensorboard(self, epoch: int, train_losses: Dict[str, float], val_results: Optional[Dict[str, float]] = None):
         """Log metrics to TensorBoard.

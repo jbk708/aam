@@ -448,11 +448,7 @@ class ASVDataset(Dataset):
         }
 
         if self.metadata_dict is not None and sample_id in self.metadata_dict:
-            target_value = self.metadata_dict[sample_id]
-            if isinstance(target_value, (int, float)):
-                target_float = float(target_value)
-            else:
-                target_float = float(target_value)
+            target_float = float(self.metadata_dict[sample_id])
 
             # Apply log transform if enabled (before normalization)
             if self.log_transform_targets:
