@@ -319,6 +319,15 @@ def train(
             epochs=epochs,
         )
 
+        # Auto-enable bounded_targets when using log_transform with normalization
+        # Without bounds, model can output values > 1 which explode after exp()
+        if log_transform_targets and normalize_targets and not bounded_targets and not classifier:
+            bounded_targets = True
+            logger.info(
+                "Auto-enabling --bounded-targets for --log-transform-targets with --normalize-targets "
+                "(prevents exp() overflow from unbounded predictions)"
+            )
+
         setup_expandable_segments(use_expandable_segments)
 
         # Setup distributed training if enabled
