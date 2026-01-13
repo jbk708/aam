@@ -1229,6 +1229,7 @@ class TestLogTransformTargets:
 
         # Check transformed values
         import math
+
         sample_ids = dataset.sample_ids
         for i, sample_id in enumerate(sample_ids):
             sample = dataset[i]
@@ -1260,6 +1261,7 @@ class TestLogTransformTargets:
 
         # log(0+1) = 0, log(600+1) = 6.398
         import math
+
         log_min = math.log(1)  # 0
         log_max = math.log(601)  # ~6.398
 
@@ -1288,6 +1290,7 @@ class TestLogTransformTargets:
 
         # Test with tensor
         import math
+
         log_values = torch.tensor([math.log(1), math.log(100), math.log(600)])
         denormalized = dataset.denormalize_targets(log_values)
         expected = torch.tensor([0.0, 99.0, 599.0])
@@ -1339,6 +1342,7 @@ class TestLogTransformTargets:
         )
 
         import math
+
         log_values = np.array([math.log(1), math.log(100), math.log(600)])
         denormalized = dataset.denormalize_targets(log_values)
         expected = np.array([0.0, 99.0, 599.0])
@@ -1362,6 +1366,7 @@ class TestLogTransformTargets:
         )
 
         import math
+
         log_value = math.log(100)  # log(100) = 4.605
         denormalized = dataset.denormalize_targets(log_value)
         assert denormalized == pytest.approx(99.0, abs=0.01)
@@ -1386,6 +1391,7 @@ class TestLogTransformTargets:
         # Original range: 0-600
         # Log range: log(1) to log(601) = 0 to ~6.4
         import math
+
         samples = [dataset[i] for i in range(len(dataset))]
         targets = [s["y_target"].item() for s in samples]
 
@@ -1462,6 +1468,7 @@ class TestLogTransformTargets:
         denormalized = dataset.denormalize_targets(large_value)
 
         import math
+
         assert not math.isinf(denormalized), "Overflow protection should prevent inf values"
         assert not math.isnan(denormalized), "Overflow protection should prevent NaN values"
 

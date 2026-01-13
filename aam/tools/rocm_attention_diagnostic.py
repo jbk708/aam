@@ -343,9 +343,7 @@ def check_flash_attention_rocm() -> Dict[str, str]:
         results["flash_attn_version"] = getattr(flash_attn, "__version__", "unknown")
     except ImportError:
         results["flash_attn_installed"] = "no"
-        results["flash_attn_install_hint"] = (
-            "For ROCm, install from: https://github.com/ROCm/flash-attention"
-        )
+        results["flash_attn_install_hint"] = "For ROCm, install from: https://github.com/ROCm/flash-attention"
 
     # Check for xformers
     try:
@@ -417,9 +415,7 @@ def gradient_test(
                     results[key] = {
                         "max_diff": diff.max().item(),
                         "mean_diff": diff.mean().item(),
-                        "relative_error": (
-                            diff / (gradients["math"][tensor_name].abs() + 1e-8)
-                        ).mean().item(),
+                        "relative_error": (diff / (gradients["math"][tensor_name].abs() + 1e-8)).mean().item(),
                     }
 
     return results
