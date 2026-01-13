@@ -2586,3 +2586,272 @@ class TestDistributedSamplerEpoch:
             assert 2 in epochs_called
             assert 3 in epochs_called
             assert 4 in epochs_called
+
+
+class TestCategoricalCheckpointCompatibility:
+    """Test checkpoint compatibility with categorical features (CAT-6)."""
+
+    @pytest.fixture
+    def predictor_with_categoricals(self):
+        """Create SequencePredictor with categorical features."""
+        return SequencePredictor(
+            vocab_size=6,
+            embedding_dim=32,
+            max_bp=50,
+            token_limit=64,
+            asv_num_layers=1,
+            asv_num_heads=2,
+            sample_num_layers=1,
+            sample_num_heads=2,
+            encoder_num_layers=1,
+            encoder_num_heads=2,
+            count_num_layers=1,
+            count_num_heads=2,
+            target_num_layers=1,
+            target_num_heads=2,
+            out_dim=1,
+            is_classifier=False,
+            freeze_base=False,
+            predict_nucleotides=False,
+            base_output_dim=None,
+            categorical_cardinalities={"location": 5, "season": 4},
+            categorical_embed_dim=8,
+            categorical_fusion="concat",
+        )
+
+    @pytest.fixture
+    def pretrained_encoder_checkpoint(self, device, tmp_path):
+        """Create a pretrained SequenceEncoder checkpoint."""
+        encoder = SequenceEncoder(
+            vocab_size=6,
+            embedding_dim=32,
+            max_bp=50,
+            token_limit=64,
+            asv_num_layers=1,
+            asv_num_heads=2,
+            sample_num_layers=1,
+            sample_num_heads=2,
+            encoder_num_layers=1,
+            encoder_num_heads=2,
+            base_output_dim=None,
+            encoder_type="unifrac",
+            predict_nucleotides=False,
+        ).to(device)
+
+        checkpoint_path = tmp_path / "pretrained_encoder.pt"
+        torch.save({"model_state_dict": encoder.state_dict()}, checkpoint_path)
+        return checkpoint_path, encoder
+
+    def test_load_pretrained_encoder_with_categoricals(
+        self, predictor_with_categoricals, pretrained_encoder_checkpoint, device
+    ):
+        """Test loading pretrained encoder into model with categorical features."""
+        checkpoint_path, original_encoder = pretrained_encoder_checkpoint
+        predictor = predictor_with_categoricals.to(device)
+
+        result = load_pretrained_encoder(str(checkpoint_path), predictor, strict=False)
+
+        # Encoder weights should be loaded
+        assert result["loaded_keys"] > 0
+
+        # Categorical weights should be reported as missing (newly initialized)
+        missing_key_names = result["missing_keys"]
+        categorical_missing = [k for k in missing_key_names if "categorical" in k]
+        assert len(categorical_missing) == 0, "Categorical keys should not be in base_model"
+
+        # Verify encoder weights were actually loaded
+        encoder_params = dict(original_encoder.named_parameters())
+        predictor_base_params = dict(predictor.base_model.named_parameters())
+        for name, param in encoder_params.items():
+            if name in predictor_base_params:
+                assert torch.allclose(param, predictor_base_params[name])
+
+    def test_categorical_weights_preserved_after_load(self, predictor_with_categoricals, pretrained_encoder_checkpoint, device):
+        """Test that categorical weights are preserved (not overwritten) when loading encoder."""
+        checkpoint_path, _ = pretrained_encoder_checkpoint
+        predictor = predictor_with_categoricals.to(device)
+
+        # Store original categorical weights
+        original_cat_weights = {}
+        for name, param in predictor.named_parameters():
+            if "categorical" in name:
+                original_cat_weights[name] = param.clone()
+
+        # Load pretrained encoder
+        load_pretrained_encoder(str(checkpoint_path), predictor, strict=False)
+
+        # Categorical weights should be unchanged (still their initial values)
+        for name, original_param in original_cat_weights.items():
+            current_param = dict(predictor.named_parameters())[name]
+            assert torch.allclose(original_param, current_param), f"{name} was unexpectedly modified"
+
+    def test_freeze_base_includes_categorical_in_optimizer(self, predictor_with_categoricals, device):
+        """Test that freeze_base includes categorical embedder in optimization."""
+        predictor = predictor_with_categoricals.to(device)
+
+        # Freeze base model
+        for param in predictor.base_model.parameters():
+            param.requires_grad = False
+
+        optimizer = create_optimizer(predictor, freeze_base=True)
+
+        # Get parameter ids from optimizer
+        optimizer_param_ids = set()
+        for group in optimizer.param_groups:
+            for param in group["params"]:
+                optimizer_param_ids.add(id(param))
+
+        # Categorical embedder and projection should be in optimizer
+        categorical_params = []
+        for name, param in predictor.named_parameters():
+            if "categorical" in name and param.requires_grad:
+                categorical_params.append((name, param))
+
+        assert len(categorical_params) > 0, "Should have categorical parameters"
+        for name, param in categorical_params:
+            assert id(param) in optimizer_param_ids, f"{name} should be in optimizer"
+
+        # Base model params should NOT be in optimizer
+        for name, param in predictor.base_model.named_parameters():
+            assert id(param) not in optimizer_param_ids, f"base_model.{name} should not be in optimizer"
+
+    def test_freeze_base_training_step_with_categoricals(self, predictor_with_categoricals, device, tmp_path):
+        """Test that training step works with freeze_base and categoricals."""
+        predictor = predictor_with_categoricals.to(device)
+
+        # Freeze base model
+        for param in predictor.base_model.parameters():
+            param.requires_grad = False
+
+        loss_fn = MultiTaskLoss(penalty=1.0, nuc_penalty=0.0)
+        optimizer = create_optimizer(predictor, freeze_base=True, lr=1e-3)
+
+        trainer = Trainer(
+            model=predictor,
+            loss_fn=loss_fn,
+            optimizer=optimizer,
+            device=device,
+            freeze_base=True,
+        )
+
+        # Store initial categorical weights
+        initial_cat_weights = {}
+        for name, param in predictor.named_parameters():
+            if "categorical" in name:
+                initial_cat_weights[name] = param.clone()
+
+        # Store initial base model weights
+        initial_base_weights = {}
+        for name, param in predictor.base_model.named_parameters():
+            initial_base_weights[name] = param.clone()
+
+        # Create simple batch with categorical data
+        batch_size = 4
+        num_asvs = 8
+        seq_len = 50
+        tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len)).to(device)
+        targets = torch.rand(batch_size, 1).to(device)
+        # counts needs shape [batch_size, num_asvs, 1] to match model output
+        counts = torch.rand(batch_size, num_asvs, 1).to(device)
+        categorical_ids = {
+            "location": torch.randint(0, 5, (batch_size,)).to(device),
+            "season": torch.randint(0, 4, (batch_size,)).to(device),
+        }
+
+        # Create dataset and dataloader
+        class CategoricalDataset(torch.utils.data.Dataset):
+            def __init__(self, tokens, targets, counts, categorical_ids):
+                self.tokens = tokens
+                self.targets = targets
+                self.counts = counts
+                self.categorical_ids = categorical_ids
+
+            def __len__(self):
+                return len(self.tokens)
+
+            def __getitem__(self, idx):
+                return {
+                    "tokens": self.tokens[idx],
+                    "y_target": self.targets[idx],
+                    "counts": self.counts[idx],
+                    "categorical_ids": {k: v[idx] for k, v in self.categorical_ids.items()},
+                }
+
+        dataset = CategoricalDataset(tokens, targets, counts, categorical_ids)
+        dataloader = DataLoader(dataset, batch_size=2, shuffle=False)
+
+        # Run one training epoch
+        train_losses = trainer.train_epoch(dataloader)
+
+        assert "total_loss" in train_losses
+        assert train_losses["total_loss"] > 0
+
+        # Categorical weights should have changed (gradient updates)
+        cat_weights_changed = False
+        for name, initial_param in initial_cat_weights.items():
+            current_param = dict(predictor.named_parameters())[name]
+            if not torch.allclose(initial_param, current_param):
+                cat_weights_changed = True
+                break
+        assert cat_weights_changed, "Categorical weights should have been updated"
+
+        # Base model weights should NOT have changed
+        for name, initial_param in initial_base_weights.items():
+            current_param = dict(predictor.base_model.named_parameters())[name]
+            assert torch.allclose(initial_param, current_param), f"base_model.{name} should not change"
+
+    def test_staged_training_workflow(self, predictor_with_categoricals, pretrained_encoder_checkpoint, device, tmp_path):
+        """Test full staged training: pretrained encoder -> fine-tune with categoricals."""
+        checkpoint_path, _ = pretrained_encoder_checkpoint
+        predictor = predictor_with_categoricals.to(device)
+
+        # Stage 1: Load pretrained encoder
+        result = load_pretrained_encoder(str(checkpoint_path), predictor, strict=False)
+        assert result["loaded_keys"] > 0
+
+        # Stage 2: Freeze base, train with categoricals
+        for param in predictor.base_model.parameters():
+            param.requires_grad = False
+
+        loss_fn = MultiTaskLoss(penalty=1.0, nuc_penalty=0.0)
+        optimizer = create_optimizer(predictor, freeze_base=True, lr=1e-3)
+
+        trainer = Trainer(
+            model=predictor,
+            loss_fn=loss_fn,
+            optimizer=optimizer,
+            device=device,
+            freeze_base=True,
+        )
+
+        # Simple batch
+        batch_size = 4
+        num_asvs = 8
+        seq_len = 50
+        tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len)).to(device)
+
+        # Forward pass should work
+        categorical_ids = {
+            "location": torch.randint(0, 5, (batch_size,)).to(device),
+            "season": torch.randint(0, 4, (batch_size,)).to(device),
+        }
+        outputs = predictor(tokens, categorical_ids=categorical_ids)
+
+        assert "target_prediction" in outputs
+        assert outputs["target_prediction"].shape == (batch_size, 1)
+
+    def test_load_pretrained_encoder_reports_new_weights(
+        self, predictor_with_categoricals, pretrained_encoder_checkpoint, device, caplog
+    ):
+        """Test that load_pretrained_encoder logs info about new weights being initialized."""
+        import logging
+
+        checkpoint_path, _ = pretrained_encoder_checkpoint
+        predictor = predictor_with_categoricals.to(device)
+
+        with caplog.at_level(logging.INFO):
+            result = load_pretrained_encoder(str(checkpoint_path), predictor, strict=False)
+
+        # Should have logged about loading
+        assert any("Loading pretrained encoder" in record.message for record in caplog.records)
+        assert any("Successfully loaded" in record.message for record in caplog.records)
