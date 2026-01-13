@@ -1170,30 +1170,24 @@ class Trainer:
         checkpoint_is_sharded = checkpoint.get("fsdp_sharded", False)
         model_is_fsdp = is_fsdp_model(cast(nn.Module, self.model))
 
-        # Load model state dict
+        # Load model and optimizer state dicts
         if model_is_fsdp:
-            # FSDP model: use FSDP's state dict loading
             fsdp_model = cast("FSDP", self.model)
             set_fsdp_state_dict(
                 fsdp_model,
                 checkpoint["model_state_dict"],
                 sharded=checkpoint_is_sharded,
             )
-        else:
-            # Non-FSDP model: standard loading
-            self.model.load_state_dict(checkpoint["model_state_dict"])
-
-        # Load optimizer state dict
-        if load_optimizer and "optimizer_state_dict" in checkpoint:
-            if model_is_fsdp:
-                fsdp_model = cast("FSDP", self.model)
+            if load_optimizer and "optimizer_state_dict" in checkpoint:
                 set_fsdp_optimizer_state_dict(
                     fsdp_model,
                     self.optimizer,
                     checkpoint["optimizer_state_dict"],
                     sharded=checkpoint_is_sharded,
                 )
-            else:
+        else:
+            self.model.load_state_dict(checkpoint["model_state_dict"])
+            if load_optimizer and "optimizer_state_dict" in checkpoint:
                 self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
 
         if load_scheduler and self.scheduler is not None:
