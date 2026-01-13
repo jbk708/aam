@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-12
-**Status:** 13 outstanding tickets (~42-58 hours)
+**Status:** 10 outstanding tickets (~31-45 hours)
 
 ## Quick Links
 - **ROCm optimization:** `COSMOS_ONBOARDING_TICKETS.md`
@@ -14,29 +14,24 @@
 
 ## Outstanding Tickets by Priority
 
-### HIGH - ROCm Performance (1 ticket, ~4-6 hours)
+### HIGH - Categorical Features (1 ticket, ~3-4 hours)
 
 | Ticket | Description | Effort | Domain |
 |--------|-------------|--------|--------|
-| **COS-9.3** | Memory profiling and optimization | 4-6h | Cosmos |
-
-**COS-9.3:** Profile memory hotspots, establish baseline for optimization work. Code complete, needs Cosmos hardware testing.
-
-### MEDIUM (6 tickets, ~21-30 hours)
-
-| Ticket | Description | Effort | Domain |
-|--------|-------------|--------|--------|
-| **COS-9.4** | MI300A unified memory optimization | 4-6h | Cosmos |
-| **COS-9.5** | Kernel profiling with rocprof | 4-6h | Cosmos |
-| **CAT-6** | Checkpoint compatibility & transfer learning | 3-4h | Categorical |
 | **CAT-7** | Documentation and testing | 3-4h | Categorical |
+
+### MEDIUM (2 tickets, ~16-22 hours)
+
+| Ticket | Description | Effort | Domain |
+|--------|-------------|--------|--------|
 | **PYT-12.1** | FSDP (if needed for large models) | 12-16h | PyTorch |
 | **PYT-12.2** | Batch size optimization | 4-6h | PyTorch |
 
-### LOW (5 tickets, ~17-25 hours)
+### LOW (6 tickets, ~21-31 hours)
 
 | Ticket | Description | Effort | Domain |
 |--------|-------------|--------|--------|
+| **COS-9.5** | Kernel profiling with rocprof | 4-6h | Cosmos |
 | **COS-9.6** | SLURM job templates | 3-4h | Cosmos |
 | **COS-9.7** | ROCm Singularity container | 4-6h | Cosmos |
 | **COS-9.8** | ROCm documentation & best practices | 2-3h | Cosmos |
@@ -55,6 +50,17 @@ Future enhancement phases (~50+ hours):
 ---
 
 ## Recently Completed
+
+**CAT-6: Checkpoint Compatibility and Transfer Learning** (2026-01-12) - COMPLETE
+- Verified pretrained encoder loads into model with categorical features
+- Categorical weights preserved (random init) when loading encoder
+- `--freeze-base` correctly includes categorical embedder in optimization
+- Added comprehensive test suite (6 tests) verifying staged training workflow
+
+**COS-9.3: Memory Profiling and Optimization** (2026-01-12) - COMPLETE
+- Added `--memory-profile` flag to pretrain command
+- Created `MemoryProfiler` class for memory logging at key points
+- Hardware testing completed on MI300A
 
 **COS-9.9: PyTorch 2.7 SDPA Fix Verified** (2026-01-12) - COMPLETE
 - Confirmed ROCm 6.3 + PyTorch 2.7.1 fixes `mem_efficient` SDPA
@@ -93,13 +99,10 @@ Future enhancement phases (~50+ hours):
 
 ## Recommended Next Steps
 
-### 1. ROCm Performance Optimization (HIGH)
-- **COS-9.2** → **COS-9.3** (fix compile, then profile memory)
+### 1. Categorical Features (HIGH)
+- **CAT-7** - Documentation and integration tests
 
-### 2. Complete Categorical Features
-- **CAT-6** → **CAT-7** (checkpoint compatibility, then docs/testing)
-
-### 3. Infrastructure (As Needed)
+### 2. Infrastructure (As Needed)
 - **COS-9.6** - SLURM templates for Cosmos
 - **COS-9.8** - Documentation
 

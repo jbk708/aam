@@ -423,6 +423,15 @@ def train(
 
         logger.info("Splitting data...")
         train_ids, val_ids = train_test_split(sample_ids, test_size=test_size, random_state=seed)
+
+        # For DDP, broadcast train/val splits from rank 0 to ensure consistency
+        if distributed:
+            import torch.distributed as dist
+
+            split_data = [train_ids, val_ids]
+            dist.broadcast_object_list(split_data, src=0)
+            train_ids, val_ids = split_data[0], split_data[1]
+
         logger.info(f"Train samples: {len(train_ids)}, Validation samples: {len(val_ids)}")
 
         logger.info("Filtering tables for train/val splits...")
@@ -434,6 +443,7 @@ def train(
         val_metadata = metadata_df[metadata_df["sample_id"].isin(val_ids)]
 
         # Fit categorical encoder on training data only
+        # Note: train_metadata is consistent across DDP processes due to broadcast above
         if categorical_column_list:
             categorical_encoder = CategoricalEncoder()
             categorical_encoder.fit(train_metadata, columns=categorical_column_list)
@@ -661,7 +671,13 @@ def train(
                     logger.info("Converted BatchNorm to SyncBatchNorm for distributed training")
 
             # Wrap model with DDP
-            model = wrap_model_ddp(model, device_id=get_local_rank())
+            # find_unused_parameters needed when freeze_base=True (base model params unused)
+            # or when categorical features may not always contribute to loss
+            model = wrap_model_ddp(
+                model,
+                device_id=get_local_rank(),
+                find_unused_parameters=freeze_base or bool(categorical_column_list),
+            )
             if is_main_process():
                 logger.info("Model wrapped with DistributedDataParallel")
 
