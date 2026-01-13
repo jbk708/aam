@@ -199,22 +199,27 @@ Without this, `torch.compile()` may fail with `fatal error: stdatomic.h: No such
 
 AAM supports ROCm for AMD GPUs. For [SDSC Cosmos](https://www.sdsc.edu/systems/cosmos/user_guide.html) (168 AMD Instinct MI300A APUs):
 
-**Environment Setup:**
+**Environment Setup (ROCm 6.3 + PyTorch 2.7.1):**
 
 ```bash
+# Load ROCm module (6.3 is default)
+module load rocm/6.3.0
+
 # Create conda environment
 mamba create -n aam-rocm python=3.11 -y
 mamba activate aam-rocm
 
-# Install PyTorch with ROCm support (no module available)
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.2
+# Install PyTorch 2.7.1 with ROCm 6.3 support
+# Note: Must specify exact versions to avoid dependency conflicts
+pip install torch==2.7.1 torchvision==0.22.1 torchaudio==2.7.1 \
+    --index-url https://download.pytorch.org/whl/rocm6.3
 
 # Install AAM
 cd /path/to/aam
 pip install -e ".[training]"
 
 # Verify ROCm detection
-python -c "import torch; print(f'ROCm available: {torch.cuda.is_available()}')"
+python -c "import torch; print(f'ROCm: {torch.version.hip}, PyTorch: {torch.__version__}')"
 ```
 
 **Running Jobs:**
@@ -232,7 +237,21 @@ aam pretrain --data-parallel --batch-size 32 \
 
 **MI300A Memory:** Each APU has 128GB unified CPU/GPU memory. The default `--token-limit 1024` works well; increase for larger datasets.
 
-**Required Attention Flags for ROCm:**
+**ROCm Version Compatibility:**
+
+| ROCm | PyTorch | `mem_efficient` SDPA | Recommended Flags |
+|------|---------|----------------------|-------------------|
+| 6.2 | 2.5.1 | ❌ Broken with masks | `--attn-implementation math --no-gradient-checkpointing` |
+| **6.3** | **2.7.1** | ✅ **Fixed** | None required (defaults work) |
+
+**ROCm 6.3 + PyTorch 2.7.1:** The `mem_efficient` attention backend now works correctly. No special flags needed:
+
+```bash
+aam pretrain --data-parallel --batch-size 32 \
+  --table data.biom --unifrac-matrix unifrac.npy --output-dir output/
+```
+
+**ROCm 6.2 (legacy):** Requires workaround flags due to aotriton bug:
 
 ```bash
 aam pretrain \
@@ -242,20 +261,13 @@ aam pretrain \
   # ... other flags
 ```
 
-| Flag | Why Required |
-|------|--------------|
-| `--attn-implementation math` | The `mem_efficient` SDPA backend produces incorrect results with attention masks on ROCm (numerical divergence in masked positions). The `math` backend is slower but numerically correct. |
-| `--no-gradient-checkpointing` | Gradient checkpointing combined with ROCm attention can cause additional numerical issues. Disable for stability. |
-
 **Known ROCm Limitations:**
 
-| Feature | Status | Notes |
-|---------|--------|-------|
-| `--compile-model` | Not supported | Triton has type mismatch errors on ROCm. AAM automatically detects ROCm and skips compilation with a warning. |
-| `--attn-implementation mem_efficient` | Broken with masks | Use `math` backend instead |
-| Flash Attention | Build incompatible | ROCm 6.2+ not yet supported by ROCm Flash Attention fork |
-
-**Performance Impact:** The `math` backend uses ~5x more compute and ~7x more memory than `mem_efficient`. With MI300A's 128GB memory, this is acceptable.
+| Feature | ROCm 6.2 | ROCm 6.3 | Notes |
+|---------|----------|----------|-------|
+| `--compile-model` | ❌ | ❌ | Triton type mismatch. AAM auto-skips with warning. |
+| `mem_efficient` SDPA | ❌ Broken | ✅ Fixed | Fixed in aotriton 0.8.2 (PyTorch 2.7+) |
+| Flash Attention | ❌ | ❌ | ROCm Flash Attention fork incompatible |
 
 **Diagnostic Tool:** Run `python -m aam.tools.rocm_attention_diagnostic` to verify SDPA backend behavior on your system.
 

@@ -214,7 +214,7 @@ Document ROCm-specific configuration and best practices.
 ---
 
 ### COS-9.9: Investigate PyTorch 2.7 / aotriton 0.8.2 for SDPA Fix
-**Priority:** MEDIUM | **Effort:** 2-4 hours | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** 2-4 hours | **Status:** COMPLETE ✅
 
 The `mem_efficient` SDPA backend produces incorrect results with attention masks on ROCm (COS-9.1 root cause). This has been traced to a bug in **aotriton 0.8.0** which is fixed in **aotriton 0.8.2**.
 
@@ -223,35 +223,47 @@ The `mem_efficient` SDPA backend produces incorrect results with attention masks
 - [Issue #132004](https://github.com/pytorch/pytorch/issues/132004): Memory efficient attention causes image corruption on MI300X/MI250
 - Fix merged via [PR #148433](https://github.com/pytorch/pytorch/pull/148433)
 
-**Version Matrix:**
+**Key Finding: Fix requires ROCm 6.3 ✅ Available on Cosmos**
 
-| PyTorch | aotriton | SDPA mem_efficient Status |
-|---------|----------|---------------------------|
-| 2.5.1+rocm6.2 | 0.7.x | Broken with masks |
-| 2.6.0+rocm6.2.4 | 0.8.0 | Broken with masks |
-| **2.7.0+rocm6.x** | **0.8.2** | **Fixed** |
-| Nightly | 0.8.2+ | Fixed |
+| ROCm | PyTorch Available | aotriton | SDPA Status |
+|------|-------------------|----------|-------------|
+| 6.2 | 2.5.1 stable | 0.7.x | ❌ Broken with masks |
+| **6.3 (Cosmos default)** | **2.7.0 - 2.9.1** | **0.8.2+** | ✅ **Fixed** |
+
+Cosmos has ROCm 6.3 as default (`module load rocm/6.3.0`). PyTorch 2.7+ with the fix is available.
 
 **Investigation Steps:**
-- [ ] Check if PyTorch 2.7+rocm is available for Cosmos ROCm 6.2
-- [ ] If available: install and run `python -m aam.tools.rocm_attention_diagnostic`
-- [ ] Verify numerical comparison with mask passes (max_diff < 1e-3)
-- [ ] If fixed: benchmark `mem_efficient` vs `math` performance
-- [ ] Update `--attn-implementation` default if `mem_efficient` works correctly
+- [x] Check if PyTorch 2.7+rocm is available for ROCm 6.2 → **No, requires ROCm 6.3**
+- [x] Check Cosmos ROCm 6.3 availability → **Yes, rocm/6.3.0 is default**
+- [x] Install PyTorch 2.7.1 and run diagnostic → **Completed**
+- [x] Verify numerical comparison with mask passes → **max_diff: 1.10e-06 ✅**
+- [x] Benchmark `mem_efficient` vs `math` → **3.76x faster, 4.4x less memory**
+- [ ] Update `--attn-implementation` default for ROCm 6.3
 
-**Potential Performance Gain:**
-- `mem_efficient`: 4.85x faster, 7.5x less memory than `math`
-- Would eliminate need for `--attn-implementation math` flag on ROCm
+**Results (PyTorch 2.7.1 + ROCm 6.3 on MI300A):**
+
+| Metric | ROCm 6.2 (broken) | ROCm 6.3 (fixed) |
+|--------|-------------------|------------------|
+| Masked attention max_diff | ~1.73 | **1.10e-06** ✅ |
+| mem_efficient speedup | N/A (broken) | **3.76x** vs math |
+| mem_efficient memory | N/A (broken) | **0.23x** vs math |
+
+**Conclusion:** The aotriton 0.8.2 fix in PyTorch 2.7.1 resolves the SDPA attention mask issue on ROCm.
+`--attn-implementation math` is no longer required on ROCm 6.3 + PyTorch 2.7+.
+
+**Remaining Work:**
+- Update README to reflect ROCm 6.3 no longer needs `--attn-implementation math`
+- Consider making `mem_efficient` the default on ROCm 6.3+
 
 **Acceptance Criteria:**
-- Determine if PyTorch 2.7+rocm fixes the attention mask issue on MI300A
+- Determine if PyTorch 2.7+rocm6.3 fixes the attention mask issue on MI300A
 - Document findings and update recommended configuration if applicable
 
 **References:**
 - [PyTorch ROCm SDPA Issue #147460](https://github.com/pytorch/pytorch/issues/147460)
 - [Memory Efficient Attention Corruption #132004](https://github.com/pytorch/pytorch/issues/132004)
-- [ROCm Flash Attention](https://github.com/ROCm/flash-attention)
-- [kailums Flash Attention ROCm](https://github.com/kailums/flash-attention-rocm)
+- [PyTorch ROCm 6.2 wheels](https://download.pytorch.org/whl/rocm6.2/torch/)
+- [PyTorch ROCm 6.3 wheels](https://download.pytorch.org/whl/rocm6.3/torch/)
 
 ---
 
@@ -267,7 +279,7 @@ The `mem_efficient` SDPA backend produces incorrect results with attention masks
 | **COS-9.6** | SLURM templates | 3-4h | LOW |
 | **COS-9.7** | Singularity container | 4-6h | LOW |
 | **COS-9.8** | Documentation | 2-3h | LOW |
-| **COS-9.9** | PyTorch 2.7 SDPA fix investigation | 2-4h | MEDIUM |
+| **COS-9.9** | PyTorch 2.7 SDPA fix investigation | 2-4h | COMPLETE |
 | **Total** | | **32-49h** | |
 
 ## Recommended Order

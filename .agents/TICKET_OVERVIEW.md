@@ -22,19 +22,16 @@
 
 **COS-9.3:** Profile memory hotspots, establish baseline for optimization work. Code complete, needs Cosmos hardware testing.
 
-### MEDIUM (7 tickets, ~23-34 hours)
+### MEDIUM (6 tickets, ~21-30 hours)
 
 | Ticket | Description | Effort | Domain |
 |--------|-------------|--------|--------|
 | **COS-9.4** | MI300A unified memory optimization | 4-6h | Cosmos |
 | **COS-9.5** | Kernel profiling with rocprof | 4-6h | Cosmos |
-| **COS-9.9** | PyTorch 2.7 SDPA fix investigation | 2-4h | Cosmos |
 | **CAT-6** | Checkpoint compatibility & transfer learning | 3-4h | Categorical |
 | **CAT-7** | Documentation and testing | 3-4h | Categorical |
 | **PYT-12.1** | FSDP (if needed for large models) | 12-16h | PyTorch |
 | **PYT-12.2** | Batch size optimization | 4-6h | PyTorch |
-
-**COS-9.9:** Test if PyTorch 2.7 (aotriton 0.8.2) fixes `mem_efficient` SDPA with attention masks on ROCm. Could enable 4.85x speedup.
 
 ### LOW (5 tickets, ~17-25 hours)
 
@@ -58,6 +55,12 @@ Future enhancement phases (~50+ hours):
 ---
 
 ## Recently Completed
+
+**COS-9.9: PyTorch 2.7 SDPA Fix Verified** (2026-01-12) - COMPLETE
+- Confirmed ROCm 6.3 + PyTorch 2.7.1 fixes `mem_efficient` SDPA
+- Masked attention max_diff: 1.10e-06 (was ~1.73 on ROCm 6.2)
+- Performance: 3.76x faster, 4.4x less memory than `math` backend
+- `--attn-implementation math` no longer required on ROCm 6.3
 
 **COS-9.2: Fix torch.compile() on ROCm** (2026-01-12) - COMPLETE
 - Added ROCm detection via `torch.version.hip`
@@ -104,7 +107,14 @@ Future enhancement phases (~50+ hours):
 
 ## Current ROCm Configuration
 
-Working configuration for Cosmos MI300A:
+**ROCm 6.3 + PyTorch 2.7.1 (Recommended):**
+```bash
+# No special flags needed - defaults work correctly
+aam pretrain --data-parallel --batch-size 32 \
+  --table data.biom --unifrac-matrix unifrac.npy --output-dir output/
+```
+
+**ROCm 6.2 + PyTorch 2.5.1 (Legacy):**
 ```bash
 aam pretrain \
   --attn-implementation math \
@@ -114,6 +124,6 @@ aam pretrain \
 ```
 
 **Known limitations:**
-- `--compile-model` not supported (Triton bug)
-- `mem_efficient` attention produces incorrect results
-- Higher memory usage than optimized CUDA path
+- `--compile-model` not supported on any ROCm version (Triton bug)
+- ROCm 6.2: `mem_efficient` attention broken, requires `--attn-implementation math`
+- ROCm 6.3: `mem_efficient` attention works correctly (fixed in aotriton 0.8.2)
