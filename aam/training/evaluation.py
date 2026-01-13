@@ -263,12 +263,23 @@ class Evaluator:
         return False
 
     def _denormalize_targets(self, values: torch.Tensor) -> torch.Tensor:
-        """Denormalize target values back to original scale."""
+        """Denormalize/inverse-transform target values back to original scale."""
         if self.target_normalization_params is None:
             return values
-        target_min = self.target_normalization_params["target_min"]
-        target_scale = self.target_normalization_params["target_scale"]
-        return values * target_scale + target_min
+
+        result = values
+
+        # First, denormalize if normalization was applied
+        if "target_scale" in self.target_normalization_params:
+            target_min = self.target_normalization_params["target_min"]
+            target_scale = self.target_normalization_params["target_scale"]
+            result = result * target_scale + target_min
+
+        # Then, inverse log transform if it was applied
+        if self.target_normalization_params.get("log_transform", False):
+            result = torch.exp(result) - 1
+
+        return result
 
     def _denormalize_counts(self, values: torch.Tensor) -> torch.Tensor:
         """Denormalize count values back to original scale."""

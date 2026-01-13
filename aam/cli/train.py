@@ -163,6 +163,11 @@ from aam.cli.utils import (
     help="Normalize target and count values to [0, 1] range during training (default: enabled)",
 )
 @click.option(
+    "--log-transform-targets",
+    is_flag=True,
+    help="Apply log(y+1) transform to targets. Best for non-negative targets with wide range (e.g., 0-600). Predictions are inverse-transformed via exp(x)-1.",
+)
+@click.option(
     "--loss-type",
     type=click.Choice(["mse", "mae", "huber"]),
     default="huber",
@@ -273,6 +278,7 @@ def train(
     attn_implementation: str,
     asv_chunk_size: int,
     normalize_targets: bool,
+    log_transform_targets: bool,
     loss_type: str,
     no_sequence_cache: bool,
     distributed: bool,
@@ -489,6 +495,7 @@ def train(
             target_column=metadata_column,
             unifrac_metric=unifrac_metric_name,
             normalize_targets=normalize_targets,
+            log_transform_targets=log_transform_targets,
             normalize_counts=normalize_targets,  # Normalize counts along with targets
             cache_sequences=not no_sequence_cache,
             categorical_encoder=categorical_encoder,
@@ -497,11 +504,14 @@ def train(
         # Get normalization parameters from training set
         target_normalization_params = train_dataset.get_normalization_params()
         if target_normalization_params:
-            logger.info(
-                f"Target normalization enabled: min={target_normalization_params['target_min']:.4f}, "
-                f"max={target_normalization_params['target_max']:.4f}, "
-                f"scale={target_normalization_params['target_scale']:.4f}"
-            )
+            if target_normalization_params.get("log_transform"):
+                logger.info("Target log transform enabled: log(y+1) applied, inverse is exp(x)-1")
+            if "target_scale" in target_normalization_params:
+                logger.info(
+                    f"Target normalization enabled: min={target_normalization_params['target_min']:.4f}, "
+                    f"max={target_normalization_params['target_max']:.4f}, "
+                    f"scale={target_normalization_params['target_scale']:.4f}"
+                )
 
         count_normalization_params = train_dataset.get_count_normalization_params()
         if count_normalization_params:
@@ -520,6 +530,7 @@ def train(
             target_column=metadata_column,
             unifrac_metric=unifrac_metric_name,
             normalize_targets=normalize_targets,
+            log_transform_targets=log_transform_targets,
             # Use same normalization params as training set for consistency
             target_min=train_dataset.target_min if normalize_targets else None,
             target_max=train_dataset.target_max if normalize_targets else None,
@@ -784,6 +795,7 @@ def train(
                 "categorical_embed_dim": categorical_embed_dim,
                 "categorical_fusion": categorical_fusion,
                 "output_activation": output_activation,
+                "log_transform_targets": log_transform_targets,
             }
             # Include categorical encoder state if categoricals are used
             if categorical_encoder is not None:

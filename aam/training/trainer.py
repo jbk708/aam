@@ -258,20 +258,34 @@ class Trainer:
         return False
 
     def _denormalize_targets(self, values: torch.Tensor) -> torch.Tensor:
-        """Denormalize target values back to original scale.
+        """Denormalize/inverse-transform target values back to original scale.
+
+        Applies inverse transforms in reverse order:
+        1. If normalized: denormalize from [0,1] to [target_min, target_max]
+        2. If log-transformed: apply exp(x) - 1
 
         Args:
-            values: Normalized values (predictions or targets)
+            values: Transformed values (predictions or targets)
 
         Returns:
-            Denormalized values in original target range
+            Values in original target range
         """
         if self.target_normalization_params is None:
             return values
 
-        target_min = self.target_normalization_params["target_min"]
-        target_scale = self.target_normalization_params["target_scale"]
-        return values * target_scale + target_min
+        result = values
+
+        # First, denormalize if normalization was applied
+        if "target_scale" in self.target_normalization_params:
+            target_min = self.target_normalization_params["target_min"]
+            target_scale = self.target_normalization_params["target_scale"]
+            result = result * target_scale + target_min
+
+        # Then, inverse log transform if it was applied
+        if self.target_normalization_params.get("log_transform", False):
+            result = torch.exp(result) - 1
+
+        return result
 
     def _denormalize_counts(self, values: torch.Tensor) -> torch.Tensor:
         """Denormalize count values back to original scale.
@@ -548,7 +562,9 @@ class Trainer:
                 # Only pass categorical_ids if the model supports it (SequencePredictor has categorical_embedder)
                 # Need to check underlying model for DDP-wrapped models
                 underlying_model = self.model.module if hasattr(self.model, "module") else self.model
-                supports_categorical = hasattr(underlying_model, "categorical_embedder") and underlying_model.categorical_embedder is not None
+                supports_categorical = (
+                    hasattr(underlying_model, "categorical_embedder") and underlying_model.categorical_embedder is not None
+                )
                 forward_kwargs: Dict[str, Any] = {"return_nucleotides": return_nucleotides}
                 if supports_categorical and categorical_ids is not None:
                     forward_kwargs["categorical_ids"] = categorical_ids

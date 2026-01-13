@@ -181,13 +181,15 @@ aam predict \
 
 | Option | Description | Default |
 |--------|-------------|---------|
+| `--log-transform-targets` | Apply log(y+1) transform to targets | False |
 | `--bounded-targets` | Sigmoid to bound output to [0, 1] | False |
 | `--output-activation` | Non-negative constraint: 'none', 'relu', 'softplus', 'exp' | none |
 | `--learnable-output-scale` | Learnable scale and bias after target head | False |
 
 **Choosing an output constraint:**
+- **`--log-transform-targets`** (recommended for wide ranges): Use for non-negative targets with wide range (e.g., 0-600). Compresses range via log(y+1), predictions inverse-transformed via exp(x)-1. Works well with default normalization.
 - **`--bounded-targets`**: Use when targets are in [0, 1] range (e.g., normalized values, proportions)
-- **`--output-activation softplus`**: Use for non-negative targets (e.g., concentrations, counts, distances). Softplus is recommended over relu because gradients flow smoothly for all inputs
+- **`--output-activation softplus`**: Use for non-negative targets without normalization. Note: may cause flat predictions near 0 when combined with `--normalize-targets`
 - **`--output-activation exp`**: Use for strictly positive targets, but can cause numerical instability
 
 ### Masked Autoencoder (Nucleotide Prediction)
