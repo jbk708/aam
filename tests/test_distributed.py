@@ -14,11 +14,18 @@ from aam.training.distributed import (
     setup_distributed,
     cleanup_distributed,
     wrap_model_ddp,
+    wrap_model_fsdp,
+    get_fsdp_wrap_policy,
+    is_fsdp_model,
+    is_ddp_model,
+    unwrap_model,
     create_distributed_dataloader,
     reduce_tensor,
     print_rank0,
     DistributedTrainer,
 )
+from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+from torch.distributed.fsdp import ShardingStrategy
 
 
 class SimpleModel(nn.Module):
@@ -253,6 +260,117 @@ class TestDistributedTrainer:
             trainer.cleanup()
 
             mock_cleanup.assert_called_once()
+
+
+class TestModelTypeChecks:
+    """Test model type checking functions."""
+
+    def test_is_fsdp_model_false_for_plain_model(self):
+        """Test is_fsdp_model returns False for unwrapped model."""
+        model = SimpleModel()
+        assert is_fsdp_model(model) is False
+
+    def test_is_ddp_model_false_for_plain_model(self):
+        """Test is_ddp_model returns False for unwrapped model."""
+        model = SimpleModel()
+        assert is_ddp_model(model) is False
+
+    def test_is_fsdp_model_true_for_fsdp_wrapped(self):
+        """Test is_fsdp_model returns True for FSDP-wrapped model."""
+        model = SimpleModel()
+        # Create a mock FSDP model
+        mock_fsdp = MagicMock(spec=FSDP)
+        mock_fsdp.__class__ = FSDP
+        assert is_fsdp_model(mock_fsdp) is True
+
+    def test_is_ddp_model_true_for_ddp_wrapped(self):
+        """Test is_ddp_model returns True for DDP-wrapped model."""
+        from torch.nn.parallel import DistributedDataParallel as DDP
+
+        model = SimpleModel()
+        mock_ddp = MagicMock(spec=DDP)
+        mock_ddp.__class__ = DDP
+        assert is_ddp_model(mock_ddp) is True
+
+
+class TestUnwrapModel:
+    """Test model unwrapping utility."""
+
+    def test_unwrap_plain_model_returns_same(self):
+        """Test unwrap_model returns plain model unchanged."""
+        model = SimpleModel()
+        result = unwrap_model(model)
+        assert result is model
+
+    def test_unwrap_ddp_model_returns_module(self):
+        """Test unwrap_model returns .module for DDP model."""
+        inner_model = SimpleModel()
+        mock_ddp = MagicMock()
+        mock_ddp.__class__ = type("DistributedDataParallel", (nn.Module,), {})
+        mock_ddp.module = inner_model
+
+        # Patch is_ddp_model to return True for our mock
+        with patch("aam.training.distributed.is_ddp_model", return_value=True):
+            with patch("aam.training.distributed.is_fsdp_model", return_value=False):
+                result = unwrap_model(mock_ddp)
+                assert result is inner_model
+
+    def test_unwrap_fsdp_model_returns_module(self):
+        """Test unwrap_model returns .module for FSDP model."""
+        inner_model = SimpleModel()
+        mock_fsdp = MagicMock()
+        mock_fsdp.__class__ = FSDP
+        mock_fsdp.module = inner_model
+
+        # Patch is_fsdp_model to return True for our mock
+        with patch("aam.training.distributed.is_fsdp_model", return_value=True):
+            result = unwrap_model(mock_fsdp)
+            assert result is inner_model
+
+
+class TestWrapModelFSDP:
+    """Test FSDP model wrapping."""
+
+    def test_wrap_model_fsdp_stub_raises_not_implemented(self):
+        """Test wrap_model_fsdp raises NotImplementedError (stub)."""
+        model = SimpleModel()
+        with pytest.raises(NotImplementedError, match="FSDP model wrapping not yet implemented"):
+            wrap_model_fsdp(model)
+
+    def test_wrap_model_fsdp_accepts_sharding_strategy(self):
+        """Test wrap_model_fsdp signature accepts sharding_strategy parameter."""
+        import inspect
+
+        sig = inspect.signature(wrap_model_fsdp)
+        params = list(sig.parameters.keys())
+        assert "sharding_strategy" in params
+        assert "mixed_precision" in params
+        assert "cpu_offload" in params
+
+    def test_wrap_model_fsdp_returns_fsdp_type(self):
+        """Test wrap_model_fsdp has correct return type annotation."""
+        import inspect
+
+        sig = inspect.signature(wrap_model_fsdp)
+        # Return type is FullyShardedDataParallel (which is FSDP)
+        assert "FullyShardedDataParallel" in str(sig.return_annotation)
+
+
+class TestGetFSDPWrapPolicy:
+    """Test FSDP wrap policy generation."""
+
+    def test_get_fsdp_wrap_policy_stub_raises_not_implemented(self):
+        """Test get_fsdp_wrap_policy raises NotImplementedError (stub)."""
+        with pytest.raises(NotImplementedError, match="FSDP wrap policy not yet implemented"):
+            get_fsdp_wrap_policy()
+
+    def test_get_fsdp_wrap_policy_accepts_transformer_layer_cls(self):
+        """Test get_fsdp_wrap_policy signature accepts transformer_layer_cls parameter."""
+        import inspect
+
+        sig = inspect.signature(get_fsdp_wrap_policy)
+        params = list(sig.parameters.keys())
+        assert "transformer_layer_cls" in params
 
 
 @pytest.mark.skipif(not torch.cuda.is_available() or torch.cuda.device_count() < 2, reason="Multi-GPU not available")
