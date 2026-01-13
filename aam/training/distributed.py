@@ -1,10 +1,13 @@
-"""Distributed training utilities for multi-GPU training with DDP.
+"""Distributed training utilities for multi-GPU training with DDP and FSDP.
 
 Supports both NCCL (NVIDIA) and RCCL (AMD ROCm) backends.
 
 Usage:
-    # Single-node multi-GPU with torchrun:
+    # Single-node multi-GPU with torchrun (DDP):
     torchrun --nproc_per_node=4 train.py --distributed
+
+    # Single-node multi-GPU with torchrun (FSDP):
+    torchrun --nproc_per_node=4 train.py --fsdp
 
     # Multi-node:
     torchrun --nnodes=2 --nproc_per_node=4 --node_rank=0 \\
@@ -15,8 +18,11 @@ import os
 import torch
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+from torch.distributed.fsdp import ShardingStrategy, MixedPrecision
+from torch.distributed.fsdp.wrap import ModuleWrapPolicy
 from torch.utils.data import DataLoader, DistributedSampler
-from typing import Optional, Tuple, Any, List
+from typing import Optional, Tuple, Any, List, Set, Type
 import torch.nn as nn
 
 
@@ -179,6 +185,133 @@ def wrap_model_ddp(
         broadcast_buffers=broadcast_buffers,
         gradient_as_bucket_view=gradient_as_bucket_view,
     )
+
+
+def get_fsdp_wrap_policy(
+    transformer_layer_cls: Optional[Set[Type[nn.Module]]] = None,
+) -> ModuleWrapPolicy:
+    """Get the FSDP auto-wrap policy for transformer models.
+
+    FSDP wraps model modules to shard their parameters. This function returns
+    a policy that wraps transformer encoder layers, which is the standard
+    approach for transformer models.
+
+    Args:
+        transformer_layer_cls: Set of module classes to wrap. If None, uses
+            default transformer layer classes (nn.TransformerEncoderLayer).
+
+    Returns:
+        ModuleWrapPolicy for FSDP auto-wrapping.
+    """
+    if transformer_layer_cls is None:
+        transformer_layer_cls = {nn.TransformerEncoderLayer}
+    return ModuleWrapPolicy(transformer_layer_cls)
+
+
+def wrap_model_fsdp(
+    model: nn.Module,
+    sharding_strategy: ShardingStrategy = ShardingStrategy.FULL_SHARD,
+    mixed_precision: Optional[MixedPrecision] = None,
+    transformer_layer_cls: Optional[Set[Type[nn.Module]]] = None,
+    cpu_offload: bool = False,
+) -> FSDP:
+    """Wrap model with FullyShardedDataParallel (FSDP).
+
+    FSDP shards model parameters, gradients, and optimizer states across GPUs,
+    enabling training of models larger than single-GPU memory. Unlike DDP which
+    replicates the full model on each GPU, FSDP only materializes full parameters
+    during forward/backward passes.
+
+    Args:
+        model: Model to wrap. Should NOT be moved to device yet (FSDP handles this).
+        sharding_strategy: How to shard the model:
+            - FULL_SHARD: Shard parameters, gradients, and optimizer states (most memory efficient)
+            - SHARD_GRAD_OP: Shard gradients and optimizer states only
+            - NO_SHARD: Don't shard (equivalent to DDP)
+            - HYBRID_SHARD: Shard within node, replicate across nodes
+        mixed_precision: Optional mixed precision policy for FSDP.
+        transformer_layer_cls: Set of module classes to wrap individually.
+            If None, uses default transformer layer classes.
+        cpu_offload: Whether to offload parameters to CPU when not in use.
+            Saves GPU memory but slower due to CPU-GPU transfers.
+
+    Returns:
+        FSDP-wrapped model.
+
+    Raises:
+        RuntimeError: If distributed training is not initialized.
+
+    Example:
+        >>> model = SequencePredictor(...)
+        >>> fsdp_model = wrap_model_fsdp(
+        ...     model,
+        ...     sharding_strategy=ShardingStrategy.FULL_SHARD,
+        ... )
+    """
+    if not is_distributed():
+        raise RuntimeError("Cannot wrap model with FSDP: distributed training not initialized. Call setup_distributed() first.")
+
+    if not torch.cuda.is_available():
+        raise RuntimeError(
+            "Cannot wrap model with FSDP: CUDA is not available. "
+            "FSDP requires GPU training. Ensure CUDA drivers are installed "
+            "and GPUs are visible (run 'nvidia-smi' to verify)."
+        )
+
+    from torch.distributed.fsdp import CPUOffload
+
+    wrap_policy = get_fsdp_wrap_policy(transformer_layer_cls)
+
+    cpu_offload_config = CPUOffload(offload_params=cpu_offload) if cpu_offload else None
+
+    return FSDP(
+        model,
+        sharding_strategy=sharding_strategy,
+        auto_wrap_policy=wrap_policy,
+        mixed_precision=mixed_precision,
+        cpu_offload=cpu_offload_config,
+        device_id=torch.cuda.current_device(),
+    )
+
+
+def is_fsdp_model(model: nn.Module) -> bool:
+    """Check if a model is wrapped with FSDP.
+
+    Args:
+        model: Model to check.
+
+    Returns:
+        True if model is an FSDP instance, False otherwise.
+    """
+    return isinstance(model, FSDP)
+
+
+def is_ddp_model(model: nn.Module) -> bool:
+    """Check if a model is wrapped with DDP.
+
+    Args:
+        model: Model to check.
+
+    Returns:
+        True if model is a DDP instance, False otherwise.
+    """
+    return isinstance(model, DDP)
+
+
+def unwrap_model(model: nn.Module) -> nn.Module:
+    """Unwrap a model from DDP or FSDP wrapper.
+
+    Args:
+        model: Model that may be wrapped with DDP or FSDP.
+
+    Returns:
+        The underlying model without the distributed wrapper.
+    """
+    if is_fsdp_model(model) or is_ddp_model(model):
+        # DDP and FSDP store the wrapped module in .module attribute
+        inner: nn.Module = model.module  # type: ignore[union-attr]
+        return inner
+    return model
 
 
 def create_distributed_dataloader(
@@ -412,19 +545,6 @@ class DistributedTrainer:
         Returns:
             Training results from Trainer.train().
         """
-        # Get samplers if they exist
-        train_sampler = getattr(train_loader, "sampler", None)
-        val_sampler = getattr(val_loader, "sampler", None) if val_loader else None
-
-        # For each epoch, set sampler epoch for proper shuffling
-        original_train = self.trainer.train
-
-        def train_with_epoch_sampler(*args, **kwargs):
-            # Hook into epoch loop to set sampler epoch
-            # This is a simplified version - full implementation would
-            # need to modify the training loop
-            return original_train(*args, **kwargs)
-
         return self.trainer.train(
             train_loader,
             val_loader=val_loader,

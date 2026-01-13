@@ -189,6 +189,11 @@ from aam.cli.utils import (
     help="Convert BatchNorm to SyncBatchNorm for distributed training (recommended for small batch sizes)",
 )
 @click.option(
+    "--fsdp",
+    is_flag=True,
+    help="Enable FSDP (Fully Sharded Data Parallel) for memory-efficient distributed training. Use with torchrun: torchrun --nproc_per_node=4 -m aam.cli train --fsdp ...",
+)
+@click.option(
     "--target-layer-norm/--no-target-layer-norm",
     default=True,
     help="Apply LayerNorm before target projection (default: enabled)",
@@ -283,6 +288,7 @@ def train(
     no_sequence_cache: bool,
     distributed: bool,
     sync_batchnorm: bool,
+    fsdp: bool,
     target_layer_norm: bool,
     bounded_targets: bool,
     learnable_output_scale: bool,
@@ -330,22 +336,29 @@ def train(
 
         setup_expandable_segments(use_expandable_segments)
 
+        # Validate mutual exclusivity of distributed training options
+        if distributed and fsdp:
+            raise click.ClickException(
+                "Cannot use --distributed and --fsdp together. "
+                "Use --distributed for DDP or --fsdp for FSDP (Fully Sharded Data Parallel)."
+            )
+
         # Setup distributed training if enabled
         train_sampler = None
         val_sampler = None
-        if distributed:
+        if fsdp or distributed:
             rank, world_size, device_obj = setup_distributed(backend="nccl")
+            mode = "FSDP" if fsdp else "Distributed"
             if is_main_process():
-                logger.info(f"Distributed training enabled: rank {rank}/{world_size}")
+                logger.info(f"{mode} training enabled: rank {rank}/{world_size}")
 
             # Validate batch size for distributed training
-            # UniFrac pairwise distances require at least 2 samples per GPU
             per_gpu_batch_size = batch_size // world_size
             if per_gpu_batch_size < 2:
+                unifrac_note = " UniFrac requires at least 2 samples per GPU for pairwise distances." if distributed else ""
                 raise click.ClickException(
                     f"batch_size={batch_size} is too small for {world_size} GPUs. "
-                    f"Each GPU would only get {per_gpu_batch_size} sample(s), but UniFrac "
-                    f"requires at least 2 samples per GPU for pairwise distances. "
+                    f"Each GPU would only get {per_gpu_batch_size} sample(s).{unifrac_note} "
                     f"Use --batch-size {world_size * 2} or higher."
                 )
         else:
@@ -446,8 +459,8 @@ def train(
         logger.info("Splitting data...")
         train_ids, val_ids = train_test_split(sample_ids, test_size=test_size, random_state=seed)
 
-        # For DDP, broadcast train/val splits from rank 0 to ensure consistency
-        if distributed:
+        # For DDP/FSDP, broadcast train/val splits from rank 0 to ensure consistency
+        if distributed or fsdp:
             import torch.distributed as dist
 
             split_data = [train_ids, val_ids]
@@ -566,8 +579,8 @@ def train(
             unifrac_loader=unifrac_loader,
         )
 
-        # Create dataloaders (with distributed sampler if distributed)
-        if distributed:
+        # Create dataloaders (with distributed sampler if distributed or fsdp)
+        if distributed or fsdp:
             train_loader, train_sampler = create_distributed_dataloader(
                 train_dataset,
                 batch_size=batch_size,
@@ -688,7 +701,41 @@ def train(
         logger.info(f"Loss weights: target={target_penalty}, unifrac={penalty}, nuc={effective_nuc_penalty}")
 
         # Handle distributed training setup
-        if distributed:
+        if fsdp:
+            # FSDP requires CUDA - validate upfront with clear message
+            if not torch.cuda.is_available():
+                raise click.ClickException(
+                    "FSDP requires CUDA but no GPU is available. "
+                    "Use --distributed for DDP (which supports CPU via gloo backend), "
+                    "or ensure CUDA is properly installed (run 'nvidia-smi' to check)."
+                )
+
+            # FSDP handles device placement internally, don't move model beforehand
+            # Convert BatchNorm to SyncBatchNorm if requested
+            if sync_batchnorm:
+                model = sync_batch_norm(model)
+                if is_main_process():
+                    logger.info("Converted BatchNorm to SyncBatchNorm for FSDP training")
+
+            # Wrap model with FSDP for memory-efficient distributed training
+            from aam.training.distributed import wrap_model_fsdp
+
+            try:
+                model = wrap_model_fsdp(model)
+            except Exception as e:
+                logger.error(f"Failed to wrap model with FSDP: {e}", exc_info=True)
+                raise click.ClickException(
+                    f"FSDP model wrapping failed: {e}\n"
+                    "Common causes:\n"
+                    "  - Model contains unsupported layer types\n"
+                    "  - Insufficient GPU memory for FSDP initialization\n"
+                    "  - Distributed process group not properly initialized\n"
+                    "Try using --distributed (DDP) instead, or reduce model size."
+                )
+            if is_main_process():
+                logger.info("Model wrapped with FullyShardedDataParallel")
+
+        elif distributed:
             # Move model to device
             model = model.to(device_obj)
 
@@ -787,7 +834,7 @@ def train(
         logger.info(f"Best validation loss: {best_val_loss}")
 
         # Only save final model on main process in distributed mode
-        if not distributed or is_main_process():
+        if not (distributed or fsdp) or is_main_process():
             # Build model config for inference
             model_config = {
                 "encoder_type": encoder_type,
@@ -821,12 +868,12 @@ def train(
             logger.info(f"Final model saved to {final_model_path}")
 
         # Cleanup distributed training
-        if distributed:
+        if distributed or fsdp:
             cleanup_distributed()
 
     except Exception as e:
         logger.error(f"Training failed: {e}", exc_info=True)
         # Cleanup distributed training on error
-        if distributed:
+        if distributed or fsdp:
             cleanup_distributed()
         raise click.ClickException(str(e))

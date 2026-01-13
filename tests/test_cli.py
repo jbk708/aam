@@ -443,6 +443,38 @@ class TestCLICommands:
         assert result.exit_code != 0
         assert "Cannot use --distributed and --data-parallel together" in result.output
 
+    def test_train_command_fsdp_option_exists(self, runner):
+        """Test that --fsdp option appears in train help."""
+        result = runner.invoke(cli, ["train", "--help"])
+        assert result.exit_code == 0
+        assert "--fsdp" in result.output
+        assert "FSDP" in result.output
+
+    def test_train_command_fsdp_distributed_mutual_exclusion(
+        self, runner, sample_biom_file, sample_unifrac_matrix_file, sample_metadata_file, sample_output_dir
+    ):
+        """Test that --fsdp and --distributed cannot be used together."""
+        result = runner.invoke(
+            cli,
+            [
+                "train",
+                "--table",
+                sample_biom_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
+                "--metadata",
+                sample_metadata_file,
+                "--metadata-column",
+                "target",
+                "--output-dir",
+                sample_output_dir,
+                "--fsdp",
+                "--distributed",
+            ],
+        )
+        assert result.exit_code != 0
+        assert "Cannot use --distributed and --fsdp together" in result.output
+
     def test_predict_command_help(self, runner):
         """Test predict command help."""
         result = runner.invoke(cli, ["predict", "--help"])
