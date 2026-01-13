@@ -177,6 +177,19 @@ aam predict \
 | `--nuc-penalty` | Weight for nucleotide loss | 1.0 |
 | `--target-penalty` | Weight for target loss | 1.0 |
 
+### Regression Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--bounded-targets` | Sigmoid to bound output to [0, 1] | False |
+| `--output-activation` | Non-negative constraint: 'none', 'relu', 'softplus', 'exp' | none |
+| `--learnable-output-scale` | Learnable scale and bias after target head | False |
+
+**Choosing an output constraint:**
+- **`--bounded-targets`**: Use when targets are in [0, 1] range (e.g., normalized values, proportions)
+- **`--output-activation softplus`**: Use for non-negative targets (e.g., concentrations, counts, distances). Softplus is recommended over relu because gradients flow smoothly for all inputs
+- **`--output-activation exp`**: Use for strictly positive targets, but can cause numerical instability
+
 ### Masked Autoencoder (Nucleotide Prediction)
 
 | Option | Description | Default |
