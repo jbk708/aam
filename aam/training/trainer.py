@@ -242,24 +242,44 @@ class Trainer:
         if not isinstance(underlying_model.target_head, FiLMTargetHead):
             return
 
-        logger.info("=== FiLM Debug: Parameter Gradients ===")
+        logger.info("=== FiLM Debug: Parameter Gradients & Values ===")
 
-        # Log FiLM layer gradients
+        # Log FiLM layer gradients AND parameter values
         for i, layer in enumerate(underlying_model.target_head.film_layers):
-            gamma_grad = layer.film.gamma_proj.weight.grad
-            beta_grad = layer.film.beta_proj.weight.grad
+            gamma_weight = layer.film.gamma_proj.weight
+            gamma_bias = layer.film.gamma_proj.bias
+            gamma_grad = gamma_weight.grad
 
-            gamma_norm = gamma_grad.norm().item() if gamma_grad is not None else 0.0
-            beta_norm = beta_grad.norm().item() if beta_grad is not None else 0.0
+            beta_weight = layer.film.beta_proj.weight
+            beta_bias = layer.film.beta_proj.bias
+            beta_grad = beta_weight.grad
 
-            logger.info(f"  FiLM Layer {i}: gamma_grad_norm={gamma_norm:.6f}, beta_grad_norm={beta_norm:.6f}")
+            gamma_grad_norm = gamma_grad.norm().item() if gamma_grad is not None else 0.0
+            beta_grad_norm = beta_grad.norm().item() if beta_grad is not None else 0.0
 
-        # Log categorical embedding gradients
+            # Log weight norms to see if they're changing from zero
+            gamma_weight_norm = gamma_weight.norm().item()
+            beta_weight_norm = beta_weight.norm().item()
+            gamma_bias_mean = gamma_bias.mean().item()
+            beta_bias_mean = beta_bias.mean().item()
+
+            logger.info(
+                f"  FiLM Layer {i}: "
+                f"gamma_w={gamma_weight_norm:.6f}, gamma_b_mean={gamma_bias_mean:.4f}, gamma_grad={gamma_grad_norm:.6f} | "
+                f"beta_w={beta_weight_norm:.6f}, beta_b_mean={beta_bias_mean:.4f}, beta_grad={beta_grad_norm:.6f}"
+            )
+
+        # Log categorical embedding gradients and values
         if hasattr(underlying_model, "categorical_embedder") and underlying_model.categorical_embedder is not None:
             for col_name, emb in underlying_model.categorical_embedder.embeddings.items():
                 emb_grad = emb.weight.grad
-                emb_norm = emb_grad.norm().item() if emb_grad is not None else 0.0
-                logger.info(f"  Categorical Embedding '{col_name}': grad_norm={emb_norm:.6f}")
+                emb_grad_norm = emb_grad.norm().item() if emb_grad is not None else 0.0
+                emb_weight_norm = emb.weight.norm().item()
+                emb_weight_mean = emb.weight.mean().item()
+                logger.info(
+                    f"  Embedding '{col_name}': weight_norm={emb_weight_norm:.6f}, "
+                    f"weight_mean={emb_weight_mean:.6f}, grad_norm={emb_grad_norm:.6f}"
+                )
 
         # Log output layer gradient
         output_grad = underlying_model.target_head.output_layer.weight.grad
@@ -743,7 +763,8 @@ class Trainer:
 
                 # Debug: Log FiLM parameter gradients if AAM_DEBUG_FILM is set
                 import os
-                if os.environ.get("AAM_DEBUG_FILM") and step == 1:
+                if os.environ.get("AAM_DEBUG_FILM") and (step == 1 or step == total_steps):
+                    logger.info(f"FiLM Debug at step {step}/{total_steps}:")
                     self._log_film_gradients()
 
                 del outputs, tokens, targets
