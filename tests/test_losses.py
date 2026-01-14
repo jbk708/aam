@@ -990,6 +990,138 @@ class TestTotalLoss:
         assert "nuc_loss" not in losses or losses["nuc_loss"] == 0
 
 
+class TestCountPenalty:
+    """Test count_penalty parameter behavior."""
+
+    def test_count_penalty_default_is_one(self):
+        """Test that count_penalty defaults to 1.0."""
+        loss_fn = MultiTaskLoss()
+        assert loss_fn.count_penalty == 1.0
+
+    def test_count_penalty_applied_to_total_loss(self):
+        """Test that count_penalty is applied to count_loss in total loss."""
+        count_penalty = 2.5
+        loss_fn = MultiTaskLoss(count_penalty=count_penalty)
+
+        batch_size = 4
+        num_asvs = 10
+
+        outputs = {
+            "target_prediction": torch.randn(batch_size, 1),
+            "count_prediction": torch.randn(batch_size, num_asvs, 1),
+            "base_prediction": torch.randn(batch_size, batch_size),
+        }
+
+        targets = {
+            "target": torch.randn(batch_size, 1),
+            "counts": torch.randn(batch_size, num_asvs, 1),
+            "base_target": torch.randn(batch_size, batch_size),
+            "mask": torch.ones(batch_size, num_asvs),
+        }
+
+        losses = loss_fn(outputs, targets, is_classifier=False, encoder_type="unifrac")
+
+        expected_total = (
+            losses["target_loss"] * loss_fn.target_penalty
+            + losses["count_loss"] * count_penalty
+            + losses["unifrac_loss"] * loss_fn.penalty
+            + losses["nuc_loss"] * loss_fn.nuc_penalty
+        )
+        assert torch.allclose(losses["total_loss"], expected_total)
+
+    def test_count_penalty_zero_disables_count_loss(self):
+        """Test that count_penalty=0 effectively disables count loss contribution."""
+        loss_fn = MultiTaskLoss(count_penalty=0.0)
+
+        batch_size = 4
+        num_asvs = 10
+
+        outputs = {
+            "target_prediction": torch.randn(batch_size, 1),
+            "count_prediction": torch.randn(batch_size, num_asvs, 1),
+            "base_prediction": torch.randn(batch_size, batch_size),
+        }
+
+        targets = {
+            "target": torch.randn(batch_size, 1),
+            "counts": torch.randn(batch_size, num_asvs, 1),
+            "base_target": torch.randn(batch_size, batch_size),
+            "mask": torch.ones(batch_size, num_asvs),
+        }
+
+        losses = loss_fn(outputs, targets, is_classifier=False, encoder_type="unifrac")
+
+        # count_loss should still be computed but not contribute to total
+        assert losses["count_loss"].item() > 0  # Non-zero count loss
+        expected_total = losses["target_loss"] * loss_fn.target_penalty + losses["unifrac_loss"] * loss_fn.penalty
+        assert torch.allclose(losses["total_loss"], expected_total)
+
+    def test_count_penalty_scales_contribution(self):
+        """Test that different count_penalty values scale count_loss contribution."""
+        batch_size = 4
+        num_asvs = 10
+
+        outputs = {
+            "target_prediction": torch.zeros(batch_size, 1),
+            "count_prediction": torch.ones(batch_size, num_asvs, 1),
+            "base_prediction": torch.zeros(batch_size, batch_size),
+        }
+
+        targets = {
+            "target": torch.zeros(batch_size, 1),
+            "counts": torch.zeros(batch_size, num_asvs, 1),  # MSE = 1.0
+            "base_target": torch.zeros(batch_size, batch_size),
+            "mask": torch.ones(batch_size, num_asvs),
+        }
+
+        # With count_penalty=1.0
+        loss_fn_1 = MultiTaskLoss(count_penalty=1.0, penalty=0.0, nuc_penalty=0.0, target_penalty=0.0)
+        losses_1 = loss_fn_1(outputs, targets, is_classifier=False, encoder_type="unifrac")
+
+        # With count_penalty=2.0
+        loss_fn_2 = MultiTaskLoss(count_penalty=2.0, penalty=0.0, nuc_penalty=0.0, target_penalty=0.0)
+        losses_2 = loss_fn_2(outputs, targets, is_classifier=False, encoder_type="unifrac")
+
+        # Total loss should scale with count_penalty
+        assert torch.allclose(losses_2["total_loss"], losses_1["total_loss"] * 2.0)
+
+    def test_count_penalty_with_all_penalties(self):
+        """Test count_penalty works correctly with all other penalty weights."""
+        loss_fn = MultiTaskLoss(
+            penalty=0.5,
+            nuc_penalty=0.25,
+            target_penalty=2.0,
+            count_penalty=1.5,
+        )
+
+        batch_size = 4
+        num_asvs = 10
+        seq_len = 20
+        vocab_size = 6
+
+        outputs = {
+            "target_prediction": torch.randn(batch_size, 1),
+            "count_prediction": torch.randn(batch_size, num_asvs, 1),
+            "base_prediction": torch.randn(batch_size, batch_size),
+            "nuc_predictions": torch.randn(batch_size, num_asvs, seq_len, vocab_size),
+        }
+
+        targets = {
+            "target": torch.randn(batch_size, 1),
+            "counts": torch.randn(batch_size, num_asvs, 1),
+            "base_target": torch.randn(batch_size, batch_size),
+            "nucleotides": torch.randint(0, vocab_size, (batch_size, num_asvs, seq_len)),
+            "mask": torch.ones(batch_size, num_asvs),
+        }
+
+        losses = loss_fn(outputs, targets, is_classifier=False, encoder_type="unifrac")
+
+        expected_total = (
+            losses["target_loss"] * 2.0 + losses["count_loss"] * 1.5 + losses["unifrac_loss"] * 0.5 + losses["nuc_loss"] * 0.25
+        )
+        assert torch.allclose(losses["total_loss"], expected_total)
+
+
 class TestDeviceHandling:
     """Test device handling for losses."""
 

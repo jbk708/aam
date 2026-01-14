@@ -76,6 +76,7 @@ from aam.cli.utils import (
 @click.option("--penalty", default=1.0, type=float, help="Weight for base/UniFrac loss")
 @click.option("--nuc-penalty", default=1.0, type=float, help="Weight for nucleotide loss")
 @click.option("--target-penalty", default=1.0, type=float, help="Weight for target loss (default: 1.0)")
+@click.option("--count-penalty", default=1.0, type=float, help="Weight for count loss (default: 1.0)")
 @click.option(
     "--nuc-mask-ratio",
     default=0.15,
@@ -287,6 +288,7 @@ def train(
     penalty: float,
     nuc_penalty: float,
     target_penalty: float,
+    count_penalty: float,
     nuc_mask_ratio: float,
     nuc_mask_strategy: str,
     class_weights: Optional[str],
@@ -815,11 +817,14 @@ def train(
             penalty=penalty,
             nuc_penalty=effective_nuc_penalty,
             target_penalty=target_penalty,
+            count_penalty=count_penalty,
             class_weights=class_weights_tensor,
             target_loss_type=loss_type,
         )
         logger.info(f"Using {loss_type} loss for regression targets")
-        logger.info(f"Loss weights: target={target_penalty}, unifrac={penalty}, nuc={effective_nuc_penalty}")
+        logger.info(
+            f"Loss weights: target={target_penalty}, unifrac={penalty}, nuc={effective_nuc_penalty}, count={count_penalty}"
+        )
 
         # Handle distributed training setup
         if fsdp:
