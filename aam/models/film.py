@@ -163,9 +163,7 @@ class FiLMTargetHead(nn.Module):
         """
         if categorical_emb is None:
             # Use zero tensor for identity FiLM transform
-            categorical_emb = torch.zeros(
-                x.size(0), self.categorical_dim, device=x.device, dtype=x.dtype
-            )
+            categorical_emb = torch.zeros(x.size(0), self.categorical_dim, device=x.device, dtype=x.dtype)
 
         for film_layer in self.film_layers:
             x = film_layer(x, categorical_emb)

@@ -243,13 +243,10 @@ class SequencePredictor(nn.Module):
         if film_conditioning_columns:
             if not regressor_hidden_dims or len(regressor_hidden_dims) == 0:
                 raise ValueError(
-                    "film_conditioning_columns requires regressor_hidden_dims to be set "
-                    "(FiLM modulates MLP hidden layers)"
+                    "film_conditioning_columns requires regressor_hidden_dims to be set (FiLM modulates MLP hidden layers)"
                 )
             if categorical_cardinalities is None:
-                raise ValueError(
-                    "film_conditioning_columns requires categorical_cardinalities to be set"
-                )
+                raise ValueError("film_conditioning_columns requires categorical_cardinalities to be set")
             for col in film_conditioning_columns:
                 if col not in categorical_cardinalities:
                     raise ValueError(
@@ -343,9 +340,7 @@ class SequencePredictor(nn.Module):
         layers.append(nn.Linear(current_dim, out_dim))
         return nn.Sequential(*layers)
 
-    def _init_conditional_scaling(
-        self, categorical_cardinalities: Optional[Dict[str, int]]
-    ) -> None:
+    def _init_conditional_scaling(self, categorical_cardinalities: Optional[Dict[str, int]]) -> None:
         """Initialize conditional output scaling embeddings.
 
         Creates per-category scale and bias parameters for each specified column.
@@ -365,9 +360,7 @@ class SequencePredictor(nn.Module):
             return
 
         if categorical_cardinalities is None:
-            raise ValueError(
-                "conditional_scaling_columns requires categorical_cardinalities to be set"
-            )
+            raise ValueError("conditional_scaling_columns requires categorical_cardinalities to be set")
 
         self.output_scales = nn.ModuleDict()
         self.output_biases = nn.ModuleDict()
