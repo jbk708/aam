@@ -1,6 +1,6 @@
 """PyTorch Dataset for microbial sequencing data."""
 
-from typing import Any, Dict, Optional, List, Union
+from typing import Any, Dict, Optional, List, Union, TYPE_CHECKING
 import torch
 from torch.utils.data import Dataset
 import biom
@@ -13,6 +13,9 @@ from aam.data.tokenizer import SequenceTokenizer
 from aam.data.biom_loader import BIOMLoader
 from aam.data.unifrac_loader import UniFracLoader
 from aam.data.categorical import CategoricalEncoder
+
+if TYPE_CHECKING:
+    from aam.data.normalization import CategoryNormalizer
 
 
 def collate_fn(
@@ -155,6 +158,7 @@ class ASVDataset(Dataset):
         count_max: Optional[float] = None,
         cache_sequences: bool = True,
         categorical_encoder: Optional[CategoricalEncoder] = None,
+        category_normalizer: Optional["CategoryNormalizer"] = None,
     ):
         """Initialize ASVDataset.
 
@@ -177,6 +181,9 @@ class ASVDataset(Dataset):
             count_max: Maximum count value for normalization (computed from data if None)
             cache_sequences: If True, cache tokenized sequences at init for faster __getitem__ (default: True)
             categorical_encoder: Optional fitted CategoricalEncoder for categorical metadata
+            category_normalizer: Optional fitted CategoryNormalizer for per-category target normalization.
+                If provided, applies z-score normalization using category-specific statistics.
+                Mutually exclusive with normalize_targets.
         """
         self.table = table
         self.metadata = metadata
@@ -290,6 +297,20 @@ class ASVDataset(Dataset):
             for i, sample_id in enumerate(self.sample_ids):
                 self._categorical_cache[sample_id] = {col: int(cat_indices[col][i]) for col in categorical_encoder.column_names}
 
+        # Per-category target normalization
+        self.category_normalizer = category_normalizer
+        self._category_key_cache: Optional[Dict[str, str]] = None
+        if category_normalizer is not None and category_normalizer.is_fitted:
+            if metadata is None:
+                raise ValueError("metadata is required when using category_normalizer")
+            # Pre-compute category keys for all samples
+            self._category_key_cache = {}
+            metadata_indexed = metadata.set_index("sample_id")
+            for sample_id in self.sample_ids:
+                if sample_id in metadata_indexed.index:
+                    row = metadata_indexed.loc[sample_id]
+                    self._category_key_cache[sample_id] = category_normalizer.get_category_key(row)
+
     def __len__(self) -> int:
         """Return number of samples in dataset."""
         return len(self.sample_ids)
@@ -299,7 +320,8 @@ class ASVDataset(Dataset):
 
         Returns:
             Dictionary with normalization params if any transform is enabled, None otherwise.
-            May include: 'target_min', 'target_max', 'target_scale', 'log_transform'.
+            May include: 'target_min', 'target_max', 'target_scale', 'log_transform',
+            'category_normalizer' (serialized state).
         """
         params: Dict[str, Any] = {}
         if self.normalize_targets and self.target_scale is not None:
@@ -308,6 +330,8 @@ class ASVDataset(Dataset):
             params["target_scale"] = self.target_scale
         if self.log_transform_targets:
             params["log_transform"] = True
+        if self.category_normalizer is not None and self.category_normalizer.is_fitted:
+            params["category_normalizer"] = self.category_normalizer.to_dict()
         return params if params else None
 
     def denormalize_targets(
@@ -456,8 +480,13 @@ class ASVDataset(Dataset):
 
                 target_float = math.log(target_float + 1)
 
-            # Apply normalization if enabled (after log transform)
-            if self.normalize_targets and self.target_scale is not None:
+            # Apply per-category normalization if enabled
+            if self.category_normalizer is not None and self._category_key_cache is not None:
+                category_key = self._category_key_cache.get(sample_id)
+                if category_key is not None:
+                    target_float = float(self.category_normalizer.normalize(target_float, category_key))
+            # Apply global normalization if enabled (mutually exclusive with category normalization)
+            elif self.normalize_targets and self.target_scale is not None:
                 target_float = (target_float - self.target_min) / self.target_scale
 
             result["y_target"] = torch.FloatTensor([target_float])
