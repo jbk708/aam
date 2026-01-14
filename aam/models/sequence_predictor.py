@@ -362,10 +362,10 @@ class SequencePredictor(nn.Module):
         Returns:
             Scaled predictions [batch_size, out_dim]
         """
-        if self.output_scales is None or categorical_ids is None:
+        if self.output_scales is None or self.conditional_scaling_columns is None:
             return prediction
-
-        assert self.conditional_scaling_columns is not None
+        if categorical_ids is None:
+            return prediction
 
         for col in self.conditional_scaling_columns:
             if col not in categorical_ids:
