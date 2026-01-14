@@ -6,7 +6,7 @@ learned scale (γ) and shift (β) parameters: h_out = γ * h + β
 Reference: Perez et al., "FiLM: Visual Reasoning with a General Conditioning Layer" (2018)
 """
 
-from typing import List, Optional
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -110,7 +110,7 @@ class FiLMTargetHead(nn.Module):
         self,
         in_dim: int,
         out_dim: int,
-        hidden_dims: List[int],
+        hidden_dims: list[int],
         categorical_dim: int,
         dropout: float = 0.0,
     ) -> None:
