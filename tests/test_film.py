@@ -2,6 +2,7 @@
 
 import pytest
 import torch
+import torch.nn as nn
 
 from aam.models.film import FiLMGenerator, FiLMLayer, FiLMTargetHead
 
@@ -64,8 +65,14 @@ class TestFiLMLayer:
         assert out.shape == (8, 64)
 
     def test_modulation_effect(self):
-        """Test that FiLM modulation affects output."""
+        """Test that FiLM modulation affects output after training."""
         layer = FiLMLayer(in_dim=128, out_dim=64, categorical_dim=32)
+
+        # With identity initialization, weights are zero so we need to set non-zero weights
+        # to verify that different categorical embeddings produce different outputs
+        nn.init.xavier_uniform_(layer.film.gamma_proj.weight)
+        nn.init.xavier_uniform_(layer.film.beta_proj.weight)
+
         x = torch.randn(8, 128)
         cat_emb1 = torch.randn(8, 32)
         cat_emb2 = torch.randn(8, 32)
@@ -208,6 +215,12 @@ class TestFiLMTargetHead:
             hidden_dims=[128, 64],
             categorical_dim=32,
         )
+
+        # Set non-zero FiLM weights so categorical embedding gradients are non-zero
+        for layer in head.film_layers:
+            nn.init.xavier_uniform_(layer.film.gamma_proj.weight)
+            nn.init.xavier_uniform_(layer.film.beta_proj.weight)
+
         x = torch.randn(8, 256, requires_grad=True)
         cat_emb = torch.randn(8, 32, requires_grad=True)
 

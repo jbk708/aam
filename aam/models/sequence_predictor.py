@@ -8,6 +8,7 @@ from aam.models.sequence_encoder import SequenceEncoder
 from aam.models.attention_pooling import AttentionPooling
 from aam.models.transformer import AttnImplementation, TransformerEncoder
 from aam.models.categorical_embedder import CategoricalEmbedder
+from aam.models.film import FiLMTargetHead
 
 
 class SequencePredictor(nn.Module):
@@ -71,6 +72,7 @@ class SequencePredictor(nn.Module):
         regressor_hidden_dims: Optional[List[int]] = None,
         regressor_dropout: float = 0.0,
         conditional_scaling_columns: Optional[List[str]] = None,
+        film_conditioning_columns: Optional[List[str]] = None,
     ):
         """Initialize SequencePredictor.
 
@@ -133,6 +135,10 @@ class SequencePredictor(nn.Module):
             conditional_scaling_columns: List of categorical column names to use for conditional output
                 scaling. For each column, learns per-category scale and bias parameters applied after
                 base prediction: output = prediction * scale[cat] + bias[cat]. Requires categorical_cardinalities.
+            film_conditioning_columns: List of categorical column names for FiLM (Feature-wise Linear
+                Modulation) conditioning. FiLM applies learned scale (gamma) and shift (beta) parameters
+                at each MLP hidden layer, allowing categorical features to modulate which features matter.
+                Requires regressor_hidden_dims and categorical_cardinalities.
         """
         super().__init__()
 
@@ -230,6 +236,27 @@ class SequencePredictor(nn.Module):
 
         self.regressor_hidden_dims = regressor_hidden_dims
         self.regressor_dropout = regressor_dropout
+        self.film_conditioning_columns = film_conditioning_columns
+        self.categorical_embed_dim = categorical_embed_dim
+
+        # Validate FiLM requirements
+        if film_conditioning_columns:
+            if not regressor_hidden_dims or len(regressor_hidden_dims) == 0:
+                raise ValueError(
+                    "film_conditioning_columns requires regressor_hidden_dims to be set "
+                    "(FiLM modulates MLP hidden layers)"
+                )
+            if categorical_cardinalities is None:
+                raise ValueError(
+                    "film_conditioning_columns requires categorical_cardinalities to be set"
+                )
+            for col in film_conditioning_columns:
+                if col not in categorical_cardinalities:
+                    raise ValueError(
+                        f"FiLM conditioning column '{col}' not found in categorical_cardinalities. "
+                        f"Available columns: {list(categorical_cardinalities.keys())}"
+                    )
+
         self.target_head = self._build_target_head(self.embedding_dim, out_dim)
 
         if learnable_output_scale:
@@ -269,14 +296,14 @@ class SequencePredictor(nn.Module):
         self._init_weights()
 
     def _build_target_head(self, in_dim: int, out_dim: int) -> nn.Module:
-        """Build target prediction head (single layer or MLP).
+        """Build target prediction head (single layer, MLP, or FiLM-conditioned MLP).
 
         Args:
             in_dim: Input dimension (embedding_dim)
             out_dim: Output dimension (number of targets)
 
         Returns:
-            nn.Module: Linear layer or Sequential MLP
+            nn.Module: Linear layer, Sequential MLP, or FiLMTargetHead
 
         Raises:
             ValueError: If any hidden dimension is not a positive integer
@@ -291,6 +318,20 @@ class SequencePredictor(nn.Module):
                     f"Full hidden dims: {self.regressor_hidden_dims}"
                 )
 
+        # Use FiLM-conditioned MLP if film_conditioning_columns is set
+        if self.film_conditioning_columns:
+            # Compute total categorical embedding dimension for FiLM conditioning columns
+            num_film_columns = len(self.film_conditioning_columns)
+            categorical_dim = num_film_columns * self.categorical_embed_dim
+            return FiLMTargetHead(
+                in_dim=in_dim,
+                out_dim=out_dim,
+                hidden_dims=self.regressor_hidden_dims,
+                categorical_dim=categorical_dim,
+                dropout=self.regressor_dropout,
+            )
+
+        # Standard MLP without FiLM
         layers: List[nn.Module] = []
         current_dim = in_dim
         for hidden_dim in self.regressor_hidden_dims:
@@ -444,6 +485,37 @@ class SequencePredictor(nn.Module):
             return torch.exp(x)
         return x
 
+    def _get_film_embeddings(
+        self,
+        categorical_ids: Optional[Dict[str, torch.Tensor]],
+    ) -> Optional[torch.Tensor]:
+        """Get categorical embeddings for FiLM conditioning columns.
+
+        Args:
+            categorical_ids: Dict mapping column name to category indices [batch_size].
+
+        Returns:
+            Concatenated embeddings for FiLM columns [batch_size, film_categorical_dim],
+            or None if FiLM is not enabled or no categorical_ids provided.
+        """
+        if not self.film_conditioning_columns or categorical_ids is None:
+            return None
+        if self.categorical_embedder is None:
+            return None
+
+        # Get embeddings for FiLM conditioning columns only
+        film_embeddings = []
+        for col in self.film_conditioning_columns:
+            if col in categorical_ids:
+                # Access the individual embedding layer for this column
+                emb = self.categorical_embedder.embeddings[col](categorical_ids[col])
+                film_embeddings.append(emb)
+
+        if not film_embeddings:
+            return None
+
+        return torch.cat(film_embeddings, dim=-1)  # [B, film_cat_dim]
+
     def forward(
         self,
         tokens: torch.Tensor,
@@ -490,7 +562,12 @@ class SequencePredictor(nn.Module):
         if self.target_norm is not None:
             pooled_target = self.target_norm(pooled_target)
 
-        target_prediction = self.target_head(pooled_target)
+        # Apply target head with FiLM conditioning if enabled
+        if isinstance(self.target_head, FiLMTargetHead):
+            film_emb = self._get_film_embeddings(categorical_ids)
+            target_prediction = self.target_head(pooled_target, categorical_emb=film_emb)
+        else:
+            target_prediction = self.target_head(pooled_target)
 
         target_prediction = self._apply_conditional_scaling(target_prediction, categorical_ids)
 
