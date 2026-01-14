@@ -723,6 +723,50 @@ Low priority future work:
 
 ---
 
+## Maintenance
+
+### PYT-MAINT-1: CLI Flag Cleanup and Default Optimization
+**Priority:** LOW | **Effort:** 2-4 hours | **Status:** Not Started
+
+Review and optimize CLI flags across train.py and pretrain.py for consistency, usability, and sensible defaults.
+
+**Scope:**
+
+1. **Flag Consistency Audit:**
+   - Verify all model config parameters saved in checkpoint are loaded in predict.py
+   - Ensure flag names are consistent between train.py and pretrain.py
+   - Check for any orphaned or deprecated flags
+
+2. **Default Value Optimization:**
+   - Review default values based on empirical training results
+   - Consider dataset-size-aware defaults (e.g., smaller embedding_dim for small datasets)
+   - Document rationale for default choices in README
+
+3. **Flag Cleanup:**
+   - Remove any unused or redundant flags
+   - Consolidate related flags where appropriate
+   - Ensure mutual exclusivity constraints are properly enforced
+
+4. **Documentation:**
+   - Update README with complete flag reference table
+   - Add examples for common use cases
+   - Document flag interactions and dependencies
+
+**Files:**
+- `aam/cli/train.py` - Training CLI flags
+- `aam/cli/pretrain.py` - Pretraining CLI flags
+- `aam/cli/predict.py` - Inference CLI (model config loading)
+- `README.md` - Flag documentation
+
+**Acceptance Criteria:**
+- [ ] All model config params saved in train.py are loaded in predict.py
+- [ ] Flag names consistent between train.py and pretrain.py
+- [ ] Default values documented with rationale
+- [ ] README has complete flag reference table
+- [ ] No orphaned or deprecated flags remain
+
+---
+
 ## Summary
 
 | Phase | Remaining | Est. Hours |
