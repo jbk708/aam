@@ -550,15 +550,12 @@ def train(
         conditional_scaling_columns: Optional[list[str]] = None
         if conditional_output_scaling:
             if not categorical_columns:
-                raise click.ClickException(
-                    "--conditional-output-scaling requires --categorical-columns to be set"
-                )
+                raise click.ClickException("--conditional-output-scaling requires --categorical-columns to be set")
             conditional_scaling_columns = [col.strip() for col in conditional_output_scaling.split(",")]
             for col in conditional_scaling_columns:
                 if col not in categorical_column_list:
                     raise click.ClickException(
-                        f"Conditional scaling column '{col}' not in --categorical-columns. "
-                        f"Available: {categorical_column_list}"
+                        f"Conditional scaling column '{col}' not in --categorical-columns. Available: {categorical_column_list}"
                     )
             logger.info(f"Conditional output scaling columns: {conditional_scaling_columns}")
 

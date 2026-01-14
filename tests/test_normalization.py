@@ -25,11 +25,13 @@ class TestCategoryNormalizer:
 
         targets = np.concatenate([location_a_targets, location_b_targets])
 
-        metadata = pd.DataFrame({
-            "sample_id": [f"sample_{i}" for i in range(n_samples)],
-            "location": ["A"] * (n_samples // 2) + ["B"] * (n_samples // 2),
-            "season": (["summer", "winter"] * (n_samples // 4)) * 2,
-        })
+        metadata = pd.DataFrame(
+            {
+                "sample_id": [f"sample_{i}" for i in range(n_samples)],
+                "location": ["A"] * (n_samples // 2) + ["B"] * (n_samples // 2),
+                "season": (["summer", "winter"] * (n_samples // 4)) * 2,
+            }
+        )
 
         sample_ids = list(metadata["sample_id"])
 
@@ -328,10 +330,12 @@ class TestCategoryNormalizer:
 
         # Create minimal data
         targets = np.array([0.1, 0.2, 0.3])
-        metadata = pd.DataFrame({
-            "sample_id": ["s1", "s2", "s3"],
-            "category": ["A", "A", "B"],
-        })
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["s1", "s2", "s3"],
+                "category": ["A", "A", "B"],
+            }
+        )
 
         normalizer.fit(
             targets=targets,
@@ -345,10 +349,12 @@ class TestCategoryNormalizer:
     def test_fit_with_sample_ids_alignment(self):
         """Test that sample_ids properly align targets with metadata."""
         # Metadata with different order than targets
-        metadata = pd.DataFrame({
-            "sample_id": ["s3", "s1", "s2"],
-            "category": ["B", "A", "A"],
-        })
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["s3", "s1", "s2"],
+                "category": ["B", "A", "A"],
+            }
+        )
 
         # Targets in order: s1=0.1, s2=0.2, s3=0.9
         targets = np.array([0.1, 0.2, 0.9])
@@ -370,10 +376,12 @@ class TestCategoryNormalizer:
     def test_single_sample_category(self):
         """Test handling of categories with only one sample (std=0)."""
         targets = np.array([0.1, 0.2, 0.5])
-        metadata = pd.DataFrame({
-            "sample_id": ["s1", "s2", "s3"],
-            "category": ["A", "A", "B"],  # B has only one sample
-        })
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["s1", "s2", "s3"],
+                "category": ["A", "A", "B"],  # B has only one sample
+            }
+        )
 
         normalizer = CategoryNormalizer()
         normalizer.fit(
@@ -412,10 +420,12 @@ class TestCategoryNormalizerEdgeCases:
         """Test that fit requires at least one column."""
         normalizer = CategoryNormalizer()
         targets = np.array([0.1, 0.2])
-        metadata = pd.DataFrame({
-            "sample_id": ["s1", "s2"],
-            "category": ["A", "B"],
-        })
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["s1", "s2"],
+                "category": ["A", "B"],
+            }
+        )
 
         with pytest.raises((ValueError, TypeError)):
             normalizer.fit(
@@ -428,10 +438,12 @@ class TestCategoryNormalizerEdgeCases:
         """Test that fit validates columns exist in metadata."""
         normalizer = CategoryNormalizer()
         targets = np.array([0.1, 0.2])
-        metadata = pd.DataFrame({
-            "sample_id": ["s1", "s2"],
-            "category": ["A", "B"],
-        })
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["s1", "s2"],
+                "category": ["A", "B"],
+            }
+        )
 
         with pytest.raises((ValueError, KeyError)):
             normalizer.fit(
@@ -466,10 +478,12 @@ class TestCategoryNormalizerEdgeCases:
         """Test with multi-dimensional target arrays."""
         # 2D targets: [n_samples, n_targets]
         targets = np.array([[0.1, 0.2], [0.2, 0.3], [0.8, 0.9], [0.9, 1.0]])
-        metadata = pd.DataFrame({
-            "sample_id": ["s1", "s2", "s3", "s4"],
-            "category": ["A", "A", "B", "B"],
-        })
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["s1", "s2", "s3", "s4"],
+                "category": ["A", "A", "B", "B"],
+            }
+        )
 
         normalizer = CategoryNormalizer()
         normalizer.fit(
@@ -485,10 +499,12 @@ class TestCategoryNormalizerEdgeCases:
     def test_nan_in_targets(self):
         """Test that NaN in targets raises or handles gracefully."""
         targets = np.array([0.1, np.nan, 0.3])
-        metadata = pd.DataFrame({
-            "sample_id": ["s1", "s2", "s3"],
-            "category": ["A", "A", "A"],
-        })
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["s1", "s2", "s3"],
+                "category": ["A", "A", "A"],
+            }
+        )
 
         normalizer = CategoryNormalizer()
 

@@ -1650,9 +1650,7 @@ class TestConditionalOutputScaling:
             torch.zeros_like(model.output_biases["location"].weight),
         )
 
-    def test_forward_with_conditional_scaling(
-        self, sample_tokens, categorical_cardinalities, categorical_ids
-    ):
+    def test_forward_with_conditional_scaling(self, sample_tokens, categorical_cardinalities, categorical_ids):
         """Test forward pass with conditional output scaling."""
         model = SequencePredictor(
             embedding_dim=64,
@@ -1666,9 +1664,7 @@ class TestConditionalOutputScaling:
         assert "target_prediction" in result
         assert result["target_prediction"].shape == (2, 1)
 
-    def test_identity_transform_at_init(
-        self, sample_tokens, categorical_cardinalities, categorical_ids
-    ):
+    def test_identity_transform_at_init(self, sample_tokens, categorical_cardinalities, categorical_ids):
         """Test that initial scale=1, bias=0 produces identity transform."""
         model = SequencePredictor(
             embedding_dim=64,
@@ -1693,9 +1689,7 @@ class TestConditionalOutputScaling:
         assert not torch.isnan(result["target_prediction"]).any()
         assert not torch.isinf(result["target_prediction"]).any()
 
-    def test_scaling_affects_output(
-        self, sample_tokens, categorical_cardinalities, categorical_ids
-    ):
+    def test_scaling_affects_output(self, sample_tokens, categorical_cardinalities, categorical_ids):
         """Test that modified scale/bias affect the output."""
         model = SequencePredictor(
             embedding_dim=64,
@@ -1720,9 +1714,7 @@ class TestConditionalOutputScaling:
             result_after["target_prediction"],
         )
 
-    def test_different_categories_different_outputs(
-        self, sample_tokens, categorical_cardinalities
-    ):
+    def test_different_categories_different_outputs(self, sample_tokens, categorical_cardinalities):
         """Test that different category values produce different predictions."""
         model = SequencePredictor(
             embedding_dim=64,
@@ -1748,9 +1740,7 @@ class TestConditionalOutputScaling:
             result_2["target_prediction"],
         )
 
-    def test_multiple_columns_applied_sequentially(
-        self, sample_tokens, categorical_cardinalities, categorical_ids
-    ):
+    def test_multiple_columns_applied_sequentially(self, sample_tokens, categorical_cardinalities, categorical_ids):
         """Test that multiple scaling columns are applied sequentially."""
         model = SequencePredictor(
             embedding_dim=64,
@@ -1785,9 +1775,7 @@ class TestConditionalOutputScaling:
         result = model(sample_tokens, categorical_ids=categorical_ids)
         assert result["target_prediction"].shape == (2, 1)
 
-    def test_works_with_bounded_targets(
-        self, sample_tokens, categorical_cardinalities, categorical_ids
-    ):
+    def test_works_with_bounded_targets(self, sample_tokens, categorical_cardinalities, categorical_ids):
         """Test conditional scaling works with bounded_targets (sigmoid)."""
         model = SequencePredictor(
             embedding_dim=64,
@@ -1803,9 +1791,7 @@ class TestConditionalOutputScaling:
         assert (predictions >= 0).all()
         assert (predictions <= 1).all()
 
-    def test_works_with_output_activation(
-        self, sample_tokens, categorical_cardinalities, categorical_ids
-    ):
+    def test_works_with_output_activation(self, sample_tokens, categorical_cardinalities, categorical_ids):
         """Test conditional scaling works with output activations."""
         model = SequencePredictor(
             embedding_dim=64,
@@ -1820,9 +1806,7 @@ class TestConditionalOutputScaling:
         predictions = result["target_prediction"]
         assert (predictions >= 0).all()
 
-    def test_works_with_learnable_output_scale(
-        self, sample_tokens, categorical_cardinalities, categorical_ids
-    ):
+    def test_works_with_learnable_output_scale(self, sample_tokens, categorical_cardinalities, categorical_ids):
         """Test conditional scaling works alongside learnable_output_scale."""
         model = SequencePredictor(
             embedding_dim=64,
@@ -1836,9 +1820,7 @@ class TestConditionalOutputScaling:
         result = model(sample_tokens, categorical_ids=categorical_ids)
         assert result["target_prediction"].shape == (2, 1)
 
-    def test_gradients_flow_through_scaling(
-        self, sample_tokens, categorical_cardinalities, categorical_ids
-    ):
+    def test_gradients_flow_through_scaling(self, sample_tokens, categorical_cardinalities, categorical_ids):
         """Test that gradients flow through conditional scaling embeddings."""
         model = SequencePredictor(
             embedding_dim=64,
@@ -1860,9 +1842,7 @@ class TestConditionalOutputScaling:
             assert not torch.isnan(model.output_scales[col].weight.grad).any()
             assert not torch.isnan(model.output_biases[col].weight.grad).any()
 
-    def test_scaling_independent_of_categorical_fusion(
-        self, sample_tokens, categorical_cardinalities, categorical_ids
-    ):
+    def test_scaling_independent_of_categorical_fusion(self, sample_tokens, categorical_cardinalities, categorical_ids):
         """Test that scaling works with both concat and add fusion."""
         for fusion in ["concat", "add"]:
             model = SequencePredictor(
@@ -1877,9 +1857,7 @@ class TestConditionalOutputScaling:
             result = model(sample_tokens, categorical_ids=categorical_ids)
             assert result["target_prediction"].shape == (2, 1)
 
-    def test_scaling_without_categorical_fusion(
-        self, sample_tokens, categorical_cardinalities, categorical_ids
-    ):
+    def test_scaling_without_categorical_fusion(self, sample_tokens, categorical_cardinalities, categorical_ids):
         """Test that scaling can be used without categorical fusion (embedder only for scaling)."""
         model = SequencePredictor(
             embedding_dim=64,
@@ -1921,9 +1899,7 @@ class TestConditionalOutputScaling:
         result = model(sample_tokens, categorical_ids=categorical_ids)
         assert not torch.isnan(result["target_prediction"]).any()
 
-    def test_save_load_roundtrip(
-        self, sample_tokens, categorical_cardinalities, categorical_ids, tmp_path
-    ):
+    def test_save_load_roundtrip(self, sample_tokens, categorical_cardinalities, categorical_ids, tmp_path):
         """Test that model with conditional scaling can be saved and loaded."""
         model = SequencePredictor(
             embedding_dim=64,
