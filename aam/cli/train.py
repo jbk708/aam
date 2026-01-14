@@ -256,6 +256,12 @@ from aam.cli.utils import (
     type=click.FloatRange(0.0, 1.0, max_open=True),
     help="Dropout rate between MLP regression head layers (default: 0.0, no dropout). Must be in [0.0, 1.0).",
 )
+@click.option(
+    "--best-metric",
+    default="val_loss",
+    type=click.Choice(["val_loss", "r2", "mae", "accuracy", "f1"]),
+    help="Metric to use for best model selection: val_loss (default), r2 (higher better), mae (lower better), accuracy (higher better), f1 (higher better).",
+)
 def train(
     table: str,
     unifrac_matrix: str,
@@ -325,6 +331,7 @@ def train(
     output_activation: str,
     regressor_hidden_dims: Optional[str],
     regressor_dropout: float,
+    best_metric: str,
 ):
     """Train AAM model on microbial sequencing data."""
     try:
@@ -924,6 +931,7 @@ def train(
             count_normalization_params=count_normalization_params,
             train_sampler=train_sampler,
             use_sharded_checkpoint=fsdp_sharded_checkpoint,
+            best_metric=best_metric,
         )
 
         if resume_from is not None:

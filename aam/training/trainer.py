@@ -70,6 +70,31 @@ class WarmupCosineScheduler:
         return [group["lr"] for group in self.optimizer.param_groups]
 
 
+METRIC_MODES: Dict[str, str] = {
+    "val_loss": "min",
+    "r2": "max",
+    "mae": "min",
+    "accuracy": "max",
+    "f1": "max",
+}
+
+
+def is_metric_better(current: float, best: float, mode: str) -> bool:
+    """Check if current metric value is better than the best.
+
+    Args:
+        current: Current metric value
+        best: Best metric value so far
+        mode: Either 'min' (lower is better) or 'max' (higher is better)
+
+    Returns:
+        True if current is better than best
+    """
+    if mode == "max":
+        return current > best
+    return current < best
+
+
 class Trainer:
     """Trainer for AAM models with support for staged training."""
 
@@ -90,6 +115,7 @@ class Trainer:
         train_sampler: Optional[DistributedSampler] = None,
         use_sharded_checkpoint: bool = False,
         gather_for_distributed: bool = False,
+        best_metric: str = "val_loss",
     ):
         """Initialize Trainer.
 
@@ -116,7 +142,16 @@ class Trainer:
                 on rank 0 for checkpoint compatibility.
             gather_for_distributed: If True, gather embeddings and targets across all ranks
                 for full pairwise distance computation in UniFrac loss. Used for FSDP pretraining.
+            best_metric: Metric to use for best model selection. One of 'val_loss', 'r2', 'mae',
+                'accuracy', 'f1'. Default 'val_loss' for backwards compatibility.
         """
+        if best_metric not in METRIC_MODES:
+            raise ValueError(
+                f"Invalid best_metric '{best_metric}'. Must be one of: {list(METRIC_MODES.keys())}"
+            )
+        self.best_metric = best_metric
+        self.best_metric_mode = METRIC_MODES[best_metric]
+
         self.model = model.to(device)
 
         # Compile model if requested (PyTorch 2.0+)
