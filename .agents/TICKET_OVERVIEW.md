@@ -1,7 +1,7 @@
 # Ticket Overview
 
-**Last Updated:** 2026-01-13
-**Status:** 15 outstanding tickets (~50-71 hours)
+**Last Updated:** 2026-01-14
+**Status:** 14 outstanding tickets (~47-70 hours)
 
 ## Quick Links
 - **Regressor optimization:** `REGRESSOR_OPTIMIZATION_TICKETS.md` ← NEW
@@ -16,11 +16,14 @@
 
 ## Outstanding Tickets by Priority
 
-### HIGH (3 tickets, ~10-13 hours)
+### URGENT (0 tickets)
+
+No urgent tickets remaining.
+
+### HIGH (2 tickets, ~7-9 hours)
 
 | Ticket | Description | Effort | Domain |
 |--------|-------------|--------|--------|
-| **REG-2** | Per-category target normalization | 3-4h | Regressor |
 | **REG-3** | Conditional output scaling | 3-4h | Regressor |
 | **REG-4** | FiLM layers (categorical modulation) | 4-5h | Regressor |
 
@@ -58,6 +61,26 @@ Future enhancement phases (~50+ hours):
 ---
 
 ## Recently Completed
+
+**PYT-BUG-2: Best Model Selection Uses Loss Instead of Primary Metric** (2026-01-14) - COMPLETE
+- Added `--best-metric` flag with choices: val_loss, r2, mae, accuracy, f1
+- Added `is_metric_better()` helper for min/max mode comparison
+- Checkpoint now stores `best_metric` and `best_metric_value`
+- Default behavior unchanged (val_loss) for backwards compatibility
+- Added 14 trainer tests and 3 CLI tests
+
+**PYT-BUG-1: Distributed Validation Metrics Not Synchronized** (2026-01-14) - COMPLETE
+- Added `all_reduce()` for distributed metric synchronization
+- Validation metrics now aggregated across all GPUs in DDP/FSDP
+- TensorBoard and console logs show true global performance
+
+**REG-2: Per-Category Target Normalization** (2026-01-13) - COMPLETE
+- Added `--normalize-targets-by` flag for per-category z-score normalization
+- CategoryNormalizer computes per-category mean/std from training data
+- Unseen categories fall back to global statistics with warning
+- Mutually exclusive with `--normalize-targets` (global normalization)
+- Statistics saved in checkpoint for inference
+- Added 26 unit tests for normalization roundtrip
 
 **REG-1: MLP Regression Head** (2026-01-13) - COMPLETE
 - Added `--regressor-hidden-dims` flag for configurable MLP (e.g., `64,32`)
@@ -151,8 +174,7 @@ Future enhancement phases (~50+ hours):
 
 ### 1. Regressor Optimization (HIGH Priority)
 Focus on categorical compensation for multi-environment/season data:
-- **REG-2** - Per-category target normalization (quick win)
-- **REG-3** - Conditional output scaling (complements REG-2)
+- **REG-3** - Conditional output scaling (complements REG-2 ✓)
 - **REG-4** - FiLM layers (most expressive modulation, requires REG-1 ✓)
 
 ### 2. Loss Function Improvements (MEDIUM)
