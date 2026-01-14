@@ -144,6 +144,7 @@ def predict(
             regressor_hidden_dims=model_config.get("regressor_hidden_dims"),
             regressor_dropout=model_config.get("regressor_dropout", 0.0),
             conditional_scaling_columns=model_config.get("conditional_scaling_columns"),
+            film_conditioning_columns=model_config.get("film_conditioning_columns"),
         )
         model_obj.load_state_dict(model_state)
         model_obj.to(device_obj)

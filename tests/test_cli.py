@@ -645,6 +645,13 @@ class TestCLICommands:
         assert result.exit_code != 0
         assert "1.5" in result.output or "range" in result.output.lower()
 
+    def test_train_command_film_conditioning_option_exists(self, runner):
+        """Test that --film-conditioning option appears in train help."""
+        result = runner.invoke(cli, ["train", "--help"])
+        assert result.exit_code == 0
+        assert "--film-conditioning" in result.output
+        assert "FiLM" in result.output
+
 
 class TestCLIIntegration:
     """Integration tests for CLI with mocked components."""

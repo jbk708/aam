@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-14
-**Status:** 14 outstanding tickets (~46-70 hours)
+**Status:** 13 outstanding tickets (~42-65 hours)
 
 ## Quick Links
 - **Regressor optimization:** `REGRESSOR_OPTIMIZATION_TICKETS.md` ← NEW
@@ -20,11 +20,9 @@
 
 No urgent tickets remaining.
 
-### HIGH (1 ticket, ~4-5 hours)
+### HIGH (0 tickets)
 
-| Ticket | Description | Effort | Domain |
-|--------|-------------|--------|--------|
-| **REG-4** | FiLM layers (categorical modulation) | 4-5h | Regressor |
+No high priority tickets remaining.
 
 ### MEDIUM (3 tickets, ~10-15 hours)
 
@@ -61,6 +59,15 @@ Future enhancement phases (~50+ hours):
 ---
 
 ## Recently Completed
+
+**REG-4: FiLM Layers (Feature-wise Linear Modulation)** (2026-01-14) - COMPLETE
+- Added `--film-conditioning` flag for categorical modulation of MLP layers
+- FiLMGenerator generates γ (scale) and β (shift) from categorical embeddings
+- FiLMLayer applies modulation: `h_out = γ * linear(x) + β` then ReLU + dropout
+- FiLMTargetHead wraps MLP with FiLM conditioning at each hidden layer
+- Requires `--regressor-hidden-dims` and `--categorical-columns`
+- Identity initialization (γ=1, β=0) for gradual learning
+- 26 tests (17 unit + 8 integration + 1 CLI)
 
 **REG-3: Conditional Output Scaling** (2026-01-14) - COMPLETE
 - Added `--conditional-output-scaling` flag for per-category scale/bias
@@ -191,12 +198,14 @@ Future enhancement phases (~50+ hours):
 
 ## Recommended Next Steps
 
-### 1. Regressor Optimization (HIGH Priority)
-Focus on categorical compensation for multi-environment/season data:
-- **REG-3** - Conditional output scaling (complements REG-2 ✓)
-- **REG-4** - FiLM layers (most expressive modulation, requires REG-1 ✓)
+### 1. Regressor Optimization (COMPLETE)
+All high-priority categorical compensation tickets complete:
+- **REG-1** ✓ - MLP regression head
+- **REG-2** ✓ - Per-category target normalization
+- **REG-3** ✓ - Conditional output scaling
+- **REG-4** ✓ - FiLM layers (most expressive modulation)
 
-### 2. Loss Function Improvements (MEDIUM)
+### 2. Loss Function Improvements (MEDIUM - Next Priority)
 - **REG-5** - Quantile regression for uncertainty estimation
 - **REG-6** - Asymmetric loss (if directional errors matter)
 

@@ -162,20 +162,31 @@ Learn per-category scale and bias parameters for output adjustment.
 ---
 
 ### REG-4: FiLM Layers (Feature-wise Linear Modulation)
-**Priority:** HIGH | **Effort:** 4-5 hours | **Status:** Not Started
+**Priority:** HIGH | **Effort:** 4-5 hours | **Status:** COMPLETE
 
 Categorical embeddings modulate regression MLP activations via learned γ and β.
+
+**Completed:**
+- Added `--film-conditioning` flag accepting categorical column name(s)
+- Created FiLMGenerator (generates γ, β from categorical embeddings with identity init)
+- Created FiLMLayer (Linear + FiLM modulation + ReLU + Dropout)
+- Created FiLMTargetHead (MLP with FiLM conditioning at each hidden layer)
+- Integrated into SequencePredictor: uses FiLMTargetHead when film_conditioning_columns set
+- Requires --regressor-hidden-dims and --categorical-columns
+- Saved in checkpoint, loaded in predict.py for inference
+- 26 tests (17 unit + 8 integration + 1 CLI)
+
+**Files:**
+- `aam/models/film.py` - FiLMGenerator, FiLMLayer, FiLMTargetHead
+- `aam/models/sequence_predictor.py` - Integration with FiLM
+- `aam/cli/train.py` - `--film-conditioning` flag
+- `aam/cli/predict.py` - Load film_conditioning_columns from checkpoint
+- `tests/test_film.py` - Comprehensive test suite
 
 **Background:**
 FiLM (Feature-wise Linear Modulation) is a powerful conditioning technique where context (categorical embeddings) modulates intermediate representations. Unlike concat/add fusion which mixes features early, FiLM allows categories to amplify, suppress, or shift specific learned features at each layer.
 
 **Paper:** Perez et al., "FiLM: Visual Reasoning with a General Conditioning Layer" (2018)
-
-**Scope:**
-- Add `--film-conditioning` flag accepting categorical column name(s)
-- Generate γ (scale) and β (shift) from categorical embeddings
-- Apply FiLM after each MLP layer: `h_out = γ * h + β`
-- Requires MLP head (REG-1) to have layers to modulate
 
 **Implementation Notes:**
 ```python
