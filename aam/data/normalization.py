@@ -144,14 +144,11 @@ class CategoryNormalizer:
         Returns:
             Series of category key strings
         """
-        key_parts = []
-        for col in self.columns:
-            key_parts.append(col + "=" + metadata[col].astype(str))
+        key_parts = [col + "=" + metadata[col].astype(str) for col in self.columns]
 
         if len(key_parts) == 1:
             return key_parts[0]
-        else:
-            return key_parts[0].str.cat([kp for kp in key_parts[1:]], sep=",")
+        return key_parts[0].str.cat(key_parts[1:], sep=",")
 
     def normalize(
         self,
@@ -175,12 +172,9 @@ class CategoryNormalizer:
 
         mean, std = self._get_stats(category_key)
 
-        if isinstance(target, torch.Tensor):
+        if isinstance(target, (torch.Tensor, np.ndarray)):
             return (target - mean) / std
-        elif isinstance(target, np.ndarray):
-            return (target - mean) / std
-        else:
-            return (float(target) - mean) / std
+        return (float(target) - mean) / std
 
     def denormalize(
         self,
@@ -204,12 +198,9 @@ class CategoryNormalizer:
 
         mean, std = self._get_stats(category_key)
 
-        if isinstance(prediction, torch.Tensor):
+        if isinstance(prediction, (torch.Tensor, np.ndarray)):
             return prediction * std + mean
-        elif isinstance(prediction, np.ndarray):
-            return prediction * std + mean
-        else:
-            return float(prediction) * std + mean
+        return float(prediction) * std + mean
 
     def _get_stats(self, category_key: str) -> tuple:
         """Get mean and std for a category, falling back to global if unseen.
@@ -222,15 +213,14 @@ class CategoryNormalizer:
         """
         if category_key in self.stats:
             return self.stats[category_key]["mean"], self.stats[category_key]["std"]
-        else:
-            # Warn once per unseen category
-            if category_key not in self._warned_categories:
-                logger.warning(
-                    f"Unseen category '{category_key}' - using global statistics "
-                    f"(mean={self.global_mean:.4f}, std={self.global_std:.4f})"
-                )
-                self._warned_categories.add(category_key)
-            return self.global_mean, self.global_std
+
+        if category_key not in self._warned_categories:
+            logger.warning(
+                f"Unseen category '{category_key}' - using global statistics "
+                f"(mean={self.global_mean:.4f}, std={self.global_std:.4f})"
+            )
+            self._warned_categories.add(category_key)
+        return self.global_mean, self.global_std
 
     def get_category_key(
         self,
@@ -250,15 +240,7 @@ class CategoryNormalizer:
         if not self._is_fitted:
             raise RuntimeError("CategoryNormalizer must be fitted before calling get_category_key()")
 
-        key_parts = []
-        for col in self.columns:
-            if isinstance(metadata_row, pd.Series):
-                val = metadata_row[col]
-            else:
-                val = metadata_row[col]
-            key_parts.append(f"{col}={val}")
-
-        return ",".join(key_parts)
+        return ",".join(f"{col}={metadata_row[col]}" for col in self.columns)
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize normalizer state to dictionary for checkpointing.
