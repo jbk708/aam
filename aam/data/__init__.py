@@ -7,6 +7,7 @@ from aam.data.categorical import (
     CategoricalEncoder,
     CategoricalSchema,
 )
+from aam.data.normalization import CategoryNormalizer
 
 __all__ = [
     "ASVDataset",
@@ -14,6 +15,7 @@ __all__ = [
     "CategoricalColumnConfig",
     "CategoricalEncoder",
     "CategoricalSchema",
+    "CategoryNormalizer",
     "SequenceTokenizer",
     "UniFracLoader",
 ]
