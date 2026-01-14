@@ -971,8 +971,12 @@ class TestDistributedValidationMetrics:
         assert hasattr(streaming, "_merge_from")
         assert callable(streaming._merge_from)
 
-    def test_regression_sync_uses_all_reduce_in_distributed(self):
-        """Test that sync_distributed uses all_reduce for distributed stats."""
+    def test_regression_sync_uses_all_gather_in_distributed(self):
+        """Test that sync_distributed uses all_gather for distributed stats.
+
+        StreamingRegressionMetrics uses all_gather instead of all_reduce because
+        it needs to do parallel Welford merge for correct variance computation.
+        """
         from aam.training.metrics import StreamingRegressionMetrics
 
         streaming = StreamingRegressionMetrics()
@@ -980,12 +984,19 @@ class TestDistributedValidationMetrics:
 
         with (
             patch("aam.training.metrics.dist.is_initialized", return_value=True),
-            patch("aam.training.metrics.dist.all_reduce") as mock_all_reduce,
             patch("aam.training.metrics.dist.get_world_size", return_value=4),
+            patch("aam.training.metrics.dist.all_gather") as mock_all_gather,
         ):
+            # Mock all_gather to fill the gathered list
+            def fill_gathered(gathered_list, tensor):
+                for i in range(len(gathered_list)):
+                    gathered_list[i].copy_(tensor)
+
+            mock_all_gather.side_effect = fill_gathered
+
             streaming.sync_distributed()
-            # Should call all_reduce to sync statistics
-            assert mock_all_reduce.called
+            # Should call all_gather to sync statistics
+            assert mock_all_gather.called
 
     def test_classification_sync_uses_all_reduce_in_distributed(self):
         """Test that sync_distributed uses all_reduce for confusion matrix."""

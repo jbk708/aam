@@ -1,6 +1,7 @@
 """Metrics computation for AAM model evaluation."""
 
 import torch
+import torch.distributed as dist
 import numpy as np
 from typing import Dict, Optional, Tuple
 from sklearn.metrics import (
@@ -124,6 +125,40 @@ class StreamingRegressionMetrics:
         self.plot_targets = []
         self._reservoir_idx = 0
 
+    def _merge_from(self, other: "StreamingRegressionMetrics") -> None:
+        """Merge statistics from another StreamingRegressionMetrics instance.
+
+        Uses parallel Welford algorithm to correctly combine running variance.
+        After merging, this instance contains statistics for the combined dataset.
+
+        Args:
+            other: Another StreamingRegressionMetrics instance to merge from.
+        """
+        if other.n == 0:
+            return
+        if self.n == 0:
+            self.n = other.n
+            self.sum_abs_error = other.sum_abs_error
+            self.sum_sq_error = other.sum_sq_error
+            self.mean_true = other.mean_true
+            self.m2_true = other.m2_true
+            return
+
+        # Merge sums (these can simply be added)
+        n_combined = self.n + other.n
+        self.sum_abs_error += other.sum_abs_error
+        self.sum_sq_error += other.sum_sq_error
+
+        # Parallel Welford merge for mean and m2
+        # Formula: delta = mean_b - mean_a
+        #          mean_combined = mean_a + delta * n_b / n_combined
+        #          m2_combined = m2_a + m2_b + delta^2 * n_a * n_b / n_combined
+        delta = other.mean_true - self.mean_true
+        self.mean_true = self.mean_true + delta * other.n / n_combined
+        self.m2_true = self.m2_true + other.m2_true + delta**2 * self.n * other.n / n_combined
+
+        self.n = n_combined
+
     def sync_distributed(self) -> None:
         """Synchronize metrics across all distributed processes.
 
@@ -133,7 +168,47 @@ class StreamingRegressionMetrics:
 
         This is a no-op if not running in distributed mode.
         """
-        raise NotImplementedError("sync_distributed not yet implemented")
+        if not dist.is_initialized():
+            return
+
+        world_size = dist.get_world_size()
+        if world_size == 1:
+            return
+
+        # Gather all statistics from all ranks
+        # We need to gather individual stats and merge using parallel Welford
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        # Pack local statistics into a tensor for all_gather
+        local_stats = torch.tensor(
+            [self.n, self.sum_abs_error, self.sum_sq_error, self.mean_true, self.m2_true],
+            dtype=torch.float64,
+            device=device,
+        )
+
+        # Gather from all ranks
+        gathered = [torch.zeros_like(local_stats) for _ in range(world_size)]
+        dist.all_gather(gathered, local_stats)
+
+        # Reset and merge all gathered statistics
+        self.n = 0
+        self.sum_abs_error = 0.0
+        self.sum_sq_error = 0.0
+        self.mean_true = 0.0
+        self.m2_true = 0.0
+
+        for stats in gathered:
+            other_n = int(stats[0].item())
+            if other_n == 0:
+                continue
+
+            other = StreamingRegressionMetrics.__new__(StreamingRegressionMetrics)
+            other.n = other_n
+            other.sum_abs_error = stats[1].item()
+            other.sum_sq_error = stats[2].item()
+            other.mean_true = stats[3].item()
+            other.m2_true = stats[4].item()
+            self._merge_from(other)
 
 
 class StreamingClassificationMetrics:
@@ -282,6 +357,44 @@ class StreamingClassificationMetrics:
         self.plot_targets = []
         self._reservoir_idx = 0
 
+    def _merge_from(self, other: "StreamingClassificationMetrics") -> None:
+        """Merge statistics from another StreamingClassificationMetrics instance.
+
+        Simply adds confusion matrices element-wise.
+
+        Args:
+            other: Another StreamingClassificationMetrics instance to merge from.
+        """
+        if other.n == 0 or other.confusion_matrix is None:
+            return
+
+        self.n += other.n
+
+        if self.confusion_matrix is None:
+            self.num_classes = other.num_classes
+            self.confusion_matrix = other.confusion_matrix.copy()
+        else:
+            # Expand matrices if needed to match dimensions
+            if other.num_classes is not None and other.num_classes > (self.num_classes or 0):
+                self.num_classes = other.num_classes
+                new_cm = np.zeros((self.num_classes, self.num_classes), dtype=np.int64)
+                old_size = self.confusion_matrix.shape[0]
+                new_cm[:old_size, :old_size] = self.confusion_matrix
+                self.confusion_matrix = new_cm
+
+            # Ensure other matrix fits
+            other_size = other.confusion_matrix.shape[0]
+            if other_size > self.confusion_matrix.shape[0]:
+                new_size = other_size
+                new_cm = np.zeros((new_size, new_size), dtype=np.int64)
+                old_size = self.confusion_matrix.shape[0]
+                new_cm[:old_size, :old_size] = self.confusion_matrix
+                self.confusion_matrix = new_cm
+                self.num_classes = new_size
+
+            # Add confusion matrices
+            self.confusion_matrix[:other_size, :other_size] += other.confusion_matrix
+
     def sync_distributed(self) -> None:
         """Synchronize metrics across all distributed processes.
 
@@ -291,7 +404,27 @@ class StreamingClassificationMetrics:
 
         This is a no-op if not running in distributed mode.
         """
-        raise NotImplementedError("sync_distributed not yet implemented")
+        if not dist.is_initialized():
+            return
+
+        world_size = dist.get_world_size()
+        if world_size == 1:
+            return
+
+        if self.confusion_matrix is None:
+            return
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        # Convert confusion matrix to tensor for all_reduce
+        cm_tensor = torch.tensor(self.confusion_matrix, dtype=torch.int64, device=device)
+
+        # All-reduce to sum confusion matrices across all ranks
+        dist.all_reduce(cm_tensor, op=dist.ReduceOp.SUM)
+
+        # Update confusion matrix and count
+        self.confusion_matrix = cm_tensor.cpu().numpy()
+        self.n = int(self.confusion_matrix.sum())
 
 
 class StreamingCountMetrics:
@@ -398,6 +531,21 @@ class StreamingCountMetrics:
         self.plot_targets = []
         self._reservoir_idx = 0
 
+    def _merge_from(self, other: "StreamingCountMetrics") -> None:
+        """Merge statistics from another StreamingCountMetrics instance.
+
+        Simply adds error sums and counts.
+
+        Args:
+            other: Another StreamingCountMetrics instance to merge from.
+        """
+        if other.n == 0:
+            return
+
+        self.n += other.n
+        self.sum_abs_error += other.sum_abs_error
+        self.sum_sq_error += other.sum_sq_error
+
     def sync_distributed(self) -> None:
         """Synchronize metrics across all distributed processes.
 
@@ -407,7 +555,29 @@ class StreamingCountMetrics:
 
         This is a no-op if not running in distributed mode.
         """
-        raise NotImplementedError("sync_distributed not yet implemented")
+        if not dist.is_initialized():
+            return
+
+        world_size = dist.get_world_size()
+        if world_size == 1:
+            return
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        # Pack statistics into tensor for all_reduce
+        local_stats = torch.tensor(
+            [self.n, self.sum_abs_error, self.sum_sq_error],
+            dtype=torch.float64,
+            device=device,
+        )
+
+        # All-reduce to sum statistics across all ranks
+        dist.all_reduce(local_stats, op=dist.ReduceOp.SUM)
+
+        # Update local statistics
+        self.n = int(local_stats[0].item())
+        self.sum_abs_error = local_stats[1].item()
+        self.sum_sq_error = local_stats[2].item()
 
 
 def compute_regression_metrics(
