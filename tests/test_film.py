@@ -440,3 +440,41 @@ class TestFiLMIntegration:
             assert len(w) == 1
             assert "site" in str(w[0].message)
             assert "FiLM conditioning columns" in str(w[0].message)
+
+    def test_film_identity_init_preserved_in_sequence_predictor(self):
+        """Test that FiLM identity initialization is preserved after SequencePredictor creation.
+
+        Regression test for bug where _init_weights() was overwriting FiLM initialization.
+        """
+        from aam.models.sequence_predictor import SequencePredictor
+        from aam.models.film import FiLMTargetHead
+
+        model = SequencePredictor(
+            embedding_dim=64,
+            out_dim=1,
+            categorical_cardinalities={"season": 5},
+            categorical_embed_dim=16,
+            regressor_hidden_dims=[32, 16],
+            film_conditioning_columns=["season"],
+        )
+
+        assert isinstance(model.target_head, FiLMTargetHead)
+
+        # Check FiLM identity initialization is preserved
+        for i, layer in enumerate(model.target_head.film_layers):
+            gamma_weight = layer.film.gamma_proj.weight
+            gamma_bias = layer.film.gamma_proj.bias
+            beta_weight = layer.film.beta_proj.weight
+            beta_bias = layer.film.beta_proj.bias
+
+            # gamma_proj should have: weight=0, bias=1 (identity transform)
+            assert torch.allclose(gamma_weight, torch.zeros_like(gamma_weight)), \
+                f"Layer {i}: gamma_proj.weight should be zeros"
+            assert torch.allclose(gamma_bias, torch.ones_like(gamma_bias)), \
+                f"Layer {i}: gamma_proj.bias should be ones"
+
+            # beta_proj should have: weight=0, bias=0
+            assert torch.allclose(beta_weight, torch.zeros_like(beta_weight)), \
+                f"Layer {i}: beta_proj.weight should be zeros"
+            assert torch.allclose(beta_bias, torch.zeros_like(beta_bias)), \
+                f"Layer {i}: beta_proj.bias should be zeros"
