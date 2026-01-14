@@ -369,8 +369,7 @@ def get_fsdp_state_dict(
                 f"Try reducing model size or batch size. Original error: {e}"
             ) from e
         raise RuntimeError(
-            f"Failed to get FSDP state dict (sharded={sharded}). "
-            f"This may indicate corrupted FSDP state. Original error: {e}"
+            f"Failed to get FSDP state dict (sharded={sharded}). This may indicate corrupted FSDP state. Original error: {e}"
         ) from e
 
 
@@ -423,9 +422,7 @@ def set_fsdp_state_dict(
                 f"FSDP state dict key mismatch (sharded={sharded}, strict={strict}). "
                 f"For transfer learning, try strict=False. Original error: {e}"
             ) from e
-        raise RuntimeError(
-            f"Failed to load FSDP state dict (sharded={sharded}). Original error: {e}"
-        ) from e
+        raise RuntimeError(f"Failed to load FSDP state dict (sharded={sharded}). Original error: {e}") from e
 
 
 def get_fsdp_optimizer_state_dict(
@@ -641,6 +638,72 @@ def print_rank0(message: str) -> None:
     """
     if is_main_process():
         print(message)
+
+
+def gather_embeddings_for_unifrac(embeddings: torch.Tensor) -> torch.Tensor:
+    """Gather embeddings from all processes for UniFrac pairwise distance computation.
+
+    In distributed training (DDP/FSDP), each GPU only sees its local batch. UniFrac
+    loss requires pairwise distances across ALL samples, so we need to gather
+    embeddings from all GPUs before computing pairwise distances.
+
+    Without gathering:
+        GPU 0: samples [0,1,2,3] -> local pairwise distances only
+        GPU 1: samples [4,5,6,7] -> local pairwise distances only
+        Missing: cross-GPU pairs (0,4), (0,5), (1,4), etc.
+
+    With gathering:
+        All GPUs get samples [0,1,2,3,4,5,6,7] -> full pairwise distances
+
+    Args:
+        embeddings: Local embeddings tensor [local_batch_size, embedding_dim]
+
+    Returns:
+        Gathered embeddings tensor [global_batch_size, embedding_dim] where
+        global_batch_size = local_batch_size * world_size.
+        If not in distributed mode, returns the input unchanged.
+
+    Note:
+        This operation performs an all-gather, so all ranks receive the full
+        gathered tensor. The gradient flows back correctly during backward pass
+        by replacing the local portion with the original input tensor.
+    """
+    if not is_distributed():
+        return embeddings
+
+    world_size = get_world_size()
+    rank = get_rank()
+
+    # Create placeholder tensors for all ranks
+    gathered = [torch.zeros_like(embeddings) for _ in range(world_size)]
+
+    # All-gather: each rank sends its embeddings to all other ranks
+    try:
+        dist.all_gather(gathered, embeddings)
+    except RuntimeError as e:
+        raise RuntimeError(
+            f"Failed to gather embeddings across {world_size} ranks (shape={embeddings.shape}, device={embeddings.device}): {e}"
+        ) from e
+
+    # Concatenate all gathered embeddings
+    # Shape: [local_batch_size * world_size, embedding_dim]
+    gathered_tensor = torch.cat(gathered, dim=0)
+
+    # Replace the portion corresponding to this rank's data with the original
+    # embeddings to preserve gradient flow. dist.all_gather doesn't propagate
+    # gradients, so we need this manual replacement.
+    if embeddings.requires_grad:
+        local_batch_size = embeddings.shape[0]
+        start_idx = rank * local_batch_size
+        end_idx = start_idx + local_batch_size
+
+        # Create output tensor and copy non-local portions (no gradient needed)
+        # For the local portion, use the original embeddings (with gradient)
+        before = gathered_tensor[:start_idx].detach()
+        after = gathered_tensor[end_idx:].detach()
+        gathered_tensor = torch.cat([before, embeddings, after], dim=0)
+
+    return gathered_tensor
 
 
 def sync_batch_norm(model: nn.Module) -> nn.Module:

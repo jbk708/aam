@@ -794,3 +794,127 @@ class TestFSDPCheckpointTrainerIntegration:
 
             with pytest.raises(ValueError, match="missing required keys.*model_state_dict"):
                 trainer.load_checkpoint("/tmp/test.pt")
+
+
+class TestGatherEmbeddingsForUnifrac:
+    """Test embedding gathering for UniFrac pairwise distance computation."""
+
+    def test_gather_embeddings_function_exists(self):
+        """Test gather_embeddings_for_unifrac function is importable."""
+        from aam.training.distributed import gather_embeddings_for_unifrac
+
+        assert callable(gather_embeddings_for_unifrac)
+
+    def test_gather_embeddings_returns_input_when_not_distributed(self):
+        """Test gather_embeddings_for_unifrac returns input unchanged when not in distributed mode."""
+        from aam.training.distributed import gather_embeddings_for_unifrac
+
+        if torch.distributed.is_initialized():
+            torch.distributed.destroy_process_group()
+
+        embeddings = torch.randn(4, 128)  # batch_size=4, embed_dim=128
+        result = gather_embeddings_for_unifrac(embeddings)
+
+        # When not distributed, should return the input unchanged
+        torch.testing.assert_close(result, embeddings)
+
+    def test_gather_embeddings_preserves_shape_when_not_distributed(self):
+        """Test gather_embeddings_for_unifrac preserves tensor shape when not distributed."""
+        from aam.training.distributed import gather_embeddings_for_unifrac
+
+        if torch.distributed.is_initialized():
+            torch.distributed.destroy_process_group()
+
+        embeddings = torch.randn(8, 256)
+        result = gather_embeddings_for_unifrac(embeddings)
+
+        assert result.shape == embeddings.shape
+
+    def test_gather_embeddings_preserves_device(self):
+        """Test gather_embeddings_for_unifrac preserves tensor device."""
+        from aam.training.distributed import gather_embeddings_for_unifrac
+
+        if torch.distributed.is_initialized():
+            torch.distributed.destroy_process_group()
+
+        embeddings = torch.randn(4, 64)
+        result = gather_embeddings_for_unifrac(embeddings)
+
+        assert result.device == embeddings.device
+
+    def test_gather_embeddings_preserves_requires_grad(self):
+        """Test gather_embeddings_for_unifrac preserves gradient tracking."""
+        from aam.training.distributed import gather_embeddings_for_unifrac
+
+        if torch.distributed.is_initialized():
+            torch.distributed.destroy_process_group()
+
+        embeddings = torch.randn(4, 64, requires_grad=True)
+        result = gather_embeddings_for_unifrac(embeddings)
+
+        assert result.requires_grad == embeddings.requires_grad
+
+    def test_gather_embeddings_function_signature(self):
+        """Test gather_embeddings_for_unifrac has correct function signature."""
+        import inspect
+        from aam.training.distributed import gather_embeddings_for_unifrac
+
+        sig = inspect.signature(gather_embeddings_for_unifrac)
+        params = list(sig.parameters.keys())
+
+        assert "embeddings" in params
+        # Return type should be Tensor
+        assert "Tensor" in str(sig.return_annotation)
+
+    def test_gather_embeddings_concatenates_in_distributed_mode(self):
+        """Test gather_embeddings_for_unifrac concatenates across ranks in distributed mode."""
+        from aam.training.distributed import gather_embeddings_for_unifrac
+
+        local_batch_size = 4
+        embed_dim = 64
+        world_size = 2
+
+        embeddings = torch.randn(local_batch_size, embed_dim)
+
+        with (
+            patch("aam.training.distributed.is_distributed", return_value=True),
+            patch("aam.training.distributed.get_world_size", return_value=world_size),
+            patch("aam.training.distributed.get_rank", return_value=0),
+            patch("aam.training.distributed.dist.all_gather") as mock_all_gather,
+        ):
+            # Simulate all_gather filling the gathered list
+            def fill_gathered(gathered_list, tensor):
+                for i in range(len(gathered_list)):
+                    gathered_list[i].copy_(torch.randn_like(tensor))
+
+            mock_all_gather.side_effect = fill_gathered
+
+            result = gather_embeddings_for_unifrac(embeddings)
+
+            # Result should have global_batch_size = local_batch_size * world_size
+            assert result.shape[0] == local_batch_size * world_size
+            assert result.shape[1] == embed_dim
+
+    def test_gather_embeddings_calls_all_gather_in_distributed(self):
+        """Test gather_embeddings_for_unifrac uses all_gather in distributed mode."""
+        from aam.training.distributed import gather_embeddings_for_unifrac
+
+        embeddings = torch.randn(4, 64)
+
+        with (
+            patch("aam.training.distributed.is_distributed", return_value=True),
+            patch("aam.training.distributed.get_world_size", return_value=2),
+            patch("aam.training.distributed.get_rank", return_value=0),
+            patch("aam.training.distributed.dist.all_gather") as mock_all_gather,
+        ):
+            # Just make it not crash
+            def fill_gathered(gathered_list, tensor):
+                for i in range(len(gathered_list)):
+                    gathered_list[i].copy_(tensor)
+
+            mock_all_gather.side_effect = fill_gathered
+
+            gather_embeddings_for_unifrac(embeddings)
+
+            # Verify all_gather was called
+            mock_all_gather.assert_called_once()

@@ -1,27 +1,15 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-13
-**Status:** 9 outstanding tickets (~29-43 hours)
+**Status:** 8 outstanding tickets (~23-35 hours)
 
 ## Quick Links
 - **ROCm optimization:** `COSMOS_ONBOARDING_TICKETS.md`
 - **Categorical features:** `CATEGORICAL_FEATURE_TICKETS.md`
 - **PyTorch work:** `PYTORCH_PORTING_TICKETS.md`
+- **Documentation:** `DOCUMENTATION_TICKETS.md`
 - **Completed work:** `ARCHIVED_TICKETS.md`
 - **Workflow:** `WORKFLOW.md`
-
----
-
-## In Progress
-
-### PYT-12.1: FSDP Implementation
-**Branch:** `pyt-12.1-fsdp-implementation`
-
-| Sub-ticket | Description | Effort | Status |
-|------------|-------------|--------|--------|
-| PYT-12.1a | FSDP Infrastructure | 4-6h | **COMPLETE** |
-| PYT-12.1b | FSDP Checkpoint Support | 3-4h | **COMPLETE** |
-| PYT-12.1c | FSDP Pretraining + ROCm | 4-6h | Not Started |
 
 ---
 
@@ -31,17 +19,17 @@
 
 All high priority tickets complete.
 
-### MEDIUM (2 tickets, ~8-12 hours)
+### MEDIUM (1 ticket, ~4-6 hours)
 
 | Ticket | Description | Effort | Domain |
 |--------|-------------|--------|--------|
-| **PYT-12.1c** | FSDP Pretraining + ROCm | 4-6h | PyTorch |
 | **PYT-12.2** | Batch size optimization | 4-6h | PyTorch |
 
-### LOW (6 tickets, ~21-31 hours)
+### LOW (7 tickets, ~23-35 hours)
 
 | Ticket | Description | Effort | Domain |
 |--------|-------------|--------|--------|
+| **DOC-1** | README & Installation Modernization | 2-4h | Docs |
 | **COS-9.5** | Kernel profiling with rocprof | 4-6h | Cosmos |
 | **COS-9.6** | SLURM job templates | 3-4h | Cosmos |
 | **COS-9.7** | ROCm Singularity container | 4-6h | Cosmos |
@@ -61,6 +49,15 @@ Future enhancement phases (~50+ hours):
 ---
 
 ## Recently Completed
+
+**PYT-12.1c: FSDP Pretraining + ROCm Validation** (2026-01-13) - COMPLETE
+- Added `gather_embeddings_for_unifrac()` for cross-GPU embedding collection
+- Added `_gather_target_matrices()` for UniFrac target gathering
+- Integrated gathering into `MultiTaskLoss.compute_base_loss()` with `gather_for_distributed` flag
+- Added `--fsdp` and `--fsdp-sharded-checkpoint` flags to pretrain.py
+- Updated README with comprehensive FSDP documentation
+- Added 8 tests for embedding gathering, 5 CLI tests for FSDP pretrain flags
+- PYT-12.1 FSDP Implementation now complete (all 3 sub-tickets done)
 
 **PYT-12.1b: FSDP Checkpoint Support** (2026-01-13) - COMPLETE
 - Added FSDP checkpoint utility functions: `get_fsdp_state_dict()`, `set_fsdp_state_dict()`, `get_fsdp_optimizer_state_dict()`, `set_fsdp_optimizer_state_dict()`
@@ -129,17 +126,17 @@ Future enhancement phases (~50+ hours):
 
 ## Recommended Next Steps
 
-### 1. Current Work: FSDP Implementation (IN PROGRESS)
+### 1. FSDP Implementation ✓ COMPLETE
 - ~~**PYT-12.1a** - FSDP Infrastructure~~ ✓ COMPLETE
 - ~~**PYT-12.1b** - FSDP Checkpoint Support~~ ✓ COMPLETE
-- **PYT-12.1c** - FSDP Pretraining + ROCm (next)
+- ~~**PYT-12.1c** - FSDP Pretraining + ROCm~~ ✓ COMPLETE
 
-### 2. Infrastructure (As Needed)
+### 2. Next: Batch Size Optimization
+- **PYT-12.2** - Batch size optimization for efficient training
+
+### 3. Infrastructure (As Needed)
 - **COS-9.6** - SLURM templates for Cosmos
 - **COS-9.8** - ROCm documentation
-
-### 3. After FSDP
-- **PYT-12.2** - Batch size optimization
 
 ### 4. Memory Optimization (LOW)
 - **PYT-18.5** - Lazy sample embedding computation

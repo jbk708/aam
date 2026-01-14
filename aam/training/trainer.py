@@ -89,6 +89,7 @@ class Trainer:
         count_normalization_params: Optional[Dict[str, float]] = None,
         train_sampler: Optional[DistributedSampler] = None,
         use_sharded_checkpoint: bool = False,
+        gather_for_distributed: bool = False,
     ):
         """Initialize Trainer.
 
@@ -113,6 +114,8 @@ class Trainer:
                 checkpoints where each rank saves/loads its own shard. Faster for large models
                 but requires same world size for loading. Default False saves full state dict
                 on rank 0 for checkpoint compatibility.
+            gather_for_distributed: If True, gather embeddings and targets across all ranks
+                for full pairwise distance computation in UniFrac loss. Used for FSDP pretraining.
         """
         self.model = model.to(device)
 
@@ -132,6 +135,7 @@ class Trainer:
         self.count_normalization_params = count_normalization_params
         self.train_sampler = train_sampler
         self.use_sharded_checkpoint = use_sharded_checkpoint
+        self.gather_for_distributed = gather_for_distributed
         self.writer: Optional[SummaryWriter] = None
         self.log_histograms: bool = True
         self.histogram_frequency: int = 50
@@ -630,7 +634,13 @@ class Trainer:
                             f"in Trainer.train_epoch() method."
                         )
 
-                losses = self.loss_fn(outputs, targets, is_classifier=is_classifier, encoder_type=encoder_type)
+                losses = self.loss_fn(
+                    outputs,
+                    targets,
+                    is_classifier=is_classifier,
+                    encoder_type=encoder_type,
+                    gather_for_distributed=self.gather_for_distributed,
+                )
 
                 # Check for NaN in loss after computation
                 if torch.any(torch.isnan(losses["total_loss"])):
@@ -1111,8 +1121,7 @@ class Trainer:
         if model_is_fsdp:
             fsdp_model = cast("FSDP", self.model)
             logger.info(
-                f"Saving FSDP checkpoint (sharded={self.use_sharded_checkpoint}, "
-                f"rank0_only={not self.use_sharded_checkpoint})"
+                f"Saving FSDP checkpoint (sharded={self.use_sharded_checkpoint}, rank0_only={not self.use_sharded_checkpoint})"
             )
             model_state_dict = get_fsdp_state_dict(
                 fsdp_model,
@@ -1151,10 +1160,7 @@ class Trainer:
         try:
             torch.save(checkpoint, filepath)
         except (OSError, RuntimeError) as e:
-            raise RuntimeError(
-                f"Failed to save checkpoint to '{filepath}': {e}. "
-                f"Check disk space and permissions."
-            ) from e
+            raise RuntimeError(f"Failed to save checkpoint to '{filepath}': {e}. Check disk space and permissions.") from e
 
     def load_checkpoint(
         self,
@@ -1214,10 +1220,7 @@ class Trainer:
         if model_is_fsdp:
             fsdp_model = cast("FSDP", self.model)
             if not checkpoint_is_sharded:
-                logger.info(
-                    "Loading non-sharded checkpoint into FSDP model. "
-                    "Full state dict will be broadcast to all ranks."
-                )
+                logger.info("Loading non-sharded checkpoint into FSDP model. Full state dict will be broadcast to all ranks.")
             else:
                 logger.info(f"Loading sharded FSDP checkpoint (world_size={get_world_size()})")
             set_fsdp_state_dict(
