@@ -706,6 +706,89 @@ def gather_embeddings_for_unifrac(embeddings: torch.Tensor) -> torch.Tensor:
     return gathered_tensor
 
 
+def gather_predictions_for_plot(
+    local_tensor: torch.Tensor,
+    max_samples: Optional[int] = None,
+) -> torch.Tensor:
+    """Gather predictions from all ranks for plotting in TensorBoard.
+
+    In distributed training, each GPU only processes a subset of validation samples.
+    This function gathers predictions from all ranks so rank 0 can create a complete
+    scatter plot showing all validation samples.
+
+    Handles variable tensor sizes across ranks (e.g., last batch may be smaller).
+
+    Args:
+        local_tensor: Local predictions or targets tensor [local_size, ...].
+            Can be 1D (predictions) or 2D (embeddings).
+        max_samples: Optional maximum number of samples to return. If the gathered
+            tensor exceeds this, it will be randomly subsampled. Useful to prevent
+            OOM with large validation sets.
+
+    Returns:
+        Gathered tensor [global_size, ...] containing data from all ranks.
+        If not in distributed mode, returns the input unchanged.
+        Only rank 0 needs the full result; other ranks return empty tensor.
+
+    Example:
+        >>> # On rank 0: local_preds.shape = [50, 1]
+        >>> # On rank 1: local_preds.shape = [50, 1]
+        >>> # On rank 2: local_preds.shape = [50, 1]
+        >>> # On rank 3: local_preds.shape = [47, 1]  # last batch smaller
+        >>> gathered = gather_predictions_for_plot(local_preds)
+        >>> # On rank 0: gathered.shape = [197, 1]
+        >>> # On other ranks: gathered.shape = [0, 1]
+    """
+    if not is_distributed():
+        if max_samples is not None and local_tensor.shape[0] > max_samples:
+            indices = torch.randperm(local_tensor.shape[0])[:max_samples]
+            return local_tensor[indices]
+        return local_tensor
+
+    world_size = get_world_size()
+    rank = get_rank()
+    device = local_tensor.device
+
+    # Step 1: Gather sizes from all ranks (handles variable batch sizes)
+    local_size = torch.tensor([local_tensor.shape[0]], dtype=torch.long, device=device)
+    all_sizes = [torch.zeros(1, dtype=torch.long, device=device) for _ in range(world_size)]
+    dist.all_gather(all_sizes, local_size)
+
+    # Step 2: Pad tensors to max size for all_gather
+    max_size = max(s.item() for s in all_sizes)
+    if max_size == 0:
+        # No data on any rank
+        return torch.empty(0, *local_tensor.shape[1:], device=device)
+
+    # Create padded tensor
+    padded_shape = (int(max_size),) + local_tensor.shape[1:]
+    padded = torch.zeros(padded_shape, dtype=local_tensor.dtype, device=device)
+    padded[: local_tensor.shape[0]] = local_tensor
+
+    # Step 3: All-gather padded tensors
+    gathered = [torch.zeros_like(padded) for _ in range(world_size)]
+    dist.all_gather(gathered, padded)
+
+    # Step 4: Only rank 0 needs the full result; concatenate valid portions
+    if rank == 0:
+        result_parts = []
+        for i, g in enumerate(gathered):
+            valid_size = int(all_sizes[i].item())
+            if valid_size > 0:
+                result_parts.append(g[:valid_size])
+        result = torch.cat(result_parts, dim=0) if result_parts else torch.empty(0, *local_tensor.shape[1:], device=device)
+
+        # Subsample if exceeds max_samples
+        if max_samples is not None and result.shape[0] > max_samples:
+            indices = torch.randperm(result.shape[0], device=device)[:max_samples]
+            result = result[indices]
+
+        return result
+    else:
+        # Other ranks return empty tensor (they don't need the gathered data)
+        return torch.empty(0, *local_tensor.shape[1:], device=device)
+
+
 def sync_batch_norm(model: nn.Module) -> nn.Module:
     """Convert BatchNorm layers to SyncBatchNorm for distributed training.
 

@@ -18,6 +18,11 @@ from aam.training.metrics import (
     StreamingClassificationMetrics,
     StreamingCountMetrics,
 )
+from aam.training.distributed import (
+    gather_predictions_for_plot,
+    is_distributed,
+    is_main_process,
+)
 
 
 def create_prediction_plot(
@@ -654,6 +659,12 @@ class Evaluator:
                 pred_samples, targ_samples = count_metrics.get_plot_data()
                 all_preds["count"] = pred_samples
                 all_targs["count"] = targ_samples
+
+            # Gather predictions from all ranks for complete plots in distributed training
+            if is_distributed():
+                for key in list(all_preds.keys()):
+                    all_preds[key] = gather_predictions_for_plot(all_preds[key])
+                    all_targs[key] = gather_predictions_for_plot(all_targs[key])
 
             return avg_losses, all_preds, all_targs
 
