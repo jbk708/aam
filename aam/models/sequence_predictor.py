@@ -498,32 +498,31 @@ class SequencePredictor(nn.Module):
         if self.categorical_embedder is None:
             return None
 
-        film_embeddings = []
-        missing_columns = []
+        # First pass: find batch_size/device and collect missing columns
+        batch_size: int | None = None
+        device: torch.device | None = None
+        missing_columns: list[str] = []
 
-        # Determine batch size and device from available categorical_ids
-        batch_size = None
-        device = None
         for col in self.film_conditioning_columns:
             if col in categorical_ids:
-                batch_size = categorical_ids[col].size(0)
-                device = categorical_ids[col].device
-                break
+                if batch_size is None:
+                    batch_size = categorical_ids[col].size(0)
+                    device = categorical_ids[col].device
+            else:
+                missing_columns.append(col)
 
         if batch_size is None:
-            # No FiLM columns provided at all
             return None
 
+        # Second pass: build embeddings in column order
+        film_embeddings: list[torch.Tensor] = []
         for col in self.film_conditioning_columns:
             if col in categorical_ids:
                 emb = self.categorical_embedder.embeddings[col](categorical_ids[col])
-                film_embeddings.append(emb)
             else:
-                # Use zero embedding for missing columns (identity FiLM transform)
                 embed_dim = self.categorical_embedder.embeddings[col].embedding_dim
-                zero_emb = torch.zeros(batch_size, embed_dim, device=device)
-                film_embeddings.append(zero_emb)
-                missing_columns.append(col)
+                emb = torch.zeros(batch_size, embed_dim, device=device)
+            film_embeddings.append(emb)
 
         if missing_columns:
             warnings.warn(
