@@ -6,13 +6,15 @@ Deep learning model for microbial sequencing data analysis using transformer-bas
 
 ### Prerequisites
 
-- [Mamba](https://mamba.readthedocs.io/) or [Conda](https://docs.conda.io/) (Mamba is recommended for faster package resolution)
+- Python 3.9-3.12
+- [Mamba](https://mamba.readthedocs.io/) or [Conda](https://docs.conda.io/) (Mamba recommended for faster resolution)
+- PyTorch 2.3+ (with CUDA for GPU training, or ROCm for AMD GPUs)
 
 ### Setup
 
 ```bash
-# Create and activate environment
-mamba env create -f environment.yml
+# Create conda environment
+mamba create -n aam python=3.11 -y
 mamba activate aam
 
 # Install package
@@ -20,13 +22,62 @@ pip install -e .
 
 # For development with all dependencies
 pip install -e ".[dev,docs,training]"
+
+# Verify installation
+python -c "import aam; print('AAM installed successfully')"
+```
+
+### PyTorch Installation
+
+If PyTorch is not already installed, install it first from [pytorch.org](https://pytorch.org/get-started/locally/):
+
+```bash
+# CUDA 12.x
+pip install torch --index-url https://download.pytorch.org/whl/cu121
+
+# CPU only (for development/testing)
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+# ROCm (AMD GPUs) - see Cosmos section below
+pip install torch --index-url https://download.pytorch.org/whl/rocm6.3
 ```
 
 ## Usage
 
+### Quick Start
+
+Try AAM with the included test data (781 samples):
+
+```bash
+# Pre-training (self-supervised, ~2 min on GPU)
+aam pretrain \
+  --table data/fall_train_only_all_outdoor.biom \
+  --unifrac-matrix data/fall_train_only_all_outdoor.h5 \
+  --output-dir output/pretrain \
+  --epochs 5 \
+  --batch-size 8
+
+# Fine-tuning on a regression target
+aam train \
+  --table data/fall_train_only_all_outdoor.biom \
+  --unifrac-matrix data/fall_train_only_all_outdoor.h5 \
+  --metadata data/fall_train_only_all_outdoor.tsv \
+  --metadata-column add_0c \
+  --output-dir output/train \
+  --pretrained-encoder output/pretrain/checkpoints/best_model.pt \
+  --epochs 10 \
+  --batch-size 8
+
+# Inference
+aam predict \
+  --model output/train/checkpoints/best_model.pt \
+  --table data/fall_train_only_all_outdoor.biom \
+  --output predictions.tsv
+```
+
 ### Generating UniFrac Distance Matrices
 
-**Important:** AAM requires pre-computed UniFrac distance matrices. Generate them before training using `ssu` from [unifrac-binaries](https://github.com/biocore/unifrac-binaries/tree/main) (included in environment):
+**Important:** AAM requires pre-computed UniFrac distance matrices. Generate them before training using `ssu` from [unifrac-binaries](https://github.com/biocore/unifrac-binaries/tree/main):
 
 ```bash
 ssu \
@@ -123,23 +174,6 @@ aam train \
 
 With `--freeze-base`, only the categorical embedder and target prediction head are trained while the pretrained encoder remains frozen.
 
-**Programmatic API:**
-
-```python
-from aam.data import CategoricalSchema, CategoricalColumnConfig, CategoricalEncoder
-
-# Simple: auto-detect cardinality from data
-encoder = CategoricalEncoder()
-encoder.fit(metadata_df, columns=["location", "season"])
-cardinalities = encoder.get_cardinalities()  # {"location": 5, "season": 4}
-
-# Advanced: explicit schema configuration
-schema = CategoricalSchema(columns=[
-    CategoricalColumnConfig(name="location", cardinality=10, embed_dim=8),
-    CategoricalColumnConfig(name="season", cardinality=4, required=True),
-], default_embed_dim=16)
-```
-
 **Notes:**
 - Index 0 is reserved for unknown/missing categories
 - Encoder is fitted on training data only to prevent leakage
@@ -159,15 +193,6 @@ schema = CategoricalSchema(columns=[
 - Consider grouping rare categories into an "other" category before training
 - The unknown embedding (index 0) provides a fallback for unseen categories at inference
 - Monitor validation performance across category frequencies to detect underfitting
-
-### Inference
-
-```bash
-aam predict \
-  --model <model_checkpoint.pt> \
-  --table <biom_file> \
-  --output <predictions.tsv>
-```
 
 ## Key Options
 
@@ -246,88 +271,61 @@ aam pretrain \
   --token-limit 256
 ```
 
-### Multi-GPU Training
-
-AAM supports three multi-GPU strategies with different trade-offs:
-
-| Strategy | Flag | Memory | Use Case |
-|----------|------|--------|----------|
-| **FSDP** | `--fsdp` | Best | Pretraining with large models/batches (recommended) |
-| **DataParallel** | `--data-parallel` | Worst (GPU 0) | Single-node pretraining, simpler setup |
-| **DDP** | `--distributed` | Good | Fine-tuning without pairwise loss |
-
-#### FSDP Pretraining (Recommended)
-
-FSDP (Fully Sharded Data Parallel) provides the best memory efficiency while handling UniFrac pairwise loss correctly:
+**Medium model example (fits on 24GB GPU):**
 
 ```bash
-# FSDP pretraining (recommended for large models/batches)
-torchrun --nproc_per_node=4 -m aam.cli pretrain \
-  --table <biom_file> \
-  --unifrac-matrix <unifrac_matrix.npy> \
-  --output-dir <output_dir> \
-  --fsdp \
-  --batch-size 32
-```
-
-**FSDP advantages:**
-- **Memory efficient:** Shards model parameters across GPUs
-- **Correct UniFrac loss:** Gathers embeddings across all GPUs for full pairwise distances
-- **Scalable:** Works across multiple nodes
-
-**FSDP-specific options:**
-
-| Option | Description |
-|--------|-------------|
-| `--fsdp` | Enable FSDP |
-| `--fsdp-sharded-checkpoint` | Save sharded checkpoints (faster, but requires same world size to load) |
-
-#### DataParallel Pretraining (Alternative)
-
-DataParallel is simpler to use but has higher memory usage on GPU 0:
-
-```bash
-# DataParallel gathers outputs to GPU 0, preserving full pairwise comparisons
 aam pretrain \
   --table <biom_file> \
-  --unifrac-matrix <unifrac_matrix.npy> \
+  --unifrac-matrix <unifrac_matrix.h5> \
   --output-dir <output_dir> \
-  --data-parallel \
-  --batch-size 32
+  --embedding-dim 768 \
+  --attention-heads 6 \
+  --attention-layers 4 \
+  --batch-size 2 \
+  --gradient-accumulation-steps 16 \
+  --data-parallel
 ```
 
-**Note:** GPU 0 has higher memory usage with DataParallel as it gathers all outputs.
-
-#### DDP for Fine-tuning
-
-For fine-tuning with target prediction (no pairwise loss), DDP is preferred:
+**Large model example (~380M parameters):**
 
 ```bash
-torchrun --nproc_per_node=4 -m aam.cli train \
+aam pretrain \
   --table <biom_file> \
-  --unifrac-matrix <unifrac_matrix.npy> \
-  --metadata <metadata.tsv> \
-  --metadata-column <target_column> \
+  --unifrac-matrix <unifrac_matrix.h5> \
   --output-dir <output_dir> \
-  --distributed \
-  --batch-size 32
+  --embedding-dim 1152 \
+  --attention-heads 12 \
+  --attention-layers 8 \
+  --batch-size 12 \
+  --gradient-accumulation-steps 4 \
+  --warmup-steps 5000 \
+  --scheduler cosine_restarts \
+  --patience 20 \
+  --data-parallel
 ```
 
-#### Why FSDP/DataParallel for Pretraining?
+### Multi-GPU Training
 
-DDP computes pairwise UniFrac loss locally per GPU, missing cross-GPU comparisons. This causes predictions to converge toward the mean (~0.5) instead of learning the full distance distribution:
+| Strategy | Flag | Use Case |
+|----------|------|----------|
+| **FSDP** | `--fsdp` | Pretraining (recommended) - best memory efficiency |
+| **DataParallel** | `--data-parallel` | Pretraining (simpler) - higher GPU 0 memory |
+| **DDP** | `--distributed` | Fine-tuning only |
 
+```bash
+# FSDP pretraining (recommended)
+torchrun --nproc_per_node=4 -m aam.cli pretrain --fsdp ...
+
+# DataParallel pretraining (simpler, single-node)
+aam pretrain --data-parallel ...
+
+# DDP fine-tuning
+torchrun --nproc_per_node=4 -m aam.cli train --distributed ...
 ```
-DDP (incorrect for UniFrac):
-  GPU 0: samples [0,1,2,3] → local pairwise distances only
-  GPU 1: samples [4,5,6,7] → local pairwise distances only
-  Missing: cross-GPU pairs (0,4), (0,5), (1,4), etc.
 
-FSDP/DataParallel (correct):
-  All GPUs see all samples → full pairwise distances
-```
+**Why FSDP/DataParallel for pretraining?** DDP computes UniFrac loss locally per GPU, missing cross-GPU pairwise comparisons. FSDP and DataParallel gather embeddings across all GPUs first.
 
-FSDP and DataParallel gather outputs before loss computation, preserving the correct pairwise behavior.
+**FSDP options:** Add `--fsdp-sharded-checkpoint` for faster large-model checkpoints (requires same world size to load).
 
 ### SLURM/HPC Systems
 
@@ -366,54 +364,16 @@ pip install -e ".[training]"
 python -c "import torch; print(f'ROCm: {torch.version.hip}, PyTorch: {torch.__version__}')"
 ```
 
-**Running Jobs:**
+**ROCm Compatibility:**
 
-AAM automatically detects ROCm vs CUDA. Use standard commands:
+| ROCm | PyTorch | Notes |
+|------|---------|-------|
+| **6.3** | **2.7.1** | Recommended. Defaults work correctly. |
+| 6.2 | 2.5.1 | Requires `--attn-implementation math --no-gradient-checkpointing` |
 
-```bash
-# Single APU
-aam pretrain --table data.biom --unifrac-matrix unifrac.npy --output-dir output/
+**Limitations:** `--compile-model` unsupported on ROCm (auto-skipped). Flash Attention unavailable.
 
-# Multi-APU pretraining (uses all visible GPUs)
-aam pretrain --data-parallel --batch-size 32 \
-  --table data.biom --unifrac-matrix unifrac.npy --output-dir output/
-```
-
-**MI300A Memory:** Each APU has 128GB unified CPU/GPU memory. The default `--token-limit 1024` works well; increase for larger datasets.
-
-**ROCm Version Compatibility:**
-
-| ROCm | PyTorch | `mem_efficient` SDPA | Recommended Flags |
-|------|---------|----------------------|-------------------|
-| 6.2 | 2.5.1 | ❌ Broken with masks | `--attn-implementation math --no-gradient-checkpointing` |
-| **6.3** | **2.7.1** | ✅ **Fixed** | None required (defaults work) |
-
-**ROCm 6.3 + PyTorch 2.7.1:** The `mem_efficient` attention backend now works correctly. No special flags needed:
-
-```bash
-aam pretrain --data-parallel --batch-size 32 \
-  --table data.biom --unifrac-matrix unifrac.npy --output-dir output/
-```
-
-**ROCm 6.2 (legacy):** Requires workaround flags due to aotriton bug:
-
-```bash
-aam pretrain \
-  --attn-implementation math \
-  --no-gradient-checkpointing \
-  --data-parallel \
-  # ... other flags
-```
-
-**Known ROCm Limitations:**
-
-| Feature | ROCm 6.2 | ROCm 6.3 | Notes |
-|---------|----------|----------|-------|
-| `--compile-model` | ❌ | ❌ | Triton type mismatch. AAM auto-skips with warning. |
-| `mem_efficient` SDPA | ❌ Broken | ✅ Fixed | Fixed in aotriton 0.8.2 (PyTorch 2.7+) |
-| Flash Attention | ❌ | ❌ | ROCm Flash Attention fork incompatible |
-
-**Diagnostic Tool:** Run `python -m aam.tools.rocm_attention_diagnostic` to verify SDPA backend behavior on your system.
+**MI300A:** 128GB unified memory per APU. Default `--token-limit 1024` works well.
 
 ### Learning Rate Schedulers
 
@@ -461,7 +421,7 @@ pytest tests/ -v                           # Run all tests
 pytest tests/ --cov=aam --cov-report=html  # With coverage
 ```
 
-679 tests covering data pipeline, models, training, and end-to-end workflows.
+919 tests covering data pipeline, models, training, and end-to-end workflows.
 
 ## Architecture
 

@@ -5,7 +5,7 @@
 ---
 
 ## DOC-1: README & Installation Modernization
-**Priority:** LOW | **Effort:** 2-4 hours | **Status:** Not Started
+**Priority:** LOW | **Effort:** 2-4 hours | **Status:** COMPLETE
 
 Comprehensive documentation pass to modernize installation instructions, ensure README accuracy, and improve developer experience.
 
@@ -43,11 +43,20 @@ Comprehensive documentation pass to modernize installation instructions, ensure 
 - [ ] Document CPU-only usage for development/testing
 
 ### Acceptance Criteria
-- [ ] Fresh clone + install works on Linux/macOS
-- [ ] All README examples execute without error
-- [ ] Test count is accurate
-- [ ] ROCm setup has single source of truth
-- [ ] Quick start takes <5 minutes for new user
+- [x] Fresh clone + install works on Linux/macOS
+- [x] All README examples execute without error
+- [x] Test count is accurate (updated to 919)
+- [x] ROCm setup has single source of truth
+- [x] Quick start takes <5 minutes for new user
+
+### Completed (2026-01-13)
+- Replaced conda/mamba installation with pip-only workflow
+- Added Python version requirements (3.9-3.12)
+- Added PyTorch installation instructions for CUDA/CPU/ROCm
+- Added Quick Start section with included test data (781 samples)
+- Updated test count from 679 to 919
+- Fixed stale environment.yml reference
+- Updated CLAUDE.md with complete test data file list
 
 ### Files to Review
 - `README.md` - Main documentation

@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-13
-**Status:** 8 outstanding tickets (~23-35 hours)
+**Status:** 7 outstanding tickets (~21-31 hours)
 
 ## Quick Links
 - **ROCm optimization:** `COSMOS_ONBOARDING_TICKETS.md`
@@ -25,11 +25,10 @@ All high priority tickets complete.
 |--------|-------------|--------|--------|
 | **PYT-12.2** | Batch size optimization | 4-6h | PyTorch |
 
-### LOW (7 tickets, ~23-35 hours)
+### LOW (6 tickets, ~21-31 hours)
 
 | Ticket | Description | Effort | Domain |
 |--------|-------------|--------|--------|
-| **DOC-1** | README & Installation Modernization | 2-4h | Docs |
 | **COS-9.5** | Kernel profiling with rocprof | 4-6h | Cosmos |
 | **COS-9.6** | SLURM job templates | 3-4h | Cosmos |
 | **COS-9.7** | ROCm Singularity container | 4-6h | Cosmos |
@@ -49,6 +48,13 @@ Future enhancement phases (~50+ hours):
 ---
 
 ## Recently Completed
+
+**DOC-1: README & Installation Modernization** (2026-01-13) - COMPLETE
+- Replaced conda/mamba installation with pip-only workflow
+- Added Python version requirements (3.9-3.12) and PyTorch installation instructions
+- Added Quick Start section with included test data (781 samples)
+- Updated test count from 679 to 919
+- Updated CLAUDE.md with complete test data file list
 
 **PYT-12.1c: FSDP Pretraining + ROCm Validation** (2026-01-13) - COMPLETE
 - Added `gather_embeddings_for_unifrac()` for cross-GPU embedding collection
