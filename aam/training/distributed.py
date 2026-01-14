@@ -739,54 +739,47 @@ def gather_predictions_for_plot(
         >>> # On rank 0: gathered.shape = [197, 1]
         >>> # On other ranks: gathered.shape = [0, 1]
     """
+    device = local_tensor.device
+    trailing_dims = local_tensor.shape[1:]
+
+    def _subsample(tensor: torch.Tensor) -> torch.Tensor:
+        if max_samples is not None and tensor.shape[0] > max_samples:
+            indices = torch.randperm(tensor.shape[0], device=tensor.device)[:max_samples]
+            return tensor[indices]
+        return tensor
+
     if not is_distributed():
-        if max_samples is not None and local_tensor.shape[0] > max_samples:
-            indices = torch.randperm(local_tensor.shape[0])[:max_samples]
-            return local_tensor[indices]
-        return local_tensor
+        return _subsample(local_tensor)
 
     world_size = get_world_size()
     rank = get_rank()
-    device = local_tensor.device
 
-    # Step 1: Gather sizes from all ranks (handles variable batch sizes)
+    # Gather sizes from all ranks (handles variable batch sizes)
     local_size = torch.tensor([local_tensor.shape[0]], dtype=torch.long, device=device)
     all_sizes = [torch.zeros(1, dtype=torch.long, device=device) for _ in range(world_size)]
     dist.all_gather(all_sizes, local_size)
 
-    # Step 2: Pad tensors to max size for all_gather
     max_size = max(s.item() for s in all_sizes)
     if max_size == 0:
-        # No data on any rank
-        return torch.empty(0, *local_tensor.shape[1:], device=device)
+        return torch.empty(0, *trailing_dims, device=device)
 
-    # Create padded tensor
-    padded_shape = (int(max_size),) + local_tensor.shape[1:]
-    padded = torch.zeros(padded_shape, dtype=local_tensor.dtype, device=device)
+    # Pad tensors to max size for all_gather
+    padded = torch.zeros((int(max_size), *trailing_dims), dtype=local_tensor.dtype, device=device)
     padded[: local_tensor.shape[0]] = local_tensor
 
-    # Step 3: All-gather padded tensors
     gathered = [torch.zeros_like(padded) for _ in range(world_size)]
     dist.all_gather(gathered, padded)
 
-    # Step 4: Only rank 0 needs the full result; concatenate valid portions
-    if rank == 0:
-        result_parts = []
-        for i, g in enumerate(gathered):
-            valid_size = int(all_sizes[i].item())
-            if valid_size > 0:
-                result_parts.append(g[:valid_size])
-        result = torch.cat(result_parts, dim=0) if result_parts else torch.empty(0, *local_tensor.shape[1:], device=device)
+    # Only rank 0 needs the full result
+    if rank != 0:
+        return torch.empty(0, *trailing_dims, device=device)
 
-        # Subsample if exceeds max_samples
-        if max_samples is not None and result.shape[0] > max_samples:
-            indices = torch.randperm(result.shape[0], device=device)[:max_samples]
-            result = result[indices]
+    # Concatenate valid portions from each rank
+    result_parts = [g[: int(all_sizes[i].item())] for i, g in enumerate(gathered) if all_sizes[i].item() > 0]
+    if not result_parts:
+        return torch.empty(0, *trailing_dims, device=device)
 
-        return result
-    else:
-        # Other ranks return empty tensor (they don't need the gathered data)
-        return torch.empty(0, *local_tensor.shape[1:], device=device)
+    return _subsample(torch.cat(result_parts, dim=0))
 
 
 def sync_batch_norm(model: nn.Module) -> nn.Module:

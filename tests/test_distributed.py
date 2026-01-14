@@ -1016,50 +1016,50 @@ class TestDistributedValidationMetrics:
             assert mock_all_reduce.called
 
 
+def _make_distributed_all_gather_mock(sizes: list):
+    """Create a mock side_effect for dist.all_gather that simulates distributed gathering.
+
+    Args:
+        sizes: List of sizes for each rank (e.g., [50, 50, 50, 47])
+    """
+    call_count = [0]
+
+    def fill_gathered(gathered_list, tensor):
+        if call_count[0] == 0:
+            for i, g in enumerate(gathered_list):
+                g[0] = sizes[i]
+        else:
+            for i in range(len(gathered_list)):
+                gathered_list[i].copy_(torch.randn_like(tensor))
+        call_count[0] += 1
+
+    return fill_gathered
+
+
 class TestGatherPredictionsForPlot:
     """Tests for gather_predictions_for_plot function."""
 
-    def test_returns_input_when_not_distributed(self):
-        """Test returns input unchanged when not in distributed mode."""
+    @pytest.fixture(autouse=True)
+    def cleanup_distributed(self):
+        """Ensure distributed is not initialized for non-distributed tests."""
         if torch.distributed.is_initialized():
             torch.distributed.destroy_process_group()
 
+    def test_returns_input_unchanged_when_not_distributed(self):
+        """Test returns input unchanged when not in distributed mode."""
         tensor = torch.randn(50, 1)
         result = gather_predictions_for_plot(tensor)
         torch.testing.assert_close(result, tensor)
-
-    def test_preserves_shape_when_not_distributed(self):
-        """Test preserves tensor shape when not distributed."""
-        if torch.distributed.is_initialized():
-            torch.distributed.destroy_process_group()
-
-        tensor = torch.randn(100, 1)
-        result = gather_predictions_for_plot(tensor)
-        assert result.shape == tensor.shape
-
-    def test_preserves_device(self):
-        """Test preserves tensor device."""
-        if torch.distributed.is_initialized():
-            torch.distributed.destroy_process_group()
-
-        tensor = torch.randn(50, 1)
-        result = gather_predictions_for_plot(tensor)
         assert result.device == tensor.device
 
     def test_max_samples_subsamples_when_exceeded(self):
         """Test max_samples parameter subsamples when exceeded."""
-        if torch.distributed.is_initialized():
-            torch.distributed.destroy_process_group()
-
         tensor = torch.randn(200, 1)
         result = gather_predictions_for_plot(tensor, max_samples=100)
         assert result.shape[0] == 100
 
     def test_max_samples_no_effect_when_not_exceeded(self):
         """Test max_samples has no effect when not exceeded."""
-        if torch.distributed.is_initialized():
-            torch.distributed.destroy_process_group()
-
         tensor = torch.randn(50, 1)
         result = gather_predictions_for_plot(tensor, max_samples=100)
         assert result.shape[0] == 50
@@ -1077,7 +1077,6 @@ class TestGatherPredictionsForPlot:
         """Test gathers tensors from all ranks in distributed mode."""
         local_batch_size = 50
         world_size = 4
-
         tensor = torch.randn(local_batch_size, 1)
 
         with (
@@ -1086,26 +1085,10 @@ class TestGatherPredictionsForPlot:
             patch("aam.training.distributed.get_rank", return_value=0),
             patch("aam.training.distributed.dist.all_gather") as mock_all_gather,
         ):
-            call_count = [0]
-
-            def fill_gathered(gathered_list, tensor):
-                if call_count[0] == 0:
-                    # First call: gathering sizes (Long tensor)
-                    for i, g in enumerate(gathered_list):
-                        g[0] = local_batch_size
-                else:
-                    # Second call: gathering padded data tensors
-                    for i in range(len(gathered_list)):
-                        gathered_list[i].copy_(torch.randn_like(tensor))
-                call_count[0] += 1
-
-            mock_all_gather.side_effect = fill_gathered
-
+            mock_all_gather.side_effect = _make_distributed_all_gather_mock([local_batch_size] * world_size)
             result = gather_predictions_for_plot(tensor)
 
-            # Should call all_gather twice: once for sizes, once for padded tensors
             assert mock_all_gather.call_count == 2
-            # Result on rank 0 should have global_batch_size
             assert result.shape[0] == local_batch_size * world_size
 
     def test_only_rank0_gets_full_result(self):
@@ -1115,32 +1098,16 @@ class TestGatherPredictionsForPlot:
         with (
             patch("aam.training.distributed.is_distributed", return_value=True),
             patch("aam.training.distributed.get_world_size", return_value=4),
-            patch("aam.training.distributed.get_rank", return_value=1),  # Non-zero rank
+            patch("aam.training.distributed.get_rank", return_value=1),
             patch("aam.training.distributed.dist.all_gather") as mock_all_gather,
         ):
-            call_count = [0]
-
-            def fill_gathered(gathered_list, tensor):
-                if call_count[0] == 0:
-                    # First call: gathering sizes (Long tensor)
-                    for i, g in enumerate(gathered_list):
-                        g[0] = 50
-                else:
-                    # Second call: gathering padded data tensors
-                    for i in range(len(gathered_list)):
-                        gathered_list[i].copy_(torch.randn_like(tensor))
-                call_count[0] += 1
-
-            mock_all_gather.side_effect = fill_gathered
-
+            mock_all_gather.side_effect = _make_distributed_all_gather_mock([50, 50, 50, 50])
             result = gather_predictions_for_plot(tensor)
-
-            # Non-rank-0 processes should get empty tensor
             assert result.shape[0] == 0
 
     def test_handles_variable_sizes_across_ranks(self):
         """Test handles variable tensor sizes across ranks (e.g., last batch smaller)."""
-        tensor = torch.randn(47, 1)  # Smaller last batch
+        tensor = torch.randn(47, 1)
 
         with (
             patch("aam.training.distributed.is_distributed", return_value=True),
@@ -1148,42 +1115,18 @@ class TestGatherPredictionsForPlot:
             patch("aam.training.distributed.get_rank", return_value=0),
             patch("aam.training.distributed.dist.all_gather") as mock_all_gather,
         ):
-            # Simulate variable sizes: [50, 50, 50, 47]
-            call_count = [0]
-
-            def fill_gathered(gathered_list, tensor):
-                if call_count[0] == 0:
-                    # First call: gathering sizes
-                    sizes = [50, 50, 50, 47]
-                    for i, g in enumerate(gathered_list):
-                        g[0] = sizes[i]
-                else:
-                    # Second call: gathering padded tensors
-                    for i in range(len(gathered_list)):
-                        gathered_list[i].copy_(torch.randn_like(tensor))
-                call_count[0] += 1
-
-            mock_all_gather.side_effect = fill_gathered
-
+            mock_all_gather.side_effect = _make_distributed_all_gather_mock([50, 50, 50, 47])
             result = gather_predictions_for_plot(tensor)
-
-            # Total should be 50 + 50 + 50 + 47 = 197
             assert result.shape[0] == 197
 
     def test_handles_2d_tensors(self):
         """Test handles 2D tensors (e.g., embeddings)."""
-        if torch.distributed.is_initialized():
-            torch.distributed.destroy_process_group()
-
-        tensor = torch.randn(50, 128)  # embeddings
+        tensor = torch.randn(50, 128)
         result = gather_predictions_for_plot(tensor)
         assert result.shape == (50, 128)
 
     def test_handles_empty_tensor(self):
         """Test handles empty tensor gracefully."""
-        if torch.distributed.is_initialized():
-            torch.distributed.destroy_process_group()
-
         tensor = torch.empty(0, 1)
         result = gather_predictions_for_plot(tensor)
         assert result.shape[0] == 0
