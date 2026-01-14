@@ -253,22 +253,18 @@ class StreamingClassificationMetrics:
         if batch_size == 0:
             return
 
-        # Infer num_classes if not set
-        if self.num_classes is None:
-            self.num_classes = max(int(pred_indices.max().item()) + 1, int(true_indices.max().item()) + 1)
-
-        # Expand confusion matrix if needed
+        # Determine required size from data
         max_class = max(int(pred_indices.max().item()), int(true_indices.max().item()))
-        if max_class >= self.num_classes:
-            self.num_classes = max_class + 1
+        required_size = max_class + 1
+        if self.num_classes is None:
+            self.num_classes = required_size
+        elif required_size > self.num_classes:
+            self.num_classes = required_size
 
         if self.confusion_matrix is None:
             self.confusion_matrix = np.zeros((self.num_classes, self.num_classes), dtype=np.int64)
-        elif self.confusion_matrix.shape[0] < self.num_classes:
-            new_cm = np.zeros((self.num_classes, self.num_classes), dtype=np.int64)
-            old_size = self.confusion_matrix.shape[0]
-            new_cm[:old_size, :old_size] = self.confusion_matrix
-            self.confusion_matrix = new_cm
+        else:
+            self._expand_confusion_matrix(self.num_classes)
 
         # Update confusion matrix
         for pred, true in zip(pred_indices.tolist(), true_indices.tolist()):
@@ -357,6 +353,16 @@ class StreamingClassificationMetrics:
         self.plot_targets = []
         self._reservoir_idx = 0
 
+    def _expand_confusion_matrix(self, new_size: int) -> None:
+        """Expand confusion matrix to accommodate more classes."""
+        if self.confusion_matrix is None or self.confusion_matrix.shape[0] >= new_size:
+            return
+        new_cm = np.zeros((new_size, new_size), dtype=np.int64)
+        old_size = self.confusion_matrix.shape[0]
+        new_cm[:old_size, :old_size] = self.confusion_matrix
+        self.confusion_matrix = new_cm
+        self.num_classes = new_size
+
     def _merge_from(self, other: "StreamingClassificationMetrics") -> None:
         """Merge statistics from another StreamingClassificationMetrics instance.
 
@@ -373,27 +379,11 @@ class StreamingClassificationMetrics:
         if self.confusion_matrix is None:
             self.num_classes = other.num_classes
             self.confusion_matrix = other.confusion_matrix.copy()
-        else:
-            # Expand matrices if needed to match dimensions
-            if other.num_classes is not None and other.num_classes > (self.num_classes or 0):
-                self.num_classes = other.num_classes
-                new_cm = np.zeros((self.num_classes, self.num_classes), dtype=np.int64)
-                old_size = self.confusion_matrix.shape[0]
-                new_cm[:old_size, :old_size] = self.confusion_matrix
-                self.confusion_matrix = new_cm
+            return
 
-            # Ensure other matrix fits
-            other_size = other.confusion_matrix.shape[0]
-            if other_size > self.confusion_matrix.shape[0]:
-                new_size = other_size
-                new_cm = np.zeros((new_size, new_size), dtype=np.int64)
-                old_size = self.confusion_matrix.shape[0]
-                new_cm[:old_size, :old_size] = self.confusion_matrix
-                self.confusion_matrix = new_cm
-                self.num_classes = new_size
-
-            # Add confusion matrices
-            self.confusion_matrix[:other_size, :other_size] += other.confusion_matrix
+        other_size = other.confusion_matrix.shape[0]
+        self._expand_confusion_matrix(other_size)
+        self.confusion_matrix[:other_size, :other_size] += other.confusion_matrix
 
     def sync_distributed(self) -> None:
         """Synchronize metrics across all distributed processes.
@@ -442,8 +432,6 @@ class StreamingCountMetrics:
         self.n = 0
         self.sum_abs_error = 0.0
         self.sum_sq_error = 0.0
-        self.mean_true = 0.0
-        self.m2_true = 0.0
 
         # Reservoir sampling for plot data
         self.max_plot_samples = max_plot_samples
@@ -525,8 +513,6 @@ class StreamingCountMetrics:
         self.n = 0
         self.sum_abs_error = 0.0
         self.sum_sq_error = 0.0
-        self.mean_true = 0.0
-        self.m2_true = 0.0
         self.plot_predictions = []
         self.plot_targets = []
         self._reservoir_idx = 0
