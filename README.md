@@ -207,6 +207,7 @@ With `--freeze-base`, only the categorical embedder and target prediction head a
 | `--lr` | Learning rate | 1e-4 |
 | `--optimizer` | 'adamw', 'adam', or 'sgd' | adamw |
 | `--scheduler` | LR scheduler (see below) | warmup_cosine |
+| `--best-metric` | Metric for best model selection: val_loss, r2, mae, accuracy, f1 | val_loss |
 
 ### Loss Weights
 
