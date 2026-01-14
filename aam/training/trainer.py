@@ -80,19 +80,8 @@ METRIC_MODES: Dict[str, str] = {
 
 
 def is_metric_better(current: float, best: float, mode: str) -> bool:
-    """Check if current metric value is better than the best.
-
-    Args:
-        current: Current metric value
-        best: Best metric value so far
-        mode: Either 'min' (lower is better) or 'max' (higher is better)
-
-    Returns:
-        True if current is better than best
-    """
-    if mode == "max":
-        return current > best
-    return current < best
+    """Check if current metric value is better than best based on mode ('min' or 'max')."""
+    return current > best if mode == "max" else current < best
 
 
 class Trainer:
@@ -940,11 +929,8 @@ class Trainer:
             "val_loss": [],
         }
 
-        # Initialize best metric value based on mode
-        if self.best_metric_mode == "min":
-            best_metric_value = float("inf")
-        else:
-            best_metric_value = float("-inf")
+        # Initialize best metric value based on mode (inf for min, -inf for max)
+        best_metric_value = float("inf") if self.best_metric_mode == "min" else float("-inf")
         best_val_loss = float("inf")  # Keep for backwards compatibility
         patience_counter = 0
         start_epoch = 0
@@ -1058,7 +1044,6 @@ class Trainer:
                     else:
                         current_metric_value = val_results.get(self.best_metric)
                         if current_metric_value is None:
-                            # Fallback to val_loss if metric not available
                             logger.warning(
                                 f"Metric '{self.best_metric}' not found in validation results, "
                                 f"falling back to val_loss. Available: {list(val_results.keys())}"
