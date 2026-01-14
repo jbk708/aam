@@ -5,6 +5,168 @@
 
 ---
 
+## URGENT: Bug Fixes
+
+### PYT-BUG-1: Distributed Validation Metrics Not Synchronized
+**Priority:** URGENT | **Effort:** 2-4 hours | **Status:** Not Started
+
+Validation metrics (R², MAE) are computed per-GPU and logged independently, showing inconsistent results.
+
+**Problem:**
+With DDP/FSDP training using multiple GPUs, each process:
+1. Gets a different subset of validation samples (via DistributedSampler)
+2. Computes R²/MAE on only its local ~25% of data
+3. Logs independently without synchronization
+
+Result: 4 different metric values logged, graph shows only one (often the worst).
+
+**Example Output (nproc=4):**
+```
+GPU 0: r2=-0.30, mae=84.11  ← This is what TensorBoard shows
+GPU 1: r2=0.28, mae=59.49
+GPU 2: r2=0.39, mae=66.68
+GPU 3: r2=0.58, mae=40.42   ← True best performance
+```
+
+**Root Cause:**
+`Evaluator.validate_epoch()` uses streaming metrics that don't gather predictions across ranks. Unlike UniFrac loss which has `gather_embeddings_for_unifrac()`, validation metrics have no cross-GPU aggregation.
+
+**Solution:**
+Add `torch.distributed.all_gather()` for predictions and targets before computing metrics:
+```python
+# In Evaluator.validate_epoch(), before computing final metrics:
+if dist.is_initialized():
+    all_preds = [torch.zeros_like(preds) for _ in range(world_size)]
+    all_targets = [torch.zeros_like(targets) for _ in range(world_size)]
+    dist.all_gather(all_preds, preds)
+    dist.all_gather(all_targets, targets)
+    preds = torch.cat(all_preds)
+    targets = torch.cat(all_targets)
+```
+
+**Acceptance Criteria:**
+- [ ] All GPUs compute metrics on the FULL validation set
+- [ ] Only rank 0 logs metrics (already the case for TensorBoard)
+- [ ] Logged R²/MAE matches single-GPU training results
+- [ ] Works with both DDP and FSDP
+- [ ] No memory explosion from gathering (use streaming if needed)
+
+**Files:**
+- `aam/training/evaluation.py` - Add all_gather before metric computation
+- `aam/training/metrics.py` - May need distributed-aware streaming metrics
+- `tests/test_distributed.py` - Add test for metric synchronization
+
+**Dependencies:** None
+
+---
+
+### PYT-BUG-2: Best Model Selection Uses Loss Instead of Primary Metric
+**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Not Started
+
+Best model checkpoint is saved based on lowest validation loss, not the primary evaluation metric (R² for regression, accuracy for classification).
+
+**Problem:**
+- Current logic: `if val_loss < best_val_loss: save_checkpoint()`
+- Loss can decrease while R² gets worse (overfitting to auxiliary losses)
+- For regression, R² is typically the better indicator of model quality
+- For classification, accuracy/F1 may be preferred over cross-entropy loss
+
+**Example:**
+```
+Epoch 10: val_loss=0.045, r2=0.72  ← checkpoint saved (lowest loss)
+Epoch 15: val_loss=0.048, r2=0.78  ← NOT saved, but better R²!
+Epoch 20: val_loss=0.044, r2=0.65  ← checkpoint saved (overfitting)
+```
+
+**Solution:**
+Add `--best-metric` flag to select which metric determines "best" model:
+```python
+# CLI flags
+--best-metric r2          # For regression (higher is better)
+--best-metric val_loss    # Current behavior (lower is better)
+--best-metric accuracy    # For classification (higher is better)
+
+# In Trainer.train():
+if is_better(current_metric, best_metric, mode=metric_mode):
+    save_checkpoint()
+```
+
+**Acceptance Criteria:**
+- [ ] `--best-metric` flag added to train.py with choices: val_loss, r2, mae, accuracy, f1
+- [ ] Support both "higher is better" and "lower is better" modes
+- [ ] Default to current behavior (val_loss) for backwards compatibility
+- [ ] Checkpoint filename or metadata indicates which metric was used
+- [ ] Tests for metric-based model selection
+
+**Files:**
+- `aam/cli/train.py` - Add `--best-metric` flag
+- `aam/training/trainer.py` - Modify best model selection logic
+- `tests/test_trainer.py` - Add tests for metric-based selection
+
+**Dependencies:** None
+
+---
+
+### PYT-BUG-3: Count Loss Has No Configurable Weight
+**Priority:** MEDIUM | **Effort:** 1-2 hours | **Status:** Not Started
+
+Count loss is added to total loss without a penalty weight, unlike all other loss components.
+
+**Problem:**
+```python
+# In MultiTaskLoss.forward():
+total_loss = (
+    losses["target_loss"] * self.target_penalty
+    + losses["count_loss"]                        # ← No penalty!
+    + losses["unifrac_loss"] * self.penalty
+    + losses["nuc_loss"] * self.nuc_penalty
+)
+```
+
+All other losses have configurable weights:
+- `--penalty` for UniFrac loss
+- `--nuc-penalty` for nucleotide loss
+- `--target-penalty` for target loss
+- **Nothing** for count loss
+
+This causes:
+1. Cannot disable count loss (useful when count prediction is not needed)
+2. Cannot downweight if count loss dominates total loss
+3. Erratic total loss behavior if count scale differs from other losses
+
+**Solution:**
+Add `--count-penalty` flag with default 1.0 for backwards compatibility:
+
+```python
+# MultiTaskLoss.__init__
+def __init__(self, ..., count_penalty: float = 1.0):
+    self.count_penalty = count_penalty
+
+# MultiTaskLoss.forward()
+total_loss = (
+    losses["target_loss"] * self.target_penalty
+    + losses["count_loss"] * self.count_penalty   # ← Add weight
+    + losses["unifrac_loss"] * self.penalty
+    + losses["nuc_loss"] * self.nuc_penalty
+)
+```
+
+**Acceptance Criteria:**
+- [ ] Add `count_penalty` parameter to `MultiTaskLoss.__init__()`
+- [ ] Apply weight in total loss computation
+- [ ] Add `--count-penalty` flag to train.py (default 1.0)
+- [ ] Document in README with other penalty flags
+- [ ] Tests for count penalty behavior
+
+**Files:**
+- `aam/training/losses.py` - Add count_penalty parameter and apply in forward()
+- `aam/cli/train.py` - Add `--count-penalty` flag
+- `tests/test_losses.py` - Test count penalty weighting
+
+**Dependencies:** None
+
+---
+
 ## Phase 10: Performance (1 remaining)
 
 ### PYT-10.6: Multi-GPU Training (DDP) Validation

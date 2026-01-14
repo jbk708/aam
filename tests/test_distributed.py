@@ -918,3 +918,98 @@ class TestGatherEmbeddingsForUnifrac:
 
             # Verify all_gather was called
             mock_all_gather.assert_called_once()
+
+
+class TestDistributedValidationMetrics:
+    """Tests for distributed validation metric synchronization."""
+
+    def test_streaming_regression_has_sync_method(self):
+        """Test StreamingRegressionMetrics has sync_distributed method."""
+        from aam.training.metrics import StreamingRegressionMetrics
+
+        streaming = StreamingRegressionMetrics()
+        assert hasattr(streaming, "sync_distributed")
+        assert callable(streaming.sync_distributed)
+
+    def test_streaming_classification_has_sync_method(self):
+        """Test StreamingClassificationMetrics has sync_distributed method."""
+        from aam.training.metrics import StreamingClassificationMetrics
+
+        streaming = StreamingClassificationMetrics()
+        assert hasattr(streaming, "sync_distributed")
+        assert callable(streaming.sync_distributed)
+
+    def test_streaming_count_has_sync_method(self):
+        """Test StreamingCountMetrics has sync_distributed method."""
+        from aam.training.metrics import StreamingCountMetrics
+
+        streaming = StreamingCountMetrics()
+        assert hasattr(streaming, "sync_distributed")
+        assert callable(streaming.sync_distributed)
+
+    def test_streaming_regression_has_merge_method(self):
+        """Test StreamingRegressionMetrics has _merge_from method for combining stats."""
+        from aam.training.metrics import StreamingRegressionMetrics
+
+        streaming = StreamingRegressionMetrics()
+        assert hasattr(streaming, "_merge_from")
+        assert callable(streaming._merge_from)
+
+    def test_streaming_classification_has_merge_method(self):
+        """Test StreamingClassificationMetrics has _merge_from method."""
+        from aam.training.metrics import StreamingClassificationMetrics
+
+        streaming = StreamingClassificationMetrics()
+        assert hasattr(streaming, "_merge_from")
+        assert callable(streaming._merge_from)
+
+    def test_streaming_count_has_merge_method(self):
+        """Test StreamingCountMetrics has _merge_from method."""
+        from aam.training.metrics import StreamingCountMetrics
+
+        streaming = StreamingCountMetrics()
+        assert hasattr(streaming, "_merge_from")
+        assert callable(streaming._merge_from)
+
+    def test_regression_sync_uses_all_gather_in_distributed(self):
+        """Test that sync_distributed uses all_gather for distributed stats.
+
+        StreamingRegressionMetrics uses all_gather instead of all_reduce because
+        it needs to do parallel Welford merge for correct variance computation.
+        """
+        from aam.training.metrics import StreamingRegressionMetrics
+
+        streaming = StreamingRegressionMetrics()
+        streaming.update(torch.randn(10), torch.randn(10))
+
+        with (
+            patch("aam.training.metrics.dist.is_initialized", return_value=True),
+            patch("aam.training.metrics.dist.get_world_size", return_value=4),
+            patch("aam.training.metrics.dist.all_gather") as mock_all_gather,
+        ):
+            # Mock all_gather to fill the gathered list
+            def fill_gathered(gathered_list, tensor):
+                for i in range(len(gathered_list)):
+                    gathered_list[i].copy_(tensor)
+
+            mock_all_gather.side_effect = fill_gathered
+
+            streaming.sync_distributed()
+            # Should call all_gather to sync statistics
+            assert mock_all_gather.called
+
+    def test_classification_sync_uses_all_reduce_in_distributed(self):
+        """Test that sync_distributed uses all_reduce for confusion matrix."""
+        from aam.training.metrics import StreamingClassificationMetrics
+
+        streaming = StreamingClassificationMetrics()
+        streaming.update(torch.tensor([0, 1, 2]), torch.tensor([0, 1, 2]))
+
+        with (
+            patch("aam.training.metrics.dist.is_initialized", return_value=True),
+            patch("aam.training.metrics.dist.all_reduce") as mock_all_reduce,
+            patch("aam.training.metrics.dist.get_world_size", return_value=4),
+        ):
+            streaming.sync_distributed()
+            # Should call all_reduce to sync confusion matrix
+            assert mock_all_reduce.called
