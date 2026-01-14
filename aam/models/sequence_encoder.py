@@ -6,7 +6,7 @@ from typing import Dict, Optional, Tuple, Union
 
 from aam.models.sample_sequence_encoder import SampleSequenceEncoder
 from aam.models.attention_pooling import AttentionPooling
-from aam.models.transformer import TransformerEncoder
+from aam.models.transformer import AttnImplementation, TransformerEncoder
 
 
 class SequenceEncoder(nn.Module):
@@ -20,17 +20,17 @@ class SequenceEncoder(nn.Module):
         token_limit: int = 1024,
         asv_num_layers: int = 2,
         asv_num_heads: int = 4,
-        asv_intermediate_size: int = None,
+        asv_intermediate_size: Optional[int] = None,
         asv_dropout: float = 0.1,
         asv_activation: str = "gelu",
         sample_num_layers: int = 2,
         sample_num_heads: int = 4,
-        sample_intermediate_size: int = None,
+        sample_intermediate_size: Optional[int] = None,
         sample_dropout: float = 0.1,
         sample_activation: str = "gelu",
         encoder_num_layers: int = 2,
         encoder_num_heads: int = 4,
-        encoder_intermediate_size: int = None,
+        encoder_intermediate_size: Optional[int] = None,
         encoder_dropout: float = 0.1,
         encoder_activation: str = "gelu",
         base_output_dim: Optional[int] = None,
@@ -38,7 +38,7 @@ class SequenceEncoder(nn.Module):
         predict_nucleotides: bool = False,
         asv_chunk_size: Optional[int] = None,
         gradient_checkpointing: bool = False,
-        attn_implementation: Optional[str] = "sdpa",
+        attn_implementation: Optional[AttnImplementation] = "sdpa",
         mask_ratio: float = 0.0,
         mask_strategy: str = "random",
     ):
@@ -102,10 +102,10 @@ class SequenceEncoder(nn.Module):
             mask_ratio=mask_ratio,
             mask_strategy=mask_strategy,
         )
-        
+
         if encoder_intermediate_size is None:
             encoder_intermediate_size = 4 * embedding_dim
-        
+
         self.encoder_transformer = TransformerEncoder(
             num_layers=encoder_num_layers,
             num_heads=encoder_num_heads,
@@ -116,9 +116,9 @@ class SequenceEncoder(nn.Module):
             gradient_checkpointing=gradient_checkpointing,
             attn_implementation=attn_implementation,
         )
-        
+
         self.attention_pooling = AttentionPooling(hidden_dim=embedding_dim)
-        
+
         if encoder_type == "combined":
             self.uni_ff = nn.Linear(embedding_dim, 2)
             # Initialize UniFrac head for sigmoid activation
@@ -160,9 +160,7 @@ class SequenceEncoder(nn.Module):
         asv_mask = (tokens.sum(dim=-1) > 0).long()
 
         if self.predict_nucleotides and return_nucleotides:
-            sample_embeddings, nuc_predictions, mask_indices = self.sample_encoder(
-                tokens, return_nucleotides=True
-            )
+            sample_embeddings, nuc_predictions, mask_indices = self.sample_encoder(tokens, return_nucleotides=True)
         else:
             sample_embeddings = self.sample_encoder(tokens, return_nucleotides=False)
             nuc_predictions = None
@@ -203,6 +201,7 @@ class SequenceEncoder(nn.Module):
                 }
             else:
                 # Non-UniFrac encoders: use output_head
+                assert self.output_head is not None  # Set for non-unifrac encoder types
                 base_prediction = self.output_head(pooled_embeddings)
                 result = {
                     "base_prediction": base_prediction,

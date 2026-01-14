@@ -6,7 +6,7 @@ from typing import Dict, List, Optional
 
 from aam.models.sequence_encoder import SequenceEncoder
 from aam.models.attention_pooling import AttentionPooling
-from aam.models.transformer import TransformerEncoder
+from aam.models.transformer import AttnImplementation, TransformerEncoder
 from aam.models.categorical_embedder import CategoricalEmbedder
 
 
@@ -27,28 +27,28 @@ class SequencePredictor(nn.Module):
         token_limit: int = 1024,
         asv_num_layers: int = 2,
         asv_num_heads: int = 4,
-        asv_intermediate_size: int = None,
+        asv_intermediate_size: Optional[int] = None,
         asv_dropout: float = 0.1,
         asv_activation: str = "gelu",
         sample_num_layers: int = 2,
         sample_num_heads: int = 4,
-        sample_intermediate_size: int = None,
+        sample_intermediate_size: Optional[int] = None,
         sample_dropout: float = 0.1,
         sample_activation: str = "gelu",
         encoder_num_layers: int = 2,
         encoder_num_heads: int = 4,
-        encoder_intermediate_size: int = None,
+        encoder_intermediate_size: Optional[int] = None,
         encoder_dropout: float = 0.1,
         encoder_activation: str = "gelu",
         base_output_dim: Optional[int] = None,
         count_num_layers: int = 2,
         count_num_heads: int = 4,
-        count_intermediate_size: int = None,
+        count_intermediate_size: Optional[int] = None,
         count_dropout: float = 0.1,
         count_activation: str = "gelu",
         target_num_layers: int = 2,
         target_num_heads: int = 4,
-        target_intermediate_size: int = None,
+        target_intermediate_size: Optional[int] = None,
         target_dropout: float = 0.1,
         target_activation: str = "gelu",
         out_dim: int = 1,
@@ -56,7 +56,7 @@ class SequencePredictor(nn.Module):
         freeze_base: bool = False,
         predict_nucleotides: bool = False,
         gradient_checkpointing: bool = False,
-        attn_implementation: Optional[str] = "sdpa",
+        attn_implementation: Optional[AttnImplementation] = "sdpa",
         asv_chunk_size: Optional[int] = None,
         mask_ratio: float = 0.0,
         mask_strategy: str = "random",

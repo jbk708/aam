@@ -6,7 +6,7 @@ import logging
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from typing import Optional
+from typing import Optional, cast
 from functools import partial
 from torch.utils.data import DataLoader
 from sklearn.model_selection import train_test_split
@@ -17,6 +17,7 @@ from aam.data.dataset import ASVDataset, collate_fn
 from aam.data.categorical import CategoricalEncoder, CategoricalSchema
 from skbio import DistanceMatrix
 from aam.models.sequence_predictor import SequencePredictor
+from aam.models.transformer import AttnImplementation
 from aam.training.losses import MultiTaskLoss
 from aam.training.trainer import Trainer, create_optimizer, create_scheduler, load_pretrained_encoder
 from aam.training.distributed import (
@@ -676,7 +677,7 @@ def train(
             freeze_base=freeze_base,
             predict_nucleotides=True,
             gradient_checkpointing=gradient_checkpointing,
-            attn_implementation=attn_implementation,
+            attn_implementation=cast(AttnImplementation, attn_implementation),
             asv_chunk_size=effective_asv_chunk_size,
             mask_ratio=nuc_mask_ratio,
             mask_strategy=nuc_mask_strategy,

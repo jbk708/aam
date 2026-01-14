@@ -6,7 +6,7 @@ from typing import Optional, Tuple, Union
 
 from aam.models.attention_pooling import AttentionPooling
 from aam.models.position_embedding import PositionEmbedding
-from aam.models.transformer import TransformerEncoder
+from aam.models.transformer import AttnImplementation, TransformerEncoder
 
 
 class ASVEncoder(nn.Module):
@@ -22,13 +22,13 @@ class ASVEncoder(nn.Module):
         max_bp: int = 150,
         num_layers: int = 2,
         num_heads: int = 4,
-        intermediate_size: int = None,
+        intermediate_size: Optional[int] = None,
         dropout: float = 0.1,
         activation: str = "gelu",
         predict_nucleotides: bool = False,
         asv_chunk_size: Optional[int] = None,
         gradient_checkpointing: bool = False,
-        attn_implementation: Optional[str] = "sdpa",
+        attn_implementation: Optional[AttnImplementation] = "sdpa",
         mask_ratio: float = 0.0,
         mask_strategy: str = "random",
     ):
@@ -53,10 +53,7 @@ class ASVEncoder(nn.Module):
         super().__init__()
 
         if mask_strategy not in self.VALID_MASK_STRATEGIES:
-            raise ValueError(
-                f"Invalid mask_strategy: {mask_strategy}. "
-                f"Must be one of: {self.VALID_MASK_STRATEGIES}"
-            )
+            raise ValueError(f"Invalid mask_strategy: {mask_strategy}. Must be one of: {self.VALID_MASK_STRATEGIES}")
 
         self.vocab_size = vocab_size
         self.embedding_dim = embedding_dim
@@ -86,9 +83,7 @@ class ASVEncoder(nn.Module):
         if predict_nucleotides:
             self.nucleotide_head = nn.Linear(embedding_dim, vocab_size)
 
-    def _apply_masking(
-        self, tokens: torch.Tensor
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    def _apply_masking(self, tokens: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Apply masking to tokens for masked autoencoder training.
 
         Only masks actual nucleotide positions (tokens 1-4), excluding:
@@ -136,10 +131,10 @@ class ASVEncoder(nn.Module):
                 while num_masked < num_to_mask and attempt < max_attempts:
                     attempt += 1
                     # Random span length
-                    span_len = torch.randint(span_length_min, span_length_max + 1, (1,)).item()
+                    span_len = int(torch.randint(span_length_min, span_length_max + 1, (1,)).item())
                     # Random start position from valid positions
-                    start_idx = torch.randint(0, max(1, len(valid_positions)), (1,)).item()
-                    start_pos = valid_positions[start_idx].item()
+                    start_idx = int(torch.randint(0, max(1, len(valid_positions)), (1,)).item())
+                    start_pos = int(valid_positions[start_idx].item())
 
                     # Mask the span
                     for j in range(span_len):
@@ -203,7 +198,7 @@ class ASVEncoder(nn.Module):
 
                 # Identify all-padding sequences (will cause NaN in transformer)
                 mask_sum = mask.sum(dim=-1)  # [batch_size * chunk_num_asvs]
-                all_padding = (mask_sum == 0)  # [batch_size * chunk_num_asvs]
+                all_padding = mask_sum == 0  # [batch_size * chunk_num_asvs]
 
                 embeddings = self.token_embedding(tokens_flat)
                 embeddings = self.position_embedding(embeddings)
@@ -266,29 +261,29 @@ class ASVEncoder(nn.Module):
                 all_mask_indices = mask_indices_flat.reshape(batch_size, num_asvs, seq_len)
 
             mask = (tokens_flat > 0).long()
-            
+
             # Identify all-padding sequences (will cause NaN in transformer)
             mask_sum = mask.sum(dim=-1)  # [batch_size * num_asvs]
-            all_padding = (mask_sum == 0)  # [batch_size * num_asvs]
-            
+            all_padding = mask_sum == 0  # [batch_size * num_asvs]
+
             embeddings = self.token_embedding(tokens_flat)
             embeddings = self.position_embedding(embeddings)
-            
+
             # Handle all-padding sequences: skip transformer and set embeddings to zero
             # This prevents NaN from being produced by the transformer
             if all_padding.any():
                 # For sequences with valid positions, run transformer normally
                 # For all-padding sequences, set embeddings to zero (skip transformer)
                 valid_mask = ~all_padding  # [batch_size * num_asvs]
-                
+
                 if valid_mask.any():
                     # Process valid sequences through transformer
                     valid_indices = torch.where(valid_mask)[0]
                     valid_embeddings = embeddings[valid_indices]
                     valid_mask_tensor = mask[valid_indices]
-                    
+
                     valid_transformed = self.transformer(valid_embeddings, mask=valid_mask_tensor)
-                    
+
                     # Combine: valid sequences get transformer output, all-padding get zeros
                     all_embeddings = torch.zeros_like(embeddings)
                     all_embeddings[valid_indices] = valid_transformed
@@ -299,15 +294,15 @@ class ASVEncoder(nn.Module):
             else:
                 # No all-padding sequences, normal transformer processing
                 embeddings = self.transformer(embeddings, mask=mask)
-            
+
             nucleotide_predictions = None
             if self.predict_nucleotides and return_nucleotides:
                 nucleotide_logits = self.nucleotide_head(embeddings)
                 nucleotide_predictions = nucleotide_logits.reshape(batch_size, num_asvs, seq_len, self.vocab_size)
-            
+
             pooled_embeddings = self.attention_pooling(embeddings, mask=mask)
             asv_embeddings = pooled_embeddings.reshape(batch_size, num_asvs, self.embedding_dim)
-        
+
         if return_nucleotides and nucleotide_predictions is not None:
             # Return mask_indices (None when not masking) for loss computation
             return asv_embeddings, nucleotide_predictions, all_mask_indices

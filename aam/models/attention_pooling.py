@@ -1,5 +1,7 @@
 """Attention pooling layer for sequence embeddings."""
 
+from typing import Optional
+
 import torch
 import torch.nn as nn
 
@@ -18,7 +20,7 @@ class AttentionPooling(nn.Module):
         self.query = nn.Linear(hidden_dim, 1, bias=False)
         self.norm = nn.LayerNorm(hidden_dim)
 
-    def forward(self, embeddings: torch.Tensor, mask: torch.Tensor = None) -> torch.Tensor:
+    def forward(self, embeddings: torch.Tensor, mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         """Forward pass.
 
         Args:
@@ -33,13 +35,14 @@ class AttentionPooling(nn.Module):
         # Check for NaN in embeddings before processing
         if torch.any(torch.isnan(embeddings)):
             import sys
-            print(f"ERROR: NaN in embeddings before attention pooling", file=sys.stderr, flush=True)
+
+            print("ERROR: NaN in embeddings before attention pooling", file=sys.stderr, flush=True)
             print(f"embeddings shape={embeddings.shape}", file=sys.stderr, flush=True)
             raise ValueError("NaN values found in embeddings before attention pooling")
-        
+
         scores = self.query(embeddings)
         scores = scores.squeeze(-1)
-        scores = scores / (hidden_dim ** 0.5)
+        scores = scores / (hidden_dim**0.5)
 
         # Initialize all_padding outside the if block to ensure it's available later
         all_padding = None
@@ -47,8 +50,8 @@ class AttentionPooling(nn.Module):
             # Handle all-padding sequences (all positions masked)
             # softmax(all -inf) = NaN, so we need special handling
             mask_sum = mask.sum(dim=-1, keepdim=True)  # [batch_size, 1]
-            all_padding = (mask_sum == 0)  # [batch_size, 1]
-            
+            all_padding = mask_sum == 0  # [batch_size, 1]
+
             # For sequences with valid positions, mask padding with -inf
             # For all-padding sequences, set scores to 0 (will give uniform softmax)
             if all_padding.any():
@@ -77,48 +80,56 @@ class AttentionPooling(nn.Module):
             else:
                 attention_weights_all_padding = None
                 all_padding_expanded = None
-            
+
             # Apply mask to zero out padding positions for sequences with valid positions
             attention_weights = attention_weights * mask
-            
+
             # Normalize attention weights for sequences with valid positions
             attention_weights_sum = attention_weights.sum(dim=-1, keepdim=True)
             attention_weights = attention_weights / (attention_weights_sum + 1e-8)
-            
+
             # For all-padding sequences, replace with uniform weights (skip mask and normalization)
             if all_padding_expanded is not None:
+                assert attention_weights_all_padding is not None  # Set together with all_padding_expanded
                 attention_weights = torch.where(all_padding_expanded, attention_weights_all_padding, attention_weights)
 
         # Check for NaN in attention_weights before pooling
         if torch.any(torch.isnan(attention_weights)):
             import sys
-            print(f"ERROR: NaN in attention_weights before pooling", file=sys.stderr, flush=True)
+
+            print("ERROR: NaN in attention_weights before pooling", file=sys.stderr, flush=True)
             print(f"attention_weights shape={attention_weights.shape}", file=sys.stderr, flush=True)
             if mask is not None:
                 print(f"mask sum per sample: {mask.sum(dim=-1)}", file=sys.stderr, flush=True)
                 print(f"all_padding: {all_padding if all_padding is not None else 'N/A'}", file=sys.stderr, flush=True)
                 if all_padding is not None:
-                    print(f"attention_weights sum for all-padding: {attention_weights[all_padding.squeeze()].sum(dim=-1) if all_padding.any() else 'N/A'}", file=sys.stderr, flush=True)
+                    print(
+                        f"attention_weights sum for all-padding: {attention_weights[all_padding.squeeze()].sum(dim=-1) if all_padding.any() else 'N/A'}",
+                        file=sys.stderr,
+                        flush=True,
+                    )
             raise ValueError("NaN values found in attention_weights before pooling")
-        
+
         pooled = torch.sum(embeddings * attention_weights.unsqueeze(-1), dim=1)
-        
+
         # Check for NaN before LayerNorm (helps identify where NaN originates)
         if torch.any(torch.isnan(pooled)):
             import sys
-            print(f"ERROR: NaN in pooled embeddings before LayerNorm", file=sys.stderr, flush=True)
+
+            print("ERROR: NaN in pooled embeddings before LayerNorm", file=sys.stderr, flush=True)
             print(f"pooled shape={pooled.shape}, embeddings shape={embeddings.shape}", file=sys.stderr, flush=True)
             if mask is not None:
                 print(f"mask sum per sample: {mask.sum(dim=-1)}", file=sys.stderr, flush=True)
                 print(f"all_padding: {all_padding if all_padding is not None else 'N/A'}", file=sys.stderr, flush=True)
             raise ValueError("NaN values found in pooled embeddings before LayerNorm")
-        
+
         pooled = self.norm(pooled)
-        
+
         # Final check for NaN after LayerNorm
         if torch.any(torch.isnan(pooled)):
             import sys
-            print(f"ERROR: NaN in pooled embeddings after LayerNorm", file=sys.stderr, flush=True)
+
+            print("ERROR: NaN in pooled embeddings after LayerNorm", file=sys.stderr, flush=True)
             print(f"pooled shape={pooled.shape}, embeddings shape={embeddings.shape}", file=sys.stderr, flush=True)
             if mask is not None:
                 print(f"mask sum per sample: {mask.sum(dim=-1)}", file=sys.stderr, flush=True)
