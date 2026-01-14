@@ -643,6 +643,36 @@ def print_rank0(message: str) -> None:
         print(message)
 
 
+def gather_embeddings_for_unifrac(embeddings: torch.Tensor) -> torch.Tensor:
+    """Gather embeddings from all processes for UniFrac pairwise distance computation.
+
+    In distributed training (DDP/FSDP), each GPU only sees its local batch. UniFrac
+    loss requires pairwise distances across ALL samples, so we need to gather
+    embeddings from all GPUs before computing pairwise distances.
+
+    Without gathering:
+        GPU 0: samples [0,1,2,3] -> local pairwise distances only
+        GPU 1: samples [4,5,6,7] -> local pairwise distances only
+        Missing: cross-GPU pairs (0,4), (0,5), (1,4), etc.
+
+    With gathering:
+        All GPUs get samples [0,1,2,3,4,5,6,7] -> full pairwise distances
+
+    Args:
+        embeddings: Local embeddings tensor [local_batch_size, embedding_dim]
+
+    Returns:
+        Gathered embeddings tensor [global_batch_size, embedding_dim] where
+        global_batch_size = local_batch_size * world_size.
+        If not in distributed mode, returns the input unchanged.
+
+    Note:
+        This operation performs an all-gather, so all ranks receive the full
+        gathered tensor. The gradient flows back correctly during backward pass.
+    """
+    raise NotImplementedError("gather_embeddings_for_unifrac not yet implemented")
+
+
 def sync_batch_norm(model: nn.Module) -> nn.Module:
     """Convert BatchNorm layers to SyncBatchNorm for distributed training.
 

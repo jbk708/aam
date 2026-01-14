@@ -169,6 +169,16 @@ from aam.cli.utils import (
     help="Convert BatchNorm to SyncBatchNorm for distributed training (recommended for small batch sizes)",
 )
 @click.option(
+    "--fsdp",
+    is_flag=True,
+    help="Enable FSDP (Fully Sharded Data Parallel) for memory-efficient distributed pretraining. Includes cross-GPU embedding gathering for correct UniFrac pairwise distances. Use with torchrun: torchrun --nproc_per_node=4 -m aam.cli pretrain --fsdp ...",
+)
+@click.option(
+    "--fsdp-sharded-checkpoint",
+    is_flag=True,
+    help="Save FSDP checkpoints in sharded format (each rank saves its own shard). Faster for large models but requires same world size to load. Default: save full state dict on rank 0 for checkpoint compatibility.",
+)
+@click.option(
     "--memory-profile",
     is_flag=True,
     help="Enable GPU memory profiling. Logs peak memory usage per epoch and provides optimization recommendations.",
@@ -220,6 +230,8 @@ def pretrain(
     distributed: bool,
     data_parallel: bool,
     sync_batchnorm: bool,
+    fsdp: bool,
+    fsdp_sharded_checkpoint: bool,
     memory_profile: bool,
 ):
     """Pre-train SequenceEncoder on UniFrac and nucleotide prediction (self-supervised)."""
@@ -248,21 +260,30 @@ def pretrain(
             epochs=epochs,
         )
 
-        # Validate mutual exclusivity of --distributed and --data-parallel
-        if distributed and data_parallel:
+        # Validate mutual exclusivity of distributed training options
+        num_distributed_options = sum([distributed, data_parallel, fsdp])
+        if num_distributed_options > 1:
             raise click.ClickException(
-                "Cannot use --distributed and --data-parallel together. Use --distributed for DDP (multi-node) or --data-parallel for DataParallel (single-node with full pairwise UniFrac)."
+                "Cannot use multiple distributed training options together. Choose one of:\n"
+                "  --distributed: DDP (multi-node, but UniFrac has local pairwise issue)\n"
+                "  --data-parallel: DataParallel (single-node, full pairwise UniFrac)\n"
+                "  --fsdp: FSDP (memory-efficient, full pairwise UniFrac via gathering)"
             )
+
+        # Validate --fsdp-sharded-checkpoint requires --fsdp
+        if fsdp_sharded_checkpoint and not fsdp:
+            raise click.ClickException("--fsdp-sharded-checkpoint requires --fsdp to be enabled.")
 
         setup_expandable_segments(use_expandable_segments)
 
         # Setup distributed training if enabled
         train_sampler = None
         val_sampler = None
-        if distributed:
+        if fsdp or distributed:
             rank, world_size, device_obj = setup_distributed(backend="nccl")
+            mode = "FSDP" if fsdp else "Distributed"
             if is_main_process():
-                logger.info(f"Distributed training enabled: rank {rank}/{world_size}")
+                logger.info(f"{mode} training enabled: rank {rank}/{world_size}")
 
             # Validate batch size for distributed training
             # UniFrac pairwise distances require at least 2 samples per GPU
@@ -394,8 +415,8 @@ def pretrain(
             unifrac_loader=unifrac_loader,
         )
 
-        # Create dataloaders (with distributed sampler if distributed)
-        if distributed:
+        # Create dataloaders (with distributed sampler if distributed or fsdp)
+        if fsdp or distributed:
             train_loader, train_sampler = create_distributed_dataloader(
                 train_dataset,
                 batch_size=batch_size,
@@ -475,7 +496,44 @@ def pretrain(
         )
 
         # Handle distributed training setup
-        if distributed:
+        if fsdp:
+            # FSDP requires CUDA - validate upfront with clear message
+            if not torch.cuda.is_available():
+                raise click.ClickException(
+                    "FSDP requires CUDA but no GPU is available. "
+                    "Use --distributed for DDP (which supports CPU via gloo backend), "
+                    "or ensure CUDA is properly installed (run 'nvidia-smi' to check)."
+                )
+
+            # FSDP handles device placement internally, don't move model beforehand
+            # Convert BatchNorm to SyncBatchNorm if requested
+            if sync_batchnorm:
+                model = sync_batch_norm(model)
+                if is_main_process():
+                    logger.info("Converted BatchNorm to SyncBatchNorm for FSDP training")
+
+            # Wrap model with FSDP for memory-efficient distributed training
+            from aam.training.distributed import wrap_model_fsdp
+
+            try:
+                model = wrap_model_fsdp(model)
+            except Exception as e:
+                logger.error(f"Failed to wrap model with FSDP: {e}", exc_info=True)
+                raise click.ClickException(
+                    f"FSDP model wrapping failed: {e}\n"
+                    "Common causes:\n"
+                    "  - Model contains unsupported layer types\n"
+                    "  - Insufficient GPU memory for FSDP initialization\n"
+                    "  - Distributed process group not properly initialized\n"
+                    "Try using --distributed (DDP) instead, or reduce model size."
+                )
+            if is_main_process():
+                logger.info("Model wrapped with FullyShardedDataParallel")
+                logger.info("FSDP gathers embeddings across GPUs for correct UniFrac pairwise distances")
+                if memory_profile:
+                    log_gpu_memory_stats(label="after_model_to_device", logger=logger)
+
+        elif distributed:
             # Move model to device
             model = model.to(device_obj)
 
@@ -550,7 +608,7 @@ def pretrain(
         mixed_precision_normalized = None if mixed_precision == "none" else mixed_precision
 
         # Only log to TensorBoard on main process in distributed mode
-        tensorboard_dir = str(output_path) if (not distributed or is_main_process()) else None
+        tensorboard_dir = str(output_path) if (not (fsdp or distributed) or is_main_process()) else None
 
         trainer = Trainer(
             model=model,
@@ -564,6 +622,7 @@ def pretrain(
             mixed_precision=mixed_precision_normalized,
             compile_model=compile_model,
             train_sampler=train_sampler,
+            use_sharded_checkpoint=fsdp_sharded_checkpoint,
         )
 
         if resume_from is not None:
@@ -619,13 +678,13 @@ def pretrain(
             logger.info("-" * 60)
 
         # Only save final model on main process in distributed mode
-        if not distributed or is_main_process():
+        if not (fsdp or distributed) or is_main_process():
             final_model_path = output_path / "pretrained_encoder.pt"
             trainer.save_checkpoint(str(final_model_path), epoch=epochs - 1, best_val_loss=best_val_loss, metrics=history)
             logger.info(f"Pre-trained encoder saved to {final_model_path}")
 
         # Cleanup distributed training
-        if distributed:
+        if fsdp or distributed:
             cleanup_distributed()
 
     except Exception as e:
@@ -634,6 +693,6 @@ def pretrain(
         else:
             logging.error(f"Pre-training failed: {e}", exc_info=True)
         # Cleanup distributed training on error
-        if distributed:
+        if fsdp or distributed:
             cleanup_distributed()
         raise click.ClickException(str(e))
