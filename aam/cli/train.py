@@ -258,6 +258,11 @@ from aam.cli.utils import (
     help="Dropout rate between MLP regression head layers (default: 0.0, no dropout). Must be in [0.0, 1.0).",
 )
 @click.option(
+    "--conditional-output-scaling",
+    default=None,
+    help="Comma-separated categorical column names for conditional output scaling. Learns per-category scale and bias applied after base prediction. Requires --categorical-columns.",
+)
+@click.option(
     "--best-metric",
     default="val_loss",
     type=click.Choice(["val_loss", "r2", "mae", "accuracy", "f1"]),
@@ -333,6 +338,7 @@ def train(
     output_activation: str,
     regressor_hidden_dims: Optional[str],
     regressor_dropout: float,
+    conditional_output_scaling: Optional[str],
     best_metric: str,
 ):
     """Train AAM model on microbial sequencing data."""
@@ -540,6 +546,21 @@ def train(
             categorical_encoder.fit(train_metadata, columns=categorical_column_list)
             categorical_cardinalities = categorical_encoder.get_cardinalities()
             logger.info(f"Categorical cardinalities: {categorical_cardinalities}")
+
+        conditional_scaling_columns: Optional[list[str]] = None
+        if conditional_output_scaling:
+            if not categorical_columns:
+                raise click.ClickException(
+                    "--conditional-output-scaling requires --categorical-columns to be set"
+                )
+            conditional_scaling_columns = [col.strip() for col in conditional_output_scaling.split(",")]
+            for col in conditional_scaling_columns:
+                if col not in categorical_column_list:
+                    raise click.ClickException(
+                        f"Conditional scaling column '{col}' not in --categorical-columns. "
+                        f"Available: {categorical_column_list}"
+                    )
+            logger.info(f"Conditional output scaling columns: {conditional_scaling_columns}")
 
         # Extract train/val distance matrices
         train_distance_matrix = None
@@ -780,6 +801,7 @@ def train(
             output_activation=output_activation,
             regressor_hidden_dims=regressor_hidden_dims_list,
             regressor_dropout=regressor_dropout,
+            conditional_scaling_columns=conditional_scaling_columns,
         )
 
         log_model_summary(model, logger)
