@@ -236,6 +236,17 @@ from aam.cli.utils import (
     type=click.Choice(["none", "relu", "softplus", "exp"]),
     help="Output activation for non-negative regression: none (default), relu, softplus (recommended), exp. Cannot be used with --bounded-targets or --classifier.",
 )
+@click.option(
+    "--regressor-hidden-dims",
+    default=None,
+    help="Comma-separated hidden layer dimensions for MLP regression head. E.g., '64,32' creates MLP: embedding_dim -> 64 -> 32 -> out_dim. Default: single linear layer.",
+)
+@click.option(
+    "--regressor-dropout",
+    default=0.0,
+    type=float,
+    help="Dropout rate between MLP regression head layers (default: 0.0, no dropout)",
+)
 def train(
     table: str,
     unifrac_matrix: str,
@@ -302,6 +313,8 @@ def train(
     categorical_embed_dim: int,
     categorical_fusion: str,
     output_activation: str,
+    regressor_hidden_dims: Optional[str],
+    regressor_dropout: float,
 ):
     """Train AAM model on microbial sequencing data."""
     try:
@@ -635,6 +648,13 @@ def train(
         logger.info("Creating model...")
         # Convert asv_chunk_size=0 to None (disabled)
         effective_asv_chunk_size = asv_chunk_size if asv_chunk_size is not None and asv_chunk_size > 0 else None
+
+        # Parse regressor hidden dims
+        regressor_hidden_dims_list: Optional[list[int]] = None
+        if regressor_hidden_dims:
+            regressor_hidden_dims_list = [int(d.strip()) for d in regressor_hidden_dims.split(",")]
+            logger.info(f"MLP regression head: {regressor_hidden_dims_list}")
+
         model = SequencePredictor(
             encoder_type=encoder_type,
             vocab_size=7,
@@ -667,6 +687,8 @@ def train(
             categorical_embed_dim=categorical_embed_dim,
             categorical_fusion=categorical_fusion,
             output_activation=output_activation,
+            regressor_hidden_dims=regressor_hidden_dims_list,
+            regressor_dropout=regressor_dropout,
         )
 
         log_model_summary(model, logger)
@@ -863,6 +885,8 @@ def train(
                 "categorical_fusion": categorical_fusion,
                 "output_activation": output_activation,
                 "log_transform_targets": log_transform_targets,
+                "regressor_hidden_dims": regressor_hidden_dims_list,
+                "regressor_dropout": regressor_dropout,
             }
             # Include categorical encoder state if categoricals are used
             if categorical_encoder is not None:

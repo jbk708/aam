@@ -2,7 +2,7 @@
 
 import torch
 import torch.nn as nn
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from aam.models.sequence_encoder import SequenceEncoder
 from aam.models.attention_pooling import AttentionPooling
@@ -68,6 +68,8 @@ class SequencePredictor(nn.Module):
         categorical_embed_dim: int = 16,
         categorical_fusion: str = "concat",
         categorical_dropout: float = 0.1,
+        regressor_hidden_dims: Optional[List[int]] = None,
+        regressor_dropout: float = 0.0,
     ):
         """Initialize SequencePredictor.
 
@@ -124,6 +126,9 @@ class SequencePredictor(nn.Module):
             categorical_fusion: Fusion strategy for combining categorical embeddings with base embeddings.
                 Options: 'concat' (concatenate + project) or 'add' (project + add). Default: 'concat'
             categorical_dropout: Dropout applied to categorical embeddings (default: 0.1)
+            regressor_hidden_dims: Hidden layer dimensions for MLP regression head. If None, uses single
+                linear layer. E.g., [64, 32] creates MLP: embedding_dim -> 64 -> 32 -> out_dim
+            regressor_dropout: Dropout rate between MLP layers (default: 0.0, no dropout)
         """
         super().__init__()
 
@@ -219,7 +224,9 @@ class SequencePredictor(nn.Module):
         else:
             self.target_norm = None
 
-        self.target_head = nn.Linear(self.embedding_dim, out_dim)
+        self.regressor_hidden_dims = regressor_hidden_dims
+        self.regressor_dropout = regressor_dropout
+        self.target_head = self._build_target_head(self.embedding_dim, out_dim)
 
         if learnable_output_scale:
             self.output_scale = nn.Parameter(torch.ones(out_dim))
@@ -254,10 +261,40 @@ class SequencePredictor(nn.Module):
 
         self._init_weights()
 
+    def _build_target_head(self, in_dim: int, out_dim: int) -> nn.Module:
+        """Build target prediction head (single layer or MLP).
+
+        Args:
+            in_dim: Input dimension (embedding_dim)
+            out_dim: Output dimension (number of targets)
+
+        Returns:
+            nn.Module: Linear layer or Sequential MLP
+        """
+        if self.regressor_hidden_dims is None or len(self.regressor_hidden_dims) == 0:
+            return nn.Linear(in_dim, out_dim)
+
+        layers: List[nn.Module] = []
+        current_dim = in_dim
+        for hidden_dim in self.regressor_hidden_dims:
+            layers.append(nn.Linear(current_dim, hidden_dim))
+            layers.append(nn.ReLU())
+            if self.regressor_dropout > 0:
+                layers.append(nn.Dropout(self.regressor_dropout))
+            current_dim = hidden_dim
+        layers.append(nn.Linear(current_dim, out_dim))
+        return nn.Sequential(*layers)
+
     def _init_weights(self) -> None:
         """Initialize weights for target head, count head, and categorical projection."""
-        nn.init.xavier_uniform_(self.target_head.weight)
-        nn.init.zeros_(self.target_head.bias)
+        if isinstance(self.target_head, nn.Linear):
+            nn.init.xavier_uniform_(self.target_head.weight)
+            nn.init.zeros_(self.target_head.bias)
+        else:
+            for module in self.target_head.modules():
+                if isinstance(module, nn.Linear):
+                    nn.init.xavier_uniform_(module.weight)
+                    nn.init.zeros_(module.bias)
         nn.init.xavier_uniform_(self.count_head.weight)
         nn.init.zeros_(self.count_head.bias)
         if self.categorical_projection is not None:
