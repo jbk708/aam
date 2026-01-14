@@ -441,7 +441,82 @@ class TestCLICommands:
             ],
         )
         assert result.exit_code != 0
-        assert "Cannot use --distributed and --data-parallel together" in result.output
+        assert "Cannot use multiple distributed training options together" in result.output
+
+    def test_pretrain_command_fsdp_option_exists(self, runner):
+        """Test that --fsdp option appears in pretrain help."""
+        result = runner.invoke(cli, ["pretrain", "--help"])
+        assert result.exit_code == 0
+        assert "--fsdp" in result.output
+        assert "FSDP" in result.output
+
+    def test_pretrain_command_fsdp_distributed_mutual_exclusion(
+        self, runner, sample_biom_file, sample_unifrac_matrix_file, sample_output_dir
+    ):
+        """Test that --fsdp and --distributed cannot be used together."""
+        result = runner.invoke(
+            cli,
+            [
+                "pretrain",
+                "--table",
+                sample_biom_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
+                "--output-dir",
+                sample_output_dir,
+                "--fsdp",
+                "--distributed",
+            ],
+        )
+        assert result.exit_code != 0
+        assert "Cannot use multiple distributed training options together" in result.output
+
+    def test_pretrain_command_fsdp_data_parallel_mutual_exclusion(
+        self, runner, sample_biom_file, sample_unifrac_matrix_file, sample_output_dir
+    ):
+        """Test that --fsdp and --data-parallel cannot be used together."""
+        result = runner.invoke(
+            cli,
+            [
+                "pretrain",
+                "--table",
+                sample_biom_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
+                "--output-dir",
+                sample_output_dir,
+                "--fsdp",
+                "--data-parallel",
+            ],
+        )
+        assert result.exit_code != 0
+        assert "Cannot use multiple distributed training options together" in result.output
+
+    def test_pretrain_command_fsdp_sharded_checkpoint_option_exists(self, runner):
+        """Test that --fsdp-sharded-checkpoint option appears in pretrain help."""
+        result = runner.invoke(cli, ["pretrain", "--help"])
+        assert result.exit_code == 0
+        assert "--fsdp-sharded-checkpoint" in result.output
+
+    def test_pretrain_command_fsdp_sharded_checkpoint_requires_fsdp(
+        self, runner, sample_biom_file, sample_unifrac_matrix_file, sample_output_dir
+    ):
+        """Test that --fsdp-sharded-checkpoint requires --fsdp."""
+        result = runner.invoke(
+            cli,
+            [
+                "pretrain",
+                "--table",
+                sample_biom_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
+                "--output-dir",
+                sample_output_dir,
+                "--fsdp-sharded-checkpoint",
+            ],
+        )
+        assert result.exit_code != 0
+        assert "--fsdp-sharded-checkpoint requires --fsdp" in result.output
 
     def test_train_command_fsdp_option_exists(self, runner):
         """Test that --fsdp option appears in train help."""
