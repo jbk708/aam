@@ -248,14 +248,43 @@ aam pretrain \
 
 ### Multi-GPU Training
 
-AAM supports two multi-GPU strategies with different trade-offs:
+AAM supports three multi-GPU strategies with different trade-offs:
 
-| Strategy | Flag | Use Case |
-|----------|------|----------|
-| **DataParallel** | `--data-parallel` | Single-node pretraining (recommended for UniFrac) |
-| **DDP** | `--distributed` | Multi-node training, fine-tuning |
+| Strategy | Flag | Memory | Use Case |
+|----------|------|--------|----------|
+| **FSDP** | `--fsdp` | Best | Pretraining with large models/batches (recommended) |
+| **DataParallel** | `--data-parallel` | Worst (GPU 0) | Single-node pretraining, simpler setup |
+| **DDP** | `--distributed` | Good | Fine-tuning without pairwise loss |
 
-**For pretraining with UniFrac loss, use DataParallel:**
+#### FSDP Pretraining (Recommended)
+
+FSDP (Fully Sharded Data Parallel) provides the best memory efficiency while handling UniFrac pairwise loss correctly:
+
+```bash
+# FSDP pretraining (recommended for large models/batches)
+torchrun --nproc_per_node=4 -m aam.cli pretrain \
+  --table <biom_file> \
+  --unifrac-matrix <unifrac_matrix.npy> \
+  --output-dir <output_dir> \
+  --fsdp \
+  --batch-size 32
+```
+
+**FSDP advantages:**
+- **Memory efficient:** Shards model parameters across GPUs
+- **Correct UniFrac loss:** Gathers embeddings across all GPUs for full pairwise distances
+- **Scalable:** Works across multiple nodes
+
+**FSDP-specific options:**
+
+| Option | Description |
+|--------|-------------|
+| `--fsdp` | Enable FSDP |
+| `--fsdp-sharded-checkpoint` | Save sharded checkpoints (faster, but requires same world size to load) |
+
+#### DataParallel Pretraining (Alternative)
+
+DataParallel is simpler to use but has higher memory usage on GPU 0:
 
 ```bash
 # DataParallel gathers outputs to GPU 0, preserving full pairwise comparisons
@@ -267,9 +296,38 @@ aam pretrain \
   --batch-size 32
 ```
 
-**Why DataParallel for pretraining?** DDP computes pairwise UniFrac loss locally per GPU, missing cross-GPU comparisons. This causes predictions to converge toward the mean (~0.5) instead of learning the full distance distribution. DataParallel gathers all outputs to GPU 0 before loss computation, preserving the correct pairwise behavior.
+**Note:** GPU 0 has higher memory usage with DataParallel as it gathers all outputs.
 
-**Note:** GPU 0 has higher memory usage with DataParallel as it gathers all outputs. For fine-tuning (target prediction without pairwise loss), DDP is preferred for better scaling.
+#### DDP for Fine-tuning
+
+For fine-tuning with target prediction (no pairwise loss), DDP is preferred:
+
+```bash
+torchrun --nproc_per_node=4 -m aam.cli train \
+  --table <biom_file> \
+  --unifrac-matrix <unifrac_matrix.npy> \
+  --metadata <metadata.tsv> \
+  --metadata-column <target_column> \
+  --output-dir <output_dir> \
+  --distributed \
+  --batch-size 32
+```
+
+#### Why FSDP/DataParallel for Pretraining?
+
+DDP computes pairwise UniFrac loss locally per GPU, missing cross-GPU comparisons. This causes predictions to converge toward the mean (~0.5) instead of learning the full distance distribution:
+
+```
+DDP (incorrect for UniFrac):
+  GPU 0: samples [0,1,2,3] → local pairwise distances only
+  GPU 1: samples [4,5,6,7] → local pairwise distances only
+  Missing: cross-GPU pairs (0,4), (0,5), (1,4), etc.
+
+FSDP/DataParallel (correct):
+  All GPUs see all samples → full pairwise distances
+```
+
+FSDP and DataParallel gather outputs before loss computation, preserving the correct pairwise behavior.
 
 ### SLURM/HPC Systems
 
