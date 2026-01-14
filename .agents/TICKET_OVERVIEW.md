@@ -62,6 +62,18 @@ Future enhancement phases (~50+ hours):
 
 ## Recently Completed
 
+**PYT-BUG-4: Distributed Validation Plots Show Only Local GPU Data** (2026-01-14) - COMPLETE
+- Added `gather_predictions_for_plot()` for cross-GPU prediction gathering
+- Handles CPU tensors with NCCL backend (automatic CUDA transfer)
+- Integrated into `Evaluator.validate_epoch()` when `return_predictions=True`
+- TensorBoard scatter plots now show ALL validation samples across GPUs
+- Added 10 tests for prediction gathering functionality
+
+**PYT-BUG-3: Count Loss Has No Configurable Weight** (2026-01-14) - COMPLETE
+- Added `--count-penalty` flag to train.py and pretrain.py (default 1.0)
+- Allows disabling or downweighting count loss
+- Documented in README Loss Weights table
+
 **PYT-BUG-2: Best Model Selection Uses Loss Instead of Primary Metric** (2026-01-14) - COMPLETE
 - Added `--best-metric` flag with choices: val_loss, r2, mae, accuracy, f1
 - Added `is_metric_better()` helper for min/max mode comparison
