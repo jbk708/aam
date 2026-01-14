@@ -623,6 +623,7 @@ def pretrain(
             compile_model=compile_model,
             train_sampler=train_sampler,
             use_sharded_checkpoint=fsdp_sharded_checkpoint,
+            gather_for_distributed=fsdp,  # Enable gathering for FSDP pretraining
         )
 
         if resume_from is not None:

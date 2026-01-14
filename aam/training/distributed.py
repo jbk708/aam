@@ -668,9 +668,40 @@ def gather_embeddings_for_unifrac(embeddings: torch.Tensor) -> torch.Tensor:
 
     Note:
         This operation performs an all-gather, so all ranks receive the full
-        gathered tensor. The gradient flows back correctly during backward pass.
+        gathered tensor. The gradient flows back correctly during backward pass
+        by replacing the local portion with the original input tensor.
     """
-    raise NotImplementedError("gather_embeddings_for_unifrac not yet implemented")
+    if not is_distributed():
+        return embeddings
+
+    world_size = get_world_size()
+    rank = get_rank()
+
+    # Create placeholder tensors for all ranks
+    gathered = [torch.zeros_like(embeddings) for _ in range(world_size)]
+
+    # All-gather: each rank sends its embeddings to all other ranks
+    dist.all_gather(gathered, embeddings)
+
+    # Concatenate all gathered embeddings
+    # Shape: [local_batch_size * world_size, embedding_dim]
+    gathered_tensor = torch.cat(gathered, dim=0)
+
+    # Replace the portion corresponding to this rank's data with the original
+    # embeddings to preserve gradient flow. dist.all_gather doesn't propagate
+    # gradients, so we need this manual replacement.
+    if embeddings.requires_grad:
+        local_batch_size = embeddings.shape[0]
+        start_idx = rank * local_batch_size
+        end_idx = start_idx + local_batch_size
+
+        # Create output tensor and copy non-local portions (no gradient needed)
+        # For the local portion, use the original embeddings (with gradient)
+        before = gathered_tensor[:start_idx].detach()
+        after = gathered_tensor[end_idx:].detach()
+        gathered_tensor = torch.cat([before, embeddings, after], dim=0)
+
+    return gathered_tensor
 
 
 def sync_batch_norm(model: nn.Module) -> nn.Module:

@@ -2,7 +2,8 @@
 
 import torch
 import torch.nn as nn
-from typing import Dict, Optional
+import torch.distributed as dist
+from typing import Dict, Optional, List
 
 
 def _format_tensor_stats(tensor: torch.Tensor) -> str:
@@ -26,6 +27,52 @@ def _format_tensor_stats(tensor: torch.Tensor) -> str:
         # Floating point tensors
         mean_val = tensor.mean().item()
         return f"min={min_val:.6f}, max={max_val:.6f}, mean={mean_val:.6f}"
+
+
+def _gather_target_matrices(
+    local_target: torch.Tensor,
+    world_size: int,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Gather target matrices from all ranks and construct global matrix with mask.
+
+    In distributed training, each rank has a local target matrix representing
+    pairwise distances within its local batch. This function gathers all local
+    matrices and constructs a block-diagonal global matrix.
+
+    Args:
+        local_target: Local target matrix [local_batch, local_batch]
+        world_size: Number of ranks in distributed training
+
+    Returns:
+        Tuple of:
+        - global_target: Block-diagonal matrix [global_batch, global_batch]
+        - mask: Boolean mask indicating valid (local) entries [global_batch, global_batch]
+    """
+    local_batch_size = local_target.shape[0]
+    global_batch_size = local_batch_size * world_size
+
+    # Gather all local target matrices
+    gathered: List[torch.Tensor] = [torch.zeros_like(local_target) for _ in range(world_size)]
+    dist.all_gather(gathered, local_target)
+
+    # Construct global target matrix (block-diagonal)
+    global_target = torch.zeros(
+        global_batch_size, global_batch_size,
+        dtype=local_target.dtype, device=local_target.device
+    )
+    mask = torch.zeros(
+        global_batch_size, global_batch_size,
+        dtype=torch.bool, device=local_target.device
+    )
+
+    # Place each gathered matrix on the diagonal
+    for rank_idx, target_block in enumerate(gathered):
+        start = rank_idx * local_batch_size
+        end = start + local_batch_size
+        global_target[start:end, start:end] = target_block
+        mask[start:end, start:end] = True
+
+    return global_target, mask
 
 
 def compute_pairwise_distances(
@@ -231,6 +278,7 @@ class MultiTaskLoss(nn.Module):
         base_true: torch.Tensor,
         encoder_type: str = "unifrac",
         embeddings: Optional[torch.Tensor] = None,
+        gather_for_distributed: bool = False,
     ) -> torch.Tensor:
         """Compute MSE loss for base prediction (UniFrac/Faith PD).
 
@@ -240,6 +288,8 @@ class MultiTaskLoss(nn.Module):
             base_true: True base values [batch_size, base_output_dim] or [batch_size, batch_size] for unifrac
             encoder_type: Type of encoder ('unifrac', 'faith_pd', 'taxonomy', 'combined')
             embeddings: Optional embeddings [batch_size, embedding_dim] for UniFrac distance computation
+            gather_for_distributed: If True and in distributed mode, gather embeddings and targets
+                across all ranks for full pairwise distance computation. Used for FSDP pretraining.
 
         Returns:
             Base loss scalar tensor
@@ -264,6 +314,19 @@ class MultiTaskLoss(nn.Module):
                 error_msg = f"Inf values found in embeddings with shape {embeddings.shape}"
                 print(f"ERROR: {error_msg}", file=sys.stderr, flush=True)
                 raise ValueError(error_msg)
+
+            # Handle distributed gathering for FSDP pretraining
+            target_mask = None
+            if gather_for_distributed and dist.is_initialized():
+                from aam.training.distributed import gather_embeddings_for_unifrac, get_world_size
+
+                world_size = get_world_size()
+                if world_size > 1:
+                    # Gather embeddings across all ranks for full pairwise computation
+                    embeddings = gather_embeddings_for_unifrac(embeddings)
+                    # Gather target matrices and construct block-diagonal global matrix
+                    base_true, target_mask = _gather_target_matrices(base_true, world_size)
+
             # Compute pairwise distances from embeddings
             # Normalize to [0, 1] for UniFrac distances (UniFrac distances are bounded)
             try:
@@ -275,6 +338,13 @@ class MultiTaskLoss(nn.Module):
                 print("ERROR: Failed to compute pairwise distances from embeddings", file=sys.stderr, flush=True)
                 print(f"embeddings shape={embeddings.shape}, {_format_tensor_stats(embeddings)}", file=sys.stderr, flush=True)
                 raise
+
+            # If we gathered, apply mask to only compute loss on available targets (block-diagonal)
+            if target_mask is not None:
+                # Apply mask: only compute loss where we have valid targets
+                base_pred = base_pred * target_mask.float()
+                base_true = base_true * target_mask.float()
+
         elif encoder_type == "unifrac" and embeddings is None:
             # Legacy mode: use base_pred directly (for backward compatibility)
             pass
@@ -460,6 +530,7 @@ class MultiTaskLoss(nn.Module):
         targets: Dict[str, torch.Tensor],
         is_classifier: bool = False,
         encoder_type: str = "unifrac",
+        gather_for_distributed: bool = False,
     ) -> Dict[str, torch.Tensor]:
         """Compute all losses.
 
@@ -468,6 +539,8 @@ class MultiTaskLoss(nn.Module):
             targets: Dictionary with targets (target, counts, base_target, nucleotides, mask, nuc_mask)
             is_classifier: Whether using classification mode
             encoder_type: Type of encoder for base loss
+            gather_for_distributed: If True and in distributed mode, gather embeddings and targets
+                across all ranks for full pairwise distance computation. Used for FSDP pretraining.
 
         Returns:
             Dictionary with individual losses and total_loss
@@ -523,6 +596,7 @@ class MultiTaskLoss(nn.Module):
                     targets["base_target"],
                     encoder_type=encoder_type,
                     embeddings=embeddings,
+                    gather_for_distributed=gather_for_distributed,
                 )
             elif "base_prediction" in outputs:
                 # Legacy approach: use base_prediction directly
