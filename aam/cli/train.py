@@ -15,6 +15,7 @@ from aam.data.biom_loader import BIOMLoader
 from aam.data.unifrac_loader import UniFracLoader
 from aam.data.dataset import ASVDataset, collate_fn
 from aam.data.categorical import CategoricalEncoder, CategoricalSchema
+from aam.data.normalization import CategoryNormalizer
 from skbio import DistanceMatrix
 from aam.models.sequence_predictor import SequencePredictor
 from aam.models.transformer import AttnImplementation
@@ -164,6 +165,13 @@ from aam.cli.utils import (
     help="Normalize target and count values to [0, 1] range during training (default: enabled)",
 )
 @click.option(
+    "--normalize-targets-by",
+    default=None,
+    help="Normalize targets per-category using comma-separated categorical column names (e.g., 'location' or 'location,season'). "
+    "Computes per-category mean/std from training data and applies z-score normalization. "
+    "Mutually exclusive with --normalize-targets. Unseen categories use global statistics.",
+)
+@click.option(
     "--log-transform-targets",
     is_flag=True,
     help="Apply log(y+1) transform to targets. Best for non-negative targets with wide range (e.g., 0-600). Predictions are inverse-transformed via exp(x)-1.",
@@ -300,6 +308,7 @@ def train(
     attn_implementation: str,
     asv_chunk_size: int,
     normalize_targets: bool,
+    normalize_targets_by: Optional[str],
     log_transform_targets: bool,
     loss_type: str,
     no_sequence_cache: bool,
@@ -353,6 +362,20 @@ def train(
                 "Auto-enabling --bounded-targets for --log-transform-targets with --normalize-targets "
                 "(prevents exp() overflow from unbounded predictions)"
             )
+
+        # Validate mutual exclusivity of normalization options
+        if normalize_targets_by and normalize_targets:
+            raise click.ClickException(
+                "Cannot use --normalize-targets-by and --normalize-targets together. "
+                "Use --normalize-targets-by for per-category normalization, "
+                "or --normalize-targets for global min-max normalization."
+            )
+
+        # Parse normalize-targets-by columns
+        normalize_by_columns: list[str] = []
+        if normalize_targets_by:
+            normalize_by_columns = [col.strip() for col in normalize_targets_by.split(",")]
+            logger.info(f"Per-category target normalization enabled for columns: {normalize_by_columns}")
 
         setup_expandable_segments(use_expandable_segments)
 
@@ -531,6 +554,41 @@ def train(
                 train_distance_matrix = unifrac_distances[train_indices]
                 val_distance_matrix = unifrac_distances[val_indices]
 
+        # Fit per-category normalizer if requested
+        category_normalizer: Optional[CategoryNormalizer] = None
+        if normalize_by_columns:
+            # Validate columns exist in metadata
+            for col in normalize_by_columns:
+                if col not in train_metadata.columns:
+                    raise click.ClickException(
+                        f"Column '{col}' specified in --normalize-targets-by not found in metadata. "
+                        f"Available columns: {list(train_metadata.columns)}"
+                    )
+
+            # Extract training targets for normalization
+            train_targets = train_metadata.set_index("sample_id")[metadata_column].values.astype(float)
+
+            # Apply log transform to targets before fitting normalizer (if enabled)
+            if log_transform_targets:
+                train_targets = np.log(train_targets + 1)
+
+            # Fit the normalizer
+            category_normalizer = CategoryNormalizer()
+            category_normalizer.fit(
+                targets=train_targets,
+                metadata=train_metadata,
+                columns=normalize_by_columns,
+                sample_ids=list(train_metadata["sample_id"]),
+            )
+
+            # Log category statistics
+            logger.info(f"Fitted CategoryNormalizer with {len(category_normalizer.stats)} categories")
+            logger.info(f"  Global: mean={category_normalizer.global_mean:.4f}, std={category_normalizer.global_std:.4f}")
+            for cat_key, stats in list(category_normalizer.stats.items())[:5]:
+                logger.info(f"  {cat_key}: mean={stats['mean']:.4f}, std={stats['std']:.4f}")
+            if len(category_normalizer.stats) > 5:
+                logger.info(f"  ... and {len(category_normalizer.stats) - 5} more categories")
+
         logger.info("Creating datasets...")
         train_dataset = ASVDataset(
             table=train_table,
@@ -540,11 +598,12 @@ def train(
             token_limit=token_limit,
             target_column=metadata_column,
             unifrac_metric=unifrac_metric_name,
-            normalize_targets=normalize_targets,
+            normalize_targets=normalize_targets if not normalize_by_columns else False,
             log_transform_targets=log_transform_targets,
             normalize_counts=normalize_targets,  # Normalize counts along with targets
             cache_sequences=not no_sequence_cache,
             categorical_encoder=categorical_encoder,
+            category_normalizer=category_normalizer,
         )
 
         # Get normalization parameters from training set
@@ -575,7 +634,7 @@ def train(
             token_limit=token_limit,
             target_column=metadata_column,
             unifrac_metric=unifrac_metric_name,
-            normalize_targets=normalize_targets,
+            normalize_targets=normalize_targets if not normalize_by_columns else False,
             log_transform_targets=log_transform_targets,
             # Use same normalization params as training set for consistency
             target_min=train_dataset.target_min if normalize_targets else None,
@@ -586,6 +645,7 @@ def train(
             count_max=train_dataset.count_max if normalize_targets else None,
             cache_sequences=not no_sequence_cache,
             categorical_encoder=categorical_encoder,
+            category_normalizer=category_normalizer,  # Use same normalizer as training set
         )
 
         train_collate = partial(
@@ -913,6 +973,10 @@ def train(
             # Include categorical encoder state if categoricals are used
             if categorical_encoder is not None:
                 model_config["categorical_encoder"] = categorical_encoder.to_dict()
+
+            # Include category normalizer state if per-category normalization is used
+            if category_normalizer is not None:
+                model_config["category_normalizer"] = category_normalizer.to_dict()
 
             final_model_path = output_path / "final_model.pt"
             trainer.save_checkpoint(

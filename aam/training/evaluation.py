@@ -263,11 +263,24 @@ class Evaluator:
         return False
 
     def _denormalize_targets(self, values: torch.Tensor) -> torch.Tensor:
-        """Denormalize/inverse-transform target values back to original scale."""
+        """Denormalize/inverse-transform target values back to original scale.
+
+        Note: When category normalization is used, per-sample denormalization is not
+        currently supported (would require category keys for each sample). Metrics
+        are computed on normalized z-scores instead, which are still valid for model
+        comparison.
+        """
         if self.target_normalization_params is None:
             return values
 
         result = values
+
+        # Skip denormalization for category normalization (would need per-sample category keys)
+        # The data flow is: raw → [log] → z-score. Without category keys, we can't reverse
+        # the z-score transform to get back to log or raw values. Metrics on z-scores
+        # are still valid for model comparison (R², etc.).
+        if "category_normalizer" in self.target_normalization_params:
+            return result
 
         # First, denormalize if normalization was applied
         if "target_scale" in self.target_normalization_params:
