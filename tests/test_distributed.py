@@ -23,6 +23,10 @@ from aam.training.distributed import (
     reduce_tensor,
     print_rank0,
     DistributedTrainer,
+    get_fsdp_state_dict,
+    set_fsdp_state_dict,
+    get_fsdp_optimizer_state_dict,
+    set_fsdp_optimizer_state_dict,
 )
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp import ShardingStrategy
@@ -468,3 +472,325 @@ class TestMultiGPUIntegration:
     def test_nccl_backend_available(self):
         """Test NCCL/RCCL backend is available."""
         assert torch.distributed.is_nccl_available()
+
+
+class TestFSDPCheckpointFunctions:
+    """Test FSDP checkpoint utility functions."""
+
+    def test_get_fsdp_state_dict_requires_fsdp_model(self):
+        """Test get_fsdp_state_dict raises TypeError for non-FSDP model."""
+        model = SimpleModel()
+        with pytest.raises(TypeError, match="Expected FSDP model"):
+            get_fsdp_state_dict(model)
+
+    def test_set_fsdp_state_dict_requires_fsdp_model(self):
+        """Test set_fsdp_state_dict raises TypeError for non-FSDP model."""
+        model = SimpleModel()
+        with pytest.raises(TypeError, match="Expected FSDP model"):
+            set_fsdp_state_dict(model, {})
+
+    def test_get_fsdp_optimizer_state_dict_requires_fsdp_model(self):
+        """Test get_fsdp_optimizer_state_dict raises TypeError for non-FSDP model."""
+        model = SimpleModel()
+        optimizer = torch.optim.Adam(model.parameters())
+        with pytest.raises(TypeError, match="Expected FSDP model"):
+            get_fsdp_optimizer_state_dict(model, optimizer)
+
+    def test_set_fsdp_optimizer_state_dict_requires_fsdp_model(self):
+        """Test set_fsdp_optimizer_state_dict raises TypeError for non-FSDP model."""
+        model = SimpleModel()
+        optimizer = torch.optim.Adam(model.parameters())
+        with pytest.raises(TypeError, match="Expected FSDP model"):
+            set_fsdp_optimizer_state_dict(model, optimizer, {})
+
+    def test_get_fsdp_state_dict_function_signature(self):
+        """Test get_fsdp_state_dict has correct parameters."""
+        import inspect
+
+        sig = inspect.signature(get_fsdp_state_dict)
+        params = list(sig.parameters.keys())
+        assert "model" in params
+        assert "sharded" in params
+        assert "cpu_offload" in params
+        assert "rank0_only" in params
+
+    def test_set_fsdp_state_dict_function_signature(self):
+        """Test set_fsdp_state_dict has correct parameters."""
+        import inspect
+
+        sig = inspect.signature(set_fsdp_state_dict)
+        params = list(sig.parameters.keys())
+        assert "model" in params
+        assert "state_dict" in params
+        assert "sharded" in params
+        assert "strict" in params
+
+    def test_get_fsdp_optimizer_state_dict_function_signature(self):
+        """Test get_fsdp_optimizer_state_dict has correct parameters."""
+        import inspect
+
+        sig = inspect.signature(get_fsdp_optimizer_state_dict)
+        params = list(sig.parameters.keys())
+        assert "model" in params
+        assert "optimizer" in params
+        assert "sharded" in params
+
+    def test_set_fsdp_optimizer_state_dict_function_signature(self):
+        """Test set_fsdp_optimizer_state_dict has correct parameters."""
+        import inspect
+
+        sig = inspect.signature(set_fsdp_optimizer_state_dict)
+        params = list(sig.parameters.keys())
+        assert "model" in params
+        assert "optimizer" in params
+        assert "optim_state_dict" in params
+        assert "sharded" in params
+
+    def test_get_fsdp_state_dict_defaults_to_full_state_dict(self):
+        """Test get_fsdp_state_dict defaults sharded=False."""
+        import inspect
+
+        sig = inspect.signature(get_fsdp_state_dict)
+        sharded_param = sig.parameters["sharded"]
+        assert sharded_param.default is False
+
+    def test_get_fsdp_state_dict_defaults_to_cpu_offload(self):
+        """Test get_fsdp_state_dict defaults cpu_offload=True."""
+        import inspect
+
+        sig = inspect.signature(get_fsdp_state_dict)
+        cpu_offload_param = sig.parameters["cpu_offload"]
+        assert cpu_offload_param.default is True
+
+    def test_get_fsdp_state_dict_defaults_to_rank0_only(self):
+        """Test get_fsdp_state_dict defaults rank0_only=True."""
+        import inspect
+
+        sig = inspect.signature(get_fsdp_state_dict)
+        rank0_only_param = sig.parameters["rank0_only"]
+        assert rank0_only_param.default is True
+
+    def test_get_fsdp_state_dict_calls_fsdp_state_dict_type(self):
+        """Test get_fsdp_state_dict uses FSDP.state_dict_type context manager."""
+        from torch.distributed.fsdp import StateDictType
+
+        mock_fsdp_model = MagicMock(spec=FSDP)
+        mock_fsdp_model.__class__ = FSDP
+        mock_state_dict = {"weight": torch.randn(10, 5)}
+        mock_fsdp_model.state_dict.return_value = mock_state_dict
+
+        with (
+            patch("aam.training.distributed.is_fsdp_model", return_value=True),
+            patch("aam.training.distributed.FSDP.state_dict_type") as mock_context,
+        ):
+            mock_context.return_value.__enter__ = MagicMock()
+            mock_context.return_value.__exit__ = MagicMock(return_value=False)
+
+            result = get_fsdp_state_dict(mock_fsdp_model)
+
+            # Verify state_dict_type was called
+            mock_context.assert_called_once()
+            # Verify FULL_STATE_DICT is used by default
+            call_args = mock_context.call_args
+            assert call_args[0][1] == StateDictType.FULL_STATE_DICT
+
+    def test_get_fsdp_state_dict_sharded_mode(self):
+        """Test get_fsdp_state_dict with sharded=True."""
+        from torch.distributed.fsdp import StateDictType
+
+        mock_fsdp_model = MagicMock(spec=FSDP)
+        mock_fsdp_model.__class__ = FSDP
+        mock_fsdp_model.state_dict.return_value = {}
+
+        with (
+            patch("aam.training.distributed.is_fsdp_model", return_value=True),
+            patch("aam.training.distributed.FSDP.state_dict_type") as mock_context,
+        ):
+            mock_context.return_value.__enter__ = MagicMock()
+            mock_context.return_value.__exit__ = MagicMock(return_value=False)
+
+            get_fsdp_state_dict(mock_fsdp_model, sharded=True)
+
+            # Verify SHARDED_STATE_DICT is used when sharded=True
+            call_args = mock_context.call_args
+            assert call_args[0][1] == StateDictType.SHARDED_STATE_DICT
+
+    def test_set_fsdp_state_dict_calls_load_state_dict(self):
+        """Test set_fsdp_state_dict calls model.load_state_dict."""
+        mock_fsdp_model = MagicMock(spec=FSDP)
+        mock_fsdp_model.__class__ = FSDP
+        state_dict = {"weight": torch.randn(10, 5)}
+
+        with (
+            patch("aam.training.distributed.is_fsdp_model", return_value=True),
+            patch("aam.training.distributed.FSDP.state_dict_type") as mock_context,
+        ):
+            mock_context.return_value.__enter__ = MagicMock()
+            mock_context.return_value.__exit__ = MagicMock(return_value=False)
+
+            set_fsdp_state_dict(mock_fsdp_model, state_dict)
+
+            mock_fsdp_model.load_state_dict.assert_called_once_with(state_dict, strict=True)
+
+    def test_set_fsdp_state_dict_respects_strict_parameter(self):
+        """Test set_fsdp_state_dict passes strict parameter to load_state_dict."""
+        mock_fsdp_model = MagicMock(spec=FSDP)
+        mock_fsdp_model.__class__ = FSDP
+        state_dict = {"weight": torch.randn(10, 5)}
+
+        with (
+            patch("aam.training.distributed.is_fsdp_model", return_value=True),
+            patch("aam.training.distributed.FSDP.state_dict_type") as mock_context,
+        ):
+            mock_context.return_value.__enter__ = MagicMock()
+            mock_context.return_value.__exit__ = MagicMock(return_value=False)
+
+            set_fsdp_state_dict(mock_fsdp_model, state_dict, strict=False)
+
+            mock_fsdp_model.load_state_dict.assert_called_once_with(state_dict, strict=False)
+
+    def test_get_fsdp_optimizer_state_dict_calls_fsdp_optim_state_dict(self):
+        """Test get_fsdp_optimizer_state_dict uses FSDP.optim_state_dict."""
+        mock_fsdp_model = MagicMock(spec=FSDP)
+        mock_fsdp_model.__class__ = FSDP
+        optimizer = MagicMock(spec=torch.optim.Optimizer)
+
+        with (
+            patch("aam.training.distributed.is_fsdp_model", return_value=True),
+            patch("aam.training.distributed.FSDP.state_dict_type") as mock_context,
+            patch("aam.training.distributed.FSDP.optim_state_dict") as mock_optim_state_dict,
+        ):
+            mock_context.return_value.__enter__ = MagicMock()
+            mock_context.return_value.__exit__ = MagicMock(return_value=False)
+            mock_optim_state_dict.return_value = {"state": {}, "param_groups": []}
+
+            result = get_fsdp_optimizer_state_dict(mock_fsdp_model, optimizer)
+
+            mock_optim_state_dict.assert_called_once_with(mock_fsdp_model, optimizer)
+
+    def test_set_fsdp_optimizer_state_dict_calls_optim_state_dict_to_load(self):
+        """Test set_fsdp_optimizer_state_dict uses FSDP.optim_state_dict_to_load."""
+        mock_fsdp_model = MagicMock(spec=FSDP)
+        mock_fsdp_model.__class__ = FSDP
+        optimizer = MagicMock(spec=torch.optim.Optimizer)
+        optim_state_dict = {"state": {}, "param_groups": []}
+
+        with (
+            patch("aam.training.distributed.is_fsdp_model", return_value=True),
+            patch("aam.training.distributed.FSDP.state_dict_type") as mock_context,
+            patch("aam.training.distributed.FSDP.optim_state_dict_to_load") as mock_optim_to_load,
+        ):
+            mock_context.return_value.__enter__ = MagicMock()
+            mock_context.return_value.__exit__ = MagicMock(return_value=False)
+            mock_optim_to_load.return_value = {"state": {}, "param_groups": []}
+
+            set_fsdp_optimizer_state_dict(mock_fsdp_model, optimizer, optim_state_dict)
+
+            mock_optim_to_load.assert_called_once_with(mock_fsdp_model, optimizer, optim_state_dict)
+            optimizer.load_state_dict.assert_called_once()
+
+
+class TestFSDPCheckpointTrainerIntegration:
+    """Test FSDP checkpoint integration with Trainer."""
+
+    def test_save_checkpoint_stores_world_size_for_sharded(self):
+        """Test save_checkpoint stores world size when using sharded checkpoints."""
+        from aam.training.trainer import Trainer
+        from aam.training.losses import MultiTaskLoss
+
+        model = SimpleModel()
+        loss_fn = MultiTaskLoss()
+
+        with (
+            patch("aam.training.trainer.is_fsdp_model", return_value=True),
+            patch("aam.training.trainer.get_fsdp_state_dict", return_value={"weight": torch.randn(10, 5)}),
+            patch("aam.training.trainer.get_fsdp_optimizer_state_dict", return_value={"state": {}}),
+            patch("aam.training.trainer.get_world_size", return_value=4),
+            patch("torch.save") as mock_save,
+        ):
+            trainer = Trainer(model=model, loss_fn=loss_fn, use_sharded_checkpoint=True)
+            trainer.save_checkpoint("/tmp/test.pt", epoch=1, best_val_loss=0.5)
+
+            # Verify torch.save was called with checkpoint containing world size
+            mock_save.assert_called_once()
+            saved_checkpoint = mock_save.call_args[0][0]
+            assert saved_checkpoint["fsdp_sharded"] is True
+            assert saved_checkpoint["fsdp_world_size"] == 4
+
+    def test_load_checkpoint_validates_world_size_mismatch(self):
+        """Test load_checkpoint raises error when world size doesn't match."""
+        from aam.training.trainer import Trainer
+        from aam.training.losses import MultiTaskLoss
+
+        model = SimpleModel()
+        loss_fn = MultiTaskLoss()
+
+        # Create checkpoint saved with world_size=4
+        checkpoint = {
+            "epoch": 1,
+            "best_val_loss": 0.5,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": {},
+            "fsdp_sharded": True,
+            "fsdp_world_size": 4,
+        }
+
+        with (
+            patch("aam.training.trainer.is_fsdp_model", return_value=True),
+            patch("aam.training.trainer.get_world_size", return_value=2),  # Current world size is 2
+            patch("torch.load", return_value=checkpoint),
+        ):
+            trainer = Trainer(model=model, loss_fn=loss_fn)
+
+            with pytest.raises(RuntimeError, match="world_size=4.*current world_size=2"):
+                trainer.load_checkpoint("/tmp/test.pt")
+
+    def test_load_checkpoint_accepts_matching_world_size(self):
+        """Test load_checkpoint succeeds when world size matches."""
+        from aam.training.trainer import Trainer
+        from aam.training.losses import MultiTaskLoss
+
+        model = SimpleModel()
+        loss_fn = MultiTaskLoss()
+
+        checkpoint = {
+            "epoch": 1,
+            "best_val_loss": 0.5,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": {},
+            "fsdp_sharded": True,
+            "fsdp_world_size": 4,
+        }
+
+        with (
+            patch("aam.training.trainer.is_fsdp_model", return_value=True),
+            patch("aam.training.trainer.get_world_size", return_value=4),  # Matching world size
+            patch("aam.training.trainer.set_fsdp_state_dict"),
+            patch("aam.training.trainer.set_fsdp_optimizer_state_dict"),
+            patch("torch.load", return_value=checkpoint),
+        ):
+            trainer = Trainer(model=model, loss_fn=loss_fn)
+            result = trainer.load_checkpoint("/tmp/test.pt")
+
+            assert result["epoch"] == 1
+            assert result["best_val_loss"] == 0.5
+
+    def test_load_checkpoint_validates_required_keys(self):
+        """Test load_checkpoint raises error for missing required keys."""
+        from aam.training.trainer import Trainer
+        from aam.training.losses import MultiTaskLoss
+
+        model = SimpleModel()
+        loss_fn = MultiTaskLoss()
+
+        # Missing model_state_dict
+        checkpoint = {
+            "epoch": 1,
+            "best_val_loss": 0.5,
+        }
+
+        with patch("torch.load", return_value=checkpoint):
+            trainer = Trainer(model=model, loss_fn=loss_fn)
+
+            with pytest.raises(ValueError, match="missing required keys.*model_state_dict"):
+                trainer.load_checkpoint("/tmp/test.pt")

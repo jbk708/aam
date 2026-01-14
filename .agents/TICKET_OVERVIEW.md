@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-13
-**Status:** 10 outstanding tickets (~32-46 hours)
+**Status:** 9 outstanding tickets (~29-43 hours)
 
 ## Quick Links
 - **ROCm optimization:** `COSMOS_ONBOARDING_TICKETS.md`
@@ -20,7 +20,7 @@
 | Sub-ticket | Description | Effort | Status |
 |------------|-------------|--------|--------|
 | PYT-12.1a | FSDP Infrastructure | 4-6h | **COMPLETE** |
-| PYT-12.1b | FSDP Checkpoint Support | 3-4h | Not Started |
+| PYT-12.1b | FSDP Checkpoint Support | 3-4h | **COMPLETE** |
 | PYT-12.1c | FSDP Pretraining + ROCm | 4-6h | Not Started |
 
 ---
@@ -31,11 +31,10 @@
 
 All high priority tickets complete.
 
-### MEDIUM (3 tickets, ~11-16 hours)
+### MEDIUM (2 tickets, ~8-12 hours)
 
 | Ticket | Description | Effort | Domain |
 |--------|-------------|--------|--------|
-| **PYT-12.1b** | FSDP Checkpoint Support | 3-4h | PyTorch |
 | **PYT-12.1c** | FSDP Pretraining + ROCm | 4-6h | PyTorch |
 | **PYT-12.2** | Batch size optimization | 4-6h | PyTorch |
 
@@ -62,6 +61,13 @@ Future enhancement phases (~50+ hours):
 ---
 
 ## Recently Completed
+
+**PYT-12.1b: FSDP Checkpoint Support** (2026-01-13) - COMPLETE
+- Added FSDP checkpoint utility functions: `get_fsdp_state_dict()`, `set_fsdp_state_dict()`, `get_fsdp_optimizer_state_dict()`, `set_fsdp_optimizer_state_dict()`
+- Updated Trainer to handle FSDP models in `save_checkpoint()` and `load_checkpoint()`
+- Added `--fsdp-sharded-checkpoint` flag for large model optimization
+- Supports cross-compatibility: non-FSDP checkpoints into FSDP models and vice versa
+- Added 17 tests for FSDP checkpoint functions, 2 CLI tests
 
 **PYT-12.1a: FSDP Infrastructure** (2026-01-13) - COMPLETE
 - Added `wrap_model_fsdp()` with configurable sharding strategy, mixed precision, CPU offload
@@ -125,8 +131,8 @@ Future enhancement phases (~50+ hours):
 
 ### 1. Current Work: FSDP Implementation (IN PROGRESS)
 - ~~**PYT-12.1a** - FSDP Infrastructure~~ ✓ COMPLETE
-- **PYT-12.1b** - FSDP Checkpoint Support (next)
-- **PYT-12.1c** - FSDP Pretraining + ROCm (after 12.1b)
+- ~~**PYT-12.1b** - FSDP Checkpoint Support~~ ✓ COMPLETE
+- **PYT-12.1c** - FSDP Pretraining + ROCm (next)
 
 ### 2. Infrastructure (As Needed)
 - **COS-9.6** - SLURM templates for Cosmos

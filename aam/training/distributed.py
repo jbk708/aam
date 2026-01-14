@@ -19,7 +19,9 @@ import torch
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
-from torch.distributed.fsdp import ShardingStrategy, MixedPrecision
+from torch.distributed.fsdp import ShardingStrategy, MixedPrecision, StateDictType
+from torch.distributed.fsdp import FullStateDictConfig, ShardedStateDictConfig
+from torch.distributed.fsdp import FullOptimStateDictConfig, ShardedOptimStateDictConfig
 from torch.distributed.fsdp.wrap import ModuleWrapPolicy
 from torch.utils.data import DataLoader, DistributedSampler
 from typing import Optional, Tuple, Any, List, Set, Type
@@ -312,6 +314,212 @@ def unwrap_model(model: nn.Module) -> nn.Module:
         inner: nn.Module = model.module  # type: ignore[union-attr]
         return inner
     return model
+
+
+def get_fsdp_state_dict(
+    model: FSDP,
+    sharded: bool = False,
+    cpu_offload: bool = True,
+    rank0_only: bool = True,
+) -> dict:
+    """Get state dict from an FSDP model.
+
+    Uses FSDP's state_dict_type context manager to properly gather sharded
+    parameters. By default, gathers full state dict on rank 0 for checkpoint
+    compatibility with non-FSDP models.
+
+    Args:
+        model: FSDP-wrapped model.
+        sharded: If True, return sharded state dict (each rank saves its shard).
+            If False, gather full state dict on rank 0.
+        cpu_offload: Offload state dict to CPU to save GPU memory.
+        rank0_only: Only populate state dict on rank 0 (others get empty dict).
+            Only used when sharded=False.
+
+    Returns:
+        State dict. When sharded=False and rank0_only=True, only rank 0 gets
+        the full state dict; other ranks get an empty dict.
+
+    Raises:
+        TypeError: If model is not an FSDP instance.
+        RuntimeError: If state dict gathering fails (e.g., NCCL timeout, OOM).
+    """
+    if not is_fsdp_model(model):
+        raise TypeError(f"Expected FSDP model, got {type(model).__name__}")
+
+    if sharded:
+        state_dict_config = ShardedStateDictConfig(offload_to_cpu=cpu_offload)
+        state_dict_type = StateDictType.SHARDED_STATE_DICT
+    else:
+        state_dict_config = FullStateDictConfig(
+            offload_to_cpu=cpu_offload,
+            rank0_only=rank0_only,
+        )
+        state_dict_type = StateDictType.FULL_STATE_DICT
+
+    try:
+        with FSDP.state_dict_type(model, state_dict_type, state_dict_config):
+            return model.state_dict()
+    except RuntimeError as e:
+        error_msg = str(e).lower()
+        if "nccl" in error_msg or "timeout" in error_msg:
+            raise RuntimeError(
+                f"FSDP state dict gathering failed due to communication error. "
+                f"This is often caused by GPU memory exhaustion or process desynchronization. "
+                f"Try reducing model size or batch size. Original error: {e}"
+            ) from e
+        raise RuntimeError(
+            f"Failed to get FSDP state dict (sharded={sharded}). "
+            f"This may indicate corrupted FSDP state. Original error: {e}"
+        ) from e
+
+
+def set_fsdp_state_dict(
+    model: FSDP,
+    state_dict: dict,
+    sharded: bool = False,
+    strict: bool = True,
+) -> None:
+    """Load state dict into an FSDP model.
+
+    Uses FSDP's state_dict_type context manager for proper loading. Supports
+    loading both full state dicts (from non-FSDP or gathered checkpoints) and
+    sharded state dicts.
+
+    Args:
+        model: FSDP-wrapped model to load state dict into.
+        state_dict: State dict to load.
+        sharded: If True, expect sharded state dict format.
+            If False, expect full state dict format.
+        strict: Whether to strictly enforce that the keys in state_dict match.
+
+    Raises:
+        TypeError: If model is not an FSDP instance.
+        RuntimeError: If state dict loading fails (e.g., shape mismatch, key mismatch).
+    """
+    if not is_fsdp_model(model):
+        raise TypeError(f"Expected FSDP model, got {type(model).__name__}")
+
+    if sharded:
+        state_dict_config = ShardedStateDictConfig()
+        state_dict_type = StateDictType.SHARDED_STATE_DICT
+    else:
+        state_dict_config = FullStateDictConfig()
+        state_dict_type = StateDictType.FULL_STATE_DICT
+
+    try:
+        with FSDP.state_dict_type(model, state_dict_type, state_dict_config):
+            model.load_state_dict(state_dict, strict=strict)
+    except RuntimeError as e:
+        error_msg = str(e)
+        if "size mismatch" in error_msg:
+            raise RuntimeError(
+                f"FSDP state dict shape mismatch. This usually means the checkpoint "
+                f"was saved with different model architecture (embedding dim, layers, etc.). "
+                f"Ensure checkpoint and model configurations match. Original error: {e}"
+            ) from e
+        if "Missing key" in error_msg or "Unexpected key" in error_msg:
+            raise RuntimeError(
+                f"FSDP state dict key mismatch (sharded={sharded}, strict={strict}). "
+                f"For transfer learning, try strict=False. Original error: {e}"
+            ) from e
+        raise RuntimeError(
+            f"Failed to load FSDP state dict (sharded={sharded}). Original error: {e}"
+        ) from e
+
+
+def get_fsdp_optimizer_state_dict(
+    model: FSDP,
+    optimizer: torch.optim.Optimizer,
+    sharded: bool = False,
+) -> dict:
+    """Get optimizer state dict for an FSDP model.
+
+    FSDP requires special handling for optimizer state dicts because optimizer
+    states are also sharded across ranks.
+
+    Args:
+        model: FSDP-wrapped model.
+        optimizer: Optimizer to get state dict from.
+        sharded: If True, return sharded optimizer state dict.
+            If False, gather full optimizer state dict.
+
+    Returns:
+        Optimizer state dict. When sharded=False, only rank 0 gets the full
+        state dict; other ranks may receive empty or partial dicts.
+
+    Raises:
+        TypeError: If model is not an FSDP instance.
+        RuntimeError: If optimizer state dict gathering fails.
+    """
+    if not is_fsdp_model(model):
+        raise TypeError(f"Expected FSDP model, got {type(model).__name__}")
+
+    if sharded:
+        optim_state_dict_config = ShardedOptimStateDictConfig(offload_to_cpu=True)
+        state_dict_type = StateDictType.SHARDED_STATE_DICT
+    else:
+        optim_state_dict_config = FullOptimStateDictConfig(
+            offload_to_cpu=True,
+            rank0_only=True,
+        )
+        state_dict_type = StateDictType.FULL_STATE_DICT
+
+    try:
+        with FSDP.state_dict_type(model, state_dict_type, optim_state_dict_config=optim_state_dict_config):
+            return FSDP.optim_state_dict(model, optimizer)
+    except RuntimeError as e:
+        raise RuntimeError(
+            f"Failed to get FSDP optimizer state dict (sharded={sharded}). "
+            f"Ensure optimizer was created with FSDP model parameters. Original error: {e}"
+        ) from e
+
+
+def set_fsdp_optimizer_state_dict(
+    model: FSDP,
+    optimizer: torch.optim.Optimizer,
+    optim_state_dict: dict,
+    sharded: bool = False,
+) -> None:
+    """Load optimizer state dict into an FSDP model's optimizer.
+
+    FSDP requires special handling for optimizer state dicts because optimizer
+    states are also sharded across ranks. When loading a full optimizer state dict
+    (sharded=False), it will be scattered to all ranks automatically.
+
+    Args:
+        model: FSDP-wrapped model.
+        optimizer: Optimizer to load state dict into.
+        optim_state_dict: Optimizer state dict to load. When sharded=False,
+            this should be the full gathered state dict (typically only available
+            on rank 0); it will be scattered to all ranks automatically.
+        sharded: If True, expect sharded optimizer state dict format.
+            If False, expect full optimizer state dict format.
+
+    Raises:
+        TypeError: If model is not an FSDP instance.
+        RuntimeError: If optimizer state dict loading fails.
+    """
+    if not is_fsdp_model(model):
+        raise TypeError(f"Expected FSDP model, got {type(model).__name__}")
+
+    if sharded:
+        optim_state_dict_config = ShardedOptimStateDictConfig()
+        state_dict_type = StateDictType.SHARDED_STATE_DICT
+    else:
+        optim_state_dict_config = FullOptimStateDictConfig()
+        state_dict_type = StateDictType.FULL_STATE_DICT
+
+    try:
+        with FSDP.state_dict_type(model, state_dict_type, optim_state_dict_config=optim_state_dict_config):
+            sharded_optim_state = FSDP.optim_state_dict_to_load(model, optimizer, optim_state_dict)
+            optimizer.load_state_dict(sharded_optim_state)
+    except (RuntimeError, ValueError) as e:
+        raise RuntimeError(
+            f"Failed to load FSDP optimizer state dict (sharded={sharded}). "
+            f"This may be caused by: (1) optimizer type mismatch, (2) model architecture change, "
+            f"or (3) corrupted checkpoint. Try setting load_optimizer=False. Original error: {e}"
+        ) from e
 
 
 def create_distributed_dataloader(

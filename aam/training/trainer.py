@@ -3,7 +3,10 @@
 import logging
 import math
 from pathlib import Path
-from typing import Any, Dict, Optional, Union, Tuple, cast
+from typing import Any, Dict, Optional, Union, Tuple, cast, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 
 import torch
 import torch.nn as nn
@@ -13,7 +16,15 @@ from torch.utils.data.distributed import DistributedSampler
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-from aam.training.distributed import is_main_process
+from aam.training.distributed import (
+    is_main_process,
+    is_fsdp_model,
+    get_fsdp_state_dict,
+    set_fsdp_state_dict,
+    get_fsdp_optimizer_state_dict,
+    set_fsdp_optimizer_state_dict,
+    get_world_size,
+)
 from aam.training.evaluation import Evaluator
 
 logger = logging.getLogger(__name__)
@@ -77,6 +88,7 @@ class Trainer:
         target_normalization_params: Optional[Dict[str, float]] = None,
         count_normalization_params: Optional[Dict[str, float]] = None,
         train_sampler: Optional[DistributedSampler] = None,
+        use_sharded_checkpoint: bool = False,
     ):
         """Initialize Trainer.
 
@@ -97,6 +109,10 @@ class Trainer:
                 denormalizing count predictions when computing metrics. If None, no denormalization is applied.
             train_sampler: DistributedSampler for distributed training. When provided,
                 set_epoch() is called at the start of each epoch for proper shuffling.
+            use_sharded_checkpoint: If True and model is FSDP-wrapped, save/load sharded
+                checkpoints where each rank saves/loads its own shard. Faster for large models
+                but requires same world size for loading. Default False saves full state dict
+                on rank 0 for checkpoint compatibility.
         """
         self.model = model.to(device)
 
@@ -115,6 +131,7 @@ class Trainer:
         self.target_normalization_params = target_normalization_params
         self.count_normalization_params = count_normalization_params
         self.train_sampler = train_sampler
+        self.use_sharded_checkpoint = use_sharded_checkpoint
         self.writer: Optional[SummaryWriter] = None
         self.log_histograms: bool = True
         self.histogram_frequency: int = 50
@@ -1077,6 +1094,11 @@ class Trainer:
     ) -> None:
         """Save training checkpoint.
 
+        Handles FSDP models specially by using FSDP's state dict APIs. For FSDP models
+        with use_sharded_checkpoint=False (default), gathers full state dict on rank 0
+        for checkpoint compatibility. With use_sharded_checkpoint=True, each rank saves
+        its own shard (faster for large models but requires same world size to load).
+
         Args:
             filepath: Path to save checkpoint
             epoch: Current epoch number
@@ -1084,13 +1106,40 @@ class Trainer:
             metrics: Optional metrics dictionary (can contain floats or lists)
             config: Optional model configuration dictionary for inference
         """
+        # Handle FSDP models specially
+        model_is_fsdp = is_fsdp_model(cast(nn.Module, self.model))
+        if model_is_fsdp:
+            fsdp_model = cast("FSDP", self.model)
+            logger.info(
+                f"Saving FSDP checkpoint (sharded={self.use_sharded_checkpoint}, "
+                f"rank0_only={not self.use_sharded_checkpoint})"
+            )
+            model_state_dict = get_fsdp_state_dict(
+                fsdp_model,
+                sharded=self.use_sharded_checkpoint,
+                cpu_offload=True,
+                rank0_only=not self.use_sharded_checkpoint,
+            )
+            optimizer_state_dict = get_fsdp_optimizer_state_dict(
+                fsdp_model,
+                self.optimizer,
+                sharded=self.use_sharded_checkpoint,
+            )
+        else:
+            model_state_dict = self.model.state_dict()
+            optimizer_state_dict = self.optimizer.state_dict()
+
+        # Save world size for sharded checkpoints to validate on load
+        fsdp_sharded = self.use_sharded_checkpoint and model_is_fsdp
         checkpoint = {
             "epoch": epoch,
-            "model_state_dict": self.model.state_dict(),
-            "optimizer_state_dict": self.optimizer.state_dict(),
+            "model_state_dict": model_state_dict,
+            "optimizer_state_dict": optimizer_state_dict,
             "best_val_loss": best_val_loss,
             "metrics": metrics or {},
             "config": config or {},
+            "fsdp_sharded": fsdp_sharded,
+            "fsdp_world_size": get_world_size() if fsdp_sharded else None,
         }
 
         if self.scheduler is not None:
@@ -1099,7 +1148,13 @@ class Trainer:
             else:
                 checkpoint["scheduler_state_dict"] = self.scheduler.state_dict()
 
-        torch.save(checkpoint, filepath)
+        try:
+            torch.save(checkpoint, filepath)
+        except (OSError, RuntimeError) as e:
+            raise RuntimeError(
+                f"Failed to save checkpoint to '{filepath}': {e}. "
+                f"Check disk space and permissions."
+            ) from e
 
     def load_checkpoint(
         self,
@@ -1109,6 +1164,12 @@ class Trainer:
     ) -> Dict:
         """Load training checkpoint.
 
+        Handles FSDP models specially. Supports loading:
+        - Non-FSDP checkpoints into non-FSDP models (standard case)
+        - Non-FSDP checkpoints into FSDP models (transfer learning)
+        - FSDP full checkpoints into FSDP models
+        - FSDP sharded checkpoints into FSDP models (same world size required)
+
         Args:
             filepath: Path to checkpoint file
             load_optimizer: Whether to load optimizer state
@@ -1116,13 +1177,65 @@ class Trainer:
 
         Returns:
             Dictionary with checkpoint info (epoch, best_val_loss, metrics)
+
+        Raises:
+            FileNotFoundError: If checkpoint file doesn't exist.
+            ValueError: If checkpoint is missing required keys.
+            RuntimeError: If loading sharded checkpoint with different world size.
         """
         checkpoint = torch.load(filepath, map_location=self.device, weights_only=True)
 
-        self.model.load_state_dict(checkpoint["model_state_dict"])
+        # Validate required keys
+        required_keys = ["model_state_dict", "epoch", "best_val_loss"]
+        missing_keys = [k for k in required_keys if k not in checkpoint]
+        if missing_keys:
+            raise ValueError(
+                f"Invalid checkpoint file '{filepath}': missing required keys {missing_keys}. "
+                f"Found keys: {list(checkpoint.keys())}"
+            )
 
-        if load_optimizer and "optimizer_state_dict" in checkpoint:
-            self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        # Check if checkpoint was saved with sharded FSDP format
+        checkpoint_is_sharded = checkpoint.get("fsdp_sharded", False)
+        model_is_fsdp = is_fsdp_model(cast(nn.Module, self.model))
+
+        # Validate world size for sharded checkpoints
+        if checkpoint_is_sharded:
+            saved_world_size = checkpoint.get("fsdp_world_size")
+            current_world_size = get_world_size()
+            if saved_world_size is not None and saved_world_size != current_world_size:
+                raise RuntimeError(
+                    f"Cannot load sharded FSDP checkpoint: saved with world_size={saved_world_size}, "
+                    f"but current world_size={current_world_size}. Sharded checkpoints require matching "
+                    f"world size. Use a full (non-sharded) checkpoint for different world sizes, "
+                    f"or restart with {saved_world_size} GPUs."
+                )
+
+        # Load model and optimizer state dicts
+        if model_is_fsdp:
+            fsdp_model = cast("FSDP", self.model)
+            if not checkpoint_is_sharded:
+                logger.info(
+                    "Loading non-sharded checkpoint into FSDP model. "
+                    "Full state dict will be broadcast to all ranks."
+                )
+            else:
+                logger.info(f"Loading sharded FSDP checkpoint (world_size={get_world_size()})")
+            set_fsdp_state_dict(
+                fsdp_model,
+                checkpoint["model_state_dict"],
+                sharded=checkpoint_is_sharded,
+            )
+            if load_optimizer and "optimizer_state_dict" in checkpoint:
+                set_fsdp_optimizer_state_dict(
+                    fsdp_model,
+                    self.optimizer,
+                    checkpoint["optimizer_state_dict"],
+                    sharded=checkpoint_is_sharded,
+                )
+        else:
+            self.model.load_state_dict(checkpoint["model_state_dict"])
+            if load_optimizer and "optimizer_state_dict" in checkpoint:
+                self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
 
         if load_scheduler and self.scheduler is not None:
             if isinstance(self.scheduler, WarmupCosineScheduler) and "scheduler_step" in checkpoint:
