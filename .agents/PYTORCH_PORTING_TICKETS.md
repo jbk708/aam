@@ -8,7 +8,7 @@
 ## URGENT: Bug Fixes
 
 ### PYT-BUG-1: Distributed Validation Metrics Not Synchronized
-**Priority:** URGENT | **Effort:** 2-4 hours | **Status:** Not Started
+**Priority:** URGENT | **Effort:** 2-4 hours | **Status:** COMPLETE
 
 Validation metrics (R², MAE) are computed per-GPU and logged independently, showing inconsistent results.
 
@@ -61,7 +61,7 @@ if dist.is_initialized():
 ---
 
 ### PYT-BUG-2: Best Model Selection Uses Loss Instead of Primary Metric
-**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** COMPLETE
 
 Best model checkpoint is saved based on lowest validation loss, not the primary evaluation metric (R² for regression, accuracy for classification).
 
@@ -92,16 +92,29 @@ if is_better(current_metric, best_metric, mode=metric_mode):
 ```
 
 **Acceptance Criteria:**
-- [ ] `--best-metric` flag added to train.py with choices: val_loss, r2, mae, accuracy, f1
-- [ ] Support both "higher is better" and "lower is better" modes
-- [ ] Default to current behavior (val_loss) for backwards compatibility
-- [ ] Checkpoint filename or metadata indicates which metric was used
-- [ ] Tests for metric-based model selection
+- [x] `--best-metric` flag added to train.py with choices: val_loss, r2, mae, accuracy, f1
+- [x] Support both "higher is better" and "lower is better" modes
+- [x] Default to current behavior (val_loss) for backwards compatibility
+- [x] Checkpoint filename or metadata indicates which metric was used
+- [x] Tests for metric-based model selection
+
+**Completed:**
+- Added `METRIC_MODES` dict defining min/max modes for each metric
+- Added `is_metric_better()` helper function for metric comparison
+- Added `best_metric` parameter to `Trainer.__init__()` with validation
+- Modified `train()` to use configurable metric for best model selection
+- Added `best_metric` and `best_metric_value` fields to checkpoint
+- Added `best_metric_value` parameter to `save_checkpoint()`
+- Updated `load_checkpoint()` to return `best_metric_value`
+- Added fallback to val_loss when selected metric not in validation results
+- Added 14 unit tests for metric selection functionality
+- Added 3 CLI tests for `--best-metric` flag
 
 **Files:**
 - `aam/cli/train.py` - Add `--best-metric` flag
 - `aam/training/trainer.py` - Modify best model selection logic
 - `tests/test_trainer.py` - Add tests for metric-based selection
+- `tests/test_cli.py` - Add CLI flag tests
 
 **Dependencies:** None
 
