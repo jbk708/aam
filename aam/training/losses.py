@@ -180,6 +180,7 @@ class MultiTaskLoss(nn.Module):
     penalty: float
     nuc_penalty: float
     target_penalty: float
+    count_penalty: float
     target_loss_type: str
     class_weights: Optional[torch.Tensor]
 
@@ -188,6 +189,7 @@ class MultiTaskLoss(nn.Module):
         penalty: float = 1.0,
         nuc_penalty: float = 1.0,
         target_penalty: float = 1.0,
+        count_penalty: float = 1.0,
         class_weights: Optional[torch.Tensor] = None,
         target_loss_type: str = "huber",
     ):
@@ -197,6 +199,7 @@ class MultiTaskLoss(nn.Module):
             penalty: Weight for base loss (UniFrac)
             nuc_penalty: Weight for nucleotide loss
             target_penalty: Weight for target loss (default: 1.0)
+            count_penalty: Weight for count loss (default: 1.0)
             class_weights: Optional class weights for classification (registered as buffer)
             target_loss_type: Loss type for regression targets ('mse', 'mae', 'huber'). Default: 'huber'
         """
@@ -204,6 +207,7 @@ class MultiTaskLoss(nn.Module):
         self.penalty = penalty
         self.nuc_penalty = nuc_penalty
         self.target_penalty = target_penalty
+        self.count_penalty = count_penalty
 
         if target_loss_type not in self.VALID_LOSS_TYPES:
             raise ValueError(f"Invalid target_loss_type: {target_loss_type}. Must be one of: {self.VALID_LOSS_TYPES}")
@@ -680,7 +684,7 @@ class MultiTaskLoss(nn.Module):
 
         total_loss = (
             losses["target_loss"] * self.target_penalty
-            + losses["count_loss"]
+            + losses["count_loss"] * self.count_penalty
             + losses["unifrac_loss"] * self.penalty
             + losses["nuc_loss"] * self.nuc_penalty
         )

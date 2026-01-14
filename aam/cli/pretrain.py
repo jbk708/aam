@@ -71,6 +71,7 @@ from aam.cli.utils import (
 )
 @click.option("--penalty", default=1.0, type=float, help="Weight for base/UniFrac loss")
 @click.option("--nuc-penalty", default=1.0, type=float, help="Weight for nucleotide loss")
+@click.option("--count-penalty", default=1.0, type=float, help="Weight for count loss (default: 1.0)")
 @click.option(
     "--nuc-mask-ratio",
     default=0.15,
@@ -204,6 +205,7 @@ def pretrain(
     unifrac_metric: str,
     penalty: float,
     nuc_penalty: float,
+    count_penalty: float,
     nuc_mask_ratio: float,
     nuc_mask_strategy: str,
     device: str,
@@ -495,6 +497,7 @@ def pretrain(
         loss_fn = MultiTaskLoss(
             penalty=penalty,
             nuc_penalty=nuc_penalty,
+            count_penalty=count_penalty,
             class_weights=None,
             target_loss_type="huber",  # Default for pretraining (not used, but consistent)
         )
