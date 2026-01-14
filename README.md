@@ -224,6 +224,8 @@ With `--freeze-base`, only the categorical embedder and target prediction head a
 | `--bounded-targets` | Sigmoid to bound output to [0, 1] | False |
 | `--output-activation` | Non-negative constraint: 'none', 'relu', 'softplus', 'exp' | none |
 | `--learnable-output-scale` | Learnable scale and bias after target head | False |
+| `--regressor-hidden-dims` | MLP hidden layers, e.g., '64,32' | None (single linear) |
+| `--regressor-dropout` | Dropout between MLP layers | 0.0 |
 
 **Choosing an output constraint:**
 - **`--log-transform-targets --no-normalize-targets`** (recommended for wide ranges): Use for non-negative targets with wide range (e.g., 0-600). Compresses range via log(y+1) to ~[0, 6.4], model predicts directly in log space, exp(x)-1 gives original scale. No sigmoid needed since log range is small.
