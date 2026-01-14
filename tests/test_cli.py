@@ -620,6 +620,31 @@ class TestCLICommands:
         assert result.exit_code == 0
         assert "--regressor-dropout" in result.output
 
+    def test_train_command_regressor_dropout_invalid_range(
+        self, runner, sample_biom_file, sample_unifrac_matrix_file, sample_metadata_file, sample_output_dir
+    ):
+        """Test that --regressor-dropout rejects values outside [0, 1)."""
+        result = runner.invoke(
+            cli,
+            [
+                "train",
+                "--table",
+                sample_biom_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
+                "--metadata",
+                sample_metadata_file,
+                "--metadata-column",
+                "target",
+                "--output-dir",
+                sample_output_dir,
+                "--regressor-dropout",
+                "1.5",
+            ],
+        )
+        assert result.exit_code != 0
+        assert "1.5" in result.output or "range" in result.output.lower()
+
 
 class TestCLIIntegration:
     """Integration tests for CLI with mocked components."""

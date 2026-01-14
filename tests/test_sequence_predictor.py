@@ -1450,3 +1450,78 @@ class TestMLPRegressionHead:
                 mlp_has_grads = True
                 break
         assert mlp_has_grads
+
+    def test_mlp_invalid_hidden_dims_zero(self):
+        """Test that zero hidden dimension raises ValueError."""
+        with pytest.raises(ValueError, match="must be a positive integer"):
+            SequencePredictor(
+                embedding_dim=64,
+                max_bp=150,
+                token_limit=1024,
+                out_dim=1,
+                regressor_hidden_dims=[64, 0, 32],
+            )
+
+    def test_mlp_invalid_hidden_dims_negative(self):
+        """Test that negative hidden dimension raises ValueError."""
+        with pytest.raises(ValueError, match="must be a positive integer"):
+            SequencePredictor(
+                embedding_dim=64,
+                max_bp=150,
+                token_limit=1024,
+                out_dim=1,
+                regressor_hidden_dims=[-32],
+            )
+
+    def test_mlp_save_load_roundtrip(self, sample_tokens, tmp_path):
+        """Test that model with MLP head can be saved and loaded correctly."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            regressor_hidden_dims=[32, 16],
+            regressor_dropout=0.1,
+        )
+        model.eval()
+
+        # Get original output
+        with torch.no_grad():
+            orig_output = model(sample_tokens)["target_prediction"]
+
+        # Save checkpoint
+        checkpoint_path = tmp_path / "model.pt"
+        torch.save(
+            {
+                "model_state_dict": model.state_dict(),
+                "hyperparameters": {
+                    "embedding_dim": 64,
+                    "max_bp": 150,
+                    "token_limit": 1024,
+                    "out_dim": 1,
+                    "regressor_hidden_dims": [32, 16],
+                    "regressor_dropout": 0.1,
+                },
+            },
+            checkpoint_path,
+        )
+
+        # Load and create new model
+        loaded = torch.load(checkpoint_path, weights_only=False)
+        hp = loaded["hyperparameters"]
+        new_model = SequencePredictor(
+            embedding_dim=hp["embedding_dim"],
+            max_bp=hp["max_bp"],
+            token_limit=hp["token_limit"],
+            out_dim=hp["out_dim"],
+            regressor_hidden_dims=hp["regressor_hidden_dims"],
+            regressor_dropout=hp["regressor_dropout"],
+        )
+        new_model.load_state_dict(loaded["model_state_dict"])
+        new_model.eval()
+
+        # Verify outputs match
+        with torch.no_grad():
+            loaded_output = new_model(sample_tokens)["target_prediction"]
+
+        assert torch.allclose(orig_output, loaded_output, atol=1e-6)

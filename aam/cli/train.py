@@ -245,8 +245,8 @@ from aam.cli.utils import (
 @click.option(
     "--regressor-dropout",
     default=0.0,
-    type=float,
-    help="Dropout rate between MLP regression head layers (default: 0.0, no dropout)",
+    type=click.FloatRange(0.0, 1.0, max_open=True),
+    help="Dropout rate between MLP regression head layers (default: 0.0, no dropout). Must be in [0.0, 1.0).",
 )
 def train(
     table: str,
@@ -653,8 +653,29 @@ def train(
         # Parse regressor hidden dims
         regressor_hidden_dims_list: Optional[list[int]] = None
         if regressor_hidden_dims:
-            regressor_hidden_dims_list = [int(d.strip()) for d in regressor_hidden_dims.split(",")]
-            logger.info(f"MLP regression head: {regressor_hidden_dims_list}")
+            try:
+                parts = regressor_hidden_dims.split(",")
+                regressor_hidden_dims_list = []
+                for i, part in enumerate(parts):
+                    stripped = part.strip()
+                    if not stripped:
+                        raise click.ClickException(
+                            f"Invalid --regressor-hidden-dims: empty value at position {i + 1}. "
+                            f"Expected comma-separated positive integers like '64,32'. Got: '{regressor_hidden_dims}'"
+                        )
+                    dim = int(stripped)
+                    if dim <= 0:
+                        raise click.ClickException(
+                            f"Invalid --regressor-hidden-dims: dimension must be positive, got {dim} at position {i + 1}. "
+                            f"Expected comma-separated positive integers like '64,32'."
+                        )
+                    regressor_hidden_dims_list.append(dim)
+                logger.info(f"MLP regression head: {regressor_hidden_dims_list}")
+            except ValueError as e:
+                raise click.ClickException(
+                    f"Invalid --regressor-hidden-dims: could not parse '{regressor_hidden_dims}'. "
+                    f"Expected comma-separated positive integers like '64,32'. Error: {e}"
+                )
 
         model = SequencePredictor(
             encoder_type=encoder_type,

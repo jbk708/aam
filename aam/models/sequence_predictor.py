@@ -270,9 +270,19 @@ class SequencePredictor(nn.Module):
 
         Returns:
             nn.Module: Linear layer or Sequential MLP
+
+        Raises:
+            ValueError: If any hidden dimension is not a positive integer
         """
         if self.regressor_hidden_dims is None or len(self.regressor_hidden_dims) == 0:
             return nn.Linear(in_dim, out_dim)
+
+        for i, dim in enumerate(self.regressor_hidden_dims):
+            if not isinstance(dim, int) or dim <= 0:
+                raise ValueError(
+                    f"regressor_hidden_dims[{i}] must be a positive integer, got {dim}. "
+                    f"Full hidden dims: {self.regressor_hidden_dims}"
+                )
 
         layers: List[nn.Module] = []
         current_dim = in_dim
