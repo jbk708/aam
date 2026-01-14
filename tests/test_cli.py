@@ -607,6 +607,19 @@ class TestCLICommands:
         )
         assert result.exit_code != 0
 
+    def test_train_command_regressor_hidden_dims_option_exists(self, runner):
+        """Test that --regressor-hidden-dims option appears in train help."""
+        result = runner.invoke(cli, ["train", "--help"])
+        assert result.exit_code == 0
+        assert "--regressor-hidden-dims" in result.output
+        assert "MLP regression head" in result.output
+
+    def test_train_command_regressor_dropout_option_exists(self, runner):
+        """Test that --regressor-dropout option appears in train help."""
+        result = runner.invoke(cli, ["train", "--help"])
+        assert result.exit_code == 0
+        assert "--regressor-dropout" in result.output
+
 
 class TestCLIIntegration:
     """Integration tests for CLI with mocked components."""

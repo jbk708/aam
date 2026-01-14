@@ -1125,3 +1125,359 @@ class TestOutputActivation:
         predictions = result["target_prediction"]
         # Should allow negative values
         assert (predictions < 0).any()
+
+
+class TestMLPRegressionHead:
+    """Test suite for MLP regression head configuration."""
+
+    @pytest.fixture
+    def sample_tokens(self):
+        """Create sample tokens for testing."""
+        from aam.data.tokenizer import SequenceTokenizer
+
+        batch_size = 2
+        num_asvs = 10
+        seq_len = 50
+        tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
+        tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
+        tokens[:, :, 40:] = 0
+        return tokens
+
+    def test_default_single_linear_layer(self):
+        """Test that default target head is a single linear layer."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+        )
+        assert model.regressor_hidden_dims is None
+        assert model.regressor_dropout == 0.0
+        assert isinstance(model.target_head, nn.Linear)
+        assert model.target_head.in_features == 64
+        assert model.target_head.out_features == 1
+
+    def test_mlp_single_hidden_layer(self, sample_tokens):
+        """Test MLP with single hidden layer."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            regressor_hidden_dims=[32],
+        )
+        assert model.regressor_hidden_dims == [32]
+        assert isinstance(model.target_head, nn.Sequential)
+        # Structure: Linear(64, 32), ReLU, Linear(32, 1)
+        assert len(model.target_head) == 3
+        assert isinstance(model.target_head[0], nn.Linear)
+        assert model.target_head[0].in_features == 64
+        assert model.target_head[0].out_features == 32
+        assert isinstance(model.target_head[1], nn.ReLU)
+        assert isinstance(model.target_head[2], nn.Linear)
+        assert model.target_head[2].in_features == 32
+        assert model.target_head[2].out_features == 1
+
+        result = model(sample_tokens)
+        assert result["target_prediction"].shape == (2, 1)
+
+    def test_mlp_two_hidden_layers(self, sample_tokens):
+        """Test MLP with two hidden layers (64,32)."""
+        model = SequencePredictor(
+            embedding_dim=128,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            regressor_hidden_dims=[64, 32],
+        )
+        assert model.regressor_hidden_dims == [64, 32]
+        assert isinstance(model.target_head, nn.Sequential)
+        # Structure: Linear(128, 64), ReLU, Linear(64, 32), ReLU, Linear(32, 1)
+        assert len(model.target_head) == 5
+        assert isinstance(model.target_head[0], nn.Linear)
+        assert model.target_head[0].in_features == 128
+        assert model.target_head[0].out_features == 64
+        assert isinstance(model.target_head[1], nn.ReLU)
+        assert isinstance(model.target_head[2], nn.Linear)
+        assert model.target_head[2].in_features == 64
+        assert model.target_head[2].out_features == 32
+        assert isinstance(model.target_head[3], nn.ReLU)
+        assert isinstance(model.target_head[4], nn.Linear)
+        assert model.target_head[4].in_features == 32
+        assert model.target_head[4].out_features == 1
+
+        result = model(sample_tokens)
+        assert result["target_prediction"].shape == (2, 1)
+
+    def test_mlp_with_dropout(self, sample_tokens):
+        """Test MLP with dropout between layers."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            regressor_hidden_dims=[32],
+            regressor_dropout=0.1,
+        )
+        assert model.regressor_dropout == 0.1
+        assert isinstance(model.target_head, nn.Sequential)
+        # Structure: Linear(64, 32), ReLU, Dropout, Linear(32, 1)
+        assert len(model.target_head) == 4
+        assert isinstance(model.target_head[0], nn.Linear)
+        assert isinstance(model.target_head[1], nn.ReLU)
+        assert isinstance(model.target_head[2], nn.Dropout)
+        assert model.target_head[2].p == 0.1
+        assert isinstance(model.target_head[3], nn.Linear)
+
+        result = model(sample_tokens)
+        assert result["target_prediction"].shape == (2, 1)
+
+    def test_mlp_two_layers_with_dropout(self, sample_tokens):
+        """Test MLP with multiple hidden layers and dropout."""
+        model = SequencePredictor(
+            embedding_dim=128,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=3,
+            regressor_hidden_dims=[64, 32],
+            regressor_dropout=0.2,
+        )
+        # Structure: Linear, ReLU, Dropout, Linear, ReLU, Dropout, Linear
+        assert len(model.target_head) == 7
+        dropout_count = sum(1 for m in model.target_head if isinstance(m, nn.Dropout))
+        assert dropout_count == 2
+
+        result = model(sample_tokens)
+        assert result["target_prediction"].shape == (2, 3)
+
+    def test_mlp_zero_dropout_no_dropout_layers(self):
+        """Test that zero dropout does not add Dropout layers."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            regressor_hidden_dims=[32],
+            regressor_dropout=0.0,
+        )
+        # Should have no Dropout layers
+        dropout_count = sum(1 for m in model.target_head if isinstance(m, nn.Dropout))
+        assert dropout_count == 0
+
+    def test_mlp_empty_list_single_linear(self):
+        """Test that empty hidden dims list creates single linear layer."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            regressor_hidden_dims=[],
+        )
+        assert isinstance(model.target_head, nn.Linear)
+
+    def test_mlp_with_bounded_targets(self, sample_tokens):
+        """Test MLP works with bounded_targets sigmoid."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            regressor_hidden_dims=[32],
+            bounded_targets=True,
+        )
+        result = model(sample_tokens)
+        predictions = result["target_prediction"]
+        assert (predictions >= 0).all()
+        assert (predictions <= 1).all()
+
+    def test_mlp_with_output_activation(self, sample_tokens):
+        """Test MLP works with output activations."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            regressor_hidden_dims=[32],
+            output_activation="softplus",
+        )
+        result = model(sample_tokens)
+        predictions = result["target_prediction"]
+        assert (predictions >= 0).all()
+
+    def test_mlp_with_learnable_scale(self, sample_tokens):
+        """Test MLP works with learnable output scale."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=2,
+            regressor_hidden_dims=[32, 16],
+            learnable_output_scale=True,
+        )
+        assert model.output_scale is not None
+        result = model(sample_tokens)
+        assert result["target_prediction"].shape == (2, 2)
+
+    def test_mlp_with_layer_norm(self, sample_tokens):
+        """Test MLP works with target layer norm."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            regressor_hidden_dims=[32],
+            target_layer_norm=True,
+        )
+        assert model.target_norm is not None
+        result = model(sample_tokens)
+        assert result["target_prediction"].shape == (2, 1)
+
+    def test_mlp_with_classifier(self, sample_tokens):
+        """Test MLP works with classification mode."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=5,
+            regressor_hidden_dims=[32],
+            is_classifier=True,
+        )
+        result = model(sample_tokens)
+        predictions = result["target_prediction"]
+        # Log-softmax outputs should be <= 0
+        assert (predictions <= 0).all()
+        assert torch.allclose(predictions.exp().sum(dim=-1), torch.ones(2), atol=1e-5)
+
+    def test_mlp_with_categorical_concat(self, sample_tokens):
+        """Test MLP works with categorical conditioning (concat)."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            regressor_hidden_dims=[32],
+            categorical_cardinalities={"location": 5},
+            categorical_fusion="concat",
+        )
+        cat_ids = {"location": torch.tensor([1, 2])}
+        result = model(sample_tokens, categorical_ids=cat_ids)
+        assert result["target_prediction"].shape == (2, 1)
+
+    def test_mlp_with_categorical_add(self, sample_tokens):
+        """Test MLP works with categorical conditioning (add)."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            regressor_hidden_dims=[32],
+            categorical_cardinalities={"season": 4},
+            categorical_fusion="add",
+        )
+        cat_ids = {"season": torch.tensor([0, 3])}
+        result = model(sample_tokens, categorical_ids=cat_ids)
+        assert result["target_prediction"].shape == (2, 1)
+
+    def test_mlp_gradients_flow(self, sample_tokens):
+        """Test that gradients flow through MLP layers."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            regressor_hidden_dims=[32, 16],
+        )
+        model.train()
+        result = model(sample_tokens)
+        loss = result["target_prediction"].sum()
+        loss.backward()
+
+        # Check that all MLP linear layers have gradients
+        for module in model.target_head.modules():
+            if isinstance(module, nn.Linear):
+                assert module.weight.grad is not None
+                assert not torch.isnan(module.weight.grad).any()
+                assert module.bias.grad is not None
+
+    def test_mlp_weight_initialization(self):
+        """Test that MLP weights are properly initialized."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            regressor_hidden_dims=[32],
+        )
+        for module in model.target_head.modules():
+            if isinstance(module, nn.Linear):
+                # Biases should be zero-initialized
+                assert torch.allclose(module.bias, torch.zeros_like(module.bias))
+                # Weights should be non-zero (Xavier init)
+                assert module.weight.abs().sum() > 0
+
+    def test_mlp_no_nan_outputs(self, sample_tokens):
+        """Test that MLP produces no NaN outputs."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            regressor_hidden_dims=[64, 32, 16],
+            regressor_dropout=0.3,
+        )
+        model.eval()
+        result = model(sample_tokens)
+        assert not torch.isnan(result["target_prediction"]).any()
+
+    @pytest.mark.parametrize("out_dim", [1, 3, 5])
+    def test_mlp_different_output_dims(self, sample_tokens, out_dim):
+        """Test MLP with different output dimensions."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=out_dim,
+            regressor_hidden_dims=[32],
+        )
+        result = model(sample_tokens)
+        assert result["target_prediction"].shape == (2, out_dim)
+
+    @pytest.mark.parametrize("hidden_dims", [[64], [64, 32], [128, 64, 32], [256, 128, 64, 32]])
+    def test_mlp_various_architectures(self, sample_tokens, hidden_dims):
+        """Test MLP with various hidden layer configurations."""
+        model = SequencePredictor(
+            embedding_dim=128,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            regressor_hidden_dims=hidden_dims,
+        )
+        result = model(sample_tokens)
+        assert result["target_prediction"].shape == (2, 1)
+
+    def test_mlp_frozen_base_gradients(self, sample_tokens):
+        """Test that MLP receives gradients even with frozen base."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            regressor_hidden_dims=[32],
+            freeze_base=True,
+        )
+        model.train()
+        result = model(sample_tokens)
+        loss = result["target_prediction"].sum()
+        loss.backward()
+
+        # Base model should have no gradients
+        for param in model.base_model.parameters():
+            assert param.grad is None
+
+        # MLP should have gradients
+        mlp_has_grads = False
+        for module in model.target_head.modules():
+            if isinstance(module, nn.Linear) and module.weight.grad is not None:
+                mlp_has_grads = True
+                break
+        assert mlp_has_grads
