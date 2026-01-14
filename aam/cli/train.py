@@ -6,7 +6,7 @@ import logging
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from typing import Optional
+from typing import Optional, cast
 from functools import partial
 from torch.utils.data import DataLoader
 from sklearn.model_selection import train_test_split
@@ -17,6 +17,7 @@ from aam.data.dataset import ASVDataset, collate_fn
 from aam.data.categorical import CategoricalEncoder, CategoricalSchema
 from skbio import DistanceMatrix
 from aam.models.sequence_predictor import SequencePredictor
+from aam.models.transformer import AttnImplementation
 from aam.training.losses import MultiTaskLoss
 from aam.training.trainer import Trainer, create_optimizer, create_scheduler, load_pretrained_encoder
 from aam.training.distributed import (
@@ -236,6 +237,17 @@ from aam.cli.utils import (
     type=click.Choice(["none", "relu", "softplus", "exp"]),
     help="Output activation for non-negative regression: none (default), relu, softplus (recommended), exp. Cannot be used with --bounded-targets or --classifier.",
 )
+@click.option(
+    "--regressor-hidden-dims",
+    default=None,
+    help="Comma-separated hidden layer dimensions for MLP regression head. E.g., '64,32' creates MLP: embedding_dim -> 64 -> 32 -> out_dim. Default: single linear layer.",
+)
+@click.option(
+    "--regressor-dropout",
+    default=0.0,
+    type=click.FloatRange(0.0, 1.0, max_open=True),
+    help="Dropout rate between MLP regression head layers (default: 0.0, no dropout). Must be in [0.0, 1.0).",
+)
 def train(
     table: str,
     unifrac_matrix: str,
@@ -302,6 +314,8 @@ def train(
     categorical_embed_dim: int,
     categorical_fusion: str,
     output_activation: str,
+    regressor_hidden_dims: Optional[str],
+    regressor_dropout: float,
 ):
     """Train AAM model on microbial sequencing data."""
     try:
@@ -635,6 +649,34 @@ def train(
         logger.info("Creating model...")
         # Convert asv_chunk_size=0 to None (disabled)
         effective_asv_chunk_size = asv_chunk_size if asv_chunk_size is not None and asv_chunk_size > 0 else None
+
+        # Parse regressor hidden dims
+        regressor_hidden_dims_list: Optional[list[int]] = None
+        if regressor_hidden_dims:
+            try:
+                parts = regressor_hidden_dims.split(",")
+                regressor_hidden_dims_list = []
+                for i, part in enumerate(parts):
+                    stripped = part.strip()
+                    if not stripped:
+                        raise click.ClickException(
+                            f"Invalid --regressor-hidden-dims: empty value at position {i + 1}. "
+                            f"Expected comma-separated positive integers like '64,32'. Got: '{regressor_hidden_dims}'"
+                        )
+                    dim = int(stripped)
+                    if dim <= 0:
+                        raise click.ClickException(
+                            f"Invalid --regressor-hidden-dims: dimension must be positive, got {dim} at position {i + 1}. "
+                            f"Expected comma-separated positive integers like '64,32'."
+                        )
+                    regressor_hidden_dims_list.append(dim)
+                logger.info(f"MLP regression head: {regressor_hidden_dims_list}")
+            except ValueError as e:
+                raise click.ClickException(
+                    f"Invalid --regressor-hidden-dims: could not parse '{regressor_hidden_dims}'. "
+                    f"Expected comma-separated positive integers like '64,32'. Error: {e}"
+                )
+
         model = SequencePredictor(
             encoder_type=encoder_type,
             vocab_size=7,
@@ -656,7 +698,7 @@ def train(
             freeze_base=freeze_base,
             predict_nucleotides=True,
             gradient_checkpointing=gradient_checkpointing,
-            attn_implementation=attn_implementation,
+            attn_implementation=cast(AttnImplementation, attn_implementation),
             asv_chunk_size=effective_asv_chunk_size,
             mask_ratio=nuc_mask_ratio,
             mask_strategy=nuc_mask_strategy,
@@ -667,6 +709,8 @@ def train(
             categorical_embed_dim=categorical_embed_dim,
             categorical_fusion=categorical_fusion,
             output_activation=output_activation,
+            regressor_hidden_dims=regressor_hidden_dims_list,
+            regressor_dropout=regressor_dropout,
         )
 
         log_model_summary(model, logger)
@@ -863,6 +907,8 @@ def train(
                 "categorical_fusion": categorical_fusion,
                 "output_activation": output_activation,
                 "log_transform_targets": log_transform_targets,
+                "regressor_hidden_dims": regressor_hidden_dims_list,
+                "regressor_dropout": regressor_dropout,
             }
             # Include categorical encoder state if categoricals are used
             if categorical_encoder is not None:

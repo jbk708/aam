@@ -1,9 +1,10 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-13
-**Status:** 7 outstanding tickets (~21-31 hours)
+**Status:** 15 outstanding tickets (~50-71 hours)
 
 ## Quick Links
+- **Regressor optimization:** `REGRESSOR_OPTIMIZATION_TICKETS.md` ← NEW
 - **ROCm optimization:** `COSMOS_ONBOARDING_TICKETS.md`
 - **Categorical features:** `CATEGORICAL_FEATURE_TICKETS.md`
 - **PyTorch work:** `PYTORCH_PORTING_TICKETS.md`
@@ -15,20 +16,29 @@
 
 ## Outstanding Tickets by Priority
 
-### HIGH (0 tickets)
-
-All high priority tickets complete.
-
-### MEDIUM (1 ticket, ~4-6 hours)
+### HIGH (3 tickets, ~10-13 hours)
 
 | Ticket | Description | Effort | Domain |
 |--------|-------------|--------|--------|
+| **REG-2** | Per-category target normalization | 3-4h | Regressor |
+| **REG-3** | Conditional output scaling | 3-4h | Regressor |
+| **REG-4** | FiLM layers (categorical modulation) | 4-5h | Regressor |
+
+### MEDIUM (3 tickets, ~10-15 hours)
+
+| Ticket | Description | Effort | Domain |
+|--------|-------------|--------|--------|
+| **REG-5** | Quantile regression | 4-6h | Regressor |
+| **REG-6** | Asymmetric loss | 2-3h | Regressor |
 | **PYT-12.2** | Batch size optimization | 4-6h | PyTorch |
 
-### LOW (6 tickets, ~21-31 hours)
+### LOW (9 tickets, ~32-46 hours)
 
 | Ticket | Description | Effort | Domain |
 |--------|-------------|--------|--------|
+| **REG-7** | Residual regression head | 2-3h | Regressor |
+| **REG-8** | Per-output loss config | 3-4h | Regressor |
+| **REG-9** | Mixture of Experts | 6-8h | Regressor |
 | **COS-9.5** | Kernel profiling with rocprof | 4-6h | Cosmos |
 | **COS-9.6** | SLURM job templates | 3-4h | Cosmos |
 | **COS-9.7** | ROCm Singularity container | 4-6h | Cosmos |
@@ -48,6 +58,13 @@ Future enhancement phases (~50+ hours):
 ---
 
 ## Recently Completed
+
+**REG-1: MLP Regression Head** (2026-01-13) - COMPLETE
+- Added `--regressor-hidden-dims` flag for configurable MLP (e.g., `64,32`)
+- Added `--regressor-dropout` flag for dropout between MLP layers
+- Default behavior unchanged (single linear layer)
+- Works with all existing output transforms (sigmoid, softplus, etc.)
+- Added 25 unit tests for MLP configurations
 
 **DOC-1: README & Installation Modernization** (2026-01-13) - COMPLETE
 - Replaced conda/mamba installation with pip-only workflow
@@ -132,21 +149,29 @@ Future enhancement phases (~50+ hours):
 
 ## Recommended Next Steps
 
-### 1. FSDP Implementation ✓ COMPLETE
-- ~~**PYT-12.1a** - FSDP Infrastructure~~ ✓ COMPLETE
-- ~~**PYT-12.1b** - FSDP Checkpoint Support~~ ✓ COMPLETE
-- ~~**PYT-12.1c** - FSDP Pretraining + ROCm~~ ✓ COMPLETE
+### 1. Regressor Optimization (HIGH Priority)
+Focus on categorical compensation for multi-environment/season data:
+- **REG-2** - Per-category target normalization (quick win)
+- **REG-3** - Conditional output scaling (complements REG-2)
+- **REG-4** - FiLM layers (most expressive modulation, requires REG-1 ✓)
 
-### 2. Next: Batch Size Optimization
+### 2. Loss Function Improvements (MEDIUM)
+- **REG-5** - Quantile regression for uncertainty estimation
+- **REG-6** - Asymmetric loss (if directional errors matter)
+
+### 3. Batch Size Optimization (MEDIUM)
 - **PYT-12.2** - Batch size optimization for efficient training
 
-### 3. Infrastructure (As Needed)
+### 4. Infrastructure (As Needed)
 - **COS-9.6** - SLURM templates for Cosmos
 - **COS-9.8** - ROCm documentation
 
-### 4. Memory Optimization (LOW)
+### 5. Memory Optimization (LOW)
 - **PYT-18.5** - Lazy sample embedding computation
 - **PYT-18.6** - Memory-aware dynamic batching
+
+### 6. Advanced Regressor (LOW)
+- **REG-7, 8, 9** - Residual head, per-output loss, Mixture of Experts
 
 ---
 

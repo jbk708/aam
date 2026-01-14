@@ -7,7 +7,7 @@ import logging
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from typing import Optional
+from typing import Optional, cast
 from functools import partial
 from torch.utils.data import DataLoader
 from sklearn.model_selection import train_test_split
@@ -17,6 +17,7 @@ from aam.data.unifrac_loader import UniFracLoader
 from aam.data.dataset import ASVDataset, collate_fn
 from skbio import DistanceMatrix
 from aam.models.sequence_encoder import SequenceEncoder
+from aam.models.transformer import AttnImplementation
 from aam.training.losses import MultiTaskLoss
 from aam.training.trainer import Trainer, create_optimizer, create_scheduler
 from aam.training.distributed import (
@@ -482,7 +483,7 @@ def pretrain(
             gradient_checkpointing=gradient_checkpointing,
             mask_ratio=nuc_mask_ratio,
             mask_strategy=nuc_mask_strategy,
-            attn_implementation=attn_implementation,
+            attn_implementation=cast(AttnImplementation, attn_implementation),
         )
 
         log_model_summary(model, logger)

@@ -6,7 +6,7 @@ from typing import Optional, Tuple, Union
 
 from aam.models.asv_encoder import ASVEncoder
 from aam.models.position_embedding import PositionEmbedding
-from aam.models.transformer import TransformerEncoder
+from aam.models.transformer import AttnImplementation, TransformerEncoder
 
 
 class SampleSequenceEncoder(nn.Module):
@@ -20,18 +20,18 @@ class SampleSequenceEncoder(nn.Module):
         token_limit: int = 1024,
         asv_num_layers: int = 2,
         asv_num_heads: int = 4,
-        asv_intermediate_size: int = None,
+        asv_intermediate_size: Optional[int] = None,
         asv_dropout: float = 0.1,
         asv_activation: str = "gelu",
         sample_num_layers: int = 2,
         sample_num_heads: int = 4,
-        sample_intermediate_size: int = None,
+        sample_intermediate_size: Optional[int] = None,
         sample_dropout: float = 0.1,
         sample_activation: str = "gelu",
         predict_nucleotides: bool = False,
         asv_chunk_size: Optional[int] = None,
         gradient_checkpointing: bool = False,
-        attn_implementation: Optional[str] = "sdpa",
+        attn_implementation: Optional[AttnImplementation] = "sdpa",
         mask_ratio: float = 0.0,
         mask_strategy: str = "random",
     ):
@@ -81,15 +81,15 @@ class SampleSequenceEncoder(nn.Module):
             mask_ratio=mask_ratio,
             mask_strategy=mask_strategy,
         )
-        
+
         self.sample_position_embedding = PositionEmbedding(
             max_length=token_limit + 5,
             hidden_dim=embedding_dim,
         )
-        
+
         if sample_intermediate_size is None:
             sample_intermediate_size = 4 * embedding_dim
-        
+
         self.sample_transformer = TransformerEncoder(
             num_layers=sample_num_layers,
             num_heads=sample_num_heads,
@@ -119,30 +119,20 @@ class SampleSequenceEncoder(nn.Module):
         asv_mask = (tokens.sum(dim=-1) > 0).long()
 
         if self.predict_nucleotides and return_nucleotides:
-            asv_embeddings, nucleotide_predictions, mask_indices = self.asv_encoder(
-                tokens, return_nucleotides=True
-            )
+            asv_embeddings, nucleotide_predictions, mask_indices = self.asv_encoder(tokens, return_nucleotides=True)
         else:
             asv_embeddings = self.asv_encoder(tokens, return_nucleotides=False)
             nucleotide_predictions = None
             mask_indices = None
 
         asv_mask_expanded = asv_mask.unsqueeze(-1).float()
-        asv_embeddings = torch.where(
-            torch.isnan(asv_embeddings),
-            torch.zeros_like(asv_embeddings),
-            asv_embeddings
-        )
+        asv_embeddings = torch.where(torch.isnan(asv_embeddings), torch.zeros_like(asv_embeddings), asv_embeddings)
         asv_embeddings = asv_embeddings * asv_mask_expanded
 
         asv_embeddings = self.sample_position_embedding(asv_embeddings)
         sample_embeddings = self.sample_transformer(asv_embeddings, mask=asv_mask)
 
-        sample_embeddings = torch.where(
-            torch.isnan(sample_embeddings),
-            torch.zeros_like(sample_embeddings),
-            sample_embeddings
-        )
+        sample_embeddings = torch.where(torch.isnan(sample_embeddings), torch.zeros_like(sample_embeddings), sample_embeddings)
         sample_embeddings = sample_embeddings * asv_mask_expanded
 
         if return_nucleotides and nucleotide_predictions is not None:

@@ -69,7 +69,7 @@ class TransformerEncoder(nn.Module):
         num_layers: int,
         num_heads: int,
         hidden_dim: int,
-        intermediate_size: int = None,
+        intermediate_size: Optional[int] = None,
         dropout: float = 0.1,
         activation: str = "gelu",
         gradient_checkpointing: bool = False,
@@ -121,9 +121,7 @@ class TransformerEncoder(nn.Module):
         self.gradient_checkpointing = gradient_checkpointing
         self.attn_implementation = attn_implementation
 
-    def forward(
-        self, embeddings: torch.Tensor, mask: torch.Tensor = None
-    ) -> torch.Tensor:
+    def forward(self, embeddings: torch.Tensor, mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         """Forward pass.
 
         Args:
@@ -141,9 +139,7 @@ class TransformerEncoder(nn.Module):
             if self.gradient_checkpointing and self.training:
 
                 def custom_forward(embeddings, src_key_padding_mask):
-                    return self.encoder(
-                        embeddings, src_key_padding_mask=src_key_padding_mask
-                    )
+                    return self.encoder(embeddings, src_key_padding_mask=src_key_padding_mask)
 
                 output = checkpoint(
                     custom_forward,
@@ -152,9 +148,7 @@ class TransformerEncoder(nn.Module):
                     use_reentrant=False,
                 )
             else:
-                output = self.encoder(
-                    embeddings, src_key_padding_mask=src_key_padding_mask
-                )
+                output = self.encoder(embeddings, src_key_padding_mask=src_key_padding_mask)
 
         output = self.norm(output)
 
