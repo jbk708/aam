@@ -822,7 +822,9 @@ def train(
             target_loss_type=loss_type,
         )
         logger.info(f"Using {loss_type} loss for regression targets")
-        logger.info(f"Loss weights: target={target_penalty}, unifrac={penalty}, nuc={effective_nuc_penalty}, count={count_penalty}")
+        logger.info(
+            f"Loss weights: target={target_penalty}, unifrac={penalty}, nuc={effective_nuc_penalty}, count={count_penalty}"
+        )
 
         # Handle distributed training setup
         if fsdp:

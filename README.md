@@ -215,6 +215,7 @@ With `--freeze-base`, only the categorical embedder and target prediction head a
 | `--penalty` | Weight for UniFrac loss | 1.0 |
 | `--nuc-penalty` | Weight for nucleotide loss | 1.0 |
 | `--target-penalty` | Weight for target loss | 1.0 |
+| `--count-penalty` | Weight for count loss | 1.0 |
 
 ### Regression Options
 
