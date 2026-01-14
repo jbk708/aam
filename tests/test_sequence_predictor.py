@@ -6,6 +6,15 @@ import torch.nn as nn
 
 from aam.models.sequence_predictor import SequencePredictor
 from aam.models.sequence_encoder import SequenceEncoder
+from aam.data.tokenizer import SequenceTokenizer
+
+
+def _create_sample_tokens(batch_size: int = 2, num_asvs: int = 10, seq_len: int = 50) -> torch.Tensor:
+    """Create sample tokens for testing [B, S, L]."""
+    tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
+    tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
+    tokens[:, :, 40:] = 0
+    return tokens
 
 
 @pytest.fixture
@@ -110,15 +119,7 @@ def sequence_predictor_no_base():
 @pytest.fixture
 def sample_tokens():
     """Create sample tokens for testing [B, S, L]."""
-    from aam.data.tokenizer import SequenceTokenizer
-
-    batch_size = 2
-    num_asvs = 10
-    seq_len = 50
-    tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
-    tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
-    tokens[:, :, 40:] = 0
-    return tokens
+    return _create_sample_tokens()
 
 
 class TestSequencePredictor:
@@ -404,15 +405,7 @@ class TestRegressorHeadOptions:
     @pytest.fixture
     def sample_tokens(self):
         """Create sample tokens for testing."""
-        from aam.data.tokenizer import SequenceTokenizer
-
-        batch_size = 2
-        num_asvs = 10
-        seq_len = 50
-        tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
-        tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
-        tokens[:, :, 40:] = 0
-        return tokens
+        return _create_sample_tokens()
 
     def test_default_has_layer_norm(self, sample_tokens):
         """Test that LayerNorm is enabled by default."""
@@ -616,15 +609,7 @@ class TestCategoricalIntegration:
     @pytest.fixture
     def sample_tokens(self):
         """Create sample tokens for testing."""
-        from aam.data.tokenizer import SequenceTokenizer
-
-        batch_size = 2
-        num_asvs = 10
-        seq_len = 50
-        tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
-        tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
-        tokens[:, :, 40:] = 0
-        return tokens
+        return _create_sample_tokens()
 
     @pytest.fixture
     def categorical_cardinalities(self):
@@ -933,16 +918,8 @@ class TestOutputActivation:
 
     @pytest.fixture
     def sample_tokens(self):
-        """Create sample tokens for testing."""
-        from aam.data.tokenizer import SequenceTokenizer
-
-        batch_size = 4
-        num_asvs = 10
-        seq_len = 50
-        tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
-        tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
-        tokens[:, :, 40:] = 0
-        return tokens
+        """Create sample tokens for testing (batch_size=4 for this suite)."""
+        return _create_sample_tokens(batch_size=4)
 
     def test_default_no_activation(self, sample_tokens):
         """Test that default is no output activation."""
@@ -1133,15 +1110,7 @@ class TestMLPRegressionHead:
     @pytest.fixture
     def sample_tokens(self):
         """Create sample tokens for testing."""
-        from aam.data.tokenizer import SequenceTokenizer
-
-        batch_size = 2
-        num_asvs = 10
-        seq_len = 50
-        tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
-        tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
-        tokens[:, :, 40:] = 0
-        return tokens
+        return _create_sample_tokens()
 
     def test_default_single_linear_layer(self):
         """Test that default target head is a single linear layer."""
