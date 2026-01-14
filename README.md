@@ -148,6 +148,18 @@ aam train \
 | `--categorical-columns` | Comma-separated column names from metadata | - |
 | `--categorical-embed-dim` | Embedding dimension per category | 16 |
 | `--categorical-fusion` | `concat` (concatenate + project) or `add` (project + add) | concat |
+| `--conditional-output-scaling` | Columns for per-category output scale/bias (requires `--categorical-columns`) | - |
+
+**Conditional Output Scaling:**
+
+Learn per-category scale and bias parameters applied after the base prediction: `output = prediction * scale[cat] + bias[cat]`. Useful when different categories have systematically different output ranges even after normalization.
+
+```bash
+aam train \
+  --categorical-columns "location,season" \
+  --conditional-output-scaling "location" \
+  # ... other flags
+```
 
 **Staged Training with Categoricals:**
 
