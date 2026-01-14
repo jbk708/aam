@@ -2250,16 +2250,12 @@ class TestBestMetricCLI:
 
     def test_train_command_help_shows_best_metric_option(self, runner):
         """Test that --best-metric option appears in help."""
-        from aam.cli.main import cli
-
         result = runner.invoke(cli, ["train", "--help"])
         assert result.exit_code == 0
         assert "--best-metric" in result.output
 
     def test_train_command_best_metric_choices(self, runner):
         """Test that --best-metric shows available choices."""
-        from aam.cli.main import cli
-
         result = runner.invoke(cli, ["train", "--help"])
         assert result.exit_code == 0
         # Check all choices are listed
@@ -2273,8 +2269,6 @@ class TestBestMetricCLI:
         self, runner, sample_biom_file, sample_unifrac_matrix_file, sample_metadata_file, sample_output_dir
     ):
         """Test that --best-metric rejects invalid choices."""
-        from aam.cli.main import cli
-
         result = runner.invoke(
             cli,
             [

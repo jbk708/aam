@@ -146,9 +146,7 @@ class Trainer:
                 'accuracy', 'f1'. Default 'val_loss' for backwards compatibility.
         """
         if best_metric not in METRIC_MODES:
-            raise ValueError(
-                f"Invalid best_metric '{best_metric}'. Must be one of: {list(METRIC_MODES.keys())}"
-            )
+            raise ValueError(f"Invalid best_metric '{best_metric}'. Must be one of: {list(METRIC_MODES.keys())}")
         self.best_metric = best_metric
         self.best_metric_mode = METRIC_MODES[best_metric]
 
@@ -942,7 +940,12 @@ class Trainer:
             "val_loss": [],
         }
 
-        best_val_loss = float("inf")
+        # Initialize best metric value based on mode
+        if self.best_metric_mode == "min":
+            best_metric_value = float("inf")
+        else:
+            best_metric_value = float("-inf")
+        best_val_loss = float("inf")  # Keep for backwards compatibility
         patience_counter = 0
         start_epoch = 0
 
@@ -950,6 +953,8 @@ class Trainer:
             checkpoint_info = self.load_checkpoint(resume_from)
             start_epoch = checkpoint_info["epoch"] + 1
             best_val_loss = checkpoint_info["best_val_loss"]
+            # Load best_metric_value if available, otherwise use best_val_loss
+            best_metric_value = checkpoint_info.get("best_metric_value", best_val_loss)
 
         if checkpoint_dir is not None:
             Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
@@ -1047,8 +1052,22 @@ class Trainer:
                             epoch, val_predictions_dict, val_targets_dict, val_results, self.writer
                         )
 
-                    if val_loss < best_val_loss:
-                        best_val_loss = val_loss
+                    # Get current metric value for comparison
+                    if self.best_metric == "val_loss":
+                        current_metric_value = val_loss
+                    else:
+                        current_metric_value = val_results.get(self.best_metric)
+                        if current_metric_value is None:
+                            # Fallback to val_loss if metric not available
+                            logger.warning(
+                                f"Metric '{self.best_metric}' not found in validation results, "
+                                f"falling back to val_loss. Available: {list(val_results.keys())}"
+                            )
+                            current_metric_value = val_loss
+
+                    if is_metric_better(current_metric_value, best_metric_value, self.best_metric_mode):
+                        best_metric_value = current_metric_value
+                        best_val_loss = val_loss  # Keep for backwards compatibility
                         patience_counter = 0
 
                         # Only save checkpoints and plots on main process (rank 0)
@@ -1060,6 +1079,7 @@ class Trainer:
                                 str(checkpoint_path),
                                 epoch=epoch,
                                 best_val_loss=best_val_loss,
+                                best_metric_value=best_metric_value,
                                 metrics=val_results,
                             )
 
@@ -1080,8 +1100,14 @@ class Trainer:
                 else:
                     history["val_loss"].append(None)
                     train_loss = train_losses["total_loss"]
-                    if train_loss < best_val_loss:
-                        best_val_loss = train_loss
+
+                    # Without validation, use train_loss for early stopping
+                    # (other metrics like r2/accuracy aren't computed on training data)
+                    current_metric_value = train_loss
+
+                    if is_metric_better(current_metric_value, best_metric_value, "min"):
+                        best_metric_value = current_metric_value
+                        best_val_loss = train_loss  # Keep for backwards compatibility
                         patience_counter = 0
 
                         # Only save checkpoints on main process (rank 0)
@@ -1093,6 +1119,7 @@ class Trainer:
                                 str(checkpoint_path),
                                 epoch=epoch,
                                 best_val_loss=best_val_loss,
+                                best_metric_value=best_metric_value,
                                 metrics=train_losses,
                             )
                     else:
@@ -1134,6 +1161,7 @@ class Trainer:
         filepath: str,
         epoch: int,
         best_val_loss: float,
+        best_metric_value: Optional[float] = None,
         metrics: Optional[Dict[str, Any]] = None,
         config: Optional[Dict[str, Any]] = None,
     ) -> None:
@@ -1147,7 +1175,8 @@ class Trainer:
         Args:
             filepath: Path to save checkpoint
             epoch: Current epoch number
-            best_val_loss: Best validation loss so far
+            best_val_loss: Best validation loss so far (for backwards compatibility)
+            best_metric_value: Best value of the selected metric (e.g., r2, mae)
             metrics: Optional metrics dictionary (can contain floats or lists)
             config: Optional model configuration dictionary for inference
         """
@@ -1180,6 +1209,8 @@ class Trainer:
             "model_state_dict": model_state_dict,
             "optimizer_state_dict": optimizer_state_dict,
             "best_val_loss": best_val_loss,
+            "best_metric": self.best_metric,
+            "best_metric_value": best_metric_value if best_metric_value is not None else best_val_loss,
             "metrics": metrics or {},
             "config": config or {},
             "fsdp_sharded": fsdp_sharded,
@@ -1284,6 +1315,7 @@ class Trainer:
         return {
             "epoch": checkpoint["epoch"],
             "best_val_loss": checkpoint["best_val_loss"],
+            "best_metric_value": checkpoint.get("best_metric_value", checkpoint["best_val_loss"]),
             "metrics": checkpoint.get("metrics", {}),
         }
 
