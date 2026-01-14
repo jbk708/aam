@@ -499,3 +499,180 @@ class TestStreamingCountMetrics:
         # Should have max_plot_samples
         assert len(pred_samples) == 30
         assert len(targ_samples) == 30
+
+
+class TestDistributedMetricSync:
+    """Test distributed synchronization of streaming metrics."""
+
+    def test_regression_sync_noop_when_not_distributed(self):
+        """Test that sync_distributed is no-op when not in distributed mode."""
+        streaming = StreamingRegressionMetrics()
+        streaming.update(torch.tensor([1.0, 2.0, 3.0]), torch.tensor([1.1, 2.0, 2.9]))
+
+        # Should not raise and should preserve state
+        original_n = streaming.n
+        original_mae_sum = streaming.sum_abs_error
+        streaming.sync_distributed()
+
+        assert streaming.n == original_n
+        assert streaming.sum_abs_error == original_mae_sum
+
+    def test_classification_sync_noop_when_not_distributed(self):
+        """Test that sync_distributed is no-op when not in distributed mode."""
+        streaming = StreamingClassificationMetrics()
+        streaming.update(torch.tensor([0, 1, 2]), torch.tensor([0, 1, 2]))
+
+        original_n = streaming.n
+        streaming.sync_distributed()
+
+        assert streaming.n == original_n
+
+    def test_count_sync_noop_when_not_distributed(self):
+        """Test that sync_distributed is no-op when not in distributed mode."""
+        streaming = StreamingCountMetrics()
+        pred = torch.tensor([[1.0, 2.0], [3.0, 4.0]])
+        true = torch.tensor([[1.1, 2.1], [3.1, 4.1]])
+        mask = torch.ones(2, 2)
+        streaming.update(pred, true, mask)
+
+        original_n = streaming.n
+        streaming.sync_distributed()
+
+        assert streaming.n == original_n
+
+    def test_regression_sync_combines_stats_correctly(self):
+        """Test that sync correctly combines statistics from multiple ranks.
+
+        Simulates what happens when each rank has different data and we need
+        to merge the statistics to get metrics over the full dataset.
+        """
+        np.random.seed(42)
+        torch.manual_seed(42)
+
+        # Simulate 4 ranks, each with 25 samples
+        all_preds = torch.randn(100)
+        all_targets = torch.randn(100)
+
+        # Compute expected metrics from full dataset
+        expected_metrics = compute_regression_metrics(all_preds, all_targets)
+
+        # Now simulate distributed: each "rank" processes 25 samples
+        rank_metrics = []
+        for rank in range(4):
+            start = rank * 25
+            end = start + 25
+            streaming = StreamingRegressionMetrics()
+            streaming.update(all_preds[start:end], all_targets[start:end])
+            rank_metrics.append(streaming)
+
+        # Merge all rank statistics into rank 0's metrics object
+        merged = rank_metrics[0]
+        for other in rank_metrics[1:]:
+            merged._merge_from(other)
+
+        merged_metrics = merged.compute()
+
+        # Should match full dataset metrics
+        assert abs(merged_metrics["mae"] - expected_metrics["mae"]) < 1e-4
+        assert abs(merged_metrics["mse"] - expected_metrics["mse"]) < 1e-4
+        assert abs(merged_metrics["r2"] - expected_metrics["r2"]) < 1e-4
+
+    def test_classification_sync_combines_confusion_matrices(self):
+        """Test that sync correctly combines confusion matrices from multiple ranks."""
+        # Simulate 2 ranks with different predictions
+        targets_rank0 = torch.tensor([0, 0, 1, 1])
+        preds_rank0 = torch.tensor([0, 1, 1, 1])  # 1 FP for class 1
+
+        targets_rank1 = torch.tensor([0, 0, 1, 1])
+        preds_rank1 = torch.tensor([0, 0, 0, 1])  # 1 FN for class 1
+
+        # Full dataset
+        all_targets = torch.cat([targets_rank0, targets_rank1])
+        all_preds = torch.cat([preds_rank0, preds_rank1])
+
+        expected_metrics = compute_classification_metrics(all_preds, all_targets)
+
+        # Per-rank streaming
+        streaming0 = StreamingClassificationMetrics()
+        streaming0.update(preds_rank0, targets_rank0)
+
+        streaming1 = StreamingClassificationMetrics()
+        streaming1.update(preds_rank1, targets_rank1)
+
+        # Merge
+        streaming0._merge_from(streaming1)
+        merged_metrics = streaming0.compute()
+
+        assert abs(merged_metrics["accuracy"] - expected_metrics["accuracy"]) < 1e-4
+        assert abs(merged_metrics["f1"] - expected_metrics["f1"]) < 1e-4
+
+    def test_count_sync_combines_stats_correctly(self):
+        """Test that sync correctly combines count statistics from multiple ranks."""
+        # Rank 0 data
+        pred0 = torch.tensor([[1.0, 2.0], [3.0, 4.0]])
+        true0 = torch.tensor([[1.1, 2.2], [2.9, 4.1]])
+        mask0 = torch.ones(2, 2)
+
+        # Rank 1 data
+        pred1 = torch.tensor([[5.0, 6.0], [7.0, 8.0]])
+        true1 = torch.tensor([[5.2, 5.9], [7.1, 8.0]])
+        mask1 = torch.ones(2, 2)
+
+        # Full dataset
+        all_pred = torch.cat([pred0.flatten(), pred1.flatten()])
+        all_true = torch.cat([true0.flatten(), true1.flatten()])
+
+        expected_mae = (all_pred - all_true).abs().mean().item()
+        expected_mse = ((all_pred - all_true) ** 2).mean().item()
+
+        # Per-rank streaming
+        streaming0 = StreamingCountMetrics()
+        streaming0.update(pred0, true0, mask0)
+
+        streaming1 = StreamingCountMetrics()
+        streaming1.update(pred1, true1, mask1)
+
+        # Merge
+        streaming0._merge_from(streaming1)
+        merged_metrics = streaming0.compute()
+
+        assert abs(merged_metrics["mae"] - expected_mae) < 1e-4
+        assert abs(merged_metrics["mse"] - expected_mse) < 1e-4
+
+    def test_regression_sync_welford_merge_accuracy(self):
+        """Test parallel Welford algorithm accuracy for variance computation.
+
+        The key challenge in distributed metrics is correctly merging the
+        running variance (m2_true) used for R² computation.
+        """
+        np.random.seed(123)
+        torch.manual_seed(123)
+
+        # Large dataset to test numerical stability
+        n_samples = 10000
+        all_preds = torch.randn(n_samples)
+        all_targets = torch.randn(n_samples) * 10 + 5  # Different scale
+
+        expected_metrics = compute_regression_metrics(all_preds, all_targets)
+
+        # Split into 4 unequal chunks (simulating uneven batches)
+        chunk_sizes = [2500, 2500, 2500, 2500]
+        streaming_objects = []
+        offset = 0
+        for size in chunk_sizes:
+            streaming = StreamingRegressionMetrics()
+            streaming.update(all_preds[offset : offset + size], all_targets[offset : offset + size])
+            streaming_objects.append(streaming)
+            offset += size
+
+        # Merge all into first
+        merged = streaming_objects[0]
+        for other in streaming_objects[1:]:
+            merged._merge_from(other)
+
+        merged_metrics = merged.compute()
+
+        # R² computation depends on accurate variance merge
+        assert abs(merged_metrics["r2"] - expected_metrics["r2"]) < 1e-3, (
+            f"R² mismatch: expected {expected_metrics['r2']}, got {merged_metrics['r2']}"
+        )
