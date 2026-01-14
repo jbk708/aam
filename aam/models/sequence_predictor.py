@@ -70,6 +70,7 @@ class SequencePredictor(nn.Module):
         categorical_dropout: float = 0.1,
         regressor_hidden_dims: Optional[List[int]] = None,
         regressor_dropout: float = 0.0,
+        conditional_scaling_columns: Optional[List[str]] = None,
     ):
         """Initialize SequencePredictor.
 
@@ -129,6 +130,9 @@ class SequencePredictor(nn.Module):
             regressor_hidden_dims: Hidden layer dimensions for MLP regression head. If None, uses single
                 linear layer. E.g., [64, 32] creates MLP: embedding_dim -> 64 -> 32 -> out_dim
             regressor_dropout: Dropout rate between MLP layers (default: 0.0, no dropout)
+            conditional_scaling_columns: List of categorical column names to use for conditional output
+                scaling. For each column, learns per-category scale and bias parameters applied after
+                base prediction: output = prediction * scale[cat] + bias[cat]. Requires categorical_cardinalities.
         """
         super().__init__()
 
@@ -259,6 +263,9 @@ class SequencePredictor(nn.Module):
             self.categorical_embedder = None
             self.categorical_projection = None
 
+        self.conditional_scaling_columns = conditional_scaling_columns
+        self._init_conditional_scaling(categorical_cardinalities)
+
         self._init_weights()
 
     def _build_target_head(self, in_dim: int, out_dim: int) -> nn.Module:
@@ -294,6 +301,77 @@ class SequencePredictor(nn.Module):
             current_dim = hidden_dim
         layers.append(nn.Linear(current_dim, out_dim))
         return nn.Sequential(*layers)
+
+    def _init_conditional_scaling(
+        self, categorical_cardinalities: Optional[Dict[str, int]]
+    ) -> None:
+        """Initialize conditional output scaling embeddings.
+
+        Creates per-category scale and bias parameters for each specified column.
+        Scale is initialized to 1.0 and bias to 0.0 for identity transform at start.
+
+        Args:
+            categorical_cardinalities: Dict mapping column name to number of categories.
+                Required if conditional_scaling_columns is set.
+
+        Raises:
+            ValueError: If conditional_scaling_columns specified without categorical_cardinalities,
+                or if a scaling column is not in categorical_cardinalities.
+        """
+        if not self.conditional_scaling_columns:
+            self.output_scales: Optional[nn.ModuleDict] = None
+            self.output_biases: Optional[nn.ModuleDict] = None
+            return
+
+        if categorical_cardinalities is None:
+            raise ValueError(
+                "conditional_scaling_columns requires categorical_cardinalities to be set"
+            )
+
+        self.output_scales = nn.ModuleDict()
+        self.output_biases = nn.ModuleDict()
+
+        for col in self.conditional_scaling_columns:
+            if col not in categorical_cardinalities:
+                raise ValueError(
+                    f"Conditional scaling column '{col}' not found in categorical_cardinalities. "
+                    f"Available columns: {list(categorical_cardinalities.keys())}"
+                )
+            num_categories = categorical_cardinalities[col]
+            self.output_scales[col] = nn.Embedding(num_categories, self.out_dim)
+            self.output_biases[col] = nn.Embedding(num_categories, self.out_dim)
+            nn.init.ones_(self.output_scales[col].weight)
+            nn.init.zeros_(self.output_biases[col].weight)
+
+    def _apply_conditional_scaling(
+        self,
+        prediction: torch.Tensor,
+        categorical_ids: Optional[Dict[str, torch.Tensor]],
+    ) -> torch.Tensor:
+        """Apply per-category scale and bias to predictions.
+
+        For each conditional scaling column, applies: output = prediction * scale[cat] + bias[cat]
+        Multiple columns are applied sequentially (multiplicatively for scales).
+
+        Args:
+            prediction: Base predictions [batch_size, out_dim]
+            categorical_ids: Dict mapping column name to category indices [batch_size]
+
+        Returns:
+            Scaled predictions [batch_size, out_dim]
+        """
+        if self.output_scales is None or categorical_ids is None:
+            return prediction
+
+        for col in self.conditional_scaling_columns or []:
+            if col not in categorical_ids:
+                continue
+            ids = categorical_ids[col]  # [batch_size]
+            scale = self.output_scales[col](ids)  # [batch_size, out_dim]
+            bias = self.output_biases[col](ids)  # [batch_size, out_dim]
+            prediction = prediction * scale + bias
+
+        return prediction
 
     def _init_weights(self) -> None:
         """Initialize weights for target head, count head, and categorical projection."""
@@ -409,6 +487,8 @@ class SequencePredictor(nn.Module):
             pooled_target = self.target_norm(pooled_target)
 
         target_prediction = self.target_head(pooled_target)
+
+        target_prediction = self._apply_conditional_scaling(target_prediction, categorical_ids)
 
         if self.output_scale is not None:
             target_prediction = target_prediction * self.output_scale + self.output_bias
