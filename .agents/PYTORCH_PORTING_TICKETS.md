@@ -121,7 +121,7 @@ if is_better(current_metric, best_metric, mode=metric_mode):
 ---
 
 ### PYT-BUG-3: Count Loss Has No Configurable Weight
-**Priority:** MEDIUM | **Effort:** 1-2 hours | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** 1-2 hours | **Status:** COMPLETE
 
 Count loss is added to total loss without a penalty weight, unlike all other loss components.
 
@@ -165,18 +165,122 @@ total_loss = (
 ```
 
 **Acceptance Criteria:**
-- [ ] Add `count_penalty` parameter to `MultiTaskLoss.__init__()`
-- [ ] Apply weight in total loss computation
-- [ ] Add `--count-penalty` flag to train.py (default 1.0)
-- [ ] Document in README with other penalty flags
-- [ ] Tests for count penalty behavior
+- [x] Add `count_penalty` parameter to `MultiTaskLoss.__init__()`
+- [x] Apply weight in total loss computation
+- [x] Add `--count-penalty` flag to train.py (default 1.0)
+- [x] Document in README with other penalty flags
+- [x] Tests for count penalty behavior
+
+**Completed:**
+- Added `count_penalty` parameter to `MultiTaskLoss.__init__()` with default 1.0
+- Applied weight in total loss computation
+- Added `--count-penalty` flag to train.py and pretrain.py
+- Documented in README Loss Weights table
+- Added 5 unit tests for count_penalty in test_losses.py
+- Added 4 CLI tests for --count-penalty flag in test_cli.py
 
 **Files:**
 - `aam/training/losses.py` - Add count_penalty parameter and apply in forward()
 - `aam/cli/train.py` - Add `--count-penalty` flag
+- `aam/cli/pretrain.py` - Add `--count-penalty` flag
 - `tests/test_losses.py` - Test count penalty weighting
+- `tests/test_cli.py` - Test CLI flag existence and defaults
 
 **Dependencies:** None
+
+---
+
+### PYT-BUG-4: Distributed Validation Prediction Plots Show Only Local GPU Data
+**Priority:** MEDIUM | **Effort:** 2-4 hours | **Status:** COMPLETE
+
+TensorBoard prediction plots only show validation samples from rank 0, not the full validation set.
+
+**Problem:**
+With DDP/FSDP training using multiple GPUs:
+1. Each GPU processes ~25% of validation samples (via DistributedSampler)
+2. `StreamingRegressionMetrics.get_plot_data()` only captures local samples
+3. `log_figures_to_tensorboard()` only runs on rank 0
+4. Result: TensorBoard scatter plot shows ~25% of true predictions
+
+**Example (nproc=4, 200 val samples):**
+```
+GPU 0: samples 0-49   → Only these 50 points shown in TensorBoard
+GPU 1: samples 50-99  → Discarded
+GPU 2: samples 100-149 → Discarded
+GPU 3: samples 150-199 → Discarded
+```
+
+**Root Cause:**
+`Evaluator.validate_epoch()` returns predictions from `StreamingRegressionMetrics` which only tracks local GPU data. Unlike PYT-BUG-1 which fixed metric synchronization, the raw predictions/targets for plotting are never gathered.
+
+**Solution:**
+Gather predictions and targets from all ranks before creating plots:
+
+```python
+# In Evaluator.validate_epoch(), when return_predictions=True:
+if dist.is_initialized() and dist.get_world_size() > 1:
+    # Gather plot data from all ranks
+    for key in ["target", "unifrac", "count"]:
+        if key in all_preds:
+            gathered_preds = gather_predictions_for_plot(all_preds[key])
+            gathered_targs = gather_predictions_for_plot(all_targs[key])
+            if is_main_process():
+                all_preds[key] = gathered_preds
+                all_targs[key] = gathered_targs
+
+def gather_predictions_for_plot(local_tensor: torch.Tensor) -> torch.Tensor:
+    """Gather predictions from all ranks for plotting."""
+    world_size = dist.get_world_size()
+    # Handle variable sizes across ranks
+    local_size = torch.tensor([local_tensor.shape[0]], device=local_tensor.device)
+    all_sizes = [torch.zeros(1, device=local_tensor.device) for _ in range(world_size)]
+    dist.all_gather(all_sizes, local_size)
+
+    max_size = max(s.item() for s in all_sizes)
+    # Pad to max size for gathering
+    padded = torch.zeros(max_size, *local_tensor.shape[1:], device=local_tensor.device)
+    padded[:local_tensor.shape[0]] = local_tensor
+
+    gathered = [torch.zeros_like(padded) for _ in range(world_size)]
+    dist.all_gather(gathered, padded)
+
+    # Concatenate only valid (non-padded) portions
+    result = []
+    for i, g in enumerate(gathered):
+        valid_size = int(all_sizes[i].item())
+        result.append(g[:valid_size])
+    return torch.cat(result, dim=0)
+```
+
+**Best Practices:**
+1. Only gather when `return_predictions=True` (avoid unnecessary communication)
+2. Handle variable batch sizes across ranks (last batch may differ)
+3. Only rank 0 needs the gathered data (others can discard after gather)
+4. Consider memory: limit `max_plot_samples` to prevent OOM with large validation sets
+5. Use `all_gather_object` for non-tensor metadata if needed
+
+**Acceptance Criteria:**
+- [x] TensorBoard prediction plot shows ALL validation samples
+- [x] Plot point count matches total validation set size
+- [x] Works with both DDP and FSDP
+- [x] Handles variable batch sizes across ranks
+- [x] No memory explosion (respects `max_plot_samples` limit)
+- [x] Only rank 0 creates/logs plots (already the case)
+
+**Completed:**
+- Added `gather_predictions_for_plot()` in distributed.py with variable-size handling
+- Handles CPU tensors with NCCL backend (moves to CUDA for all_gather, back to CPU after)
+- Integrated gathering into `Evaluator.validate_epoch()` when `return_predictions=True`
+- Only rank 0 receives gathered data; other ranks get empty tensors
+- Optional `max_samples` parameter to prevent OOM with large validation sets
+- Added 10 tests for prediction gathering functionality
+
+**Files:**
+- `aam/training/evaluation.py` - Add gathering in `validate_epoch()` when `return_predictions=True`
+- `aam/training/distributed.py` - Add `gather_predictions_for_plot()` utility
+- `tests/test_distributed.py` - Add test for prediction gathering
+
+**Dependencies:** None (independent of PYT-BUG-1 metric sync)
 
 ---
 
