@@ -2968,3 +2968,229 @@ class TestCategoricalCheckpointCompatibility:
         # Should have logged about loading
         assert any("Loading pretrained encoder" in record.message for record in caplog.records)
         assert any("Successfully loaded" in record.message for record in caplog.records)
+
+
+class TestBestMetricSelection:
+    """Tests for best_metric model selection."""
+
+    def test_metric_modes_constants(self):
+        """Test METRIC_MODES has expected values."""
+        from aam.training.trainer import METRIC_MODES
+
+        assert METRIC_MODES["val_loss"] == "min"
+        assert METRIC_MODES["r2"] == "max"
+        assert METRIC_MODES["mae"] == "min"
+        assert METRIC_MODES["accuracy"] == "max"
+        assert METRIC_MODES["f1"] == "max"
+
+    def test_is_metric_better_min_mode(self):
+        """Test is_metric_better with 'min' mode (lower is better)."""
+        from aam.training.trainer import is_metric_better
+
+        # Lower is better
+        assert is_metric_better(0.5, 0.6, "min") is True
+        assert is_metric_better(0.6, 0.5, "min") is False
+        assert is_metric_better(0.5, 0.5, "min") is False
+
+    def test_is_metric_better_max_mode(self):
+        """Test is_metric_better with 'max' mode (higher is better)."""
+        from aam.training.trainer import is_metric_better
+
+        # Higher is better
+        assert is_metric_better(0.6, 0.5, "max") is True
+        assert is_metric_better(0.5, 0.6, "max") is False
+        assert is_metric_better(0.5, 0.5, "max") is False
+
+    def test_trainer_init_default_best_metric(self, small_model, loss_fn, device):
+        """Test Trainer initializes with default best_metric='val_loss'."""
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+        )
+        assert trainer.best_metric == "val_loss"
+        assert trainer.best_metric_mode == "min"
+
+    def test_trainer_init_best_metric_r2(self, small_model, loss_fn, device):
+        """Test Trainer with best_metric='r2' (higher is better)."""
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+            best_metric="r2",
+        )
+        assert trainer.best_metric == "r2"
+        assert trainer.best_metric_mode == "max"
+
+    def test_trainer_init_best_metric_mae(self, small_model, loss_fn, device):
+        """Test Trainer with best_metric='mae' (lower is better)."""
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+            best_metric="mae",
+        )
+        assert trainer.best_metric == "mae"
+        assert trainer.best_metric_mode == "min"
+
+    def test_trainer_init_best_metric_accuracy(self, small_model, loss_fn, device):
+        """Test Trainer with best_metric='accuracy' (higher is better)."""
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+            best_metric="accuracy",
+        )
+        assert trainer.best_metric == "accuracy"
+        assert trainer.best_metric_mode == "max"
+
+    def test_trainer_init_best_metric_f1(self, small_model, loss_fn, device):
+        """Test Trainer with best_metric='f1' (higher is better)."""
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+            best_metric="f1",
+        )
+        assert trainer.best_metric == "f1"
+        assert trainer.best_metric_mode == "max"
+
+    def test_trainer_init_invalid_best_metric(self, small_model, loss_fn, device):
+        """Test Trainer raises ValueError for invalid best_metric."""
+        with pytest.raises(ValueError, match="Invalid best_metric"):
+            Trainer(
+                model=small_model,
+                loss_fn=loss_fn,
+                device=device,
+                best_metric="invalid_metric",
+            )
+
+    def test_train_saves_checkpoint_by_val_loss(
+        self, small_predictor, loss_fn, simple_dataloader, device, tmp_path
+    ):
+        """Test train saves best model based on val_loss (default)."""
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+            best_metric="val_loss",
+        )
+
+        history = trainer.train(
+            train_loader=simple_dataloader,
+            val_loader=simple_dataloader,
+            num_epochs=3,
+            checkpoint_dir=str(tmp_path),
+            early_stopping_patience=10,
+        )
+
+        checkpoint_path = tmp_path / "best_model.pt"
+        assert checkpoint_path.exists()
+
+        checkpoint = torch.load(checkpoint_path, weights_only=True)
+        assert "best_val_loss" in checkpoint
+        assert checkpoint.get("best_metric") == "val_loss"
+
+    def test_train_saves_checkpoint_by_r2(
+        self, small_predictor, loss_fn, simple_dataloader, device, tmp_path
+    ):
+        """Test train saves best model based on r2 metric."""
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+            best_metric="r2",
+        )
+
+        history = trainer.train(
+            train_loader=simple_dataloader,
+            val_loader=simple_dataloader,
+            num_epochs=3,
+            checkpoint_dir=str(tmp_path),
+            early_stopping_patience=10,
+        )
+
+        checkpoint_path = tmp_path / "best_model.pt"
+        assert checkpoint_path.exists()
+
+        checkpoint = torch.load(checkpoint_path, weights_only=True)
+        assert checkpoint.get("best_metric") == "r2"
+        # best_metric_value should be stored
+        assert "best_metric_value" in checkpoint
+
+    def test_train_saves_checkpoint_by_mae(
+        self, small_predictor, loss_fn, simple_dataloader, device, tmp_path
+    ):
+        """Test train saves best model based on mae metric."""
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+            best_metric="mae",
+        )
+
+        history = trainer.train(
+            train_loader=simple_dataloader,
+            val_loader=simple_dataloader,
+            num_epochs=3,
+            checkpoint_dir=str(tmp_path),
+            early_stopping_patience=10,
+        )
+
+        checkpoint_path = tmp_path / "best_model.pt"
+        assert checkpoint_path.exists()
+
+        checkpoint = torch.load(checkpoint_path, weights_only=True)
+        assert checkpoint.get("best_metric") == "mae"
+
+    def test_checkpoint_stores_best_metric_info(
+        self, small_predictor, loss_fn, simple_dataloader, device, tmp_path
+    ):
+        """Test checkpoint contains best_metric and best_metric_value."""
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+            best_metric="r2",
+        )
+
+        # Run training to generate checkpoint
+        trainer.train(
+            train_loader=simple_dataloader,
+            val_loader=simple_dataloader,
+            num_epochs=2,
+            checkpoint_dir=str(tmp_path),
+            early_stopping_patience=10,
+        )
+
+        checkpoint_path = tmp_path / "best_model.pt"
+        checkpoint = torch.load(checkpoint_path, weights_only=True)
+
+        # Verify checkpoint has metric info
+        assert "best_metric" in checkpoint
+        assert "best_metric_value" in checkpoint
+        assert "best_val_loss" in checkpoint  # backwards compatibility
+
+    def test_load_checkpoint_with_best_metric(
+        self, small_predictor, loss_fn, simple_dataloader, device, tmp_path
+    ):
+        """Test load_checkpoint returns best_metric info."""
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+            best_metric="r2",
+        )
+
+        # Save a checkpoint
+        trainer.save_checkpoint(
+            str(tmp_path / "test.pt"),
+            epoch=5,
+            best_val_loss=0.1,
+            metrics={"r2": 0.85, "mae": 0.05},
+        )
+
+        # Load and verify
+        info = trainer.load_checkpoint(str(tmp_path / "test.pt"))
+        assert info["epoch"] == 5
+        assert info["best_val_loss"] == 0.1

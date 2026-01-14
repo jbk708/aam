@@ -2236,3 +2236,63 @@ class TestMetadataLoading:
         assert "sample_id" in metadata_df.columns
         assert "target" in metadata_df.columns
         assert len(metadata_df) == 2
+
+
+class TestBestMetricCLI:
+    """Tests for --best-metric CLI flag."""
+
+    @pytest.fixture
+    def runner(self):
+        """Create a Click test runner."""
+        from click.testing import CliRunner
+
+        return CliRunner()
+
+    def test_train_command_help_shows_best_metric_option(self, runner):
+        """Test that --best-metric option appears in help."""
+        from aam.cli.main import cli
+
+        result = runner.invoke(cli, ["train", "--help"])
+        assert result.exit_code == 0
+        assert "--best-metric" in result.output
+
+    def test_train_command_best_metric_choices(self, runner):
+        """Test that --best-metric shows available choices."""
+        from aam.cli.main import cli
+
+        result = runner.invoke(cli, ["train", "--help"])
+        assert result.exit_code == 0
+        # Check all choices are listed
+        assert "val_loss" in result.output
+        assert "r2" in result.output
+        assert "mae" in result.output
+        assert "accuracy" in result.output
+        assert "f1" in result.output
+
+    def test_train_command_best_metric_invalid_choice(
+        self, runner, sample_biom_file, sample_unifrac_matrix_file, sample_metadata_file, sample_output_dir
+    ):
+        """Test that --best-metric rejects invalid choices."""
+        from aam.cli.main import cli
+
+        result = runner.invoke(
+            cli,
+            [
+                "train",
+                "--table",
+                sample_biom_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
+                "--metadata",
+                sample_metadata_file,
+                "--metadata-column",
+                "target",
+                "--output-dir",
+                sample_output_dir,
+                "--best-metric",
+                "invalid_metric",
+            ],
+        )
+        assert result.exit_code != 0
+        # Click rejects invalid choices before our validation
+        assert "Invalid value" in result.output or "is not one of" in result.output
