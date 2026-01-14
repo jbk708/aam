@@ -91,9 +91,13 @@ All tasks share base embeddings but compute predictions in parallel:
 
 ## Test Data
 
-Integration test data in `./data/`:
+Integration test data in `./data/` (781 samples):
 - `fall_train_only_all_outdoor.biom` - BIOM table
+- `fall_train_only_all_outdoor.h5` - Pre-computed UniFrac matrix
+- `fall_train_only_all_outdoor.tsv` - Metadata with regression targets
 - `all-outdoors_sepp_tree.nwk` - Phylogenetic tree
+
+See README Quick Start for example commands using this data.
 
 ## Development Workflow
 
