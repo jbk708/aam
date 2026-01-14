@@ -137,9 +137,13 @@ def predict(
             target_layer_norm=model_config.get("target_layer_norm", True),
             bounded_targets=model_config.get("bounded_targets", False),
             learnable_output_scale=model_config.get("learnable_output_scale", False),
+            output_activation=model_config.get("output_activation", "none"),
             categorical_cardinalities=categorical_cardinalities,
             categorical_embed_dim=model_config.get("categorical_embed_dim", 16),
             categorical_fusion=model_config.get("categorical_fusion", "concat"),
+            regressor_hidden_dims=model_config.get("regressor_hidden_dims"),
+            regressor_dropout=model_config.get("regressor_dropout", 0.0),
+            conditional_scaling_columns=model_config.get("conditional_scaling_columns"),
         )
         model_obj.load_state_dict(model_state)
         model_obj.to(device_obj)

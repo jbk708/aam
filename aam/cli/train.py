@@ -1004,6 +1004,7 @@ def train(
                 "log_transform_targets": log_transform_targets,
                 "regressor_hidden_dims": regressor_hidden_dims_list,
                 "regressor_dropout": regressor_dropout,
+                "conditional_scaling_columns": conditional_scaling_columns,
             }
             # Include categorical encoder state if categoricals are used
             if categorical_encoder is not None:
