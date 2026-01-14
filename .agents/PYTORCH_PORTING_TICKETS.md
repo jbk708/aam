@@ -55,10 +55,10 @@ python -m aam.cli pretrain --data-parallel --batch-size 32 ...
 
 ---
 
-## Phase 12: Distributed Training (4 remaining)
+## Phase 12: Distributed Training (1 remaining)
 
 ### PYT-12.1: FSDP (Fully Sharded Data Parallel)
-**Priority:** MEDIUM | **Effort:** 11-16 hours | **Status:** IN PROGRESS
+**Priority:** MEDIUM | **Effort:** 11-16 hours | **Status:** COMPLETE
 **Branch:** `pyt-12.1-fsdp-implementation`
 
 *Note: Consolidated with COS-4.2. Implement once, validate on both CUDA and ROCm.*
@@ -138,7 +138,7 @@ def wrap_model_fsdp(
 ---
 
 #### PYT-12.1b: FSDP Checkpoint Support
-**Priority:** MEDIUM | **Effort:** 3-4 hours | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** 3-4 hours | **Status:** COMPLETE
 
 Handle FSDP's special checkpoint formats for save/load compatibility.
 
@@ -172,17 +172,24 @@ def save_fsdp_checkpoint(model: FSDP, path: str):
 ```
 
 **Acceptance Criteria:**
-- [ ] FSDP model checkpoints save correctly
-- [ ] FSDP model can load its own checkpoints
-- [ ] Non-FSDP model can load FSDP checkpoint (for inference)
-- [ ] FSDP model can load pre-trained non-FSDP checkpoint
-- [ ] `--fsdp-sharded-checkpoint` option for large models
-- [ ] Tests for all checkpoint roundtrip scenarios
+- [x] FSDP model checkpoints save correctly
+- [x] FSDP model can load its own checkpoints
+- [x] Non-FSDP model can load FSDP checkpoint (for inference)
+- [x] FSDP model can load pre-trained non-FSDP checkpoint
+- [x] `--fsdp-sharded-checkpoint` option for large models
+- [x] Tests for all checkpoint roundtrip scenarios
+
+**Completed:**
+- Added FSDP checkpoint utility functions: `get_fsdp_state_dict()`, `set_fsdp_state_dict()`, `get_fsdp_optimizer_state_dict()`, `set_fsdp_optimizer_state_dict()`
+- Updated Trainer to handle FSDP models in `save_checkpoint()` and `load_checkpoint()`
+- Added `--fsdp-sharded-checkpoint` flag for large model optimization
+- Supports cross-compatibility: non-FSDP checkpoints into FSDP models and vice versa
+- Added 17 tests for FSDP checkpoint functions, 2 CLI tests
 
 **Files:**
-- `aam/training/trainer.py` - Add FSDP checkpoint handling
-- `aam/training/distributed.py` - Add checkpoint utility functions
-- `tests/test_trainer.py` - Add FSDP checkpoint tests
+- `aam/training/trainer.py` - FSDP checkpoint handling
+- `aam/training/distributed.py` - Checkpoint utility functions
+- `tests/test_distributed.py` - FSDP checkpoint tests
 
 **Dependencies:** PYT-12.1a
 
@@ -235,12 +242,25 @@ def gather_embeddings_for_unifrac(embeddings: torch.Tensor) -> torch.Tensor:
 - [x] Memory usage documented (vs DataParallel)
 - [x] README updated with FSDP usage guidance
 
+**Completed:**
+- Added `gather_embeddings_for_unifrac()` for cross-GPU embedding collection
+- Added `_gather_target_matrices()` for UniFrac target gathering with block-diagonal mask
+- Integrated gathering into `MultiTaskLoss.compute_base_loss()` with `gather_for_distributed` flag
+- Added `--fsdp` and `--fsdp-sharded-checkpoint` flags to pretrain.py
+- Updated README with comprehensive FSDP documentation
+- Added 8 tests for embedding gathering, 5 CLI tests for FSDP pretrain flags
+- Added error handling for `dist.all_gather` with context-rich error messages
+- Added warnings for misconfigured distributed gathering (not initialized or world_size=1)
+- Fixed loss normalization to compute MSE only on valid pairs (prevents dilution from masked pairs)
+- Added 4 tests for `_gather_target_matrices()`, 3 tests for masked loss computation
+
 **Files:**
-- `aam/training/distributed.py` - Add `gather_embeddings_for_unifrac()`
-- `aam/training/losses.py` - Integrate gathering into UniFrac loss path
-- `aam/cli/pretrain.py` - Add `--fsdp` flag
-- `README.md` - Add FSDP documentation
-- `tests/test_distributed.py` - Add gathering tests
+- `aam/training/distributed.py` - `gather_embeddings_for_unifrac()` with error handling
+- `aam/training/losses.py` - `_gather_target_matrices()`, gathering integration, loss normalization fix
+- `aam/cli/pretrain.py` - `--fsdp` flag with RuntimeError handling
+- `README.md` - FSDP documentation
+- `tests/test_distributed.py` - Gathering tests
+- `tests/test_losses.py` - Target matrix and masked loss tests
 
 **Dependencies:** PYT-12.1a, PYT-12.1b
 
@@ -429,16 +449,16 @@ Low priority future work:
 | Phase | Remaining | Est. Hours |
 |-------|-----------|------------|
 | 10 (Performance) | 0 | 0 |
-| 12 (Distributed) | 4 | 15-22 |
+| 12 (Distributed) | 1 | 4-6 |
 | 18 (Memory) | 2 | 8-12 |
 | 19 (Regression/Categorical) | 3 | 13-18 |
 | 13-17 (Future) | ~13 | 50+ |
-| **Total** | **9 + backlog** | **36-52 + 50+** |
+| **Total** | **6 + backlog** | **25-36 + 50+** |
 
 ### PYT-12.1 Sub-ticket Breakdown
 
 | Sub-ticket | Description | Effort | Status |
 |------------|-------------|--------|--------|
 | PYT-12.1a | FSDP Infrastructure | 4-6h | **COMPLETE** |
-| PYT-12.1b | FSDP Checkpoint Support | 3-4h | Not Started |
-| PYT-12.1c | FSDP Pretraining + ROCm | 4-6h | Not Started |
+| PYT-12.1b | FSDP Checkpoint Support | 3-4h | **COMPLETE** |
+| PYT-12.1c | FSDP Pretraining + ROCm | 4-6h | **COMPLETE** |

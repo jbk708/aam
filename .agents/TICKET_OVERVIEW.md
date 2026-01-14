@@ -1,27 +1,15 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-13
-**Status:** 8 outstanding tickets (~25-37 hours)
+**Status:** 8 outstanding tickets (~23-35 hours)
 
 ## Quick Links
 - **ROCm optimization:** `COSMOS_ONBOARDING_TICKETS.md`
 - **Categorical features:** `CATEGORICAL_FEATURE_TICKETS.md`
 - **PyTorch work:** `PYTORCH_PORTING_TICKETS.md`
+- **Documentation:** `DOCUMENTATION_TICKETS.md`
 - **Completed work:** `ARCHIVED_TICKETS.md`
 - **Workflow:** `WORKFLOW.md`
-
----
-
-## In Progress
-
-### PYT-12.1: FSDP Implementation
-**Branch:** `pyt-12.1-fsdp-implementation`
-
-| Sub-ticket | Description | Effort | Status |
-|------------|-------------|--------|--------|
-| PYT-12.1a | FSDP Infrastructure | 4-6h | **COMPLETE** |
-| PYT-12.1b | FSDP Checkpoint Support | 3-4h | **COMPLETE** |
-| PYT-12.1c | FSDP Pretraining + ROCm | 4-6h | **COMPLETE** |
 
 ---
 
@@ -37,10 +25,11 @@ All high priority tickets complete.
 |--------|-------------|--------|--------|
 | **PYT-12.2** | Batch size optimization | 4-6h | PyTorch |
 
-### LOW (6 tickets, ~21-31 hours)
+### LOW (7 tickets, ~23-35 hours)
 
 | Ticket | Description | Effort | Domain |
 |--------|-------------|--------|--------|
+| **DOC-1** | README & Installation Modernization | 2-4h | Docs |
 | **COS-9.5** | Kernel profiling with rocprof | 4-6h | Cosmos |
 | **COS-9.6** | SLURM job templates | 3-4h | Cosmos |
 | **COS-9.7** | ROCm Singularity container | 4-6h | Cosmos |
