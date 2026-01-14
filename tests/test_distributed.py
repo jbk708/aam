@@ -1130,3 +1130,21 @@ class TestGatherPredictionsForPlot:
         tensor = torch.empty(0, 1)
         result = gather_predictions_for_plot(tensor)
         assert result.shape[0] == 0
+
+    def test_returns_result_on_original_device(self):
+        """Test result is returned on the original device (CPU) even in distributed mode."""
+        tensor = torch.randn(50, 1)  # CPU tensor
+        assert tensor.device.type == "cpu"
+
+        with (
+            patch("aam.training.distributed.is_distributed", return_value=True),
+            patch("aam.training.distributed.get_world_size", return_value=4),
+            patch("aam.training.distributed.get_rank", return_value=0),
+            patch("aam.training.distributed.get_local_rank", return_value=0),
+            patch("aam.training.distributed.dist.all_gather") as mock_all_gather,
+            patch("torch.cuda.is_available", return_value=False),  # No CUDA in test env
+        ):
+            mock_all_gather.side_effect = _make_distributed_all_gather_mock([50, 50, 50, 50])
+            result = gather_predictions_for_plot(tensor)
+            # Result should be on original device (CPU)
+            assert result.device.type == "cpu"

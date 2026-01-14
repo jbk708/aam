@@ -739,7 +739,7 @@ def gather_predictions_for_plot(
         >>> # On rank 0: gathered.shape = [197, 1]
         >>> # On other ranks: gathered.shape = [0, 1]
     """
-    device = local_tensor.device
+    original_device = local_tensor.device
     trailing_dims = local_tensor.shape[1:]
 
     def _subsample(tensor: torch.Tensor) -> torch.Tensor:
@@ -751,6 +751,14 @@ def gather_predictions_for_plot(
     if not is_distributed():
         return _subsample(local_tensor)
 
+    # NCCL backend requires CUDA tensors. If input is on CPU, move to CUDA for
+    # collective operations, then move result back to CPU at the end.
+    if original_device.type == "cpu" and torch.cuda.is_available():
+        device = torch.device(f"cuda:{get_local_rank()}")
+        local_tensor = local_tensor.to(device)
+    else:
+        device = original_device
+
     world_size = get_world_size()
     rank = get_rank()
 
@@ -761,7 +769,7 @@ def gather_predictions_for_plot(
 
     max_size = max(s.item() for s in all_sizes)
     if max_size == 0:
-        return torch.empty(0, *trailing_dims, device=device)
+        return torch.empty(0, *trailing_dims, device=original_device)
 
     # Pad tensors to max size for all_gather
     padded = torch.zeros((int(max_size), *trailing_dims), dtype=local_tensor.dtype, device=device)
@@ -772,14 +780,15 @@ def gather_predictions_for_plot(
 
     # Only rank 0 needs the full result
     if rank != 0:
-        return torch.empty(0, *trailing_dims, device=device)
+        return torch.empty(0, *trailing_dims, device=original_device)
 
     # Concatenate valid portions from each rank
     result_parts = [g[: int(all_sizes[i].item())] for i, g in enumerate(gathered) if all_sizes[i].item() > 0]
     if not result_parts:
-        return torch.empty(0, *trailing_dims, device=device)
+        return torch.empty(0, *trailing_dims, device=original_device)
 
-    return _subsample(torch.cat(result_parts, dim=0))
+    result = _subsample(torch.cat(result_parts, dim=0))
+    return result.to(original_device)
 
 
 def sync_batch_norm(model: nn.Module) -> nn.Module:
