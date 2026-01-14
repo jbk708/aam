@@ -53,7 +53,13 @@ def _gather_target_matrices(
 
     # Gather all local target matrices
     gathered: List[torch.Tensor] = [torch.zeros_like(local_target) for _ in range(world_size)]
-    dist.all_gather(gathered, local_target)
+    try:
+        dist.all_gather(gathered, local_target)
+    except RuntimeError as e:
+        raise RuntimeError(
+            f"Failed to gather target matrices across {world_size} ranks "
+            f"(shape={local_target.shape}, device={local_target.device}): {e}"
+        ) from e
 
     # Construct global target matrix (block-diagonal)
     global_target = torch.zeros(global_batch_size, global_batch_size, dtype=local_target.dtype, device=local_target.device)
@@ -288,6 +294,9 @@ class MultiTaskLoss(nn.Module):
         Returns:
             Base loss scalar tensor
         """
+        # Track distributed gathering mask (set if gather_for_distributed and in multi-GPU mode)
+        target_mask = None
+
         # For UniFrac, compute pairwise distances from embeddings if provided
         if encoder_type == "unifrac" and embeddings is not None:
             # Check for NaN in embeddings before computing distances
@@ -310,16 +319,31 @@ class MultiTaskLoss(nn.Module):
                 raise ValueError(error_msg)
 
             # Handle distributed gathering for FSDP pretraining
-            target_mask = None
-            if gather_for_distributed and dist.is_initialized():
-                from aam.training.distributed import gather_embeddings_for_unifrac, get_world_size
+            if gather_for_distributed:
+                if not dist.is_initialized():
+                    import warnings
 
-                world_size = get_world_size()
-                if world_size > 1:
-                    # Gather embeddings across all ranks for full pairwise computation
-                    embeddings = gather_embeddings_for_unifrac(embeddings)
-                    # Gather target matrices and construct block-diagonal global matrix
-                    base_true, target_mask = _gather_target_matrices(base_true, world_size)
+                    warnings.warn(
+                        "gather_for_distributed=True but distributed not initialized. "
+                        "Skipping gathering. Did you forget to initialize the process group?",
+                        stacklevel=2,
+                    )
+                else:
+                    from aam.training.distributed import gather_embeddings_for_unifrac, get_world_size
+
+                    world_size = get_world_size()
+                    if world_size == 1:
+                        import warnings
+
+                        warnings.warn(
+                            "gather_for_distributed=True but world_size=1. Gathering has no effect with single GPU.",
+                            stacklevel=2,
+                        )
+                    elif world_size > 1:
+                        # Gather embeddings across all ranks for full pairwise computation
+                        embeddings = gather_embeddings_for_unifrac(embeddings)
+                        # Gather target matrices and construct block-diagonal global matrix
+                        base_true, target_mask = _gather_target_matrices(base_true, world_size)
 
             # Compute pairwise distances from embeddings
             # Normalize to [0, 1] for UniFrac distances (UniFrac distances are bounded)
@@ -333,11 +357,7 @@ class MultiTaskLoss(nn.Module):
                 print(f"embeddings shape={embeddings.shape}, {_format_tensor_stats(embeddings)}", file=sys.stderr, flush=True)
                 raise
 
-            # If we gathered, apply mask to only compute loss on available targets (block-diagonal)
-            if target_mask is not None:
-                # Apply mask: only compute loss where we have valid targets
-                base_pred = base_pred * target_mask.float()
-                base_true = base_true * target_mask.float()
+            # Note: target_mask is used later during MSE computation to only include valid pairs
 
         elif encoder_type == "unifrac" and embeddings is None:
             # Legacy mode: use base_pred directly (for backward compatibility)
@@ -408,9 +428,20 @@ class MultiTaskLoss(nn.Module):
                 # Return zero loss when there are no off-diagonal elements
                 return torch.zeros(1, device=base_pred.device, requires_grad=True)
 
-            base_pred_masked = base_pred[triu_indices[0], triu_indices[1]]
-            base_true_masked = base_true[triu_indices[0], triu_indices[1]]
-            return nn.functional.mse_loss(base_pred_masked, base_true_masked)
+            base_pred_triu = base_pred[triu_indices[0], triu_indices[1]]
+            base_true_triu = base_true[triu_indices[0], triu_indices[1]]
+
+            # If we have a target_mask from distributed gathering, filter to valid pairs only
+            if target_mask is not None:
+                mask_triu = target_mask[triu_indices[0], triu_indices[1]]
+                valid_count = mask_triu.sum().item()
+                if valid_count == 0:
+                    return torch.zeros(1, device=base_pred.device, requires_grad=True)
+                # Compute MSE only on valid pairs (where target_mask is True)
+                squared_errors = (base_pred_triu - base_true_triu) ** 2
+                return (squared_errors * mask_triu.float()).sum() / valid_count
+            else:
+                return nn.functional.mse_loss(base_pred_triu, base_true_triu)
         else:
             # For non-UniFrac encoders, use all elements (no diagonal masking)
             return nn.functional.mse_loss(base_pred, base_true)

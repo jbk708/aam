@@ -520,7 +520,7 @@ def pretrain(
 
             try:
                 model = wrap_model_fsdp(model)
-            except Exception as e:
+            except RuntimeError as e:
                 logger.error(f"Failed to wrap model with FSDP: {e}", exc_info=True)
                 raise click.ClickException(
                     f"FSDP model wrapping failed: {e}\n"

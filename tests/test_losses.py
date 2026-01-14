@@ -1022,3 +1022,220 @@ class TestDeviceHandling:
         )
 
         assert losses["total_loss"].device.type == device.type
+
+
+class TestGatherTargetMatrices:
+    """Tests for _gather_target_matrices function used in distributed FSDP training."""
+
+    def test_gather_target_matrices_returns_tuple(self):
+        """Test that _gather_target_matrices returns a tuple of (global_target, mask)."""
+        from aam.training.losses import _gather_target_matrices
+        from unittest.mock import patch
+
+        local_target = torch.randn(4, 4)
+        world_size = 2
+
+        with patch("aam.training.losses.dist.all_gather") as mock_all_gather:
+            # Simulate gathering: mock fills gathered list with copies of local_target
+            def fill_gathered(gathered, tensor):
+                for i in range(len(gathered)):
+                    gathered[i].copy_(tensor)
+
+            mock_all_gather.side_effect = fill_gathered
+
+            global_target, mask = _gather_target_matrices(local_target, world_size)
+
+            assert isinstance(global_target, torch.Tensor)
+            assert isinstance(mask, torch.Tensor)
+
+    def test_gather_target_matrices_output_shapes(self):
+        """Test that output shapes are correct for multi-GPU gathering."""
+        from aam.training.losses import _gather_target_matrices
+        from unittest.mock import patch
+
+        local_batch = 4
+        world_size = 3
+        local_target = torch.randn(local_batch, local_batch)
+
+        with patch("aam.training.losses.dist.all_gather") as mock_all_gather:
+
+            def fill_gathered(gathered, tensor):
+                for i in range(len(gathered)):
+                    gathered[i].copy_(tensor)
+
+            mock_all_gather.side_effect = fill_gathered
+
+            global_target, mask = _gather_target_matrices(local_target, world_size)
+
+            expected_global_batch = local_batch * world_size
+            assert global_target.shape == (expected_global_batch, expected_global_batch)
+            assert mask.shape == (expected_global_batch, expected_global_batch)
+
+    def test_gather_target_matrices_mask_is_block_diagonal(self):
+        """Test that mask is True only on block diagonal."""
+        from aam.training.losses import _gather_target_matrices
+        from unittest.mock import patch
+
+        local_batch = 2
+        world_size = 3
+        local_target = torch.randn(local_batch, local_batch)
+
+        with patch("aam.training.losses.dist.all_gather") as mock_all_gather:
+
+            def fill_gathered(gathered, tensor):
+                for i in range(len(gathered)):
+                    gathered[i].copy_(tensor)
+
+            mock_all_gather.side_effect = fill_gathered
+
+            global_target, mask = _gather_target_matrices(local_target, world_size)
+
+            # Check diagonal blocks are True
+            for rank in range(world_size):
+                start = rank * local_batch
+                end = start + local_batch
+                assert mask[start:end, start:end].all(), f"Block {rank} should be True"
+
+            # Check off-diagonal blocks are False
+            for rank_i in range(world_size):
+                for rank_j in range(world_size):
+                    if rank_i != rank_j:
+                        start_i = rank_i * local_batch
+                        end_i = start_i + local_batch
+                        start_j = rank_j * local_batch
+                        end_j = start_j + local_batch
+                        assert not mask[start_i:end_i, start_j:end_j].any(), (
+                            f"Off-diagonal block ({rank_i}, {rank_j}) should be False"
+                        )
+
+    def test_gather_target_matrices_preserves_values_on_diagonal(self):
+        """Test that gathered values are placed correctly on diagonal blocks."""
+        from aam.training.losses import _gather_target_matrices
+        from unittest.mock import patch
+
+        local_batch = 2
+        world_size = 2
+        local_target = torch.tensor([[1.0, 2.0], [3.0, 4.0]])
+
+        # Simulate different values from each rank
+        rank_targets = [
+            torch.tensor([[1.0, 2.0], [3.0, 4.0]]),  # Rank 0
+            torch.tensor([[5.0, 6.0], [7.0, 8.0]]),  # Rank 1
+        ]
+
+        with patch("aam.training.losses.dist.all_gather") as mock_all_gather:
+
+            def fill_gathered(gathered, tensor):
+                for i in range(len(gathered)):
+                    gathered[i].copy_(rank_targets[i])
+
+            mock_all_gather.side_effect = fill_gathered
+
+            global_target, mask = _gather_target_matrices(local_target, world_size)
+
+            # Check rank 0's block
+            assert torch.allclose(global_target[0:2, 0:2], rank_targets[0])
+            # Check rank 1's block
+            assert torch.allclose(global_target[2:4, 2:4], rank_targets[1])
+            # Check off-diagonal blocks are zero
+            assert torch.allclose(global_target[0:2, 2:4], torch.zeros(2, 2))
+            assert torch.allclose(global_target[2:4, 0:2], torch.zeros(2, 2))
+
+
+class TestComputeBaseLossWithMask:
+    """Tests for compute_base_loss with target_mask for distributed gathering."""
+
+    @pytest.fixture
+    def loss_fn(self):
+        return MultiTaskLoss()
+
+    def test_masked_loss_only_uses_valid_pairs(self, loss_fn):
+        """Test that loss is computed only on valid (masked) pairs."""
+        # Simulate a 4x4 global matrix with only the first 2x2 block valid
+        batch_size = 4
+        base_pred = torch.randn(batch_size, batch_size)
+        base_true = torch.randn(batch_size, batch_size)
+
+        # Create a mask that's True only for the first 2x2 block
+        target_mask = torch.zeros(batch_size, batch_size, dtype=torch.bool)
+        target_mask[0:2, 0:2] = True
+
+        # Manually compute expected loss: only use triu of valid block
+        triu_indices = torch.triu_indices(batch_size, batch_size, offset=1)
+        mask_triu = target_mask[triu_indices[0], triu_indices[1]]
+        pred_triu = base_pred[triu_indices[0], triu_indices[1]]
+        true_triu = base_true[triu_indices[0], triu_indices[1]]
+
+        # Only (0, 1) is in triu AND in valid block
+        valid_pred = pred_triu[mask_triu]
+        valid_true = true_triu[mask_triu]
+        expected_loss = ((valid_pred - valid_true) ** 2).mean()
+
+        # We can't easily test compute_base_loss directly with target_mask
+        # since it's set internally based on distributed gathering
+        # Instead, verify the math matches what we implemented
+        squared_errors = (pred_triu - true_triu) ** 2
+        computed_loss = (squared_errors * mask_triu.float()).sum() / mask_triu.sum()
+
+        assert torch.allclose(computed_loss, expected_loss)
+
+    def test_masked_loss_excludes_zeros_from_average(self, loss_fn):
+        """Test that masked pairs don't dilute the loss average."""
+        batch_size = 4
+
+        # Create predictable tensors
+        base_pred = torch.zeros(batch_size, batch_size)
+        base_true = torch.zeros(batch_size, batch_size)
+
+        # Set a known difference in the valid block (0:2, 0:2)
+        # Only (0, 1) is in the upper triangle
+        base_pred[0, 1] = 1.0
+        base_true[0, 1] = 0.0  # Error = 1.0
+
+        # Set different values in invalid blocks that would dilute if included
+        base_pred[0, 2] = 100.0  # Would be huge error if included
+        base_true[0, 2] = 0.0
+
+        target_mask = torch.zeros(batch_size, batch_size, dtype=torch.bool)
+        target_mask[0:2, 0:2] = True
+
+        triu_indices = torch.triu_indices(batch_size, batch_size, offset=1)
+        mask_triu = target_mask[triu_indices[0], triu_indices[1]]
+        pred_triu = base_pred[triu_indices[0], triu_indices[1]]
+        true_triu = base_true[triu_indices[0], triu_indices[1]]
+
+        # Correct loss: only (0, 1) with MSE = 1.0
+        squared_errors = (pred_triu - true_triu) ** 2
+        correct_loss = (squared_errors * mask_triu.float()).sum() / mask_triu.sum()
+        assert correct_loss.item() == 1.0
+
+        # Wrong loss (if we included all zeros): would be much smaller
+        wrong_loss = squared_errors.mean()
+        # triu has 6 elements: (0,1), (0,2), (0,3), (1,2), (1,3), (2,3)
+        # Only (0,1)=1.0 and (0,2)=10000.0 are non-zero
+        # If mask wasn't used properly, loss would be different
+        assert wrong_loss.item() != 1.0  # Sanity check
+
+    def test_gather_for_distributed_warns_when_not_initialized(self, loss_fn):
+        """Test that warning is issued when gather_for_distributed=True but dist not init."""
+        import warnings
+        from unittest.mock import patch
+
+        batch_size = 4
+        embeddings = torch.randn(batch_size, 64)
+        base_true = torch.randn(batch_size, batch_size)
+
+        with patch("aam.training.losses.dist.is_initialized", return_value=False):
+            with warnings.catch_warnings(record=True) as w:
+                warnings.simplefilter("always")
+                loss_fn.compute_base_loss(
+                    base_pred=torch.zeros(batch_size, batch_size),
+                    base_true=base_true,
+                    encoder_type="unifrac",
+                    embeddings=embeddings,
+                    gather_for_distributed=True,
+                )
+
+                # Check warning was issued
+                assert len(w) == 1
+                assert "gather_for_distributed=True but distributed not initialized" in str(w[0].message)

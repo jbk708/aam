@@ -678,7 +678,12 @@ def gather_embeddings_for_unifrac(embeddings: torch.Tensor) -> torch.Tensor:
     gathered = [torch.zeros_like(embeddings) for _ in range(world_size)]
 
     # All-gather: each rank sends its embeddings to all other ranks
-    dist.all_gather(gathered, embeddings)
+    try:
+        dist.all_gather(gathered, embeddings)
+    except RuntimeError as e:
+        raise RuntimeError(
+            f"Failed to gather embeddings across {world_size} ranks (shape={embeddings.shape}, device={embeddings.device}): {e}"
+        ) from e
 
     # Concatenate all gathered embeddings
     # Shape: [local_batch_size * world_size, embedding_dim]
