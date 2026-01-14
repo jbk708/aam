@@ -1017,7 +1017,9 @@ class TestDistributedValidationMetrics:
 
 
 def _make_distributed_all_gather_mock(sizes: list):
-    """Create a mock side_effect for dist.all_gather that simulates distributed gathering.
+    """Create a mock for dist.all_gather that simulates distributed gathering.
+
+    First call fills sizes, second call fills data tensors with random values.
 
     Args:
         sizes: List of sizes for each rank (e.g., [50, 50, 50, 47])
@@ -1029,8 +1031,8 @@ def _make_distributed_all_gather_mock(sizes: list):
             for i, g in enumerate(gathered_list):
                 g[0] = sizes[i]
         else:
-            for i in range(len(gathered_list)):
-                gathered_list[i].copy_(torch.randn_like(tensor))
+            for g in gathered_list:
+                g.copy_(torch.randn_like(tensor))
         call_count[0] += 1
 
     return fill_gathered
@@ -1133,7 +1135,7 @@ class TestGatherPredictionsForPlot:
 
     def test_returns_result_on_original_device(self):
         """Test result is returned on the original device (CPU) even in distributed mode."""
-        tensor = torch.randn(50, 1)  # CPU tensor
+        tensor = torch.randn(50, 1)
         assert tensor.device.type == "cpu"
 
         with (
@@ -1142,9 +1144,8 @@ class TestGatherPredictionsForPlot:
             patch("aam.training.distributed.get_rank", return_value=0),
             patch("aam.training.distributed.get_local_rank", return_value=0),
             patch("aam.training.distributed.dist.all_gather") as mock_all_gather,
-            patch("torch.cuda.is_available", return_value=False),  # No CUDA in test env
+            patch("torch.cuda.is_available", return_value=False),
         ):
             mock_all_gather.side_effect = _make_distributed_all_gather_mock([50, 50, 50, 50])
             result = gather_predictions_for_plot(tensor)
-            # Result should be on original device (CPU)
             assert result.device.type == "cpu"
