@@ -365,12 +365,14 @@ class SequencePredictor(nn.Module):
         if self.output_scales is None or categorical_ids is None:
             return prediction
 
-        for col in self.conditional_scaling_columns or []:
+        assert self.conditional_scaling_columns is not None
+
+        for col in self.conditional_scaling_columns:
             if col not in categorical_ids:
                 continue
-            ids = categorical_ids[col]  # [batch_size]
-            scale = self.output_scales[col](ids)  # [batch_size, out_dim]
-            bias = self.output_biases[col](ids)  # [batch_size, out_dim]
+            ids = categorical_ids[col]
+            scale = self.output_scales[col](ids)
+            bias = self.output_biases[col](ids)
             prediction = prediction * scale + bias
 
         return prediction
