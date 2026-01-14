@@ -342,6 +342,7 @@ def get_fsdp_state_dict(
 
     Raises:
         TypeError: If model is not an FSDP instance.
+        RuntimeError: If state dict gathering fails (e.g., NCCL timeout, OOM).
     """
     if not is_fsdp_model(model):
         raise TypeError(f"Expected FSDP model, got {type(model).__name__}")
@@ -356,8 +357,21 @@ def get_fsdp_state_dict(
         )
         state_dict_type = StateDictType.FULL_STATE_DICT
 
-    with FSDP.state_dict_type(model, state_dict_type, state_dict_config):
-        return model.state_dict()
+    try:
+        with FSDP.state_dict_type(model, state_dict_type, state_dict_config):
+            return model.state_dict()
+    except RuntimeError as e:
+        error_msg = str(e).lower()
+        if "nccl" in error_msg or "timeout" in error_msg:
+            raise RuntimeError(
+                f"FSDP state dict gathering failed due to communication error. "
+                f"This is often caused by GPU memory exhaustion or process desynchronization. "
+                f"Try reducing model size or batch size. Original error: {e}"
+            ) from e
+        raise RuntimeError(
+            f"Failed to get FSDP state dict (sharded={sharded}). "
+            f"This may indicate corrupted FSDP state. Original error: {e}"
+        ) from e
 
 
 def set_fsdp_state_dict(
@@ -381,6 +395,7 @@ def set_fsdp_state_dict(
 
     Raises:
         TypeError: If model is not an FSDP instance.
+        RuntimeError: If state dict loading fails (e.g., shape mismatch, key mismatch).
     """
     if not is_fsdp_model(model):
         raise TypeError(f"Expected FSDP model, got {type(model).__name__}")
@@ -392,8 +407,25 @@ def set_fsdp_state_dict(
         state_dict_config = FullStateDictConfig()
         state_dict_type = StateDictType.FULL_STATE_DICT
 
-    with FSDP.state_dict_type(model, state_dict_type, state_dict_config):
-        model.load_state_dict(state_dict, strict=strict)
+    try:
+        with FSDP.state_dict_type(model, state_dict_type, state_dict_config):
+            model.load_state_dict(state_dict, strict=strict)
+    except RuntimeError as e:
+        error_msg = str(e)
+        if "size mismatch" in error_msg:
+            raise RuntimeError(
+                f"FSDP state dict shape mismatch. This usually means the checkpoint "
+                f"was saved with different model architecture (embedding dim, layers, etc.). "
+                f"Ensure checkpoint and model configurations match. Original error: {e}"
+            ) from e
+        if "Missing key" in error_msg or "Unexpected key" in error_msg:
+            raise RuntimeError(
+                f"FSDP state dict key mismatch (sharded={sharded}, strict={strict}). "
+                f"For transfer learning, try strict=False. Original error: {e}"
+            ) from e
+        raise RuntimeError(
+            f"Failed to load FSDP state dict (sharded={sharded}). Original error: {e}"
+        ) from e
 
 
 def get_fsdp_optimizer_state_dict(
@@ -413,10 +445,12 @@ def get_fsdp_optimizer_state_dict(
             If False, gather full optimizer state dict.
 
     Returns:
-        Optimizer state dict.
+        Optimizer state dict. When sharded=False, only rank 0 gets the full
+        state dict; other ranks may receive empty or partial dicts.
 
     Raises:
         TypeError: If model is not an FSDP instance.
+        RuntimeError: If optimizer state dict gathering fails.
     """
     if not is_fsdp_model(model):
         raise TypeError(f"Expected FSDP model, got {type(model).__name__}")
@@ -431,8 +465,14 @@ def get_fsdp_optimizer_state_dict(
         )
         state_dict_type = StateDictType.FULL_STATE_DICT
 
-    with FSDP.state_dict_type(model, state_dict_type, optim_state_dict_config=optim_state_dict_config):
-        return FSDP.optim_state_dict(model, optimizer)
+    try:
+        with FSDP.state_dict_type(model, state_dict_type, optim_state_dict_config=optim_state_dict_config):
+            return FSDP.optim_state_dict(model, optimizer)
+    except RuntimeError as e:
+        raise RuntimeError(
+            f"Failed to get FSDP optimizer state dict (sharded={sharded}). "
+            f"Ensure optimizer was created with FSDP model parameters. Original error: {e}"
+        ) from e
 
 
 def set_fsdp_optimizer_state_dict(
@@ -444,17 +484,21 @@ def set_fsdp_optimizer_state_dict(
     """Load optimizer state dict into an FSDP model's optimizer.
 
     FSDP requires special handling for optimizer state dicts because optimizer
-    states are also sharded across ranks.
+    states are also sharded across ranks. When loading a full optimizer state dict
+    (sharded=False), it will be scattered to all ranks automatically.
 
     Args:
         model: FSDP-wrapped model.
         optimizer: Optimizer to load state dict into.
-        optim_state_dict: Optimizer state dict to load.
+        optim_state_dict: Optimizer state dict to load. When sharded=False,
+            this should be the full gathered state dict (typically only available
+            on rank 0); it will be scattered to all ranks automatically.
         sharded: If True, expect sharded optimizer state dict format.
             If False, expect full optimizer state dict format.
 
     Raises:
         TypeError: If model is not an FSDP instance.
+        RuntimeError: If optimizer state dict loading fails.
     """
     if not is_fsdp_model(model):
         raise TypeError(f"Expected FSDP model, got {type(model).__name__}")
@@ -466,10 +510,16 @@ def set_fsdp_optimizer_state_dict(
         optim_state_dict_config = FullOptimStateDictConfig()
         state_dict_type = StateDictType.FULL_STATE_DICT
 
-    with FSDP.state_dict_type(model, state_dict_type, optim_state_dict_config=optim_state_dict_config):
-        # Scatter full state dict to all ranks
-        sharded_optim_state = FSDP.optim_state_dict_to_load(model, optimizer, optim_state_dict)
-        optimizer.load_state_dict(sharded_optim_state)
+    try:
+        with FSDP.state_dict_type(model, state_dict_type, optim_state_dict_config=optim_state_dict_config):
+            sharded_optim_state = FSDP.optim_state_dict_to_load(model, optimizer, optim_state_dict)
+            optimizer.load_state_dict(sharded_optim_state)
+    except (RuntimeError, ValueError) as e:
+        raise RuntimeError(
+            f"Failed to load FSDP optimizer state dict (sharded={sharded}). "
+            f"This may be caused by: (1) optimizer type mismatch, (2) model architecture change, "
+            f"or (3) corrupted checkpoint. Try setting load_optimizer=False. Original error: {e}"
+        ) from e
 
 
 def create_distributed_dataloader(

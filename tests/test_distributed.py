@@ -688,3 +688,109 @@ class TestFSDPCheckpointFunctions:
 
             mock_optim_to_load.assert_called_once_with(mock_fsdp_model, optimizer, optim_state_dict)
             optimizer.load_state_dict.assert_called_once()
+
+
+class TestFSDPCheckpointTrainerIntegration:
+    """Test FSDP checkpoint integration with Trainer."""
+
+    def test_save_checkpoint_stores_world_size_for_sharded(self):
+        """Test save_checkpoint stores world size when using sharded checkpoints."""
+        from aam.training.trainer import Trainer
+        from aam.training.losses import MultiTaskLoss
+
+        model = SimpleModel()
+        loss_fn = MultiTaskLoss()
+
+        with (
+            patch("aam.training.trainer.is_fsdp_model", return_value=True),
+            patch("aam.training.trainer.get_fsdp_state_dict", return_value={"weight": torch.randn(10, 5)}),
+            patch("aam.training.trainer.get_fsdp_optimizer_state_dict", return_value={"state": {}}),
+            patch("aam.training.trainer.get_world_size", return_value=4),
+            patch("torch.save") as mock_save,
+        ):
+            trainer = Trainer(model=model, loss_fn=loss_fn, use_sharded_checkpoint=True)
+            trainer.save_checkpoint("/tmp/test.pt", epoch=1, best_val_loss=0.5)
+
+            # Verify torch.save was called with checkpoint containing world size
+            mock_save.assert_called_once()
+            saved_checkpoint = mock_save.call_args[0][0]
+            assert saved_checkpoint["fsdp_sharded"] is True
+            assert saved_checkpoint["fsdp_world_size"] == 4
+
+    def test_load_checkpoint_validates_world_size_mismatch(self):
+        """Test load_checkpoint raises error when world size doesn't match."""
+        from aam.training.trainer import Trainer
+        from aam.training.losses import MultiTaskLoss
+
+        model = SimpleModel()
+        loss_fn = MultiTaskLoss()
+
+        # Create checkpoint saved with world_size=4
+        checkpoint = {
+            "epoch": 1,
+            "best_val_loss": 0.5,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": {},
+            "fsdp_sharded": True,
+            "fsdp_world_size": 4,
+        }
+
+        with (
+            patch("aam.training.trainer.is_fsdp_model", return_value=True),
+            patch("aam.training.trainer.get_world_size", return_value=2),  # Current world size is 2
+            patch("torch.load", return_value=checkpoint),
+        ):
+            trainer = Trainer(model=model, loss_fn=loss_fn)
+
+            with pytest.raises(RuntimeError, match="world_size=4.*current world_size=2"):
+                trainer.load_checkpoint("/tmp/test.pt")
+
+    def test_load_checkpoint_accepts_matching_world_size(self):
+        """Test load_checkpoint succeeds when world size matches."""
+        from aam.training.trainer import Trainer
+        from aam.training.losses import MultiTaskLoss
+
+        model = SimpleModel()
+        loss_fn = MultiTaskLoss()
+
+        checkpoint = {
+            "epoch": 1,
+            "best_val_loss": 0.5,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": {},
+            "fsdp_sharded": True,
+            "fsdp_world_size": 4,
+        }
+
+        with (
+            patch("aam.training.trainer.is_fsdp_model", return_value=True),
+            patch("aam.training.trainer.get_world_size", return_value=4),  # Matching world size
+            patch("aam.training.trainer.set_fsdp_state_dict"),
+            patch("aam.training.trainer.set_fsdp_optimizer_state_dict"),
+            patch("torch.load", return_value=checkpoint),
+        ):
+            trainer = Trainer(model=model, loss_fn=loss_fn)
+            result = trainer.load_checkpoint("/tmp/test.pt")
+
+            assert result["epoch"] == 1
+            assert result["best_val_loss"] == 0.5
+
+    def test_load_checkpoint_validates_required_keys(self):
+        """Test load_checkpoint raises error for missing required keys."""
+        from aam.training.trainer import Trainer
+        from aam.training.losses import MultiTaskLoss
+
+        model = SimpleModel()
+        loss_fn = MultiTaskLoss()
+
+        # Missing model_state_dict
+        checkpoint = {
+            "epoch": 1,
+            "best_val_loss": 0.5,
+        }
+
+        with patch("torch.load", return_value=checkpoint):
+            trainer = Trainer(model=model, loss_fn=loss_fn)
+
+            with pytest.raises(ValueError, match="missing required keys.*model_state_dict"):
+                trainer.load_checkpoint("/tmp/test.pt")

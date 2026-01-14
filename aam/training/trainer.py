@@ -23,6 +23,7 @@ from aam.training.distributed import (
     set_fsdp_state_dict,
     get_fsdp_optimizer_state_dict,
     set_fsdp_optimizer_state_dict,
+    get_world_size,
 )
 from aam.training.evaluation import Evaluator
 
@@ -1109,6 +1110,10 @@ class Trainer:
         model_is_fsdp = is_fsdp_model(cast(nn.Module, self.model))
         if model_is_fsdp:
             fsdp_model = cast("FSDP", self.model)
+            logger.info(
+                f"Saving FSDP checkpoint (sharded={self.use_sharded_checkpoint}, "
+                f"rank0_only={not self.use_sharded_checkpoint})"
+            )
             model_state_dict = get_fsdp_state_dict(
                 fsdp_model,
                 sharded=self.use_sharded_checkpoint,
@@ -1124,6 +1129,8 @@ class Trainer:
             model_state_dict = self.model.state_dict()
             optimizer_state_dict = self.optimizer.state_dict()
 
+        # Save world size for sharded checkpoints to validate on load
+        fsdp_sharded = self.use_sharded_checkpoint and model_is_fsdp
         checkpoint = {
             "epoch": epoch,
             "model_state_dict": model_state_dict,
@@ -1131,7 +1138,8 @@ class Trainer:
             "best_val_loss": best_val_loss,
             "metrics": metrics or {},
             "config": config or {},
-            "fsdp_sharded": self.use_sharded_checkpoint and model_is_fsdp,
+            "fsdp_sharded": fsdp_sharded,
+            "fsdp_world_size": get_world_size() if fsdp_sharded else None,
         }
 
         if self.scheduler is not None:
@@ -1140,7 +1148,13 @@ class Trainer:
             else:
                 checkpoint["scheduler_state_dict"] = self.scheduler.state_dict()
 
-        torch.save(checkpoint, filepath)
+        try:
+            torch.save(checkpoint, filepath)
+        except (OSError, RuntimeError) as e:
+            raise RuntimeError(
+                f"Failed to save checkpoint to '{filepath}': {e}. "
+                f"Check disk space and permissions."
+            ) from e
 
     def load_checkpoint(
         self,
@@ -1163,16 +1177,49 @@ class Trainer:
 
         Returns:
             Dictionary with checkpoint info (epoch, best_val_loss, metrics)
+
+        Raises:
+            FileNotFoundError: If checkpoint file doesn't exist.
+            ValueError: If checkpoint is missing required keys.
+            RuntimeError: If loading sharded checkpoint with different world size.
         """
         checkpoint = torch.load(filepath, map_location=self.device, weights_only=True)
+
+        # Validate required keys
+        required_keys = ["model_state_dict", "epoch", "best_val_loss"]
+        missing_keys = [k for k in required_keys if k not in checkpoint]
+        if missing_keys:
+            raise ValueError(
+                f"Invalid checkpoint file '{filepath}': missing required keys {missing_keys}. "
+                f"Found keys: {list(checkpoint.keys())}"
+            )
 
         # Check if checkpoint was saved with sharded FSDP format
         checkpoint_is_sharded = checkpoint.get("fsdp_sharded", False)
         model_is_fsdp = is_fsdp_model(cast(nn.Module, self.model))
 
+        # Validate world size for sharded checkpoints
+        if checkpoint_is_sharded:
+            saved_world_size = checkpoint.get("fsdp_world_size")
+            current_world_size = get_world_size()
+            if saved_world_size is not None and saved_world_size != current_world_size:
+                raise RuntimeError(
+                    f"Cannot load sharded FSDP checkpoint: saved with world_size={saved_world_size}, "
+                    f"but current world_size={current_world_size}. Sharded checkpoints require matching "
+                    f"world size. Use a full (non-sharded) checkpoint for different world sizes, "
+                    f"or restart with {saved_world_size} GPUs."
+                )
+
         # Load model and optimizer state dicts
         if model_is_fsdp:
             fsdp_model = cast("FSDP", self.model)
+            if not checkpoint_is_sharded:
+                logger.info(
+                    "Loading non-sharded checkpoint into FSDP model. "
+                    "Full state dict will be broadcast to all ranks."
+                )
+            else:
+                logger.info(f"Loading sharded FSDP checkpoint (world_size={get_world_size()})")
             set_fsdp_state_dict(
                 fsdp_model,
                 checkpoint["model_state_dict"],
