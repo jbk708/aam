@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-14
-**Status:** 14 outstanding tickets (~47-70 hours)
+**Status:** 15 outstanding tickets (~49-74 hours)
 
 ## Quick Links
 - **Regressor optimization:** `REGRESSOR_OPTIMIZATION_TICKETS.md` ← NEW
@@ -35,7 +35,7 @@ No urgent tickets remaining.
 | **REG-6** | Asymmetric loss | 2-3h | Regressor |
 | **PYT-12.2** | Batch size optimization | 4-6h | PyTorch |
 
-### LOW (9 tickets, ~32-46 hours)
+### LOW (10 tickets, ~34-50 hours)
 
 | Ticket | Description | Effort | Domain |
 |--------|-------------|--------|--------|
@@ -48,6 +48,7 @@ No urgent tickets remaining.
 | **COS-9.8** | ROCm documentation & best practices | 2-3h | Cosmos |
 | **PYT-18.5** | Lazy sample embedding computation | 4-6h | PyTorch |
 | **PYT-18.6** | Memory-aware dynamic batching | 4-6h | PyTorch |
+| **PYT-MAINT-1** | CLI flag cleanup and default optimization | 2-4h | Maintenance |
 
 ### BACKLOG (Phases 13-17)
 

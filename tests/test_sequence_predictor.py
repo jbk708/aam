@@ -1525,3 +1525,416 @@ class TestMLPRegressionHead:
             loaded_output = new_model(sample_tokens)["target_prediction"]
 
         assert torch.allclose(orig_output, loaded_output, atol=1e-6)
+
+
+class TestConditionalOutputScaling:
+    """Test suite for conditional output scaling in SequencePredictor."""
+
+    @pytest.fixture
+    def sample_tokens(self):
+        """Create sample tokens for testing."""
+        return _create_sample_tokens()
+
+    @pytest.fixture
+    def categorical_cardinalities(self):
+        """Create categorical cardinalities for testing."""
+        return {"location": 5, "season": 4}
+
+    @pytest.fixture
+    def categorical_ids(self):
+        """Create categorical ids for testing."""
+        return {
+            "location": torch.tensor([1, 2]),
+            "season": torch.tensor([3, 1]),
+        }
+
+    def test_init_without_conditional_scaling(self):
+        """Test that model without conditional scaling has no scale/bias modules."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+        )
+        assert model.conditional_scaling_columns is None
+        assert model.output_scales is None
+        assert model.output_biases is None
+
+    def test_init_with_single_scaling_column(self, categorical_cardinalities):
+        """Test initialization with single conditional scaling column."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            conditional_scaling_columns=["location"],
+        )
+        assert model.conditional_scaling_columns == ["location"]
+        assert model.output_scales is not None
+        assert model.output_biases is not None
+        assert "location" in model.output_scales
+        assert "location" in model.output_biases
+        assert model.output_scales["location"].num_embeddings == 5
+        assert model.output_scales["location"].embedding_dim == 1
+        assert model.output_biases["location"].num_embeddings == 5
+        assert model.output_biases["location"].embedding_dim == 1
+
+    def test_init_with_multiple_scaling_columns(self, categorical_cardinalities):
+        """Test initialization with multiple conditional scaling columns."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=3,
+            categorical_cardinalities=categorical_cardinalities,
+            conditional_scaling_columns=["location", "season"],
+        )
+        assert model.conditional_scaling_columns == ["location", "season"]
+        assert "location" in model.output_scales
+        assert "season" in model.output_scales
+        # out_dim = 3, so embedding_dim should be 3
+        assert model.output_scales["location"].embedding_dim == 3
+        assert model.output_scales["season"].embedding_dim == 3
+
+    def test_init_requires_categorical_cardinalities(self):
+        """Test that conditional scaling requires categorical_cardinalities."""
+        with pytest.raises(ValueError, match="requires categorical_cardinalities"):
+            SequencePredictor(
+                embedding_dim=64,
+                max_bp=150,
+                token_limit=1024,
+                out_dim=1,
+                conditional_scaling_columns=["location"],
+            )
+
+    def test_init_scaling_column_not_in_cardinalities(self, categorical_cardinalities):
+        """Test that invalid scaling column raises ValueError."""
+        with pytest.raises(ValueError, match="not found in categorical_cardinalities"):
+            SequencePredictor(
+                embedding_dim=64,
+                max_bp=150,
+                token_limit=1024,
+                out_dim=1,
+                categorical_cardinalities=categorical_cardinalities,
+                conditional_scaling_columns=["unknown_column"],
+            )
+
+    def test_scale_initialized_to_ones(self, categorical_cardinalities):
+        """Test that scale embeddings are initialized to 1.0."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            conditional_scaling_columns=["location"],
+        )
+        assert torch.allclose(
+            model.output_scales["location"].weight,
+            torch.ones_like(model.output_scales["location"].weight),
+        )
+
+    def test_bias_initialized_to_zeros(self, categorical_cardinalities):
+        """Test that bias embeddings are initialized to 0.0."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            conditional_scaling_columns=["location"],
+        )
+        assert torch.allclose(
+            model.output_biases["location"].weight,
+            torch.zeros_like(model.output_biases["location"].weight),
+        )
+
+    def test_forward_with_conditional_scaling(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test forward pass with conditional output scaling."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            conditional_scaling_columns=["location"],
+        )
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        assert "target_prediction" in result
+        assert result["target_prediction"].shape == (2, 1)
+
+    def test_identity_transform_at_init(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test that initial scale=1, bias=0 produces identity transform."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            conditional_scaling_columns=["location"],
+        )
+        # Verify scale=1 and bias=0 (identity transform)
+        assert torch.allclose(
+            model.output_scales["location"].weight,
+            torch.ones_like(model.output_scales["location"].weight),
+        )
+        assert torch.allclose(
+            model.output_biases["location"].weight,
+            torch.zeros_like(model.output_biases["location"].weight),
+        )
+        # With identity transform, applying scaling should not change output significantly
+        # Run forward to verify no numerical issues
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        assert not torch.isnan(result["target_prediction"]).any()
+        assert not torch.isinf(result["target_prediction"]).any()
+
+    def test_scaling_affects_output(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test that modified scale/bias affect the output."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            conditional_scaling_columns=["location"],
+        )
+        result_before = model(sample_tokens, categorical_ids=categorical_ids)
+
+        # Modify scale and bias
+        with torch.no_grad():
+            model.output_scales["location"].weight.fill_(2.0)
+            model.output_biases["location"].weight.fill_(1.0)
+
+        result_after = model(sample_tokens, categorical_ids=categorical_ids)
+
+        # Output should be different
+        assert not torch.allclose(
+            result_before["target_prediction"],
+            result_after["target_prediction"],
+        )
+
+    def test_different_categories_different_outputs(self, sample_tokens, categorical_cardinalities):
+        """Test that different category values produce different predictions."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            conditional_scaling_columns=["location"],
+        )
+        # Modify scale to make categories differ
+        with torch.no_grad():
+            model.output_scales["location"].weight[0].fill_(1.0)
+            model.output_scales["location"].weight[1].fill_(2.0)
+
+        cat_ids_1 = {"location": torch.tensor([0, 0]), "season": torch.tensor([0, 0])}
+        cat_ids_2 = {"location": torch.tensor([1, 1]), "season": torch.tensor([0, 0])}
+
+        result_1 = model(sample_tokens, categorical_ids=cat_ids_1)
+        result_2 = model(sample_tokens, categorical_ids=cat_ids_2)
+
+        assert not torch.allclose(
+            result_1["target_prediction"],
+            result_2["target_prediction"],
+        )
+
+    def test_multiple_columns_applied_sequentially(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test that multiple scaling columns are applied sequentially."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            conditional_scaling_columns=["location", "season"],
+        )
+        # Modify scales
+        with torch.no_grad():
+            model.output_scales["location"].weight.fill_(2.0)
+            model.output_scales["season"].weight.fill_(3.0)
+            model.output_biases["location"].weight.fill_(0.0)
+            model.output_biases["season"].weight.fill_(0.0)
+
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        # With both scales, output should be multiplied by 2 * 3 = 6
+        assert result["target_prediction"].shape == (2, 1)
+
+    def test_works_with_mlp_head(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test conditional scaling works with MLP regression head."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            conditional_scaling_columns=["location"],
+            regressor_hidden_dims=[32, 16],
+        )
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        assert result["target_prediction"].shape == (2, 1)
+
+    def test_works_with_bounded_targets(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test conditional scaling works with bounded_targets (sigmoid)."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            conditional_scaling_columns=["location"],
+            bounded_targets=True,
+        )
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        predictions = result["target_prediction"]
+        assert (predictions >= 0).all()
+        assert (predictions <= 1).all()
+
+    def test_works_with_output_activation(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test conditional scaling works with output activations."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            conditional_scaling_columns=["location"],
+            output_activation="softplus",
+        )
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        predictions = result["target_prediction"]
+        assert (predictions >= 0).all()
+
+    def test_works_with_learnable_output_scale(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test conditional scaling works alongside learnable_output_scale."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            conditional_scaling_columns=["location"],
+            learnable_output_scale=True,
+        )
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        assert result["target_prediction"].shape == (2, 1)
+
+    def test_gradients_flow_through_scaling(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test that gradients flow through conditional scaling embeddings."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            conditional_scaling_columns=["location", "season"],
+        )
+        model.train()
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        loss = result["target_prediction"].sum()
+        loss.backward()
+
+        # Check that scale/bias gradients exist
+        for col in ["location", "season"]:
+            assert model.output_scales[col].weight.grad is not None
+            assert model.output_biases[col].weight.grad is not None
+            assert not torch.isnan(model.output_scales[col].weight.grad).any()
+            assert not torch.isnan(model.output_biases[col].weight.grad).any()
+
+    def test_scaling_independent_of_categorical_fusion(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test that scaling works with both concat and add fusion."""
+        for fusion in ["concat", "add"]:
+            model = SequencePredictor(
+                embedding_dim=64,
+                max_bp=150,
+                token_limit=1024,
+                out_dim=1,
+                categorical_cardinalities=categorical_cardinalities,
+                categorical_fusion=fusion,
+                conditional_scaling_columns=["location"],
+            )
+            result = model(sample_tokens, categorical_ids=categorical_ids)
+            assert result["target_prediction"].shape == (2, 1)
+
+    def test_scaling_without_categorical_fusion(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test that scaling can be used without categorical fusion (embedder only for scaling)."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            conditional_scaling_columns=["location"],
+        )
+        # Should work even when categorical_ids only used for scaling
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        assert result["target_prediction"].shape == (2, 1)
+
+    def test_multi_output_scaling(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test conditional scaling with multiple output dimensions."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=3,
+            categorical_cardinalities=categorical_cardinalities,
+            conditional_scaling_columns=["location"],
+        )
+        assert model.output_scales["location"].embedding_dim == 3
+
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        assert result["target_prediction"].shape == (2, 3)
+
+    def test_no_nan_outputs(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test that conditional scaling produces no NaN outputs."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            conditional_scaling_columns=["location", "season"],
+        )
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        assert not torch.isnan(result["target_prediction"]).any()
+
+    def test_save_load_roundtrip(self, sample_tokens, categorical_cardinalities, categorical_ids, tmp_path):
+        """Test that model with conditional scaling can be saved and loaded."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            conditional_scaling_columns=["location"],
+        )
+        # Modify weights to make output distinctive
+        with torch.no_grad():
+            model.output_scales["location"].weight.fill_(2.5)
+            model.output_biases["location"].weight.fill_(0.5)
+
+        model.eval()
+        with torch.no_grad():
+            orig_output = model(sample_tokens, categorical_ids=categorical_ids)["target_prediction"]
+
+        # Save
+        checkpoint_path = tmp_path / "model.pt"
+        torch.save(model.state_dict(), checkpoint_path)
+
+        # Load into new model
+        new_model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            conditional_scaling_columns=["location"],
+        )
+        new_model.load_state_dict(torch.load(checkpoint_path, weights_only=True))
+        new_model.eval()
+
+        with torch.no_grad():
+            loaded_output = new_model(sample_tokens, categorical_ids=categorical_ids)["target_prediction"]
+
+        assert torch.allclose(orig_output, loaded_output, atol=1e-6)

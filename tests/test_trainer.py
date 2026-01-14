@@ -3065,9 +3065,7 @@ class TestBestMetricSelection:
                 best_metric="invalid_metric",
             )
 
-    def test_train_saves_checkpoint_by_val_loss(
-        self, small_predictor, loss_fn, simple_dataloader, device, tmp_path
-    ):
+    def test_train_saves_checkpoint_by_val_loss(self, small_predictor, loss_fn, simple_dataloader, device, tmp_path):
         """Test train saves best model based on val_loss (default)."""
         trainer = Trainer(
             model=small_predictor,
@@ -3091,9 +3089,7 @@ class TestBestMetricSelection:
         assert "best_val_loss" in checkpoint
         assert checkpoint.get("best_metric") == "val_loss"
 
-    def test_train_saves_checkpoint_by_r2(
-        self, small_predictor, loss_fn, simple_dataloader, device, tmp_path
-    ):
+    def test_train_saves_checkpoint_by_r2(self, small_predictor, loss_fn, simple_dataloader, device, tmp_path):
         """Test train saves best model based on r2 metric."""
         trainer = Trainer(
             model=small_predictor,
@@ -3118,9 +3114,7 @@ class TestBestMetricSelection:
         # best_metric_value should be stored
         assert "best_metric_value" in checkpoint
 
-    def test_train_saves_checkpoint_by_mae(
-        self, small_predictor, loss_fn, simple_dataloader, device, tmp_path
-    ):
+    def test_train_saves_checkpoint_by_mae(self, small_predictor, loss_fn, simple_dataloader, device, tmp_path):
         """Test train saves best model based on mae metric."""
         trainer = Trainer(
             model=small_predictor,
@@ -3143,9 +3137,7 @@ class TestBestMetricSelection:
         checkpoint = torch.load(checkpoint_path, weights_only=True)
         assert checkpoint.get("best_metric") == "mae"
 
-    def test_checkpoint_stores_best_metric_info(
-        self, small_predictor, loss_fn, simple_dataloader, device, tmp_path
-    ):
+    def test_checkpoint_stores_best_metric_info(self, small_predictor, loss_fn, simple_dataloader, device, tmp_path):
         """Test checkpoint contains best_metric and best_metric_value."""
         trainer = Trainer(
             model=small_predictor,
@@ -3171,9 +3163,7 @@ class TestBestMetricSelection:
         assert "best_metric_value" in checkpoint
         assert "best_val_loss" in checkpoint  # backwards compatibility
 
-    def test_load_checkpoint_with_best_metric(
-        self, small_predictor, loss_fn, simple_dataloader, device, tmp_path
-    ):
+    def test_load_checkpoint_with_best_metric(self, small_predictor, loss_fn, simple_dataloader, device, tmp_path):
         """Test load_checkpoint returns best_metric info."""
         trainer = Trainer(
             model=small_predictor,
