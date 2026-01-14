@@ -276,10 +276,13 @@ def pretrain(
 
         setup_expandable_segments(use_expandable_segments)
 
+        # Determine if using any distributed training mode
+        use_distributed = fsdp or distributed
+
         # Setup distributed training if enabled
         train_sampler = None
         val_sampler = None
-        if fsdp or distributed:
+        if use_distributed:
             rank, world_size, device_obj = setup_distributed(backend="nccl")
             mode = "FSDP" if fsdp else "Distributed"
             if is_main_process():
@@ -415,8 +418,8 @@ def pretrain(
             unifrac_loader=unifrac_loader,
         )
 
-        # Create dataloaders (with distributed sampler if distributed or fsdp)
-        if fsdp or distributed:
+        # Create dataloaders (with distributed sampler if using distributed training)
+        if use_distributed:
             train_loader, train_sampler = create_distributed_dataloader(
                 train_dataset,
                 batch_size=batch_size,
@@ -608,7 +611,7 @@ def pretrain(
         mixed_precision_normalized = None if mixed_precision == "none" else mixed_precision
 
         # Only log to TensorBoard on main process in distributed mode
-        tensorboard_dir = str(output_path) if (not (fsdp or distributed) or is_main_process()) else None
+        tensorboard_dir = str(output_path) if (not use_distributed or is_main_process()) else None
 
         trainer = Trainer(
             model=model,
@@ -679,13 +682,13 @@ def pretrain(
             logger.info("-" * 60)
 
         # Only save final model on main process in distributed mode
-        if not (fsdp or distributed) or is_main_process():
+        if not use_distributed or is_main_process():
             final_model_path = output_path / "pretrained_encoder.pt"
             trainer.save_checkpoint(str(final_model_path), epoch=epochs - 1, best_val_loss=best_val_loss, metrics=history)
             logger.info(f"Pre-trained encoder saved to {final_model_path}")
 
         # Cleanup distributed training
-        if fsdp or distributed:
+        if use_distributed:
             cleanup_distributed()
 
     except Exception as e:
@@ -694,6 +697,6 @@ def pretrain(
         else:
             logging.error(f"Pre-training failed: {e}", exc_info=True)
         # Cleanup distributed training on error
-        if fsdp or distributed:
+        if "use_distributed" in locals() and use_distributed:
             cleanup_distributed()
         raise click.ClickException(str(e))
