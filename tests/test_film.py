@@ -411,3 +411,32 @@ class TestFiLMIntegration:
 
             outputs = model(tokens, categorical_ids=categorical_ids)
             assert outputs["target_prediction"].shape == (4, 1)
+
+    def test_film_warns_on_missing_columns(self):
+        """Test that warning is raised when FiLM columns are missing from categorical_ids."""
+        import warnings
+        from aam.models.sequence_predictor import SequencePredictor
+
+        model = SequencePredictor(
+            embedding_dim=64,
+            out_dim=1,
+            categorical_cardinalities={"season": 5, "site": 9},
+            categorical_embed_dim=16,
+            regressor_hidden_dims=[32, 16],
+            film_conditioning_columns=["season", "site"],
+        )
+
+        tokens = torch.randint(0, 5, (4, 10, 50))
+
+        # Only provide 'season', missing 'site'
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            outputs = model(tokens, categorical_ids={"season": torch.randint(0, 5, (4,))})
+
+            # Should still produce output
+            assert outputs["target_prediction"].shape == (4, 1)
+
+            # Should have raised a warning about missing 'site'
+            assert len(w) == 1
+            assert "site" in str(w[0].message)
+            assert "FiLM conditioning columns" in str(w[0].message)

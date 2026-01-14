@@ -1,5 +1,7 @@
 """Main prediction model that composes SequenceEncoder as base model."""
 
+import warnings
+
 import torch
 import torch.nn as nn
 from typing import Dict, List, Optional
@@ -496,18 +498,41 @@ class SequencePredictor(nn.Module):
         if self.categorical_embedder is None:
             return None
 
-        # Get embeddings for FiLM conditioning columns only
         film_embeddings = []
+        missing_columns = []
+
+        # Determine batch size and device from available categorical_ids
+        batch_size = None
+        device = None
         for col in self.film_conditioning_columns:
             if col in categorical_ids:
-                # Access the individual embedding layer for this column
-                emb = self.categorical_embedder.embeddings[col](categorical_ids[col])
-                film_embeddings.append(emb)
+                batch_size = categorical_ids[col].size(0)
+                device = categorical_ids[col].device
+                break
 
-        if not film_embeddings:
+        if batch_size is None:
+            # No FiLM columns provided at all
             return None
 
-        return torch.cat(film_embeddings, dim=-1)  # [B, film_cat_dim]
+        for col in self.film_conditioning_columns:
+            if col in categorical_ids:
+                emb = self.categorical_embedder.embeddings[col](categorical_ids[col])
+                film_embeddings.append(emb)
+            else:
+                # Use zero embedding for missing columns (identity FiLM transform)
+                embed_dim = self.categorical_embedder.embeddings[col].embedding_dim
+                zero_emb = torch.zeros(batch_size, embed_dim, device=device)
+                film_embeddings.append(zero_emb)
+                missing_columns.append(col)
+
+        if missing_columns:
+            warnings.warn(
+                f"FiLM conditioning columns {missing_columns} not found in categorical_ids. "
+                f"Using identity transform (no modulation) for missing columns.",
+                stacklevel=3,
+            )
+
+        return torch.cat(film_embeddings, dim=-1)
 
     def forward(
         self,
