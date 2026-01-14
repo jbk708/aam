@@ -369,8 +369,7 @@ def get_fsdp_state_dict(
                 f"Try reducing model size or batch size. Original error: {e}"
             ) from e
         raise RuntimeError(
-            f"Failed to get FSDP state dict (sharded={sharded}). "
-            f"This may indicate corrupted FSDP state. Original error: {e}"
+            f"Failed to get FSDP state dict (sharded={sharded}). This may indicate corrupted FSDP state. Original error: {e}"
         ) from e
 
 
@@ -423,9 +422,7 @@ def set_fsdp_state_dict(
                 f"FSDP state dict key mismatch (sharded={sharded}, strict={strict}). "
                 f"For transfer learning, try strict=False. Original error: {e}"
             ) from e
-        raise RuntimeError(
-            f"Failed to load FSDP state dict (sharded={sharded}). Original error: {e}"
-        ) from e
+        raise RuntimeError(f"Failed to load FSDP state dict (sharded={sharded}). Original error: {e}") from e
 
 
 def get_fsdp_optimizer_state_dict(

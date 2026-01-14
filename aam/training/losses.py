@@ -56,14 +56,8 @@ def _gather_target_matrices(
     dist.all_gather(gathered, local_target)
 
     # Construct global target matrix (block-diagonal)
-    global_target = torch.zeros(
-        global_batch_size, global_batch_size,
-        dtype=local_target.dtype, device=local_target.device
-    )
-    mask = torch.zeros(
-        global_batch_size, global_batch_size,
-        dtype=torch.bool, device=local_target.device
-    )
+    global_target = torch.zeros(global_batch_size, global_batch_size, dtype=local_target.dtype, device=local_target.device)
+    mask = torch.zeros(global_batch_size, global_batch_size, dtype=torch.bool, device=local_target.device)
 
     # Place each gathered matrix on the diagonal
     for rank_idx, target_block in enumerate(gathered):

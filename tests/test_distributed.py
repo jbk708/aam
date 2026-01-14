@@ -879,6 +879,7 @@ class TestGatherEmbeddingsForUnifrac:
         with (
             patch("aam.training.distributed.is_distributed", return_value=True),
             patch("aam.training.distributed.get_world_size", return_value=world_size),
+            patch("aam.training.distributed.get_rank", return_value=0),
             patch("aam.training.distributed.dist.all_gather") as mock_all_gather,
         ):
             # Simulate all_gather filling the gathered list
@@ -903,6 +904,7 @@ class TestGatherEmbeddingsForUnifrac:
         with (
             patch("aam.training.distributed.is_distributed", return_value=True),
             patch("aam.training.distributed.get_world_size", return_value=2),
+            patch("aam.training.distributed.get_rank", return_value=0),
             patch("aam.training.distributed.dist.all_gather") as mock_all_gather,
         ):
             # Just make it not crash

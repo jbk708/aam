@@ -635,7 +635,8 @@ class Trainer:
                         )
 
                 losses = self.loss_fn(
-                    outputs, targets,
+                    outputs,
+                    targets,
                     is_classifier=is_classifier,
                     encoder_type=encoder_type,
                     gather_for_distributed=self.gather_for_distributed,
@@ -1120,8 +1121,7 @@ class Trainer:
         if model_is_fsdp:
             fsdp_model = cast("FSDP", self.model)
             logger.info(
-                f"Saving FSDP checkpoint (sharded={self.use_sharded_checkpoint}, "
-                f"rank0_only={not self.use_sharded_checkpoint})"
+                f"Saving FSDP checkpoint (sharded={self.use_sharded_checkpoint}, rank0_only={not self.use_sharded_checkpoint})"
             )
             model_state_dict = get_fsdp_state_dict(
                 fsdp_model,
@@ -1160,10 +1160,7 @@ class Trainer:
         try:
             torch.save(checkpoint, filepath)
         except (OSError, RuntimeError) as e:
-            raise RuntimeError(
-                f"Failed to save checkpoint to '{filepath}': {e}. "
-                f"Check disk space and permissions."
-            ) from e
+            raise RuntimeError(f"Failed to save checkpoint to '{filepath}': {e}. Check disk space and permissions.") from e
 
     def load_checkpoint(
         self,
@@ -1223,10 +1220,7 @@ class Trainer:
         if model_is_fsdp:
             fsdp_model = cast("FSDP", self.model)
             if not checkpoint_is_sharded:
-                logger.info(
-                    "Loading non-sharded checkpoint into FSDP model. "
-                    "Full state dict will be broadcast to all ranks."
-                )
+                logger.info("Loading non-sharded checkpoint into FSDP model. Full state dict will be broadcast to all ranks.")
             else:
                 logger.info(f"Loading sharded FSDP checkpoint (world_size={get_world_size()})")
             set_fsdp_state_dict(
