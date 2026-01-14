@@ -230,6 +230,43 @@ class Trainer:
                 return False
             raise
 
+    def _log_film_gradients(self) -> None:
+        """Log FiLM-related parameter gradients for debugging DDP issues."""
+        underlying_model = self.model.module if hasattr(self.model, "module") else self.model
+
+        # Check if model has FiLM target head
+        if not hasattr(underlying_model, "target_head"):
+            return
+
+        from aam.models.film import FiLMTargetHead
+        if not isinstance(underlying_model.target_head, FiLMTargetHead):
+            return
+
+        logger.info("=== FiLM Debug: Parameter Gradients ===")
+
+        # Log FiLM layer gradients
+        for i, layer in enumerate(underlying_model.target_head.film_layers):
+            gamma_grad = layer.film.gamma_proj.weight.grad
+            beta_grad = layer.film.beta_proj.weight.grad
+
+            gamma_norm = gamma_grad.norm().item() if gamma_grad is not None else 0.0
+            beta_norm = beta_grad.norm().item() if beta_grad is not None else 0.0
+
+            logger.info(f"  FiLM Layer {i}: gamma_grad_norm={gamma_norm:.6f}, beta_grad_norm={beta_norm:.6f}")
+
+        # Log categorical embedding gradients
+        if hasattr(underlying_model, "categorical_embedder") and underlying_model.categorical_embedder is not None:
+            for col_name, emb in underlying_model.categorical_embedder.embeddings.items():
+                emb_grad = emb.weight.grad
+                emb_norm = emb_grad.norm().item() if emb_grad is not None else 0.0
+                logger.info(f"  Categorical Embedding '{col_name}': grad_norm={emb_norm:.6f}")
+
+        # Log output layer gradient
+        output_grad = underlying_model.target_head.output_layer.weight.grad
+        output_norm = output_grad.norm().item() if output_grad is not None else 0.0
+        logger.info(f"  Output Layer: grad_norm={output_norm:.6f}")
+        logger.info("=== End FiLM Debug ===")
+
     def _prepare_batch(
         self, batch: Union[Dict, Tuple]
     ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor], Optional[Dict[str, torch.Tensor]]]:
@@ -703,6 +740,11 @@ class Trainer:
                     self.scaler.scale(scaled_loss).backward()
                 else:
                     scaled_loss.backward()
+
+                # Debug: Log FiLM parameter gradients if AAM_DEBUG_FILM is set
+                import os
+                if os.environ.get("AAM_DEBUG_FILM") and step == 1:
+                    self._log_film_gradients()
 
                 del outputs, tokens, targets
                 if torch.cuda.is_available():
