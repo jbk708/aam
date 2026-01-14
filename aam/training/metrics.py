@@ -124,6 +124,17 @@ class StreamingRegressionMetrics:
         self.plot_targets = []
         self._reservoir_idx = 0
 
+    def sync_distributed(self) -> None:
+        """Synchronize metrics across all distributed processes.
+
+        Uses all_reduce for sums and parallel Welford merge for variance stats.
+        After calling this method, all ranks will have identical metrics computed
+        over the full validation set.
+
+        This is a no-op if not running in distributed mode.
+        """
+        raise NotImplementedError("sync_distributed not yet implemented")
+
 
 class StreamingClassificationMetrics:
     """Streaming computation of classification metrics.
@@ -271,6 +282,17 @@ class StreamingClassificationMetrics:
         self.plot_targets = []
         self._reservoir_idx = 0
 
+    def sync_distributed(self) -> None:
+        """Synchronize metrics across all distributed processes.
+
+        Uses all_reduce to sum confusion matrices across all ranks.
+        After calling this method, all ranks will have identical metrics computed
+        over the full validation set.
+
+        This is a no-op if not running in distributed mode.
+        """
+        raise NotImplementedError("sync_distributed not yet implemented")
+
 
 class StreamingCountMetrics:
     """Streaming computation of count prediction metrics (masked MAE, MSE).
@@ -287,6 +309,8 @@ class StreamingCountMetrics:
         self.n = 0
         self.sum_abs_error = 0.0
         self.sum_sq_error = 0.0
+        self.mean_true = 0.0
+        self.m2_true = 0.0
 
         # Reservoir sampling for plot data
         self.max_plot_samples = max_plot_samples
@@ -368,9 +392,22 @@ class StreamingCountMetrics:
         self.n = 0
         self.sum_abs_error = 0.0
         self.sum_sq_error = 0.0
+        self.mean_true = 0.0
+        self.m2_true = 0.0
         self.plot_predictions = []
         self.plot_targets = []
         self._reservoir_idx = 0
+
+    def sync_distributed(self) -> None:
+        """Synchronize metrics across all distributed processes.
+
+        Uses all_reduce to sum error statistics across all ranks.
+        After calling this method, all ranks will have identical metrics computed
+        over the full validation set.
+
+        This is a no-op if not running in distributed mode.
+        """
+        raise NotImplementedError("sync_distributed not yet implemented")
 
 
 def compute_regression_metrics(

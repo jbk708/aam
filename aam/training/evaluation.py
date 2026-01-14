@@ -604,6 +604,15 @@ class Evaluator:
 
         avg_losses = {key: value / num_batches for key, value in total_losses.items()}
 
+        # Synchronize metrics across distributed processes before computing final values
+        if compute_metrics:
+            if has_unifrac:
+                unifrac_metrics.sync_distributed()
+            if has_target:
+                target_metrics.sync_distributed()
+            if has_count:
+                count_metrics.sync_distributed()
+
         if compute_metrics:
             if is_pretraining and has_unifrac:
                 metrics = unifrac_metrics.compute()
