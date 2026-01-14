@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-14
-**Status:** 15 outstanding tickets (~49-74 hours)
+**Status:** 14 outstanding tickets (~46-70 hours)
 
 ## Quick Links
 - **Regressor optimization:** `REGRESSOR_OPTIMIZATION_TICKETS.md` ← NEW
@@ -20,11 +20,10 @@
 
 No urgent tickets remaining.
 
-### HIGH (2 tickets, ~7-9 hours)
+### HIGH (1 ticket, ~4-5 hours)
 
 | Ticket | Description | Effort | Domain |
 |--------|-------------|--------|--------|
-| **REG-3** | Conditional output scaling | 3-4h | Regressor |
 | **REG-4** | FiLM layers (categorical modulation) | 4-5h | Regressor |
 
 ### MEDIUM (3 tickets, ~10-15 hours)
@@ -62,6 +61,13 @@ Future enhancement phases (~50+ hours):
 ---
 
 ## Recently Completed
+
+**REG-3: Conditional Output Scaling** (2026-01-14) - COMPLETE
+- Added `--conditional-output-scaling` flag for per-category scale/bias
+- Per-category scale (init=1.0) and bias (init=0.0) as nn.Embedding
+- Applied after target_head: `output = prediction * scale[cat] + bias[cat]`
+- Works with MLP head, bounded targets, output activations
+- 22 unit tests in TestConditionalOutputScaling class
 
 **PYT-BUG-4: Distributed Validation Plots Show Only Local GPU Data** (2026-01-14) - COMPLETE
 - Added `gather_predictions_for_plot()` for cross-GPU prediction gathering
