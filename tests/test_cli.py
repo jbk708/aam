@@ -2291,40 +2291,40 @@ class TestBestMetricCLI:
         # Click rejects invalid choices before our validation
         assert "Invalid value" in result.output or "is not one of" in result.output
 
-    def test_train_command_count_penalty_option_exists(self, runner):
+
+class TestCountPenaltyCLI:
+    """Tests for --count-penalty CLI option."""
+
+    @pytest.fixture
+    def runner(self):
+        return CliRunner()
+
+    def test_train_command_option_exists(self, runner):
         """Test that --count-penalty option is available in train command."""
         result = runner.invoke(cli, ["train", "--help"])
         assert result.exit_code == 0
         assert "--count-penalty" in result.output
 
-    def test_pretrain_command_count_penalty_option_exists(self, runner):
+    def test_pretrain_command_option_exists(self, runner):
         """Test that --count-penalty option is available in pretrain command."""
         result = runner.invoke(cli, ["pretrain", "--help"])
         assert result.exit_code == 0
         assert "--count-penalty" in result.output
 
-    def test_train_command_count_penalty_default_value(self):
-        """Test that --count-penalty has default value of 1.0."""
-        from aam.cli.train import train
-        import click
+    def test_train_command_default_value(self):
+        """Test that --count-penalty has default value of 1.0 in train command."""
+        count_penalty_param = next(
+            (p for p in train.params if isinstance(p, click.Option) and "--count-penalty" in p.opts),
+            None,
+        )
+        assert count_penalty_param is not None, "--count-penalty option not found in train command"
+        assert count_penalty_param.default == 1.0
 
-        # Find the --count-penalty option
-        for param in train.params:
-            if isinstance(param, click.Option) and "--count-penalty" in param.opts:
-                assert param.default == 1.0
-                break
-        else:
-            pytest.fail("--count-penalty option not found in train command")
-
-    def test_pretrain_command_count_penalty_default_value(self):
-        """Test that --count-penalty has default value of 1.0 in pretrain."""
-        from aam.cli.pretrain import pretrain
-        import click
-
-        # Find the --count-penalty option
-        for param in pretrain.params:
-            if isinstance(param, click.Option) and "--count-penalty" in param.opts:
-                assert param.default == 1.0
-                break
-        else:
-            pytest.fail("--count-penalty option not found in pretrain command")
+    def test_pretrain_command_default_value(self):
+        """Test that --count-penalty has default value of 1.0 in pretrain command."""
+        count_penalty_param = next(
+            (p for p in pretrain.params if isinstance(p, click.Option) and "--count-penalty" in p.opts),
+            None,
+        )
+        assert count_penalty_param is not None, "--count-penalty option not found in pretrain command"
+        assert count_penalty_param.default == 1.0
