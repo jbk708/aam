@@ -338,10 +338,12 @@ class SequencePredictor(nn.Module):
                     f"Available columns: {list(categorical_cardinalities.keys())}"
                 )
             num_categories = categorical_cardinalities[col]
-            self.output_scales[col] = nn.Embedding(num_categories, self.out_dim)
-            self.output_biases[col] = nn.Embedding(num_categories, self.out_dim)
-            nn.init.ones_(self.output_scales[col].weight)
-            nn.init.zeros_(self.output_biases[col].weight)
+            scale_emb = nn.Embedding(num_categories, self.out_dim)
+            bias_emb = nn.Embedding(num_categories, self.out_dim)
+            nn.init.ones_(scale_emb.weight)
+            nn.init.zeros_(bias_emb.weight)
+            self.output_scales[col] = scale_emb
+            self.output_biases[col] = bias_emb
 
     def _apply_conditional_scaling(
         self,
