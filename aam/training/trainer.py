@@ -233,60 +233,64 @@ class Trainer:
 
     def _log_film_gradients(self) -> None:
         """Log FiLM-related parameter gradients for debugging DDP issues."""
-        underlying_model = self.model.module if hasattr(self.model, "module") else self.model
+        try:
+            underlying_model = self.model.module if hasattr(self.model, "module") else self.model
 
-        # Check if model has FiLM target head
-        if not hasattr(underlying_model, "target_head"):
-            return
+            if not hasattr(underlying_model, "target_head"):
+                logger.debug("FiLM debug: Model has no target_head attribute, skipping")
+                return
 
-        from aam.models.film import FiLMTargetHead
-        if not isinstance(underlying_model.target_head, FiLMTargetHead):
-            return
+            from aam.models.film import FiLMTargetHead
+            if not isinstance(underlying_model.target_head, FiLMTargetHead):
+                logger.debug(
+                    f"FiLM debug: target_head is {type(underlying_model.target_head).__name__}, "
+                    "not FiLMTargetHead. Skipping gradient logging."
+                )
+                return
 
-        logger.info("=== FiLM Debug: Parameter Gradients & Values ===")
+            logger.info("=== FiLM Debug: Parameter Gradients & Values ===")
 
-        # Log FiLM layer gradients AND parameter values
-        for i, layer in enumerate(underlying_model.target_head.film_layers):
-            gamma_weight = layer.film.gamma_proj.weight
-            gamma_bias = layer.film.gamma_proj.bias
-            gamma_grad = gamma_weight.grad
+            for i, layer in enumerate(underlying_model.target_head.film_layers):
+                gamma_weight = layer.film.gamma_proj.weight
+                gamma_bias = layer.film.gamma_proj.bias
+                gamma_grad = gamma_weight.grad
 
-            beta_weight = layer.film.beta_proj.weight
-            beta_bias = layer.film.beta_proj.bias
-            beta_grad = beta_weight.grad
+                beta_weight = layer.film.beta_proj.weight
+                beta_bias = layer.film.beta_proj.bias
+                beta_grad = beta_weight.grad
 
-            gamma_grad_norm = gamma_grad.norm().item() if gamma_grad is not None else 0.0
-            beta_grad_norm = beta_grad.norm().item() if beta_grad is not None else 0.0
+                gamma_grad_norm = gamma_grad.norm().item() if gamma_grad is not None else 0.0
+                beta_grad_norm = beta_grad.norm().item() if beta_grad is not None else 0.0
 
-            # Log weight norms to see if they're changing from zero
-            gamma_weight_norm = gamma_weight.norm().item()
-            beta_weight_norm = beta_weight.norm().item()
-            gamma_bias_mean = gamma_bias.mean().item()
-            beta_bias_mean = beta_bias.mean().item()
+                gamma_weight_norm = gamma_weight.norm().item()
+                beta_weight_norm = beta_weight.norm().item()
+                gamma_bias_mean = gamma_bias.mean().item()
+                beta_bias_mean = beta_bias.mean().item()
 
-            logger.info(
-                f"  FiLM Layer {i}: "
-                f"gamma_w={gamma_weight_norm:.6f}, gamma_b_mean={gamma_bias_mean:.4f}, gamma_grad={gamma_grad_norm:.6f} | "
-                f"beta_w={beta_weight_norm:.6f}, beta_b_mean={beta_bias_mean:.4f}, beta_grad={beta_grad_norm:.6f}"
-            )
-
-        # Log categorical embedding gradients and values
-        if hasattr(underlying_model, "categorical_embedder") and underlying_model.categorical_embedder is not None:
-            for col_name, emb in underlying_model.categorical_embedder.embeddings.items():
-                emb_grad = emb.weight.grad
-                emb_grad_norm = emb_grad.norm().item() if emb_grad is not None else 0.0
-                emb_weight_norm = emb.weight.norm().item()
-                emb_weight_mean = emb.weight.mean().item()
                 logger.info(
-                    f"  Embedding '{col_name}': weight_norm={emb_weight_norm:.6f}, "
-                    f"weight_mean={emb_weight_mean:.6f}, grad_norm={emb_grad_norm:.6f}"
+                    f"  FiLM Layer {i}: "
+                    f"gamma_w={gamma_weight_norm:.6f}, gamma_b_mean={gamma_bias_mean:.4f}, gamma_grad={gamma_grad_norm:.6f} | "
+                    f"beta_w={beta_weight_norm:.6f}, beta_b_mean={beta_bias_mean:.4f}, beta_grad={beta_grad_norm:.6f}"
                 )
 
-        # Log output layer gradient
-        output_grad = underlying_model.target_head.output_layer.weight.grad
-        output_norm = output_grad.norm().item() if output_grad is not None else 0.0
-        logger.info(f"  Output Layer: grad_norm={output_norm:.6f}")
-        logger.info("=== End FiLM Debug ===")
+            if hasattr(underlying_model, "categorical_embedder") and underlying_model.categorical_embedder is not None:
+                for col_name, emb in underlying_model.categorical_embedder.embeddings.items():
+                    emb_grad = emb.weight.grad
+                    emb_grad_norm = emb_grad.norm().item() if emb_grad is not None else 0.0
+                    emb_weight_norm = emb.weight.norm().item()
+                    emb_weight_mean = emb.weight.mean().item()
+                    logger.info(
+                        f"  Embedding '{col_name}': weight_norm={emb_weight_norm:.6f}, "
+                        f"weight_mean={emb_weight_mean:.6f}, grad_norm={emb_grad_norm:.6f}"
+                    )
+
+            output_grad = underlying_model.target_head.output_layer.weight.grad
+            output_norm = output_grad.norm().item() if output_grad is not None else 0.0
+            logger.info(f"  Output Layer: grad_norm={output_norm:.6f}")
+            logger.info("=== End FiLM Debug ===")
+
+        except Exception as e:
+            logger.warning(f"FiLM debug logging failed: {e}. Training will continue.")
 
     def _prepare_batch(
         self, batch: Union[Dict, Tuple]
