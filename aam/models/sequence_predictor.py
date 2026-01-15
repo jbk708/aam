@@ -418,6 +418,8 @@ class SequencePredictor(nn.Module):
         if isinstance(self.target_head, nn.Linear):
             nn.init.xavier_uniform_(self.target_head.weight)
             nn.init.zeros_(self.target_head.bias)
+        elif isinstance(self.target_head, FiLMTargetHead):
+            pass  # FiLMTargetHead handles its own initialization
         else:
             for module in self.target_head.modules():
                 if isinstance(module, nn.Linear):
