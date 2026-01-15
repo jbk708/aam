@@ -447,7 +447,6 @@ class TestFiLMIntegration:
         Regression test for bug where _init_weights() was overwriting FiLM initialization.
         """
         from aam.models.sequence_predictor import SequencePredictor
-        from aam.models.film import FiLMTargetHead
 
         model = SequencePredictor(
             embedding_dim=64,

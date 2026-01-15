@@ -2,6 +2,7 @@
 
 import logging
 import math
+import os
 from pathlib import Path
 from typing import Any, Dict, Optional, Union, Tuple, cast, TYPE_CHECKING
 
@@ -762,7 +763,6 @@ class Trainer:
                     scaled_loss.backward()
 
                 # Debug: Log FiLM parameter gradients if AAM_DEBUG_FILM is set
-                import os
                 if os.environ.get("AAM_DEBUG_FILM") and (step == 1 or step == total_steps):
                     logger.info(f"FiLM Debug at step {step}/{total_steps}:")
                     self._log_film_gradients()
