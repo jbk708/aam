@@ -1,170 +1,155 @@
 # Archived Tickets - Completed Work
 
-**Last Updated:** 2026-01-08
+**Last Updated:** 2026-01-20
 
-This file contains completed tickets for historical reference. For active work, see `TICKET_OVERVIEW.md`.
-
----
-
-## ROCm Numerical Divergence (COS-8.2 Resolved - 2026-01-08)
-
-- **COS-8.2:** ROCm Numerical Divergence - **RESOLVED**
-  - **Issue:** `mem_efficient` SDPA produced 42% nuc accuracy vs 70% on CUDA
-  - **Resolution:** Use `--attn-implementation math --no-gradient-checkpointing`
-  - **Trade-off:** Higher memory usage, slower iteration rate
-  - **Root Cause:** Numerical differences in memory-efficient attention kernel on HIP/ROCm
+Completed tickets for historical reference. For active work, see `TICKET_OVERVIEW.md`.
 
 ---
 
-## Categorical Features (CAT-1 through CAT-5 Complete - 2026-01-05)
+## Regressor Optimization (REG-1 to REG-4, REG-BUG-1) - 2026-01-14
 
-- **CAT-1:** Categorical Metadata Schema Definition - `CategoricalColumnConfig`, `CategoricalSchema` dataclasses with validation
-- **CAT-2:** Dataset Pipeline — Categorical Encoding - `CategoricalEncoder` class with fit/transform, index 0 reserved for unknown
-- **CAT-3:** CategoricalEmbedder Module - `nn.Module` for embedding categorical features with dropout
-- **CAT-4:** SequencePredictor Integration - Concat/add fusion strategies, backward compatible
-- **CAT-5:** CLI and Configuration Updates - `--categorical-columns`, `--categorical-embed-dim`, `--categorical-fusion` flags
+All high-priority categorical compensation tickets complete.
 
-**Files:** `aam/data/categorical.py`, `aam/models/categorical_embedder.py`, `aam/models/sequence_predictor.py`, `aam/cli/train.py`, `aam/cli/predict.py`
+| Ticket | Description | Tests |
+|--------|-------------|-------|
+| **REG-1** | MLP regression head (`--regressor-hidden-dims`) | 25 |
+| **REG-2** | Per-category target normalization (`--normalize-targets-by`) | 26 |
+| **REG-3** | Conditional output scaling (`--conditional-output-scaling`) | 22 |
+| **REG-4** | FiLM layers (`--film-conditioning`) | 26 |
+| **REG-BUG-1** | FiLM identity init fix | 1 regression test |
 
----
-
-## Phase 21: Transfer Learning & Fine-Tuning (All Complete - 2025-12-19)
-
-- **PYT-21.1:** Target Loss Improvements and Normalize-Targets Default
-- **PYT-21.2:** Fix Pretrained Encoder Loading and Freeze-Base Verification
-- **PYT-21.3:** Regressor Head Optimization - Unbounded regression, LayerNorm, learnable scale/bias
-- **PYT-21.4:** Update Training Progress Bar for Fine-Tuning
-- **PYT-21.5:** Skip Nucleotide Predictions During Fine-Tuning - Already implemented via existing logic chain
+**Files:** `aam/models/sequence_predictor.py`, `aam/models/film.py`, `aam/data/normalization.py`, `aam/cli/train.py`
 
 ---
 
-## Phase CLN: Code Cleanup (All Complete - 2025-12-19)
+## FSDP Implementation (PYT-12.1a/b/c) - 2026-01-13
 
-- **CLN-1:** Remove Deprecated UniFrac Modules - Deleted `tree_pruner.py`, `unifrac.py`, `unifrac_cache.py`, `compute_unifrac_parallel.py` (~1665 lines)
-- **CLN-2:** Remove Dead Code Paths - Removed `stripe_mode`, `lazy_unifrac` parameters and logic (~200 lines)
-- **CLN-3:** Add Package `__init__.py` Exports - Added public API exports to `aam/data/` and `aam/models/`
-- **CLN-4:** Fix Type Errors (ty) - Fixed 19 type errors, `uvx ty check aam/` now passes
-- **CLN-5:** Extract CLI Helper Modules - Refactored 1448-line `cli.py` into `aam/cli/` package
-- **CLN-6:** Extract Trainer Validation Logic - Created `aam/training/evaluation.py`, reduced `trainer.py` by 35%
+| Ticket | Description | Tests |
+|--------|-------------|-------|
+| **PYT-12.1a** | FSDP infrastructure, `--fsdp` flag | 17 |
+| **PYT-12.1b** | FSDP checkpoint save/load | 17 |
+| **PYT-12.1c** | FSDP pretraining with embedding gathering | 16 |
 
----
-
-## Phase 21: Transfer Learning & Fine-Tuning (All Complete)
-
-- **PYT-21.1:** Target Loss Improvements and Normalize-Targets Default - `--target-penalty`, normalize targets default
-- **PYT-21.2:** Fix Pretrained Encoder Loading and Freeze-Base Verification - Strip `_orig_mod.` prefix, detailed logging
-- **PYT-21.4:** Update Training Progress Bar for Fine-Tuning - Hide NL/NA when freeze-base, show RL/CL
-
-## Phase 20: Self-Supervised Learning (All Complete)
-
-- **PYT-20.1:** Masked Autoencoder for Nucleotide Prediction - `--nuc-mask-ratio`, `--nuc-mask-strategy`
-
-## Phase 19: Maintenance (All Complete)
-
-- **PYT-19.1:** Fix Failing Unit Tests - Mock fixes, flaky test threshold
-
-## Phase 18: Memory Optimization (Partial - 4 Complete, 2 Remaining)
-
-- **PYT-18.1:** Enable Memory-Efficient Defaults - `asv_chunk_size=256`, `gradient_checkpointing=True`
-- **PYT-18.2:** Streaming Validation Metrics - O(batch) memory for validation
-- **PYT-18.3:** Skip Nucleotide Predictions During Inference - Already implemented in architecture
-- **PYT-18.4:** Configurable FFN Intermediate Size - CANCELLED (memory not a practical issue)
-
-## Phase 12: Additional Performance (Partial - 1 Complete, 2 Remaining)
-
-- **PYT-12.3:** Caching Mechanisms - Sequence tokenization cache
+**Files:** `aam/training/distributed.py`, `aam/training/losses.py`, `aam/cli/train.py`, `aam/cli/pretrain.py`
 
 ---
 
-## Cosmos Onboarding (5 Complete)
+## Bug Fixes (PYT-BUG-1 to PYT-BUG-4) - 2026-01-14
 
-- **COS-1.0:** Native ROCm Environment - mamba + PyTorch ROCm wheels
-- **COS-1.2:** Setup Instructions - Merged to README
-- **COS-2.1:** ROCm Compatibility Audit - No changes needed, code already compatible via HIP backend
-- **COS-4.1:** DDP for ROCm/RCCL - `--distributed`, `--sync-batchnorm` flags, `aam/training/distributed.py`
-- **COS-5.2:** Numerical Validation (CUDA vs ROCm) - Golden file validation in `tests/validation/`
-- **COS-7.1:** Quick Start Guide - Merged to README
-
----
-
-## Phase 8: Feature Enhancements (All Complete)
-
-- PYT-8.1: TensorBoard Train/Val Overlay Verification
-- PYT-8.2: Single Best Model File Saving
-- PYT-8.3: Change Early Stopping Default to 10 Epochs
-- PYT-8.4: Validation Prediction Plots
-- PYT-8.5: Shuffled Batches for UniFrac Distance Extraction
-- PYT-8.6: Fix Base Loss Shape Mismatch for Variable Batch Sizes
-- PYT-8.7: Fix Model NaN Issue and Add Gradient Clipping
-- PYT-8.8: Add Start Token to Prevent All-Padding Sequence NaN
-- PYT-8.9: Fix NaN in Nucleotide Predictions During Pretraining
-- PYT-8.10: Update Training Progress Bar, Rename base_loss to unifrac_loss
-- PYT-8.11: Explore Learning Rate Optimizers and Schedulers
-
-## Phase 9: UniFrac Underfitting Fixes (All Complete)
-
-- PYT-8.12: Mask Diagonal in UniFrac Loss Computation
-- PYT-8.13: Investigate Zero-Distance Samples (found to be extremely rare)
-- PYT-8.14: Bounded Regression Loss for UniFrac Distances
-- PYT-8.15: CANCELLED - Weighted Loss for Zero-Distance Pairs (not needed)
-- PYT-8.16a: Investigate Boundary Prediction Clustering
-- PYT-8.16b: Refactor UniFrac Distance Prediction to Match TensorFlow
-
-## Phase 10: Performance Optimizations (All Complete except PYT-10.6)
-
-- PYT-10.1: Mixed Precision Training (FP16/BF16) - `--mixed-precision` flag
-- PYT-10.2: Model Compilation (`torch.compile()`) - `--compile-model` flag
-- PYT-10.2.1: Fix Dependencies for Model Compilation - PyTorch >= 2.3.0
-- PYT-10.3: Optimize Data Loading - num_workers=4, prefetch_factor=2
-- PYT-10.3.1: Optimize Tree Loading with Pre-pruning - DEPRECATED with PYT-11.4
-- PYT-10.4: Gradient Checkpointing - `--gradient-checkpointing` flag
-- PYT-10.5: Optimize Attention Computation - `--attn-implementation` flag
-
-## Phase 11: Critical Fixes (All Complete)
-
-- PYT-11.1: Fix UniFrac Distance Predictions Exceeding 1.0 - sigmoid normalization
-- PYT-11.2: CANCELLED - Reference Embedding for Stripe Mode (replaced by PYT-11.4)
-- PYT-11.4: Refactor to Ingest Pre-Generated UniFrac Matrices - `UniFracLoader` class
-- PYT-11.5: Fix Sigmoid Saturation - tanh normalization with fixed scale
-- PYT-11.6: Optimize Learning Rate Scheduling - CosineAnnealingWarmRestarts, LR finder
-- PYT-11.7: Fix Metadata Loading - column name whitespace/BOM handling
-- PYT-11.8: Fix Regressor Output Bounds - sigmoid activation for target_head
-- PYT-11.9: Target Normalization - `--normalize-targets`, `--loss-type` flags
+| Ticket | Description |
+|--------|-------------|
+| **PYT-BUG-1** | Distributed validation metrics synchronized via all_reduce |
+| **PYT-BUG-2** | Best model selection uses `--best-metric` (r2, mae, val_loss, etc.) |
+| **PYT-BUG-3** | Count loss configurable via `--count-penalty` |
+| **PYT-BUG-4** | Distributed validation plots show all GPUs via gather |
 
 ---
 
-## Key Implementation Patterns
+## Categorical Features (CAT-1 to CAT-7) - 2026-01-13
 
-### CLI Flags Added
+All categorical feature integration complete.
+
+| Ticket | Description |
+|--------|-------------|
+| **CAT-1** | Schema definition (`CategoricalColumnConfig`, `CategoricalSchema`) |
+| **CAT-2** | Dataset encoding (`CategoricalEncoder` with fit/transform) |
+| **CAT-3** | Embedder module (`CategoricalEmbedder`) |
+| **CAT-4** | SequencePredictor integration (concat/add fusion) |
+| **CAT-5** | CLI flags (`--categorical-columns`, `--categorical-embed-dim`, `--categorical-fusion`) |
+| **CAT-6** | Checkpoint compatibility, transfer learning |
+| **CAT-7** | Documentation and integration tests |
+
+**Files:** `aam/data/categorical.py`, `aam/models/categorical_embedder.py`, `aam/models/sequence_predictor.py`
+
+---
+
+## ROCm/Cosmos (COS-9.1 to COS-9.3, COS-9.9) - 2026-01-12
+
+| Ticket | Description |
+|--------|-------------|
+| **COS-9.1** | ROCm attention investigation (mem_efficient broken with masks on ROCm 6.2) |
+| **COS-9.2** | torch.compile() skip on ROCm with warning |
+| **COS-9.3** | Memory profiling (`--memory-profile` flag) |
+| **COS-9.9** | PyTorch 2.7 + ROCm 6.3 fixes SDPA (aotriton 0.8.2) |
+
+**Resolution:** ROCm 6.3 + PyTorch 2.7+ works correctly. ROCm 6.2 requires `--attn-implementation math`.
+
+---
+
+## Documentation (DOC-1) - 2026-01-13
+
+- README modernization (pip-only install, Quick Start, test data)
+- Python 3.9-3.12 requirements documented
+- Test count updated to 919
+
+---
+
+## Performance (PYT-10.6, PYT-10.7) - 2026-01-08
+
+| Ticket | Description |
+|--------|-------------|
+| **PYT-10.6** | DDP validation (not suitable for pretraining due to local pairwise issue) |
+| **PYT-10.7** | DataParallel for pretraining (`--data-parallel` flag in pretrain.py) |
+
+---
+
+## Output Constraints (PYT-19.1) - 2026-01-13
+
+- `--output-activation` flag: none, relu, softplus, exp
+- Validates mutual exclusion with `--bounded-targets`
+
+---
+
+## Earlier Work (2025)
+
+### Phase 21: Transfer Learning
+- PYT-21.1: Target loss improvements
+- PYT-21.2: Pretrained encoder loading fix
+- PYT-21.3: Regressor head optimization
+- PYT-21.4: Training progress bar updates
+
+### Phase CLN: Code Cleanup
+- CLN-1 to CLN-6: Removed deprecated UniFrac modules, dead code, added exports, fixed types, extracted CLI/evaluation modules (~2000 lines removed)
+
+### Phases 8-11: Core Features
+- TensorBoard overlays, early stopping, prediction plots
+- Mixed precision, torch.compile, gradient checkpointing
+- UniFrac loss fixes (diagonal mask, bounded regression)
+- Sigmoid saturation fix, LR scheduling
+- Masked autoencoder for nucleotides
+
+---
+
+## Key Architecture Patterns
+
+**CLI Flags Added (cumulative):**
 ```bash
 # Performance
---mixed-precision fp16|bf16    # Mixed precision training
---compile-model                # torch.compile() optimization
---gradient-checkpointing       # Memory reduction
---attn-implementation sdpa     # Attention backend
+--mixed-precision fp16|bf16
+--compile-model
+--gradient-checkpointing
+--attn-implementation sdpa|math|flash
 
 # Training
---normalize-targets            # Normalize targets to [0,1] (default: True)
---loss-type mse|mae|huber      # Loss function selection
---target-penalty               # Weight for target loss
---nuc-mask-ratio               # MAE masking ratio (default: 0.15)
+--normalize-targets / --normalize-targets-by
+--loss-type mse|mae|huber
+--target-penalty / --nuc-penalty / --count-penalty
+--best-metric r2|mae|val_loss|accuracy|f1
 
 # Distributed
---distributed                  # Enable DDP
---sync-batchnorm              # SyncBatchNorm for multi-GPU
+--distributed / --data-parallel / --fsdp
+--fsdp-sharded-checkpoint
 
-# Data
---unifrac-matrix <path>        # Pre-computed UniFrac matrix
+# Categorical
+--categorical-columns / --categorical-embed-dim / --categorical-fusion
+--conditional-output-scaling / --film-conditioning
+
+# Regressor
+--regressor-hidden-dims / --regressor-dropout
+--output-activation / --bounded-targets
 ```
 
-### Architecture Changes
-- UniFrac: Compute pairwise distances from embeddings (not direct prediction)
-- Target prediction: Sigmoid-bounded output with normalization
-- Attention: SDPA with configurable backends
-- Nucleotide: Masked autoencoder (MAE) for continuous gradient signal
-- Distributed: Full DDP support via `aam/training/distributed.py`
-
-### Deprecated (with PYT-11.4)
-- `--lazy-unifrac`, `--stripe-mode`, `--unifrac-threads`, `--prune-tree`
-- `UniFracComputer.compute_*()` methods
-- `aam/data/tree_pruner.py`
+**Architecture:**
+- UniFrac: Pairwise distances from embeddings (not direct prediction)
+- Categorical: Concat/add fusion + FiLM + conditional scaling
+- Distributed: DDP, DataParallel (pretrain), FSDP with embedding gathering
