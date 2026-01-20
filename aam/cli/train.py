@@ -14,7 +14,7 @@ from sklearn.model_selection import train_test_split
 from aam.data.biom_loader import BIOMLoader
 from aam.data.unifrac_loader import UniFracLoader
 from aam.data.dataset import ASVDataset, collate_fn
-from aam.data.categorical import CategoricalEncoder, CategoricalSchema
+from aam.data.categorical import CategoricalEncoder
 from aam.data.normalization import CategoryNormalizer
 from skbio import DistanceMatrix
 from aam.models.sequence_predictor import SequencePredictor

@@ -4,7 +4,6 @@ import pytest
 import torch
 import torch.nn as nn
 
-from aam.data.categorical import CategoricalSchema
 from aam.models.categorical_embedder import CategoricalEmbedder
 
 
@@ -57,46 +56,6 @@ class TestCategoricalEmbedderInit:
         assert embedder.num_columns == 0
         assert embedder.total_embed_dim == 0
         assert embedder.column_names == []
-
-
-class TestCategoricalEmbedderFromSchema:
-    """Test suite for CategoricalEmbedder.from_schema factory method."""
-
-    def test_from_schema_basic(self):
-        """Test creating embedder from CategoricalSchema."""
-        schema = CategoricalSchema.from_column_names(["location", "season"], default_embed_dim=16)
-        cardinalities = {"location": 4, "season": 5}
-
-        embedder = CategoricalEmbedder.from_schema(schema, cardinalities)
-
-        assert embedder.num_columns == 2
-        assert embedder.total_embed_dim == 32
-
-    def test_from_schema_per_column_dims(self):
-        """Test from_schema respects per-column embed_dim in schema."""
-        from aam.data.categorical import CategoricalColumnConfig
-
-        schema = CategoricalSchema(
-            columns=[
-                CategoricalColumnConfig(name="location", embed_dim=8),
-                CategoricalColumnConfig(name="season", embed_dim=32),
-            ],
-            default_embed_dim=16,
-        )
-        cardinalities = {"location": 4, "season": 5}
-
-        embedder = CategoricalEmbedder.from_schema(schema, cardinalities)
-
-        assert embedder.total_embed_dim == 40  # 8 + 32
-
-    def test_from_schema_uses_default_embed_dim(self):
-        """Test from_schema uses schema default_embed_dim."""
-        schema = CategoricalSchema.from_column_names(["location"], default_embed_dim=24)
-        cardinalities = {"location": 4}
-
-        embedder = CategoricalEmbedder.from_schema(schema, cardinalities)
-
-        assert embedder.total_embed_dim == 24
 
 
 class TestCategoricalEmbedderForward:
