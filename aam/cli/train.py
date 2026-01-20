@@ -194,6 +194,11 @@ from aam.cli.utils import (
     help="Enable distributed training with DDP. Use with torchrun: torchrun --nproc_per_node=4 -m aam.cli train --distributed ...",
 )
 @click.option(
+    "--data-parallel",
+    is_flag=True,
+    help="Enable DataParallel for multi-GPU training on a single node. Unlike DDP, DataParallel preserves full pairwise comparisons for UniFrac loss. Note: GPU 0 has higher memory usage as it gathers all outputs.",
+)
+@click.option(
     "--sync-batchnorm",
     is_flag=True,
     help="Convert BatchNorm to SyncBatchNorm for distributed training (recommended for small batch sizes)",
@@ -331,6 +336,7 @@ def train(
     loss_type: str,
     no_sequence_cache: bool,
     distributed: bool,
+    data_parallel: bool,
     sync_batchnorm: bool,
     fsdp: bool,
     fsdp_sharded_checkpoint: bool,
