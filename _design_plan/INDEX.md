@@ -27,6 +27,8 @@
 ## Planned Features
 
 - [15_categorical_features.md](15_categorical_features.md) - Categorical metadata integration (CAT-1 through CAT-7)
+- [16_regressor_optimization.md](16_regressor_optimization.md) - Regressor optimization for multi-environment data (REG-1 through REG-9)
+- [17_attention_fusion.md](17_attention_fusion.md) - Attention-based categorical fusion and cleanup (FUS-1 through FUS-3, CLN-1 through CLN-6)
 
 ## Future Work
 
@@ -40,4 +42,4 @@ See `archive/` for completed analysis documents.
 
 1. Read [00_overview.md](00_overview.md) for architecture
 2. See `.agents/TICKET_OVERVIEW.md` for outstanding work
-3. See `.agents/CATEGORICAL_FEATURE_TICKETS.md` for categorical feature tickets
+3. See `.agents/REGRESSOR_OPTIMIZATION_TICKETS.md` for regressor optimization tickets (REG-1 through REG-9)

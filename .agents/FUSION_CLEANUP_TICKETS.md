@@ -1,0 +1,286 @@
+# Attention Fusion & Code Cleanup Tickets
+
+**Last Updated:** 2026-01-20
+**Status:** 9 tickets (~24-39 hours)
+**Design Doc:** `_design_plan/17_attention_fusion.md`
+
+---
+
+## Overview
+
+Two ticket series addressing:
+1. **FUS-1 to FUS-3:** Attention-based categorical fusion (position-specific modulation)
+2. **CLN-1 to CLN-6:** Code cleanup and consolidation
+
+**MVP:** FUS-1 + FUS-2 (~9 hours) - enables position-specific categorical conditioning
+
+---
+
+## FUS: Attention Fusion Tickets
+
+### FUS-1: Gated Multimodal Unit (GMU)
+**Priority:** HIGH | **Effort:** 3-4 hours | **Status:** Not Started
+
+Learned gating between sequence and categorical modalities.
+
+**Scope:**
+- Create `aam/models/fusion.py` with `GMU` class
+- Add `--categorical-fusion gmu` option
+- Operates on pooled representations: `z * seq + (1-z) * cat`
+- Log gate values to TensorBoard
+
+**Implementation:**
+```python
+class GMU(nn.Module):
+    def __init__(self, seq_dim: int, cat_dim: int):
+        self.seq_transform = nn.Linear(seq_dim, seq_dim)
+        self.cat_transform = nn.Linear(cat_dim, seq_dim)
+        self.gate = nn.Linear(seq_dim + cat_dim, seq_dim)
+
+    def forward(self, h_seq, h_cat):
+        h_seq_t = torch.tanh(self.seq_transform(h_seq))
+        h_cat_t = torch.tanh(self.cat_transform(h_cat))
+        z = torch.sigmoid(self.gate(torch.cat([h_seq, h_cat], dim=-1)))
+        return z * h_seq_t + (1 - z) * h_cat_t
+```
+
+**Acceptance Criteria:**
+- [ ] `--categorical-fusion gmu` works
+- [ ] Gate values logged to TensorBoard
+- [ ] 15+ unit tests
+
+**Files:** `aam/models/fusion.py`, `aam/models/sequence_predictor.py`, `aam/cli/train.py`, `tests/test_fusion.py`
+
+---
+
+### FUS-2: Cross-Attention Fusion
+**Priority:** HIGH | **Effort:** 5-6 hours | **Status:** Not Started
+
+Position-specific metadata modulation via cross-attention.
+
+**Scope:**
+- Add `CrossAttentionFusion` to `aam/models/fusion.py`
+- Sequence tokens attend to metadata tokens
+- Add `--categorical-fusion cross-attention`
+- Log attention weights to TensorBoard
+
+**Key Difference from Current:**
+- Current: Same categorical embedding broadcast to all ASV positions
+- Cross-attention: Each ASV position attends differently to metadata
+
+**Acceptance Criteria:**
+- [ ] `--categorical-fusion cross-attention` works
+- [ ] Per-position attention weights extractable
+- [ ] `--cross-attn-heads` configurable (default 8)
+- [ ] 20+ unit tests
+
+**Files:** `aam/models/fusion.py`, `aam/models/sequence_predictor.py`, `aam/cli/train.py`, `tests/test_fusion.py`
+
+---
+
+### FUS-3: Perceiver-Style Latent Fusion
+**Priority:** LOW | **Effort:** 6-8 hours | **Status:** Not Started
+
+Learned latent bottleneck for linear complexity fusion.
+
+**Scope:**
+- Add `PerceiverFusion` to `aam/models/fusion.py`
+- Latents attend to concatenated sequence + metadata
+- Self-attention refinement layers
+- Add `--categorical-fusion perceiver`
+
+**Acceptance Criteria:**
+- [ ] `--categorical-fusion perceiver` works
+- [ ] `--perceiver-num-latents`, `--perceiver-num-layers` configurable
+- [ ] 15+ unit tests
+
+**Files:** `aam/models/fusion.py`, `aam/models/sequence_predictor.py`, `aam/cli/train.py`, `tests/test_fusion.py`
+
+---
+
+## CLN: Code Cleanup Tickets
+
+### CLN-1: Consolidate Output Constraint Flags
+**Priority:** MEDIUM | **Effort:** 3-4 hours | **Status:** Not Started
+
+Replace three overlapping output flags with unified interface.
+
+**Current (redundant):**
+```bash
+--bounded-targets          # sigmoid → [0, 1]
+--output-activation        # relu, softplus, exp
+--learnable-output-scale   # learnable scale + bias
+```
+
+**Proposed:**
+```bash
+--output-constraint none|bounded|nonnegative|nonnegative-learnable
+```
+
+**Scope:**
+- Add `--output-constraint` flag
+- Deprecate old flags with warning
+- Simplify validation logic
+
+**Acceptance Criteria:**
+- [ ] Single flag replaces three
+- [ ] Old flags deprecated with warning
+- [ ] 10+ migration tests
+
+**Files:** `aam/cli/train.py`, `aam/models/sequence_predictor.py`
+
+---
+
+### CLN-2: Unify Target Normalization
+**Priority:** MEDIUM | **Effort:** 3-4 hours | **Status:** Not Started
+
+Replace fragmented normalization flags with single interface.
+
+**Current (fragmented):**
+```bash
+--normalize-targets/--no-normalize-targets  # Global min-max
+--normalize-targets-by <columns>            # Per-category z-score
+--log-transform-targets                     # log(y+1)
+```
+
+**Proposed:**
+```bash
+--target-transform none|minmax|zscore|zscore-category|log-minmax|log-zscore
+--normalize-by <columns>  # Only with zscore-category
+```
+
+**Acceptance Criteria:**
+- [ ] Single `--target-transform` flag
+- [ ] Old flags deprecated
+- [ ] Implicit behaviors made explicit
+- [ ] 15+ tests
+
+**Files:** `aam/cli/train.py`, `aam/data/dataset.py`, `aam/data/normalization.py`
+
+---
+
+### CLN-3: Remove Unused Parameters
+**Priority:** LOW | **Effort:** 1-2 hours | **Status:** Not Started
+
+Remove dead code and unused function parameters.
+
+**Items:**
+1. `intermediate_size` params in model constructors (always 4×embedding_dim)
+2. `is_rocm()` in `aam/cli/utils.py` (never called)
+3. `unifrac_loader=None` in `inference_collate` (predict.py)
+4. `CategoricalSchema` class (unused, CategoricalEncoder.from_dict used)
+
+**Acceptance Criteria:**
+- [ ] Identified parameters removed
+- [ ] No test failures
+- [ ] API surface simplified
+
+**Files:** `aam/models/sequence_predictor.py`, `aam/models/sequence_encoder.py`, `aam/cli/utils.py`, `aam/cli/predict.py`, `aam/data/categorical.py`
+
+---
+
+### CLN-4: Extract Shared Training Utilities
+**Priority:** LOW | **Effort:** 2-3 hours | **Status:** Not Started
+
+Reduce code duplication between `pretrain.py` and `train.py`.
+
+**Duplicated (~135 lines):**
+- Scheduler creation logic
+- Distributed validation checks
+- DataLoader creation patterns
+
+**Scope:**
+- Create `aam/cli/training_utils.py` with shared functions
+- Refactor both CLI scripts to use shared code
+
+**Acceptance Criteria:**
+- [ ] Shared utilities extracted
+- [ ] Both CLIs use shared code
+- [ ] No behavior changes
+
+**Files:** `aam/cli/training_utils.py` (new), `aam/cli/pretrain.py`, `aam/cli/train.py`
+
+---
+
+### CLN-5: Add DataParallel to train.py
+**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Not Started
+
+Feature parity: DataParallel exists in pretrain.py but not train.py.
+
+**Scope:**
+- Add `--data-parallel` flag to train.py
+- Copy DP setup from pretrain.py
+- Mutually exclusive with `--distributed`/`--fsdp`
+
+**Acceptance Criteria:**
+- [ ] `--data-parallel` available in train.py
+- [ ] Works with UniFrac auxiliary loss
+- [ ] 5+ tests
+
+**Files:** `aam/cli/train.py`, `tests/test_cli.py`
+
+---
+
+### CLN-6: Simplify Categorical Conditioning Docs
+**Priority:** MEDIUM | **Effort:** 4-5 hours | **Status:** Not Started
+
+Document and validate the three parallel categorical systems.
+
+**Current Systems:**
+1. Base fusion (`--categorical-fusion concat|add`)
+2. Conditional scaling (`--conditional-output-scaling`)
+3. FiLM (`--film-conditioning`)
+
+**Scope:**
+- Add `--categorical-help` showing decision tree
+- Warn if redundant flags used together
+- Document clear recommendations in README
+
+| Use Case | Recommended |
+|----------|-------------|
+| Simple metadata | `--categorical-fusion concat` |
+| Per-category shift | `concat` + `--conditional-output-scaling` |
+| Feature modulation | `--film-conditioning` |
+| Position-specific | `--categorical-fusion cross-attention` (FUS-2) |
+
+**Acceptance Criteria:**
+- [ ] Decision tree in `--categorical-help`
+- [ ] Validation warnings for redundant combos
+- [ ] README updated
+
+**Files:** `aam/cli/train.py`, `README.md`, `tests/test_cli.py`
+
+---
+
+## Summary
+
+| Ticket | Description | Effort | Priority |
+|--------|-------------|--------|----------|
+| **FUS-1** | GMU baseline | 3-4h | HIGH |
+| **FUS-2** | Cross-attention fusion | 5-6h | HIGH |
+| **FUS-3** | Perceiver fusion | 6-8h | LOW |
+| **CLN-1** | Output constraint consolidation | 3-4h | MEDIUM |
+| **CLN-2** | Normalization unification | 3-4h | MEDIUM |
+| **CLN-3** | Remove unused params | 1-2h | LOW |
+| **CLN-4** | Extract shared utilities | 2-3h | LOW |
+| **CLN-5** | DataParallel in train.py | 2-3h | MEDIUM |
+| **CLN-6** | Categorical docs/validation | 4-5h | MEDIUM |
+| **Total** | | **24-39h** | |
+
+## Recommended Order
+
+**Phase 1 - Quick Wins:**
+1. CLN-3 (remove dead code)
+2. CLN-5 (DataParallel parity)
+
+**Phase 2 - Fusion MVP:**
+3. FUS-1 (GMU baseline)
+4. FUS-2 (Cross-attention)
+
+**Phase 3 - User Experience:**
+5. CLN-1 + CLN-2 (flag consolidation)
+6. CLN-6 (categorical docs)
+
+**Phase 4 - Tech Debt:**
+7. CLN-4 (shared utilities)
+8. FUS-3 (perceiver, optional)

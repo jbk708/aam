@@ -1,249 +1,117 @@
 # Ticket Overview
 
-**Last Updated:** 2026-01-14
-**Status:** 13 outstanding tickets (~42-65 hours)
+**Last Updated:** 2026-01-20
+**Status:** ~22 outstanding tickets (~81-125 hours)
+
+---
 
 ## Quick Links
-- **Regressor optimization:** `REGRESSOR_OPTIMIZATION_TICKETS.md` ← NEW
-- **ROCm optimization:** `COSMOS_ONBOARDING_TICKETS.md`
-- **Categorical features:** `CATEGORICAL_FEATURE_TICKETS.md`
-- **PyTorch work:** `PYTORCH_PORTING_TICKETS.md`
-- **Documentation:** `DOCUMENTATION_TICKETS.md`
-- **Completed work:** `ARCHIVED_TICKETS.md`
-- **Workflow:** `WORKFLOW.md`
+
+| File | Status | Tickets |
+|------|--------|---------|
+| `FUSION_CLEANUP_TICKETS.md` | **NEW** | FUS-1 to FUS-3, CLN-1 to CLN-6 |
+| `REGRESSOR_OPTIMIZATION_TICKETS.md` | 5 remaining | REG-5 to REG-9 |
+| `PYTORCH_PORTING_TICKETS.md` | 6 remaining | PYT-12.2, PYT-18.5-18.6, PYT-19.3-19.4, PYT-MAINT-2 |
+| `COSMOS_ONBOARDING_TICKETS.md` | 4 remaining | COS-9.5 to COS-9.8 |
+| `CATEGORICAL_FEATURE_TICKETS.md` | **COMPLETE** | - |
+| `DOCUMENTATION_TICKETS.md` | Backlog | DOC-2 to DOC-4 |
+| `ARCHIVED_TICKETS.md` | Reference | All completed work |
+| `WORKFLOW.md` | Reference | Branch naming, commit style |
 
 ---
 
-## Outstanding Tickets by Priority
+## Priority Summary
 
-### URGENT (0 tickets)
+### HIGH (2 tickets, ~9 hours)
 
-No urgent tickets remaining.
+| Ticket | Description | Effort | File |
+|--------|-------------|--------|------|
+| **FUS-1** | GMU baseline fusion | 3-4h | FUSION_CLEANUP |
+| **FUS-2** | Cross-attention fusion | 5-6h | FUSION_CLEANUP |
 
-### HIGH (0 tickets)
+### MEDIUM (8 tickets, ~24-35 hours)
 
-No high priority tickets remaining.
+| Ticket | Description | Effort | File |
+|--------|-------------|--------|------|
+| **REG-5** | Quantile regression | 4-6h | REGRESSOR |
+| **REG-6** | Asymmetric loss | 2-3h | REGRESSOR |
+| **PYT-12.2** | Batch size optimization | 4-6h | PYTORCH |
+| **PYT-19.3** | Per-category loss weights | 3-4h | PYTORCH |
+| **CLN-1** | Output constraint consolidation | 3-4h | FUSION_CLEANUP |
+| **CLN-2** | Normalization unification | 3-4h | FUSION_CLEANUP |
+| **CLN-5** | DataParallel in train.py | 2-3h | FUSION_CLEANUP |
+| **CLN-6** | Categorical docs/validation | 4-5h | FUSION_CLEANUP |
 
-### MEDIUM (3 tickets, ~10-15 hours)
+### LOW (12 tickets, ~48-63 hours)
 
-| Ticket | Description | Effort | Domain |
-|--------|-------------|--------|--------|
-| **REG-5** | Quantile regression | 4-6h | Regressor |
-| **REG-6** | Asymmetric loss | 2-3h | Regressor |
-| **PYT-12.2** | Batch size optimization | 4-6h | PyTorch |
-
-### LOW (10 tickets, ~34-50 hours)
-
-| Ticket | Description | Effort | Domain |
-|--------|-------------|--------|--------|
-| **REG-7** | Residual regression head | 2-3h | Regressor |
-| **REG-8** | Per-output loss config | 3-4h | Regressor |
-| **REG-9** | Mixture of Experts | 6-8h | Regressor |
-| **COS-9.5** | Kernel profiling with rocprof | 4-6h | Cosmos |
-| **COS-9.6** | SLURM job templates | 3-4h | Cosmos |
-| **COS-9.7** | ROCm Singularity container | 4-6h | Cosmos |
-| **COS-9.8** | ROCm documentation & best practices | 2-3h | Cosmos |
-| **PYT-18.5** | Lazy sample embedding computation | 4-6h | PyTorch |
-| **PYT-18.6** | Memory-aware dynamic batching | 4-6h | PyTorch |
-| **PYT-MAINT-1** | CLI flag cleanup and default optimization | 2-4h | Maintenance |
-
-### BACKLOG (Phases 13-17)
-
-Future enhancement phases (~50+ hours):
-- Phase 13: Attention Visualization, Feature Importance, Encoder Types
-- Phase 14: Streaming Data, Augmentation
-- Phase 15: Experiment Tracking, Hyperparameter Optimization
-- Phase 16: Benchmarking, Error Analysis
-- Phase 17: Docs, Tutorials, ONNX, Docker
-
----
-
-## Recently Completed
-
-**REG-4: FiLM Layers (Feature-wise Linear Modulation)** (2026-01-14) - COMPLETE
-- Added `--film-conditioning` flag for categorical modulation of MLP layers
-- FiLMGenerator generates γ (scale) and β (shift) from categorical embeddings
-- FiLMLayer applies modulation: `h_out = γ * linear(x) + β` then ReLU + dropout
-- FiLMTargetHead wraps MLP with FiLM conditioning at each hidden layer
-- Requires `--regressor-hidden-dims` and `--categorical-columns`
-- Identity initialization (γ=1, β=0) for gradual learning
-- 26 tests (17 unit + 8 integration + 1 CLI)
-
-**REG-3: Conditional Output Scaling** (2026-01-14) - COMPLETE
-- Added `--conditional-output-scaling` flag for per-category scale/bias
-- Per-category scale (init=1.0) and bias (init=0.0) as nn.Embedding
-- Applied after target_head: `output = prediction * scale[cat] + bias[cat]`
-- Works with MLP head, bounded targets, output activations
-- 22 unit tests in TestConditionalOutputScaling class
-
-**PYT-BUG-4: Distributed Validation Plots Show Only Local GPU Data** (2026-01-14) - COMPLETE
-- Added `gather_predictions_for_plot()` for cross-GPU prediction gathering
-- Handles CPU tensors with NCCL backend (automatic CUDA transfer)
-- Integrated into `Evaluator.validate_epoch()` when `return_predictions=True`
-- TensorBoard scatter plots now show ALL validation samples across GPUs
-- Added 10 tests for prediction gathering functionality
-
-**PYT-BUG-3: Count Loss Has No Configurable Weight** (2026-01-14) - COMPLETE
-- Added `--count-penalty` flag to train.py and pretrain.py (default 1.0)
-- Allows disabling or downweighting count loss
-- Documented in README Loss Weights table
-
-**PYT-BUG-2: Best Model Selection Uses Loss Instead of Primary Metric** (2026-01-14) - COMPLETE
-- Added `--best-metric` flag with choices: val_loss, r2, mae, accuracy, f1
-- Added `is_metric_better()` helper for min/max mode comparison
-- Checkpoint now stores `best_metric` and `best_metric_value`
-- Default behavior unchanged (val_loss) for backwards compatibility
-- Added 14 trainer tests and 3 CLI tests
-
-**PYT-BUG-1: Distributed Validation Metrics Not Synchronized** (2026-01-14) - COMPLETE
-- Added `all_reduce()` for distributed metric synchronization
-- Validation metrics now aggregated across all GPUs in DDP/FSDP
-- TensorBoard and console logs show true global performance
-
-**REG-2: Per-Category Target Normalization** (2026-01-13) - COMPLETE
-- Added `--normalize-targets-by` flag for per-category z-score normalization
-- CategoryNormalizer computes per-category mean/std from training data
-- Unseen categories fall back to global statistics with warning
-- Mutually exclusive with `--normalize-targets` (global normalization)
-- Statistics saved in checkpoint for inference
-- Added 26 unit tests for normalization roundtrip
-
-**REG-1: MLP Regression Head** (2026-01-13) - COMPLETE
-- Added `--regressor-hidden-dims` flag for configurable MLP (e.g., `64,32`)
-- Added `--regressor-dropout` flag for dropout between MLP layers
-- Default behavior unchanged (single linear layer)
-- Works with all existing output transforms (sigmoid, softplus, etc.)
-- Added 25 unit tests for MLP configurations
-
-**DOC-1: README & Installation Modernization** (2026-01-13) - COMPLETE
-- Replaced conda/mamba installation with pip-only workflow
-- Added Python version requirements (3.9-3.12) and PyTorch installation instructions
-- Added Quick Start section with included test data (781 samples)
-- Updated test count from 679 to 919
-- Updated CLAUDE.md with complete test data file list
-
-**PYT-12.1c: FSDP Pretraining + ROCm Validation** (2026-01-13) - COMPLETE
-- Added `gather_embeddings_for_unifrac()` for cross-GPU embedding collection
-- Added `_gather_target_matrices()` for UniFrac target gathering
-- Integrated gathering into `MultiTaskLoss.compute_base_loss()` with `gather_for_distributed` flag
-- Added `--fsdp` and `--fsdp-sharded-checkpoint` flags to pretrain.py
-- Updated README with comprehensive FSDP documentation
-- Added 8 tests for embedding gathering, 5 CLI tests for FSDP pretrain flags
-- PYT-12.1 FSDP Implementation now complete (all 3 sub-tickets done)
-
-**PYT-12.1b: FSDP Checkpoint Support** (2026-01-13) - COMPLETE
-- Added FSDP checkpoint utility functions: `get_fsdp_state_dict()`, `set_fsdp_state_dict()`, `get_fsdp_optimizer_state_dict()`, `set_fsdp_optimizer_state_dict()`
-- Updated Trainer to handle FSDP models in `save_checkpoint()` and `load_checkpoint()`
-- Added `--fsdp-sharded-checkpoint` flag for large model optimization
-- Supports cross-compatibility: non-FSDP checkpoints into FSDP models and vice versa
-- Added 17 tests for FSDP checkpoint functions, 2 CLI tests
-
-**PYT-12.1a: FSDP Infrastructure** (2026-01-13) - COMPLETE
-- Added `wrap_model_fsdp()` with configurable sharding strategy, mixed precision, CPU offload
-- Added `get_fsdp_wrap_policy()` for transformer layer auto-wrapping
-- Added `--fsdp` flag to train.py (mutually exclusive with `--distributed`)
-- Added helper functions: `is_fsdp_model()`, `is_ddp_model()`, `unwrap_model()`
-- Added 17 tests for FSDP infrastructure and CLI
-
-**CAT-7: Documentation and Testing** (2026-01-13) - COMPLETE
-- Added best practices to README for embedding dim selection and rare categories
-- Added TestCategoricalIntegration with 3 integration tests
-- All categorical feature work now complete
-
-**CAT-6: Checkpoint Compatibility and Transfer Learning** (2026-01-12) - COMPLETE
-- Verified pretrained encoder loads into model with categorical features
-- Categorical weights preserved (random init) when loading encoder
-- `--freeze-base` correctly includes categorical embedder in optimization
-- Added comprehensive test suite (6 tests) verifying staged training workflow
-
-**COS-9.3: Memory Profiling and Optimization** (2026-01-12) - COMPLETE
-- Added `--memory-profile` flag to pretrain command
-- Created `MemoryProfiler` class for memory logging at key points
-- Hardware testing completed on MI300A
-
-**COS-9.9: PyTorch 2.7 SDPA Fix Verified** (2026-01-12) - COMPLETE
-- Confirmed ROCm 6.3 + PyTorch 2.7.1 fixes `mem_efficient` SDPA
-- Masked attention max_diff: 1.10e-06 (was ~1.73 on ROCm 6.2)
-- Performance: 3.76x faster, 4.4x less memory than `math` backend
-- `--attn-implementation math` no longer required on ROCm 6.3
-
-**COS-9.2: Fix torch.compile() on ROCm** (2026-01-12) - COMPLETE
-- Added ROCm detection via `torch.version.hip`
-- `--compile-model` now skips gracefully on ROCm with warning
-- Updated README with ROCm limitations table
-
-**COS-9.1: ROCm Attention Investigation** (2026-01-12) - COMPLETE
-- Root cause: `mem_efficient` SDPA produces wrong results WITH attention masks on ROCm
-- Without masks: max_diff=7e-7 (fine). With masks: max_diff=1.73 (broken)
-- Flash Attention for ROCm incompatible with ROCm 6.2+ (build fails)
-- Created diagnostic tool: `python -m aam.tools.rocm_attention_diagnostic`
-- **Resolution:** Use `--attn-implementation math` (required for correct results)
-
-**COS-8.2: ROCm Numerical Divergence** (2026-01-08) - RESOLVED
-- `mem_efficient` SDPA produced incorrect results (42% vs 70% nuc accuracy)
-- **Resolution:** Use `--attn-implementation math --no-gradient-checkpointing`
-- Trade-off: Higher memory, slower iteration rate
-- Renumbered remaining optimization work to COS-9.x series
-
-**PYT-10.7: DataParallel for Pretraining** (2026-01-08)
-- Added `--data-parallel` flag for single-node multi-GPU pretraining
-- DataParallel preserves full pairwise UniFrac comparisons (unlike DDP)
-
-**CAT-1 through CAT-5: Categorical Features** (2026-01-05)
-- Schema definition, dataset encoding, embedder module
-- SequencePredictor integration with concat/add fusion
-- CLI flags: `--categorical-columns`, `--categorical-embed-dim`, `--categorical-fusion`
+| Ticket | Description | Effort | File |
+|--------|-------------|--------|------|
+| **FUS-3** | Perceiver fusion | 6-8h | FUSION_CLEANUP |
+| **REG-7** | Residual head | 2-3h | REGRESSOR |
+| **REG-8** | Per-output loss | 3-4h | REGRESSOR |
+| **REG-9** | Mixture of Experts | 6-8h | REGRESSOR |
+| **PYT-18.5** | Lazy embeddings | 4-6h | PYTORCH |
+| **PYT-18.6** | Memory-aware batching | 4-6h | PYTORCH |
+| **PYT-19.4** | Hierarchical categories | 6-8h | PYTORCH |
+| **PYT-MAINT-2** | TensorBoard logging | 2-4h | PYTORCH |
+| **CLN-3** | Remove unused params | 1-2h | FUSION_CLEANUP |
+| **CLN-4** | Extract shared utilities | 2-3h | FUSION_CLEANUP |
+| **COS-9.5-9.8** | ROCm infrastructure | 13-19h | COSMOS |
 
 ---
 
 ## Recommended Next Steps
 
-### 1. Regressor Optimization (COMPLETE)
-All high-priority categorical compensation tickets complete:
-- **REG-1** ✓ - MLP regression head
-- **REG-2** ✓ - Per-category target normalization
-- **REG-3** ✓ - Conditional output scaling
-- **REG-4** ✓ - FiLM layers (most expressive modulation)
+### 1. Attention Fusion MVP (HIGH - ~9 hours)
 
-### 2. Loss Function Improvements (MEDIUM - Next Priority)
-- **REG-5** - Quantile regression for uncertainty estimation
-- **REG-6** - Asymmetric loss (if directional errors matter)
+Position-specific categorical conditioning:
 
-### 3. Batch Size Optimization (MEDIUM)
-- **PYT-12.2** - Batch size optimization for efficient training
+```
+FUS-1 (GMU baseline) → FUS-2 (Cross-attention)
+```
 
-### 4. Infrastructure (As Needed)
-- **COS-9.6** - SLURM templates for Cosmos
-- **COS-9.8** - ROCm documentation
+### 2. Quick Wins (LOW effort, immediate impact)
 
-### 5. Memory Optimization (LOW)
-- **PYT-18.5** - Lazy sample embedding computation
-- **PYT-18.6** - Memory-aware dynamic batching
+```
+CLN-3 (remove dead code, 1-2h) → CLN-5 (DataParallel parity, 2-3h)
+```
 
-### 6. Advanced Regressor (LOW)
-- **REG-7, 8, 9** - Residual head, per-output loss, Mixture of Experts
+### 3. User Experience (MEDIUM - ~12 hours)
+
+Flag consolidation and documentation:
+
+```
+CLN-1 (output flags) → CLN-2 (normalization) → CLN-6 (categorical docs)
+```
+
+### 4. Loss Functions (MEDIUM - ~7 hours)
+
+```
+REG-5 (quantile) → REG-6 (asymmetric)
+```
 
 ---
 
-## Current ROCm Configuration
+## Recently Completed (2026-01-14)
 
-**ROCm 6.3 + PyTorch 2.7.1 (Recommended):**
-```bash
-# No special flags needed - defaults work correctly
-aam pretrain --data-parallel --batch-size 32 \
-  --table data.biom --unifrac-matrix unifrac.npy --output-dir output/
-```
+| Ticket | Description |
+|--------|-------------|
+| REG-BUG-1 | FiLM identity initialization fix |
+| REG-4 | FiLM layers (26 tests) |
+| REG-3 | Conditional output scaling (22 tests) |
+| REG-2 | Per-category normalization (26 tests) |
+| REG-1 | MLP regression head (25 tests) |
+| PYT-BUG-1-4 | Distributed validation fixes |
+| PYT-12.1a/b/c | FSDP implementation (50 tests) |
 
-**ROCm 6.2 + PyTorch 2.5.1 (Legacy):**
-```bash
-aam pretrain \
-  --attn-implementation math \
-  --no-gradient-checkpointing \
-  --data-parallel \
-  # ... other flags
-```
+See `ARCHIVED_TICKETS.md` for full history.
 
-**Known limitations:**
-- `--compile-model` not supported on any ROCm version (Triton bug)
-- ROCm 6.2: `mem_efficient` attention broken, requires `--attn-implementation math`
-- ROCm 6.3: `mem_efficient` attention works correctly (fixed in aotriton 0.8.2)
+---
+
+## Design Documents
+
+| Document | Tickets |
+|----------|---------|
+| `_design_plan/17_attention_fusion.md` | FUS-1 to FUS-3, CLN-1 to CLN-6 |
+| `_design_plan/16_regressor_optimization.md` | REG-1 to REG-9 |
+| `_design_plan/15_categorical_features.md` | CAT-1 to CAT-7 (complete) |
