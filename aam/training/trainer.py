@@ -241,6 +241,7 @@ class Trainer:
                 return
 
             from aam.models.film import FiLMTargetHead
+
             if not isinstance(underlying_model.target_head, FiLMTargetHead):
                 logger.debug(
                     f"FiLM debug: target_head is {type(underlying_model.target_head).__name__}, "
