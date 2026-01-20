@@ -5,8 +5,6 @@ from typing import Union
 import torch
 import torch.nn as nn
 
-from aam.data.categorical import CategoricalSchema
-
 
 class CategoricalEmbedder(nn.Module):
     """Embeds categorical features for conditioning target predictions.
@@ -56,37 +54,6 @@ class CategoricalEmbedder(nn.Module):
 
         # Compute total embedding dimension
         self._total_embed_dim = sum(self._embed_dims.values())
-
-    @classmethod
-    def from_schema(
-        cls,
-        schema: CategoricalSchema,
-        cardinalities: dict[str, int],
-        dropout: float = 0.1,
-    ) -> "CategoricalEmbedder":
-        """Create embedder from CategoricalSchema.
-
-        Args:
-            schema: CategoricalSchema defining column configurations.
-            cardinalities: Dict mapping column name to cardinality
-                (from CategoricalEncoder.get_cardinalities()).
-            dropout: Dropout probability.
-
-        Returns:
-            CategoricalEmbedder instance configured from schema.
-        """
-        embed_dims: dict[str, int] = {}
-        for col_name in schema.column_names:
-            embed_dims[col_name] = schema.get_embed_dim(col_name)
-
-        # Filter cardinalities to only include columns in schema
-        filtered_cardinalities = {col: cardinalities[col] for col in schema.column_names if col in cardinalities}
-
-        return cls(
-            column_cardinalities=filtered_cardinalities,
-            embed_dim=embed_dims,
-            dropout=dropout,
-        )
 
     def forward(
         self,

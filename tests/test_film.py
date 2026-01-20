@@ -467,13 +467,9 @@ class TestFiLMIntegration:
             beta_bias = layer.film.beta_proj.bias
 
             # gamma_proj should have: weight=0, bias=1 (identity transform)
-            assert torch.allclose(gamma_weight, torch.zeros_like(gamma_weight)), \
-                f"Layer {i}: gamma_proj.weight should be zeros"
-            assert torch.allclose(gamma_bias, torch.ones_like(gamma_bias)), \
-                f"Layer {i}: gamma_proj.bias should be ones"
+            assert torch.allclose(gamma_weight, torch.zeros_like(gamma_weight)), f"Layer {i}: gamma_proj.weight should be zeros"
+            assert torch.allclose(gamma_bias, torch.ones_like(gamma_bias)), f"Layer {i}: gamma_proj.bias should be ones"
 
             # beta_proj should have: weight=0, bias=0
-            assert torch.allclose(beta_weight, torch.zeros_like(beta_weight)), \
-                f"Layer {i}: beta_proj.weight should be zeros"
-            assert torch.allclose(beta_bias, torch.zeros_like(beta_bias)), \
-                f"Layer {i}: beta_proj.bias should be zeros"
+            assert torch.allclose(beta_weight, torch.zeros_like(beta_weight)), f"Layer {i}: beta_proj.weight should be zeros"
+            assert torch.allclose(beta_bias, torch.zeros_like(beta_bias)), f"Layer {i}: beta_proj.bias should be zeros"
