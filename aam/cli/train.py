@@ -407,10 +407,13 @@ def train(
         setup_expandable_segments(use_expandable_segments)
 
         # Validate mutual exclusivity of distributed training options
-        if distributed and fsdp:
+        num_distributed_options = sum([distributed, data_parallel, fsdp])
+        if num_distributed_options > 1:
             raise click.ClickException(
-                "Cannot use --distributed and --fsdp together. "
-                "Use --distributed for DDP or --fsdp for FSDP (Fully Sharded Data Parallel)."
+                "Cannot use multiple distributed training options together. Choose one of:\n"
+                "  --distributed: DDP (multi-node, but UniFrac has local pairwise issue)\n"
+                "  --data-parallel: DataParallel (single-node, full pairwise UniFrac)\n"
+                "  --fsdp: FSDP (memory-efficient, full pairwise UniFrac via gathering)"
             )
 
         # Validate --fsdp-sharded-checkpoint requires --fsdp
@@ -929,6 +932,27 @@ def train(
             )
             if is_main_process():
                 logger.info("Model wrapped with DistributedDataParallel")
+
+        elif data_parallel:
+            # DataParallel for single-node multi-GPU training
+            # Unlike DDP, DP gathers outputs to GPU 0 before loss computation,
+            # preserving full pairwise comparisons for UniFrac loss
+            if not torch.cuda.is_available():
+                raise click.ClickException("--data-parallel requires CUDA GPUs")
+
+            num_gpus = torch.cuda.device_count()
+            if num_gpus < 2:
+                logger.warning(f"--data-parallel specified but only {num_gpus} GPU(s) available. Running on single GPU.")
+
+            # Explicitly specify all available GPUs
+            device_ids = list(range(num_gpus))
+            logger.info(f"Using GPUs: {device_ids}")
+
+            # Move model to primary GPU (device_ids[0])
+            model = model.to(f"cuda:{device_ids[0]}")
+            model = torch.nn.DataParallel(model, device_ids=device_ids)
+            logger.info(f"Model wrapped with DataParallel across {num_gpus} GPU(s)")
+            logger.info("Note: GPU 0 has higher memory usage as it gathers all outputs for loss computation")
 
         effective_batches_per_epoch = len(train_loader) // gradient_accumulation_steps
         num_training_steps = effective_batches_per_epoch * epochs

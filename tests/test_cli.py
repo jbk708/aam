@@ -514,7 +514,7 @@ class TestCLICommands:
             ],
         )
         assert result.exit_code != 0
-        assert "Cannot use --distributed and --fsdp together" in result.output
+        assert "Cannot use multiple distributed training options together" in result.output
 
     def test_train_command_fsdp_sharded_checkpoint_option_exists(self, runner):
         """Test that --fsdp-sharded-checkpoint option appears in train help."""
