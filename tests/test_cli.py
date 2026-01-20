@@ -26,6 +26,62 @@ from aam.cli.pretrain import pretrain
 from aam.cli.predict import predict
 
 
+def _setup_train_data_parallel_mocks(mock_biom_loader, mock_unifrac_loader, mock_dataset, mock_dataloader, mock_model):
+    """Set up common mocks for train --data-parallel tests.
+
+    Returns the configured mock instances for further customization if needed.
+    """
+    import numpy as np
+    from skbio import DistanceMatrix
+
+    mock_biom_loader_instance = MagicMock()
+    mock_biom_loader.return_value = mock_biom_loader_instance
+    mock_table = MagicMock()
+
+    def mock_ids(axis=None):
+        if axis == "sample":
+            return ["sample1", "sample2", "sample3", "sample4"]
+        elif axis == "observation":
+            return ["obs1", "obs2", "obs3"]
+        return ["sample1", "sample2", "sample3", "sample4"]
+
+    mock_table.ids = mock_ids
+    mock_biom_loader_instance.load_table.return_value = mock_table
+    mock_biom_loader_instance.rarefy.return_value = mock_table
+
+    mock_unifrac_loader_instance = MagicMock()
+    mock_unifrac_loader.return_value = mock_unifrac_loader_instance
+
+    dist_data = np.random.rand(4, 4)
+    dist_data = (dist_data + dist_data.T) / 2
+    np.fill_diagonal(dist_data, 0)
+    mock_distance_matrix = DistanceMatrix(dist_data, ids=["sample1", "sample2", "sample3", "sample4"])
+    mock_unifrac_loader_instance.load_matrix.return_value = mock_distance_matrix
+
+    mock_dataset_instance = MagicMock()
+    mock_dataset_instance.get_normalization_params.return_value = None
+    mock_dataset_instance.get_count_normalization_params.return_value = None
+    mock_dataset.return_value = mock_dataset_instance
+
+    mock_dataloader_instance = MagicMock()
+    mock_dataloader_instance.__len__ = MagicMock(return_value=1)
+    mock_dataloader.return_value = mock_dataloader_instance
+
+    mock_model_instance = MagicMock()
+    mock_model_instance.parameters.return_value = iter([torch.nn.Parameter(torch.zeros(1))])
+    mock_model.return_value = mock_model_instance
+
+    return {
+        "biom_loader": mock_biom_loader_instance,
+        "table": mock_table,
+        "unifrac_loader": mock_unifrac_loader_instance,
+        "distance_matrix": mock_distance_matrix,
+        "dataset": mock_dataset_instance,
+        "dataloader": mock_dataloader_instance,
+        "model": mock_model_instance,
+    }
+
+
 @pytest.fixture
 def temp_dir():
     """Create temporary directory for testing."""
@@ -644,44 +700,8 @@ class TestCLICommands:
         mock_cuda_available.return_value = True
         mock_device_count.return_value = 2
         mock_setup_device.return_value = torch.device("cuda")
-        mock_biom_loader_instance = MagicMock()
-        mock_biom_loader.return_value = mock_biom_loader_instance
-        mock_table = MagicMock()
 
-        def mock_ids(axis=None):
-            if axis == "sample":
-                return ["sample1", "sample2", "sample3", "sample4"]
-            elif axis == "observation":
-                return ["obs1", "obs2", "obs3"]
-            return ["sample1", "sample2", "sample3", "sample4"]
-
-        mock_table.ids = mock_ids
-        mock_biom_loader_instance.load_table.return_value = mock_table
-        mock_biom_loader_instance.rarefy.return_value = mock_table
-
-        mock_unifrac_loader_instance = MagicMock()
-        mock_unifrac_loader.return_value = mock_unifrac_loader_instance
-        from skbio import DistanceMatrix
-        import numpy as np
-
-        dist_data = np.random.rand(4, 4)
-        dist_data = (dist_data + dist_data.T) / 2
-        np.fill_diagonal(dist_data, 0)
-        mock_distance_matrix = DistanceMatrix(dist_data, ids=["sample1", "sample2", "sample3", "sample4"])
-        mock_unifrac_loader_instance.load_matrix.return_value = mock_distance_matrix
-
-        mock_dataset_instance = MagicMock()
-        mock_dataset_instance.get_normalization_params.return_value = None
-        mock_dataset_instance.get_count_normalization_params.return_value = None
-        mock_dataset.return_value = mock_dataset_instance
-
-        mock_dataloader_instance = MagicMock()
-        mock_dataloader_instance.__len__ = MagicMock(return_value=1)
-        mock_dataloader.return_value = mock_dataloader_instance
-
-        mock_model_instance = MagicMock()
-        mock_model_instance.parameters.return_value = iter([torch.nn.Parameter(torch.zeros(1))])
-        mock_model.return_value = mock_model_instance
+        _setup_train_data_parallel_mocks(mock_biom_loader, mock_unifrac_loader, mock_dataset, mock_dataloader, mock_model)
 
         mock_dp_wrapped_model = MagicMock()
         mock_data_parallel.return_value = mock_dp_wrapped_model
@@ -749,44 +769,8 @@ class TestCLICommands:
         """Test train command with --data-parallel fails without CUDA."""
         mock_cuda_available.return_value = False
         mock_setup_device.return_value = torch.device("cpu")
-        mock_biom_loader_instance = MagicMock()
-        mock_biom_loader.return_value = mock_biom_loader_instance
-        mock_table = MagicMock()
 
-        def mock_ids(axis=None):
-            if axis == "sample":
-                return ["sample1", "sample2", "sample3", "sample4"]
-            elif axis == "observation":
-                return ["obs1", "obs2", "obs3"]
-            return ["sample1", "sample2", "sample3", "sample4"]
-
-        mock_table.ids = mock_ids
-        mock_biom_loader_instance.load_table.return_value = mock_table
-        mock_biom_loader_instance.rarefy.return_value = mock_table
-
-        mock_unifrac_loader_instance = MagicMock()
-        mock_unifrac_loader.return_value = mock_unifrac_loader_instance
-        from skbio import DistanceMatrix
-        import numpy as np
-
-        dist_data = np.random.rand(4, 4)
-        dist_data = (dist_data + dist_data.T) / 2
-        np.fill_diagonal(dist_data, 0)
-        mock_distance_matrix = DistanceMatrix(dist_data, ids=["sample1", "sample2", "sample3", "sample4"])
-        mock_unifrac_loader_instance.load_matrix.return_value = mock_distance_matrix
-
-        mock_dataset_instance = MagicMock()
-        mock_dataset_instance.get_normalization_params.return_value = None
-        mock_dataset_instance.get_count_normalization_params.return_value = None
-        mock_dataset.return_value = mock_dataset_instance
-
-        mock_dataloader_instance = MagicMock()
-        mock_dataloader_instance.__len__ = MagicMock(return_value=1)
-        mock_dataloader.return_value = mock_dataloader_instance
-
-        mock_model_instance = MagicMock()
-        mock_model_instance.parameters.return_value = iter([torch.nn.Parameter(torch.zeros(1))])
-        mock_model.return_value = mock_model_instance
+        _setup_train_data_parallel_mocks(mock_biom_loader, mock_unifrac_loader, mock_dataset, mock_dataloader, mock_model)
 
         result = runner.invoke(
             cli,
