@@ -203,7 +203,7 @@ Reduce code duplication between `pretrain.py` and `train.py`.
 ---
 
 ### CLN-5: Add DataParallel to train.py
-**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Complete
 
 Feature parity: DataParallel exists in pretrain.py but not train.py.
 
@@ -213,9 +213,9 @@ Feature parity: DataParallel exists in pretrain.py but not train.py.
 - Mutually exclusive with `--distributed`/`--fsdp`
 
 **Acceptance Criteria:**
-- [ ] `--data-parallel` available in train.py
-- [ ] Works with UniFrac auxiliary loss
-- [ ] 5+ tests
+- [x] `--data-parallel` available in train.py
+- [x] Works with UniFrac auxiliary loss
+- [x] 5+ tests (added 5 new tests)
 
 **Files:** `aam/cli/train.py`, `tests/test_cli.py`
 
