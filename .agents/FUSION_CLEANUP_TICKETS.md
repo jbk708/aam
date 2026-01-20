@@ -188,15 +188,21 @@ Reduce code duplication between `pretrain.py` and `train.py`.
 - Scheduler creation logic
 - Distributed validation checks
 - DataLoader creation patterns
+- DataParallel wrapping (~20 lines each, nearly identical in both files)
 
 **Scope:**
 - Create `aam/cli/training_utils.py` with shared functions
 - Refactor both CLI scripts to use shared code
+- Extract `wrap_data_parallel()` helper function
+- Align validation order (pretrain validates before setup, train validates after - should be consistent)
+- Enhance `--data-parallel requires CUDA` error message to match FSDP's helpful format
 
 **Acceptance Criteria:**
 - [ ] Shared utilities extracted
 - [ ] Both CLIs use shared code
 - [ ] No behavior changes
+- [ ] DataParallel wrapping extracted to shared function
+- [ ] Validation order consistent between pretrain.py and train.py
 
 **Files:** `aam/cli/training_utils.py` (new), `aam/cli/pretrain.py`, `aam/cli/train.py`
 
