@@ -546,6 +546,273 @@ class TestCLICommands:
         assert result.exit_code != 0
         assert "--fsdp-sharded-checkpoint requires --fsdp" in result.output
 
+    def test_train_command_data_parallel_option_exists(self, runner):
+        """Test that --data-parallel option appears in train help."""
+        result = runner.invoke(cli, ["train", "--help"])
+        assert result.exit_code == 0
+        assert "--data-parallel" in result.output
+        assert "DataParallel" in result.output
+        assert "UniFrac" in result.output
+
+    def test_train_command_data_parallel_distributed_mutual_exclusion(
+        self, runner, sample_biom_file, sample_unifrac_matrix_file, sample_metadata_file, sample_output_dir
+    ):
+        """Test that --data-parallel and --distributed cannot be used together."""
+        result = runner.invoke(
+            cli,
+            [
+                "train",
+                "--table",
+                sample_biom_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
+                "--metadata",
+                sample_metadata_file,
+                "--metadata-column",
+                "target",
+                "--output-dir",
+                sample_output_dir,
+                "--data-parallel",
+                "--distributed",
+            ],
+        )
+        assert result.exit_code != 0
+        assert "Cannot use multiple distributed training options together" in result.output
+
+    def test_train_command_data_parallel_fsdp_mutual_exclusion(
+        self, runner, sample_biom_file, sample_unifrac_matrix_file, sample_metadata_file, sample_output_dir
+    ):
+        """Test that --data-parallel and --fsdp cannot be used together."""
+        result = runner.invoke(
+            cli,
+            [
+                "train",
+                "--table",
+                sample_biom_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
+                "--metadata",
+                sample_metadata_file,
+                "--metadata-column",
+                "target",
+                "--output-dir",
+                sample_output_dir,
+                "--data-parallel",
+                "--fsdp",
+            ],
+        )
+        assert result.exit_code != 0
+        assert "Cannot use multiple distributed training options together" in result.output
+
+    @patch("aam.cli.train.DataLoader")
+    @patch("aam.cli.train.torch.cuda.is_available")
+    @patch("aam.cli.train.torch.cuda.device_count")
+    @patch("aam.cli.train.torch.nn.DataParallel")
+    @patch("aam.cli.train.setup_logging")
+    @patch("aam.cli.train.setup_device")
+    @patch("aam.cli.train.setup_random_seed")
+    @patch("aam.cli.train.validate_file_path")
+    @patch("aam.cli.train.validate_arguments")
+    @patch("aam.cli.train.BIOMLoader")
+    @patch("aam.cli.train.UniFracLoader")
+    @patch("aam.cli.train.ASVDataset")
+    @patch("aam.cli.train.SequencePredictor")
+    @patch("aam.cli.train.Trainer")
+    def test_train_command_data_parallel_wraps_model(
+        self,
+        mock_trainer,
+        mock_model,
+        mock_dataset,
+        mock_unifrac_loader,
+        mock_biom_loader,
+        mock_validate_args,
+        mock_validate_file,
+        mock_setup_seed,
+        mock_setup_device,
+        mock_setup_logging,
+        mock_data_parallel,
+        mock_device_count,
+        mock_cuda_available,
+        mock_dataloader,
+        runner,
+        sample_biom_file,
+        sample_unifrac_matrix_file,
+        sample_metadata_file,
+        sample_output_dir,
+    ):
+        """Test train command wraps model with DataParallel when --data-parallel is used."""
+        mock_cuda_available.return_value = True
+        mock_device_count.return_value = 2
+        mock_setup_device.return_value = torch.device("cuda")
+        mock_biom_loader_instance = MagicMock()
+        mock_biom_loader.return_value = mock_biom_loader_instance
+        mock_table = MagicMock()
+
+        def mock_ids(axis=None):
+            if axis == "sample":
+                return ["sample1", "sample2", "sample3", "sample4"]
+            elif axis == "observation":
+                return ["obs1", "obs2", "obs3"]
+            return ["sample1", "sample2", "sample3", "sample4"]
+
+        mock_table.ids = mock_ids
+        mock_biom_loader_instance.load_table.return_value = mock_table
+        mock_biom_loader_instance.rarefy.return_value = mock_table
+
+        mock_unifrac_loader_instance = MagicMock()
+        mock_unifrac_loader.return_value = mock_unifrac_loader_instance
+        from skbio import DistanceMatrix
+        import numpy as np
+
+        dist_data = np.random.rand(4, 4)
+        dist_data = (dist_data + dist_data.T) / 2
+        np.fill_diagonal(dist_data, 0)
+        mock_distance_matrix = DistanceMatrix(dist_data, ids=["sample1", "sample2", "sample3", "sample4"])
+        mock_unifrac_loader_instance.load_matrix.return_value = mock_distance_matrix
+
+        mock_dataset_instance = MagicMock()
+        mock_dataset_instance.get_normalization_params.return_value = None
+        mock_dataset_instance.get_count_normalization_params.return_value = None
+        mock_dataset.return_value = mock_dataset_instance
+
+        mock_dataloader_instance = MagicMock()
+        mock_dataloader_instance.__len__ = MagicMock(return_value=1)
+        mock_dataloader.return_value = mock_dataloader_instance
+
+        mock_model_instance = MagicMock()
+        mock_model_instance.parameters.return_value = iter([torch.nn.Parameter(torch.zeros(1))])
+        mock_model.return_value = mock_model_instance
+
+        mock_dp_wrapped_model = MagicMock()
+        mock_data_parallel.return_value = mock_dp_wrapped_model
+
+        mock_trainer_instance = MagicMock()
+        mock_trainer_instance.train.return_value = {"train_loss": [1.0], "val_loss": [0.9]}
+        mock_trainer.return_value = mock_trainer_instance
+
+        result = runner.invoke(
+            cli,
+            [
+                "train",
+                "--table",
+                sample_biom_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
+                "--metadata",
+                sample_metadata_file,
+                "--metadata-column",
+                "target",
+                "--output-dir",
+                sample_output_dir,
+                "--batch-size",
+                "8",
+                "--epochs",
+                "1",
+                "--data-parallel",
+            ],
+        )
+
+        mock_data_parallel.assert_called_once()
+        call_args = mock_data_parallel.call_args
+        assert call_args is not None
+
+    @patch("aam.cli.train.DataLoader")
+    @patch("aam.cli.train.torch.cuda.is_available")
+    @patch("aam.cli.train.setup_logging")
+    @patch("aam.cli.train.setup_device")
+    @patch("aam.cli.train.setup_random_seed")
+    @patch("aam.cli.train.validate_file_path")
+    @patch("aam.cli.train.validate_arguments")
+    @patch("aam.cli.train.BIOMLoader")
+    @patch("aam.cli.train.UniFracLoader")
+    @patch("aam.cli.train.ASVDataset")
+    @patch("aam.cli.train.SequencePredictor")
+    def test_train_command_data_parallel_requires_cuda(
+        self,
+        mock_model,
+        mock_dataset,
+        mock_unifrac_loader,
+        mock_biom_loader,
+        mock_validate_args,
+        mock_validate_file,
+        mock_setup_seed,
+        mock_setup_device,
+        mock_setup_logging,
+        mock_cuda_available,
+        mock_dataloader,
+        runner,
+        sample_biom_file,
+        sample_unifrac_matrix_file,
+        sample_metadata_file,
+        sample_output_dir,
+    ):
+        """Test train command with --data-parallel fails without CUDA."""
+        mock_cuda_available.return_value = False
+        mock_setup_device.return_value = torch.device("cpu")
+        mock_biom_loader_instance = MagicMock()
+        mock_biom_loader.return_value = mock_biom_loader_instance
+        mock_table = MagicMock()
+
+        def mock_ids(axis=None):
+            if axis == "sample":
+                return ["sample1", "sample2", "sample3", "sample4"]
+            elif axis == "observation":
+                return ["obs1", "obs2", "obs3"]
+            return ["sample1", "sample2", "sample3", "sample4"]
+
+        mock_table.ids = mock_ids
+        mock_biom_loader_instance.load_table.return_value = mock_table
+        mock_biom_loader_instance.rarefy.return_value = mock_table
+
+        mock_unifrac_loader_instance = MagicMock()
+        mock_unifrac_loader.return_value = mock_unifrac_loader_instance
+        from skbio import DistanceMatrix
+        import numpy as np
+
+        dist_data = np.random.rand(4, 4)
+        dist_data = (dist_data + dist_data.T) / 2
+        np.fill_diagonal(dist_data, 0)
+        mock_distance_matrix = DistanceMatrix(dist_data, ids=["sample1", "sample2", "sample3", "sample4"])
+        mock_unifrac_loader_instance.load_matrix.return_value = mock_distance_matrix
+
+        mock_dataset_instance = MagicMock()
+        mock_dataset_instance.get_normalization_params.return_value = None
+        mock_dataset_instance.get_count_normalization_params.return_value = None
+        mock_dataset.return_value = mock_dataset_instance
+
+        mock_dataloader_instance = MagicMock()
+        mock_dataloader_instance.__len__ = MagicMock(return_value=1)
+        mock_dataloader.return_value = mock_dataloader_instance
+
+        mock_model_instance = MagicMock()
+        mock_model_instance.parameters.return_value = iter([torch.nn.Parameter(torch.zeros(1))])
+        mock_model.return_value = mock_model_instance
+
+        result = runner.invoke(
+            cli,
+            [
+                "train",
+                "--table",
+                sample_biom_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
+                "--metadata",
+                sample_metadata_file,
+                "--metadata-column",
+                "target",
+                "--output-dir",
+                sample_output_dir,
+                "--batch-size",
+                "8",
+                "--epochs",
+                "1",
+                "--data-parallel",
+            ],
+        )
+
+        assert result.exit_code != 0
+        assert "--data-parallel requires CUDA" in result.output
+
     def test_predict_command_help(self, runner):
         """Test predict command help."""
         result = runner.invoke(cli, ["predict", "--help"])
