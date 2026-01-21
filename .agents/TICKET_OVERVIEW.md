@@ -28,7 +28,7 @@
 |--------|-------------|--------|------|
 | **FUS-2** | Cross-attention fusion | 5-6h | FUSION_CLEANUP |
 
-### MEDIUM (8 tickets, ~27-38 hours)
+### MEDIUM (9 tickets, ~28-40 hours)
 
 | Ticket | Description | Effort | File |
 |--------|-------------|--------|------|
@@ -39,7 +39,8 @@
 | **CLN-1** | Output constraint consolidation | 3-4h | FUSION_CLEANUP |
 | **CLN-2** | Normalization unification | 3-4h | FUSION_CLEANUP |
 | **CLN-6** | Categorical docs/validation | 4-5h | FUSION_CLEANUP |
-| **CLN-7** | Attention dropout support | 3-4h | FUSION_CLEANUP |
+| **CLN-7** | Toggle count prediction | 2-3h | FUSION_CLEANUP |
+| **CLN-8** | Categorical learning rate | 2-3h | FUSION_CLEANUP |
 
 ### LOW (12 tickets, ~48-63 hours)
 

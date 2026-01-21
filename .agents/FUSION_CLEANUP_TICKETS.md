@@ -258,41 +258,75 @@ Document and validate the three parallel categorical systems.
 
 ---
 
-### CLN-7: Expose Transformer Dropout and Add Attention Dropout
-**Priority:** MEDIUM | **Effort:** 3-4 hours | **Status:** Not Started
+### CLN-7: Toggle Count Prediction
+**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Not Started
 
-Expose transformer dropout parameters via CLI and add true attention dropout.
+Allow disabling count prediction head entirely for simpler training.
 
 **Current State:**
-- Transformer dropout hardcoded to 0.1 (applied post-attention and post-FFN)
-- No dropout on attention weights themselves
-- Only `--regressor-dropout` and `--categorical-dropout` exposed via CLI
+- Count prediction always enabled
+- `--count-penalty 0.0` disables loss but head still computed
+- Wastes compute when count prediction not needed
 
-**Proposed CLI Flags:**
+**Proposed CLI Flag:**
 ```bash
---transformer-dropout 0.1       # Post-attention and post-FFN dropout (existing behavior)
---attention-dropout 0.0         # Dropout on attention weights (pre-softmax)
+--no-count-prediction    # Disable count prediction head entirely
 ```
 
-**Implementation Options:**
-1. **Custom TransformerEncoderLayer** - Copy PyTorch's implementation, add `attn_dropout` to `MultiheadAttention`
-2. **Flash Attention** - Use `flash_attn` which has native `dropout_p` parameter
-3. **Scaled Dot Product Attention** - PyTorch 2.0+ `F.scaled_dot_product_attention(dropout_p=...)`
-
 **Scope:**
-- Add `--transformer-dropout` CLI flag (expose existing parameter)
-- Add `--attention-dropout` CLI flag (new functionality)
-- Update `TransformerEncoder` to support separate attention dropout
-- Propagate to all transformer layers (ASV, sample, encoder, count, target)
+- Add `--count-prediction/--no-count-prediction` flag (default: enabled)
+- Skip count_encoder and count_head when disabled
+- Remove count_prediction from output dict when disabled
+- Validate `--count-penalty` warns if used with `--no-count-prediction`
 
 **Acceptance Criteria:**
-- [ ] `--transformer-dropout` controls post-attention/FFN dropout
-- [ ] `--attention-dropout` controls attention weight dropout
-- [ ] Both work with Flash Attention when available
-- [ ] 10+ tests covering dropout behavior
-- [ ] Documentation updated
+- [ ] `--no-count-prediction` disables count head
+- [ ] Memory/compute savings when disabled
+- [ ] Backward compatible (default enabled)
+- [ ] 5+ tests
 
-**Files:** `aam/models/transformer.py`, `aam/models/sequence_predictor.py`, `aam/cli/train.py`, `aam/cli/pretrain.py`
+**Files:** `aam/models/sequence_predictor.py`, `aam/cli/train.py`, `tests/test_sequence_predictor.py`
+
+---
+
+### CLN-8: Separate Learning Rate for Categorical Parameters
+**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Not Started
+
+Allow different learning rate for categorical embeddings and fusion layers.
+
+**Motivation:**
+- Categorical embeddings may need higher LR to learn meaningful representations
+- Or lower LR to prevent overfitting on small category counts
+- GMU/fusion layers may benefit from different LR than base model
+
+**Proposed CLI Flag:**
+```bash
+--categorical-lr 1e-3    # Learning rate for categorical parameters (default: same as --lr)
+```
+
+**Scope:**
+- Add `--categorical-lr` flag
+- Create parameter groups in optimizer: base params vs categorical params
+- Categorical params include: `categorical_embedder`, `categorical_projection`, `gmu`, `conditional_scale`, `conditional_bias`
+- Support with AdamW optimizer
+
+**Implementation:**
+```python
+param_groups = [
+    {"params": base_params, "lr": lr},
+    {"params": categorical_params, "lr": categorical_lr},
+]
+optimizer = AdamW(param_groups, weight_decay=weight_decay)
+```
+
+**Acceptance Criteria:**
+- [ ] `--categorical-lr` sets separate LR for categorical params
+- [ ] Default behavior unchanged (uses --lr for all)
+- [ ] Works with all optimizers
+- [ ] TensorBoard logs both learning rates
+- [ ] 5+ tests
+
+**Files:** `aam/training/trainer.py`, `aam/cli/train.py`, `tests/test_trainer.py`
 
 ---
 
@@ -309,8 +343,9 @@ Expose transformer dropout parameters via CLI and add true attention dropout.
 | **CLN-4** | Extract shared utilities | 2-3h | LOW | Not Started |
 | **CLN-5** | DataParallel in train.py | 2-3h | MEDIUM | Complete |
 | **CLN-6** | Categorical docs/validation | 4-5h | MEDIUM | Not Started |
-| **CLN-7** | Attention dropout support | 3-4h | MEDIUM | Not Started |
-| **Total** | | **27-43h** | |
+| **CLN-7** | Toggle count prediction | 2-3h | MEDIUM | Not Started |
+| **CLN-8** | Categorical learning rate | 2-3h | MEDIUM | Not Started |
+| **Total** | | **28-45h** | |
 
 ## Recommended Order
 
