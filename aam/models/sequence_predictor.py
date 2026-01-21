@@ -1,7 +1,5 @@
 """Main prediction model that composes SequenceEncoder as base model."""
 
-import warnings
-
 import torch
 import torch.nn as nn
 from typing import Dict, List, Optional

@@ -2545,3 +2545,329 @@ class TestCountPenaltyCLI:
         )
         assert count_penalty_param is not None, "--count-penalty option not found in pretrain command"
         assert count_penalty_param.default == 1.0
+
+
+class TestOutputArtifacts:
+    """Tests for CLN-10: Training output artifacts (sample lists)."""
+
+    @pytest.fixture
+    def runner(self):
+        return CliRunner()
+
+    @pytest.fixture
+    def temp_dir(self, tmp_path):
+        """Create a temporary directory for test files."""
+        return tmp_path
+
+    @pytest.fixture
+    def sample_biom_file(self, temp_dir):
+        """Create a sample BIOM file for testing."""
+        biom_file = temp_dir / "test.biom"
+        biom_file.touch()
+        return str(biom_file)
+
+    @pytest.fixture
+    def sample_unifrac_matrix_file(self, temp_dir):
+        """Create a sample UniFrac matrix file for testing."""
+        unifrac_file = temp_dir / "test_unifrac.h5"
+        unifrac_file.touch()
+        return str(unifrac_file)
+
+    @pytest.fixture
+    def sample_metadata_file(self, temp_dir):
+        """Create a sample metadata file for testing."""
+        metadata_file = temp_dir / "test_metadata.tsv"
+        metadata_file.write_text("sample_id\ttarget\nsample1\t1.0\nsample2\t2.0\nsample3\t3.0\nsample4\t4.0\n")
+        return str(metadata_file)
+
+    @pytest.fixture
+    def sample_output_dir(self, temp_dir):
+        """Create a sample output directory for testing."""
+        output_dir = temp_dir / "output"
+        output_dir.mkdir()
+        return str(output_dir)
+
+    @patch("aam.cli.train.Trainer")
+    @patch("aam.cli.train.MultiTaskLoss")
+    @patch("aam.cli.train.create_scheduler")
+    @patch("aam.cli.train.create_optimizer")
+    @patch("aam.cli.train.SequencePredictor")
+    @patch("aam.cli.train.DataLoader")
+    @patch("aam.cli.train.ASVDataset")
+    @patch("aam.cli.train.train_test_split")
+    @patch("aam.cli.train.UniFracLoader")
+    @patch("aam.cli.train.BIOMLoader")
+    @patch("aam.cli.train.validate_arguments")
+    @patch("aam.cli.train.validate_file_path")
+    @patch("aam.cli.train.setup_random_seed")
+    @patch("aam.cli.train.setup_device")
+    @patch("aam.cli.train.setup_logging")
+    @patch("aam.cli.train.pd.read_csv")
+    def test_train_creates_sample_id_files(
+        self,
+        mock_read_csv,
+        mock_setup_logging,
+        mock_setup_device,
+        mock_setup_seed,
+        mock_validate_file,
+        mock_validate_args,
+        mock_biom_loader_class,
+        mock_unifrac_loader_class,
+        mock_train_test_split,
+        mock_dataset_class,
+        mock_dataloader_class,
+        mock_model_class,
+        mock_create_optimizer,
+        mock_create_scheduler,
+        mock_loss_class,
+        mock_trainer_class,
+        runner,
+        sample_biom_file,
+        sample_unifrac_matrix_file,
+        sample_metadata_file,
+        sample_output_dir,
+    ):
+        """Test that train command creates train_samples.txt and val_samples.txt files."""
+        mock_setup_device.return_value = torch.device("cpu")
+
+        mock_metadata_df = MagicMock()
+        mock_metadata_df.columns = pd.Index(["sample_id", "target"])
+        mock_read_csv.return_value = mock_metadata_df
+
+        mock_biom_loader_instance = MagicMock()
+        mock_biom_loader_class.return_value = mock_biom_loader_instance
+        mock_table = MagicMock()
+
+        def mock_ids(axis=None):
+            if axis == "sample":
+                return ["sample1", "sample2", "sample3", "sample4"]
+            elif axis == "observation":
+                return ["obs1", "obs2", "obs3"]
+            return ["sample1", "sample2", "sample3", "sample4"]
+
+        mock_table.ids = mock_ids
+        mock_biom_loader_instance.load_table.return_value = mock_table
+        mock_biom_loader_instance.rarefy.return_value = mock_table
+
+        mock_unifrac_loader_instance = MagicMock()
+        mock_unifrac_loader_class.return_value = mock_unifrac_loader_instance
+        from skbio import DistanceMatrix
+        import numpy as np
+
+        dist_data = np.random.rand(4, 4)
+        dist_data = (dist_data + dist_data.T) / 2
+        np.fill_diagonal(dist_data, 0)
+        mock_distance_matrix = DistanceMatrix(dist_data, ids=["sample1", "sample2", "sample3", "sample4"])
+        mock_unifrac_loader_instance.load_matrix.return_value = mock_distance_matrix
+
+        mock_train_ids = ["sample1", "sample2", "sample3"]
+        mock_val_ids = ["sample4"]
+        mock_train_test_split.return_value = (mock_train_ids, mock_val_ids)
+
+        mock_train_table = MagicMock()
+        mock_val_table = MagicMock()
+        mock_table.filter.side_effect = lambda ids, **kwargs: mock_train_table if ids == mock_train_ids else mock_val_table
+
+        mock_dataset_instance = MagicMock()
+        mock_dataset_instance.get_normalization_params.return_value = None
+        mock_dataset_instance.get_count_normalization_params.return_value = None
+        mock_dataset_class.return_value = mock_dataset_instance
+
+        mock_dataloader_instance = MagicMock()
+        mock_dataloader_instance.__len__ = MagicMock(return_value=1)
+        mock_dataloader_class.return_value = mock_dataloader_instance
+
+        mock_model_instance = MagicMock()
+        mock_model_class.return_value = mock_model_instance
+
+        mock_optimizer = MagicMock()
+        mock_create_optimizer.return_value = mock_optimizer
+
+        mock_scheduler = MagicMock()
+        mock_create_scheduler.return_value = mock_scheduler
+
+        mock_loss_instance = MagicMock()
+        mock_loss_class.return_value = mock_loss_instance
+
+        mock_trainer_instance = MagicMock()
+        mock_trainer_instance.train.return_value = {"train_loss": [1.0], "val_loss": [0.9]}
+        mock_trainer_class.return_value = mock_trainer_instance
+
+        result = runner.invoke(
+            cli,
+            [
+                "train",
+                "--table",
+                sample_biom_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
+                "--metadata",
+                sample_metadata_file,
+                "--metadata-column",
+                "target",
+                "--output-dir",
+                sample_output_dir,
+                "--batch-size",
+                "8",
+                "--epochs",
+                "1",
+            ],
+        )
+
+        assert result.exit_code == 0, f"Command failed: {result.output}"
+
+        # Verify sample ID files were created
+        train_samples_file = Path(sample_output_dir) / "train_samples.txt"
+        val_samples_file = Path(sample_output_dir) / "val_samples.txt"
+
+        assert train_samples_file.exists(), "train_samples.txt should be created"
+        assert val_samples_file.exists(), "val_samples.txt should be created"
+
+        # Verify contents
+        train_content = train_samples_file.read_text().strip().split("\n")
+        val_content = val_samples_file.read_text().strip().split("\n")
+
+        assert train_content == mock_train_ids
+        assert val_content == mock_val_ids
+
+    @patch("aam.cli.train.Trainer")
+    @patch("aam.cli.train.MultiTaskLoss")
+    @patch("aam.cli.train.create_scheduler")
+    @patch("aam.cli.train.create_optimizer")
+    @patch("aam.cli.train.SequencePredictor")
+    @patch("aam.cli.train.DataLoader")
+    @patch("aam.cli.train.ASVDataset")
+    @patch("aam.cli.train.train_test_split")
+    @patch("aam.cli.train.UniFracLoader")
+    @patch("aam.cli.train.BIOMLoader")
+    @patch("aam.cli.train.validate_arguments")
+    @patch("aam.cli.train.validate_file_path")
+    @patch("aam.cli.train.setup_random_seed")
+    @patch("aam.cli.train.setup_device")
+    @patch("aam.cli.train.setup_logging")
+    @patch("aam.cli.train.pd.read_csv")
+    def test_train_sample_files_contain_correct_count(
+        self,
+        mock_read_csv,
+        mock_setup_logging,
+        mock_setup_device,
+        mock_setup_seed,
+        mock_validate_file,
+        mock_validate_args,
+        mock_biom_loader_class,
+        mock_unifrac_loader_class,
+        mock_train_test_split,
+        mock_dataset_class,
+        mock_dataloader_class,
+        mock_model_class,
+        mock_create_optimizer,
+        mock_create_scheduler,
+        mock_loss_class,
+        mock_trainer_class,
+        runner,
+        sample_biom_file,
+        sample_unifrac_matrix_file,
+        sample_metadata_file,
+        sample_output_dir,
+    ):
+        """Test that sample files contain the correct number of samples."""
+        mock_setup_device.return_value = torch.device("cpu")
+
+        mock_metadata_df = MagicMock()
+        mock_metadata_df.columns = pd.Index(["sample_id", "target"])
+        mock_read_csv.return_value = mock_metadata_df
+
+        mock_biom_loader_instance = MagicMock()
+        mock_biom_loader_class.return_value = mock_biom_loader_instance
+        mock_table = MagicMock()
+
+        # Create a larger sample set to test 80/20 split
+        all_samples = [f"sample{i}" for i in range(10)]
+
+        def mock_ids(axis=None):
+            if axis == "sample":
+                return all_samples
+            elif axis == "observation":
+                return ["obs1", "obs2", "obs3"]
+            return all_samples
+
+        mock_table.ids = mock_ids
+        mock_biom_loader_instance.load_table.return_value = mock_table
+        mock_biom_loader_instance.rarefy.return_value = mock_table
+
+        mock_unifrac_loader_instance = MagicMock()
+        mock_unifrac_loader_class.return_value = mock_unifrac_loader_instance
+        from skbio import DistanceMatrix
+        import numpy as np
+
+        dist_data = np.random.rand(10, 10)
+        dist_data = (dist_data + dist_data.T) / 2
+        np.fill_diagonal(dist_data, 0)
+        mock_distance_matrix = DistanceMatrix(dist_data, ids=all_samples)
+        mock_unifrac_loader_instance.load_matrix.return_value = mock_distance_matrix
+
+        # 80/20 split
+        mock_train_ids = all_samples[:8]
+        mock_val_ids = all_samples[8:]
+        mock_train_test_split.return_value = (mock_train_ids, mock_val_ids)
+
+        mock_train_table = MagicMock()
+        mock_val_table = MagicMock()
+        mock_table.filter.side_effect = lambda ids, **kwargs: mock_train_table if len(ids) == 8 else mock_val_table
+
+        mock_dataset_instance = MagicMock()
+        mock_dataset_instance.get_normalization_params.return_value = None
+        mock_dataset_instance.get_count_normalization_params.return_value = None
+        mock_dataset_class.return_value = mock_dataset_instance
+
+        mock_dataloader_instance = MagicMock()
+        mock_dataloader_instance.__len__ = MagicMock(return_value=1)
+        mock_dataloader_class.return_value = mock_dataloader_instance
+
+        mock_model_instance = MagicMock()
+        mock_model_class.return_value = mock_model_instance
+
+        mock_optimizer = MagicMock()
+        mock_create_optimizer.return_value = mock_optimizer
+
+        mock_scheduler = MagicMock()
+        mock_create_scheduler.return_value = mock_scheduler
+
+        mock_loss_instance = MagicMock()
+        mock_loss_class.return_value = mock_loss_instance
+
+        mock_trainer_instance = MagicMock()
+        mock_trainer_instance.train.return_value = {"train_loss": [1.0], "val_loss": [0.9]}
+        mock_trainer_class.return_value = mock_trainer_instance
+
+        result = runner.invoke(
+            cli,
+            [
+                "train",
+                "--table",
+                sample_biom_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
+                "--metadata",
+                sample_metadata_file,
+                "--metadata-column",
+                "target",
+                "--output-dir",
+                sample_output_dir,
+                "--batch-size",
+                "8",
+                "--epochs",
+                "1",
+            ],
+        )
+
+        assert result.exit_code == 0
+
+        train_samples_file = Path(sample_output_dir) / "train_samples.txt"
+        val_samples_file = Path(sample_output_dir) / "val_samples.txt"
+
+        train_content = train_samples_file.read_text().strip().split("\n")
+        val_content = val_samples_file.read_text().strip().split("\n")
+
+        assert len(train_content) == 8, f"Expected 8 training samples, got {len(train_content)}"
+        assert len(val_content) == 2, f"Expected 2 validation samples, got {len(val_content)}"

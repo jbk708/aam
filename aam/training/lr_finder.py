@@ -7,7 +7,7 @@ learning rate while training and track loss to find optimal starting LR.
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 import numpy as np
 import matplotlib
 

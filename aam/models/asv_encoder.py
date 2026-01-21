@@ -168,7 +168,6 @@ class ASVEncoder(nn.Module):
         batch_size, num_asvs, seq_len = tokens.shape
 
         tokens = tokens.long()
-        original_tokens = tokens.clone()
 
         should_mask = self.training and self.mask_ratio > 0 and return_nucleotides
 
