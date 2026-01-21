@@ -75,4 +75,5 @@ class GMU(nn.Module):
         h_cat_t = torch.tanh(self.cat_transform(h_cat))
         z = torch.sigmoid(self.gate(torch.cat([h_seq, h_cat], dim=-1)))
         output = z * h_seq_t + (1 - z) * h_cat_t
-        return output, z if return_gate else None
+        gate_output = z if return_gate else None
+        return output, gate_output
