@@ -516,21 +516,20 @@ class TestAsymmetricLoss:
         """Test asymmetric loss with extreme penalty ratios."""
         from aam.training.losses import compute_asymmetric_loss
 
-        # Mix of over and under predictions
-        pred = torch.tensor([[1.0], [0.0]])
-        target = torch.tensor([[0.0], [1.0]])  # First is over, second is under
+        # Only overpredictions
+        pred_over = torch.tensor([[1.0], [2.0]])
+        target_over = torch.tensor([[0.0], [0.0]])
 
-        # Very high over_penalty
-        loss_high_over = compute_asymmetric_loss(pred, target, over_penalty=10.0, under_penalty=1.0)
-        # Very high under_penalty
-        loss_high_under = compute_asymmetric_loss(pred, target, over_penalty=1.0, under_penalty=10.0)
+        # Very high over_penalty vs low
+        loss_high_over = compute_asymmetric_loss(pred_over, target_over, over_penalty=10.0, under_penalty=1.0)
+        loss_low_over = compute_asymmetric_loss(pred_over, target_over, over_penalty=1.0, under_penalty=10.0)
 
         # Both should be positive
         assert loss_high_over.item() > 0
-        assert loss_high_under.item() > 0
+        assert loss_low_over.item() > 0
 
-        # The losses should be different (one penalizes over more, other under more)
-        assert loss_high_over.item() != loss_high_under.item()
+        # High over_penalty should give 10x higher loss for pure overpredictions
+        assert loss_high_over.item() == loss_low_over.item() * 10
 
 
 class TestEvaluatorQuantileExtraction:

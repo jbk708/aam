@@ -179,6 +179,11 @@ def compute_asymmetric_loss(
 ) -> torch.Tensor:
     """Compute asymmetric loss with different penalties for over/under prediction.
 
+    The loss penalizes over-predictions and under-predictions differently:
+        L = over_penalty * max(pred - target, 0) + under_penalty * max(target - pred, 0)
+
+    When over_penalty == under_penalty == 1.0, this reduces to MAE (L1 loss).
+
     Args:
         pred: Predicted values [batch_size, out_dim]
         target: True values [batch_size, out_dim]
@@ -188,7 +193,11 @@ def compute_asymmetric_loss(
     Returns:
         Scalar loss averaged over all samples and outputs
     """
-    raise NotImplementedError("AsymmetricLoss not yet implemented")
+    error = pred - target
+    over_error = torch.clamp(error, min=0)
+    under_error = torch.clamp(-error, min=0)
+    loss = over_penalty * over_error + under_penalty * under_error
+    return loss.mean()
 
 
 def compute_pinball_loss(
