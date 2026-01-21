@@ -1,19 +1,20 @@
-"""Unit tests for Random Forest baseline script."""
+"""Unit tests for Random Forest baseline."""
 
-import pytest
 import tempfile
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
 import numpy as np
 import pandas as pd
-from pathlib import Path
+import pytest
 from click.testing import CliRunner
-from unittest.mock import patch, MagicMock
 
 from aam.cli.rf_baseline import (
-    rf_baseline,
-    load_sample_ids,
-    load_biom_as_dataframe,
-    train_random_forest,
     compute_metrics,
+    load_biom_as_dataframe,
+    load_sample_ids,
+    rf_baseline,
+    train_random_forest,
 )
 
 
@@ -64,20 +65,26 @@ def metadata_file(temp_dir):
     return str(metadata_file)
 
 
+def _create_mock_biom_table(
+    sample_ids: list[str],
+    feature_ids: list[str],
+    data: np.ndarray | None = None,
+) -> MagicMock:
+    """Create a mock BIOM table with the given sample and feature IDs."""
+    mock_table = MagicMock()
+    mock_table.ids = lambda axis=None: (np.array(sample_ids) if axis == "sample" else np.array(feature_ids))
+    if data is None:
+        data = np.random.rand(len(feature_ids), len(sample_ids)) * 100
+    mock_table.matrix_data = MagicMock()
+    mock_table.matrix_data.toarray.return_value = data
+    return mock_table
+
+
 @pytest.fixture
 def mock_biom_table():
-    """Create a mock BIOM table."""
-    mock_table = MagicMock()
-
-    def mock_ids(axis=None):
-        if axis == "sample":
-            return np.array(["sample1", "sample2", "sample3", "sample4", "sample5", "sample6"])
-        elif axis == "observation":
-            return np.array(["ASV1", "ASV2", "ASV3", "ASV4"])
-        return np.array(["sample1", "sample2", "sample3", "sample4", "sample5", "sample6"])
-
-    mock_table.ids = mock_ids
-
+    """Create a mock BIOM table with 6 samples and 4 features."""
+    sample_ids = ["sample1", "sample2", "sample3", "sample4", "sample5", "sample6"]
+    feature_ids = ["ASV1", "ASV2", "ASV3", "ASV4"]
     data = np.array(
         [
             [100, 200, 50, 150, 80, 120],
@@ -86,9 +93,7 @@ def mock_biom_table():
             [75, 150, 75, 90, 110, 70],
         ]
     )
-    mock_table.matrix_data = MagicMock()
-    mock_table.matrix_data.toarray.return_value = data
-    return mock_table
+    return _create_mock_biom_table(sample_ids, feature_ids, data)
 
 
 class TestLoadSampleIds:
@@ -220,6 +225,42 @@ class TestComputeMetrics:
 class TestRFBaselineCLI:
     """Tests for rf_baseline CLI command."""
 
+    def _run_cli(
+        self,
+        temp_dir: Path,
+        metadata_file: str,
+        train_samples_file: str,
+        val_samples_file: str,
+        mock_table: MagicMock,
+    ) -> tuple[Path, any]:
+        """Run the rf_baseline CLI with standard arguments."""
+        biom_file = temp_dir / "test.biom"
+        biom_file.touch()
+        output_file = temp_dir / "predictions.tsv"
+
+        with patch("biom.load_table", return_value=mock_table):
+            runner = CliRunner()
+            result = runner.invoke(
+                rf_baseline,
+                [
+                    "--table",
+                    str(biom_file),
+                    "--metadata",
+                    metadata_file,
+                    "--metadata-column",
+                    "target",
+                    "--train-samples",
+                    train_samples_file,
+                    "--val-samples",
+                    val_samples_file,
+                    "--output",
+                    str(output_file),
+                    "--n-estimators",
+                    "10",
+                ],
+            )
+        return output_file, result
+
     def test_cli_missing_required_args(self):
         """Test that CLI fails with missing required arguments."""
         runner = CliRunner()
@@ -229,175 +270,50 @@ class TestRFBaselineCLI:
 
     def test_cli_with_all_required_args(self, temp_dir, metadata_file, train_samples_file, val_samples_file):
         """Test CLI with all required arguments."""
-        biom_file = temp_dir / "test.biom"
-        biom_file.touch()
-        output_file = temp_dir / "predictions.tsv"
+        sample_ids = ["sample1", "sample2", "sample3", "sample4", "sample5", "sample6"]
+        mock_table = _create_mock_biom_table(sample_ids, ["ASV1", "ASV2", "ASV3"])
 
-        mock_table = MagicMock()
-        mock_table.ids = lambda axis=None: (
-            np.array(["sample1", "sample2", "sample3", "sample4", "sample5", "sample6"])
-            if axis == "sample"
-            else np.array(["ASV1", "ASV2", "ASV3"])
-        )
-        data = np.random.rand(3, 6) * 100
-        mock_table.matrix_data = MagicMock()
-        mock_table.matrix_data.toarray.return_value = data
+        output_file, result = self._run_cli(temp_dir, metadata_file, train_samples_file, val_samples_file, mock_table)
 
-        with patch("biom.load_table", return_value=mock_table):
-            runner = CliRunner()
-            result = runner.invoke(
-                rf_baseline,
-                [
-                    "--table",
-                    str(biom_file),
-                    "--metadata",
-                    metadata_file,
-                    "--metadata-column",
-                    "target",
-                    "--train-samples",
-                    train_samples_file,
-                    "--val-samples",
-                    val_samples_file,
-                    "--output",
-                    str(output_file),
-                    "--n-estimators",
-                    "10",
-                ],
-            )
-
-            assert result.exit_code == 0, f"CLI failed with: {result.output}"
-            assert output_file.exists()
+        assert result.exit_code == 0, f"CLI failed with: {result.output}"
+        assert output_file.exists()
 
     def test_cli_output_format(self, temp_dir, metadata_file, train_samples_file, val_samples_file):
         """Test that output file has correct format."""
-        biom_file = temp_dir / "test.biom"
-        biom_file.touch()
-        output_file = temp_dir / "predictions.tsv"
+        sample_ids = ["sample1", "sample2", "sample3", "sample4", "sample5", "sample6"]
+        mock_table = _create_mock_biom_table(sample_ids, ["ASV1", "ASV2", "ASV3"])
 
-        mock_table = MagicMock()
-        mock_table.ids = lambda axis=None: (
-            np.array(["sample1", "sample2", "sample3", "sample4", "sample5", "sample6"])
-            if axis == "sample"
-            else np.array(["ASV1", "ASV2", "ASV3"])
-        )
-        data = np.random.rand(3, 6) * 100
-        mock_table.matrix_data = MagicMock()
-        mock_table.matrix_data.toarray.return_value = data
+        output_file, result = self._run_cli(temp_dir, metadata_file, train_samples_file, val_samples_file, mock_table)
 
-        with patch("biom.load_table", return_value=mock_table):
-            runner = CliRunner()
-            result = runner.invoke(
-                rf_baseline,
-                [
-                    "--table",
-                    str(biom_file),
-                    "--metadata",
-                    metadata_file,
-                    "--metadata-column",
-                    "target",
-                    "--train-samples",
-                    train_samples_file,
-                    "--val-samples",
-                    val_samples_file,
-                    "--output",
-                    str(output_file),
-                    "--n-estimators",
-                    "10",
-                ],
-            )
-
-            assert result.exit_code == 0
-            df = pd.read_csv(output_file, sep="\t")
-            assert "sample_id" in df.columns
-            assert "actual" in df.columns
-            assert "predicted" in df.columns
-            assert len(df) == 2
+        assert result.exit_code == 0
+        df = pd.read_csv(output_file, sep="\t")
+        assert list(df.columns) == ["sample_id", "actual", "predicted"]
+        assert len(df) == 2
 
     def test_cli_prints_metrics(self, temp_dir, metadata_file, train_samples_file, val_samples_file):
         """Test that CLI prints metrics to console."""
-        biom_file = temp_dir / "test.biom"
-        biom_file.touch()
-        output_file = temp_dir / "predictions.tsv"
+        sample_ids = ["sample1", "sample2", "sample3", "sample4", "sample5", "sample6"]
+        mock_table = _create_mock_biom_table(sample_ids, ["ASV1", "ASV2", "ASV3"])
 
-        mock_table = MagicMock()
-        mock_table.ids = lambda axis=None: (
-            np.array(["sample1", "sample2", "sample3", "sample4", "sample5", "sample6"])
-            if axis == "sample"
-            else np.array(["ASV1", "ASV2", "ASV3"])
-        )
-        data = np.random.rand(3, 6) * 100
-        mock_table.matrix_data = MagicMock()
-        mock_table.matrix_data.toarray.return_value = data
+        _, result = self._run_cli(temp_dir, metadata_file, train_samples_file, val_samples_file, mock_table)
 
-        with patch("biom.load_table", return_value=mock_table):
-            runner = CliRunner()
-            result = runner.invoke(
-                rf_baseline,
-                [
-                    "--table",
-                    str(biom_file),
-                    "--metadata",
-                    metadata_file,
-                    "--metadata-column",
-                    "target",
-                    "--train-samples",
-                    train_samples_file,
-                    "--val-samples",
-                    val_samples_file,
-                    "--output",
-                    str(output_file),
-                    "--n-estimators",
-                    "10",
-                ],
-            )
-
-            assert result.exit_code == 0
-            assert "R²" in result.output or "R2" in result.output
-            assert "MAE" in result.output
-            assert "RMSE" in result.output
+        assert result.exit_code == 0
+        assert "R²" in result.output or "R2" in result.output
+        assert "MAE" in result.output
+        assert "RMSE" in result.output
 
     def test_cli_warns_missing_samples(self, temp_dir, metadata_file, caplog):
         """Test CLI warns when samples not found in BIOM."""
         import logging
-
-        biom_file = temp_dir / "test.biom"
-        biom_file.touch()
-        output_file = temp_dir / "predictions.tsv"
 
         train_file = temp_dir / "train.txt"
         train_file.write_text("sample1\nsample2\nmissing_sample\n")
         val_file = temp_dir / "val.txt"
         val_file.write_text("sample3\n")
 
-        mock_table = MagicMock()
-        mock_table.ids = lambda axis=None: (
-            np.array(["sample1", "sample2", "sample3"]) if axis == "sample" else np.array(["ASV1", "ASV2"])
-        )
-        data = np.random.rand(2, 3) * 100
-        mock_table.matrix_data = MagicMock()
-        mock_table.matrix_data.toarray.return_value = data
+        mock_table = _create_mock_biom_table(["sample1", "sample2", "sample3"], ["ASV1", "ASV2"])
 
-        with patch("biom.load_table", return_value=mock_table):
-            runner = CliRunner()
-            with caplog.at_level(logging.WARNING):
-                result = runner.invoke(
-                    rf_baseline,
-                    [
-                        "--table",
-                        str(biom_file),
-                        "--metadata",
-                        metadata_file,
-                        "--metadata-column",
-                        "target",
-                        "--train-samples",
-                        str(train_file),
-                        "--val-samples",
-                        str(val_file),
-                        "--output",
-                        str(output_file),
-                        "--n-estimators",
-                        "10",
-                    ],
-                )
+        with caplog.at_level(logging.WARNING):
+            _, result = self._run_cli(temp_dir, metadata_file, str(train_file), str(val_file), mock_table)
 
-            assert "missing_sample" in caplog.text.lower() or "not in biom" in caplog.text.lower()
+        assert "missing_sample" in caplog.text.lower() or "not found" in caplog.text.lower()

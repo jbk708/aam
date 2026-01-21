@@ -11,9 +11,10 @@ from aam.cli.utils import (
 
 import click
 
-from aam.cli.train import train
-from aam.cli.pretrain import pretrain
 from aam.cli.predict import predict
+from aam.cli.pretrain import pretrain
+from aam.cli.rf_baseline import rf_baseline
+from aam.cli.train import train
 
 
 @click.group()
@@ -23,9 +24,10 @@ def cli():
 
 
 # Register commands
-cli.add_command(train)
-cli.add_command(pretrain)
 cli.add_command(predict)
+cli.add_command(pretrain)
+cli.add_command(rf_baseline)
+cli.add_command(train)
 
 
 def main():

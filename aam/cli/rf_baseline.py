@@ -1,27 +1,24 @@
-"""Random Forest baseline for comparison with AAM model predictions."""
+"""Random Forest baseline for AAM comparison."""
 
-import click
 import logging
 import math
-import numpy as np
-import pandas as pd
 from pathlib import Path
 
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
-
 import biom
+import click
+import numpy as np
+import pandas as pd
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+
+from aam.cli.utils import validate_file_path
 
 
 def load_sample_ids(path: str) -> list[str]:
     """Load sample IDs from a text file (one per line)."""
-    path_obj = Path(path)
-    if not path_obj.exists():
-        raise FileNotFoundError(f"Sample IDs file not found: {path}")
-
-    with open(path_obj) as f:
-        ids = [line.strip() for line in f if line.strip()]
-    return ids
+    validate_file_path(path, "Sample IDs file")
+    with open(path) as f:
+        return [line.strip() for line in f if line.strip()]
 
 
 def load_biom_as_dataframe(path: str) -> pd.DataFrame:
@@ -62,16 +59,25 @@ def compute_metrics(y_true: pd.Series, y_pred: pd.Series) -> dict[str, float]:
     }
 
 
+def _filter_samples(
+    sample_ids: list[str],
+    valid_samples: set[str],
+    split_name: str,
+    logger: logging.Logger,
+) -> list[str]:
+    """Filter sample IDs to only include those present in valid_samples."""
+    missing = [s for s in sample_ids if s not in valid_samples]
+    if missing:
+        logger.warning(f"{len(missing)} {split_name} samples not found in BIOM/metadata: {missing[:5]}...")
+    return [s for s in sample_ids if s in valid_samples]
+
+
 @click.command()
 @click.option("--table", required=True, type=click.Path(exists=True), help="Path to BIOM table file")
 @click.option("--metadata", required=True, type=click.Path(exists=True), help="Path to metadata TSV file")
 @click.option("--metadata-column", required=True, type=str, help="Column name for regression target")
-@click.option(
-    "--train-samples", required=True, type=click.Path(exists=True), help="Path to training sample IDs (one per line)"
-)
-@click.option(
-    "--val-samples", required=True, type=click.Path(exists=True), help="Path to validation sample IDs (one per line)"
-)
+@click.option("--train-samples", required=True, type=click.Path(exists=True), help="Path to training sample IDs (one per line)")
+@click.option("--val-samples", required=True, type=click.Path(exists=True), help="Path to validation sample IDs (one per line)")
 @click.option("--output", required=True, type=click.Path(), help="Output file for predictions")
 @click.option("--n-estimators", default=500, type=int, help="Number of trees in the forest")
 @click.option("--max-features", default="sqrt", type=str, help="Max features per tree (sqrt, log2, or float)")
@@ -101,33 +107,18 @@ def rf_baseline(
     if "sample_id" not in metadata_df.columns:
         raise click.ClickException(f"Metadata must have 'sample_id' column. Found: {list(metadata_df.columns)}")
     if metadata_column not in metadata_df.columns:
-        raise click.ClickException(
-            f"Metadata column '{metadata_column}' not found. Available: {list(metadata_df.columns)}"
-        )
+        raise click.ClickException(f"Metadata column '{metadata_column}' not found. Available: {list(metadata_df.columns)}")
     metadata_df = metadata_df.set_index("sample_id")
 
     biom_df = load_biom_as_dataframe(table)
     logger.info(f"Features: {biom_df.shape[1]} ASVs")
 
     biom_samples = set(biom_df.index)
-    missing_train = [s for s in train_ids if s not in biom_samples]
-    missing_val = [s for s in val_ids if s not in biom_samples]
+    metadata_samples = set(metadata_df.index)
+    valid_samples = biom_samples & metadata_samples
 
-    if missing_train:
-        logger.warning(f"Warning: {len(missing_train)} training samples not in BIOM: {missing_train[:5]}...")
-        train_ids = [s for s in train_ids if s in biom_samples]
-    if missing_val:
-        logger.warning(f"Warning: {len(missing_val)} validation samples not in BIOM: {missing_val[:5]}...")
-        val_ids = [s for s in val_ids if s in biom_samples]
-
-    missing_meta_train = [s for s in train_ids if s not in metadata_df.index]
-    missing_meta_val = [s for s in val_ids if s not in metadata_df.index]
-    if missing_meta_train:
-        logger.warning(f"Warning: {len(missing_meta_train)} training samples not in metadata")
-        train_ids = [s for s in train_ids if s in metadata_df.index]
-    if missing_meta_val:
-        logger.warning(f"Warning: {len(missing_meta_val)} validation samples not in metadata")
-        val_ids = [s for s in val_ids if s in metadata_df.index]
+    train_ids = _filter_samples(train_ids, valid_samples, "training", logger)
+    val_ids = _filter_samples(val_ids, valid_samples, "validation", logger)
 
     X_train = biom_df.loc[train_ids]
     y_train = metadata_df.loc[train_ids, metadata_column].astype(float)
