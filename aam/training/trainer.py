@@ -982,6 +982,8 @@ class Trainer:
         best_val_loss = float("inf")  # Keep for backwards compatibility
         patience_counter = 0
         start_epoch = 0
+        val_predictions_saved = False
+        last_full_val_predictions: Optional[Dict[str, Any]] = None
 
         if resume_from is not None:
             checkpoint_info = self.load_checkpoint(resume_from)
@@ -1080,6 +1082,8 @@ class Trainer:
                             Tuple[Dict[str, float], Dict[str, torch.Tensor], Dict[str, torch.Tensor], Dict[str, Any]],
                             val_output,
                         )
+                        # Track latest predictions for end-of-training save
+                        last_full_val_predictions = full_val_predictions
                     elif return_predictions:
                         val_results, val_predictions_dict, val_targets_dict = cast(
                             Tuple[Dict[str, float], Dict[str, torch.Tensor], Dict[str, torch.Tensor]],
@@ -1139,6 +1143,7 @@ class Trainer:
                         # Save full validation predictions to TSV (only on main process)
                         if full_val_predictions and checkpoint_dir and is_main_process():
                             self._save_val_predictions(full_val_predictions, checkpoint_dir)
+                            val_predictions_saved = True
                     else:
                         patience_counter += 1
                         if patience_counter >= early_stopping_patience:
@@ -1201,6 +1206,16 @@ class Trainer:
                 self.writer.close()
                 self.writer = None
 
+            # Save validation predictions if not saved during training
+            # This handles the case where training resumed and validation never improved
+            if (
+                not val_predictions_saved
+                and last_full_val_predictions
+                and checkpoint_dir
+                and is_main_process()
+            ):
+                self._save_val_predictions(last_full_val_predictions, checkpoint_dir)
+
         return history
 
     def _save_val_predictions(
@@ -1218,6 +1233,10 @@ class Trainer:
 
         sample_ids = full_predictions.get("sample_ids", [])
         if not sample_ids:
+            logger.warning(
+                "No sample_ids collected for val_predictions.tsv. "
+                "Ensure DataLoader batches include 'sample_ids' key."
+            )
             return
 
         predictions = full_predictions.get("predictions", torch.tensor([]))

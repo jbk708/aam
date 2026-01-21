@@ -3586,3 +3586,81 @@ class TestOutputArtifacts:
         assert "sample_id" in df.columns
         assert "prediction" in df.columns
         assert "actual" in df.columns
+
+    def test_val_predictions_saved_even_when_no_improvement(self, small_predictor, loss_fn, device, tmp_path):
+        """Test val_predictions.tsv is created even when validation never improves.
+
+        This simulates the --resume-from scenario where best_metric_value is already
+        very good and validation never beats it.
+        """
+        from unittest.mock import patch
+
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+        )
+
+        # Create dataloader with sample_ids
+        class MockDataset:
+            def __init__(self, num_samples, device):
+                self.num_samples = num_samples
+                self.device = device
+
+            def __len__(self):
+                return self.num_samples // 2
+
+            def __iter__(self):
+                from aam.data.tokenizer import SequenceTokenizer
+
+                batch_size = 2
+                for i in range(0, self.num_samples, batch_size):
+                    tokens = torch.randint(1, 5, (batch_size, 10, 50))
+                    tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
+                    yield {
+                        "tokens": tokens.to(self.device),
+                        "counts": torch.rand(batch_size, 10, 1).to(self.device),
+                        "y_target": torch.rand(batch_size, 1).to(self.device),
+                        "sample_ids": [f"sample_{i + j}" for j in range(batch_size)],
+                    }
+
+        train_loader = MockDataset(4, device)
+        val_loader = MockDataset(4, device)
+
+        checkpoint_dir = tmp_path / "checkpoints"
+        checkpoint_dir.mkdir()
+
+        # Patch load_checkpoint to simulate resuming with a very good best_val_loss
+        # This ensures validation never "improves" during training
+        with patch.object(trainer, "load_checkpoint") as mock_load:
+            mock_load.return_value = {
+                "epoch": 0,
+                "best_val_loss": 0.0,  # Perfect loss - can't be beaten
+                "best_metric_value": 0.0,
+            }
+
+            # Run training with resume_from (the actual path doesn't matter due to mock)
+            trainer.train(
+                train_loader=train_loader,
+                val_loader=val_loader,
+                num_epochs=2,
+                checkpoint_dir=str(checkpoint_dir),
+                early_stopping_patience=10,
+                save_plots=False,
+                resume_from="/fake/checkpoint.pt",
+            )
+
+        # Even though validation never improved, val_predictions.tsv should be created
+        output_file = tmp_path / "val_predictions.tsv"
+        assert output_file.exists(), (
+            "val_predictions.tsv should be created at end of training "
+            "even when validation never improves (e.g., --resume-from scenario)"
+        )
+
+        import pandas as pd
+
+        df = pd.read_csv(output_file, sep="\t")
+        assert "sample_id" in df.columns
+        assert "prediction" in df.columns
+        assert "actual" in df.columns
+        assert len(df) > 0, "val_predictions.tsv should contain predictions"
