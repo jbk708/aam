@@ -414,6 +414,10 @@ class Trainer:
             lr = self.optimizer.param_groups[0]["lr"]
         self.writer.add_scalar("train/learning_rate", lr, epoch)
 
+        # Log GMU gate mean under gmu/ category for grouping with other GMU stats
+        if "gmu_gate_mean" in train_losses:
+            self.writer.add_scalar("gmu/gate_mean", train_losses["gmu_gate_mean"], epoch)
+
         if self.log_histograms and epoch % self.histogram_frequency == 0:
             for name, param in self.model.named_parameters():
                 if param.requires_grad and param.grad is not None:
@@ -466,6 +470,12 @@ class Trainer:
             proj_norm = model.categorical_projection.weight.norm().item()
             self.writer.add_scalar("categorical/projection_norm", proj_norm, epoch)
 
+        # Log GMU weight norms if present
+        if hasattr(model, "gmu") and model.gmu is not None:
+            gmu = model.gmu
+            self.writer.add_scalar("gmu/cat_transform_norm", gmu.cat_transform.weight.norm().item(), epoch)
+            self.writer.add_scalar("gmu/gate_norm", gmu.gate.weight.norm().item(), epoch)
+
         # Log gradient norms for categorical parameters (if gradients available)
         for name, param in model.named_parameters():
             if "categorical" in name and param.grad is not None:
@@ -475,6 +485,12 @@ class Trainer:
                 if "projection" in name:
                     short_name = "projection"
                 self.writer.add_scalar(f"categorical/{short_name}_grad_norm", grad_norm, epoch)
+
+            # Log GMU gradient norms
+            if "gmu" in name and param.grad is not None:
+                grad_norm = param.grad.norm().item()
+                short_name = name.replace("gmu.", "")
+                self.writer.add_scalar(f"gmu/{short_name}_grad_norm", grad_norm, epoch)
 
     def _log_epoch_results(
         self,
@@ -564,6 +580,8 @@ class Trainer:
         running_avg_nuc_loss = 0.0
         running_avg_nuc_accuracy = 0.0
         running_avg_target_loss = 0.0
+        running_avg_gmu_gate = 0.0
+        gmu_gate_batches = 0
 
         # Determine what metrics to show based on training mode
         is_pretraining = self._is_pretraining()
@@ -772,6 +790,12 @@ class Trainer:
                     logger.info(f"FiLM Debug at step {step}/{total_steps}:")
                     self._log_film_gradients()
 
+                # Track GMU gate values for TensorBoard
+                if "gmu_gate" in outputs:
+                    gate_mean = outputs["gmu_gate"].detach().mean().item()
+                    running_avg_gmu_gate = (running_avg_gmu_gate * gmu_gate_batches + gate_mean) / (gmu_gate_batches + 1)
+                    gmu_gate_batches += 1
+
                 del outputs, tokens, targets
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
@@ -934,6 +958,8 @@ class Trainer:
             torch.cuda.empty_cache()
 
         avg_losses = {key: value / num_batches for key, value in total_losses.items()}
+        if gmu_gate_batches > 0:
+            avg_losses["gmu_gate_mean"] = running_avg_gmu_gate
         return avg_losses
 
     def validate_epoch(

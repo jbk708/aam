@@ -912,6 +912,129 @@ class TestCategoricalIntegration:
         assert (predictions >= 0).all()
         assert (predictions <= 1).all()
 
+    # GMU fusion tests
+    def test_init_with_categoricals_gmu(self, categorical_cardinalities):
+        """Test initialization with categorical conditioning (GMU fusion)."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_embed_dim=16,
+            categorical_fusion="gmu",
+        )
+        assert model.categorical_embedder is not None
+        assert model.categorical_projection is None  # GMU doesn't use projection
+        assert model.gmu is not None
+        assert model.categorical_fusion == "gmu"
+        # GMU dimensions
+        total_cat_dim = 16 * 2  # 2 columns * 16 embed_dim
+        assert model.gmu.seq_dim == 64
+        assert model.gmu.cat_dim == total_cat_dim
+
+    def test_forward_with_categoricals_gmu(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test forward pass with categorical conditioning (GMU fusion)."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_fusion="gmu",
+        )
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        assert "target_prediction" in result
+        assert "count_prediction" in result
+        assert "gmu_gate" in result
+        assert result["target_prediction"].shape == (2, 1)
+        assert result["count_prediction"].shape == (2, 10, 1)
+        assert result["gmu_gate"].shape == (2, 64)
+
+    def test_gmu_gate_values_bounded(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test that GMU gate values are in [0, 1] range."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_fusion="gmu",
+        )
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        gate = result["gmu_gate"]
+        assert gate.min() >= 0.0
+        assert gate.max() <= 1.0
+
+    def test_gmu_no_gate_without_categorical_ids(self, sample_tokens, categorical_cardinalities):
+        """Test that GMU doesn't output gate when no categorical_ids provided."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_fusion="gmu",
+        )
+        result = model(sample_tokens, categorical_ids=None)
+        assert "gmu_gate" not in result
+
+    def test_gmu_gradients_flow(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test that gradients flow through GMU."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_fusion="gmu",
+        )
+        model.train()
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        loss = result["target_prediction"].sum()
+        loss.backward()
+
+        # Check GMU gradients
+        assert model.gmu.cat_transform.weight.grad is not None
+        assert model.gmu.gate.weight.grad is not None
+
+    def test_gmu_categorical_affects_prediction(self, sample_tokens, categorical_cardinalities):
+        """Test that different categorical values produce different predictions with GMU."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_fusion="gmu",
+        )
+        cat_ids_1 = {"location": torch.tensor([1, 1]), "season": torch.tensor([1, 1])}
+        cat_ids_2 = {"location": torch.tensor([2, 2]), "season": torch.tensor([2, 2])}
+
+        result_1 = model(sample_tokens, categorical_ids=cat_ids_1)
+        result_2 = model(sample_tokens, categorical_ids=cat_ids_2)
+
+        # Different categorical values should produce different predictions
+        assert not torch.allclose(
+            result_1["target_prediction"],
+            result_2["target_prediction"],
+        )
+
+    def test_gmu_no_nan_outputs(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test that GMU forward pass produces no NaN outputs."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_fusion="gmu",
+        )
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        assert not torch.isnan(result["target_prediction"]).any()
+        assert not torch.isnan(result["count_prediction"]).any()
+        assert not torch.isnan(result["gmu_gate"]).any()
+
 
 class TestOutputActivation:
     """Test suite for output activation constraints in SequencePredictor."""

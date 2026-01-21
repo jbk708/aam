@@ -19,7 +19,7 @@ Two ticket series addressing:
 ## FUS: Attention Fusion Tickets
 
 ### FUS-1: Gated Multimodal Unit (GMU)
-**Priority:** HIGH | **Effort:** 3-4 hours | **Status:** Not Started
+**Priority:** HIGH | **Effort:** 3-4 hours | **Status:** Complete
 
 Learned gating between sequence and categorical modalities.
 
@@ -45,9 +45,9 @@ class GMU(nn.Module):
 ```
 
 **Acceptance Criteria:**
-- [ ] `--categorical-fusion gmu` works
-- [ ] Gate values logged to TensorBoard
-- [ ] 15+ unit tests
+- [x] `--categorical-fusion gmu` works
+- [x] Gate values logged to TensorBoard
+- [x] 15+ unit tests (21 GMU tests + 7 integration tests)
 
 **Files:** `aam/models/fusion.py`, `aam/models/sequence_predictor.py`, `aam/cli/train.py`, `tests/test_fusion.py`
 
@@ -258,20 +258,94 @@ Document and validate the three parallel categorical systems.
 
 ---
 
+### CLN-7: Toggle Count Prediction
+**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Not Started
+
+Allow disabling count prediction head entirely for simpler training.
+
+**Current State:**
+- Count prediction always enabled
+- `--count-penalty 0.0` disables loss but head still computed
+- Wastes compute when count prediction not needed
+
+**Proposed CLI Flag:**
+```bash
+--no-count-prediction    # Disable count prediction head entirely
+```
+
+**Scope:**
+- Add `--count-prediction/--no-count-prediction` flag (default: enabled)
+- Skip count_encoder and count_head when disabled
+- Remove count_prediction from output dict when disabled
+- Validate `--count-penalty` warns if used with `--no-count-prediction`
+
+**Acceptance Criteria:**
+- [ ] `--no-count-prediction` disables count head
+- [ ] Memory/compute savings when disabled
+- [ ] Backward compatible (default enabled)
+- [ ] 5+ tests
+
+**Files:** `aam/models/sequence_predictor.py`, `aam/cli/train.py`, `tests/test_sequence_predictor.py`
+
+---
+
+### CLN-8: Separate Learning Rate for Categorical Parameters
+**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Not Started
+
+Allow different learning rate for categorical embeddings and fusion layers.
+
+**Motivation:**
+- Categorical embeddings may need higher LR to learn meaningful representations
+- Or lower LR to prevent overfitting on small category counts
+- GMU/fusion layers may benefit from different LR than base model
+
+**Proposed CLI Flag:**
+```bash
+--categorical-lr 1e-3    # Learning rate for categorical parameters (default: same as --lr)
+```
+
+**Scope:**
+- Add `--categorical-lr` flag
+- Create parameter groups in optimizer: base params vs categorical params
+- Categorical params include: `categorical_embedder`, `categorical_projection`, `gmu`, `conditional_scale`, `conditional_bias`
+- Support with AdamW optimizer
+
+**Implementation:**
+```python
+param_groups = [
+    {"params": base_params, "lr": lr},
+    {"params": categorical_params, "lr": categorical_lr},
+]
+optimizer = AdamW(param_groups, weight_decay=weight_decay)
+```
+
+**Acceptance Criteria:**
+- [ ] `--categorical-lr` sets separate LR for categorical params
+- [ ] Default behavior unchanged (uses --lr for all)
+- [ ] Works with all optimizers
+- [ ] TensorBoard logs both learning rates
+- [ ] 5+ tests
+
+**Files:** `aam/training/trainer.py`, `aam/cli/train.py`, `tests/test_trainer.py`
+
+---
+
 ## Summary
 
-| Ticket | Description | Effort | Priority |
-|--------|-------------|--------|----------|
-| **FUS-1** | GMU baseline | 3-4h | HIGH |
-| **FUS-2** | Cross-attention fusion | 5-6h | HIGH |
-| **FUS-3** | Perceiver fusion | 6-8h | LOW |
-| **CLN-1** | Output constraint consolidation | 3-4h | MEDIUM |
-| **CLN-2** | Normalization unification | 3-4h | MEDIUM |
-| **CLN-3** | Remove unused params | 1-2h | LOW |
-| **CLN-4** | Extract shared utilities | 2-3h | LOW |
-| **CLN-5** | DataParallel in train.py | 2-3h | MEDIUM |
-| **CLN-6** | Categorical docs/validation | 4-5h | MEDIUM |
-| **Total** | | **24-39h** | |
+| Ticket | Description | Effort | Priority | Status |
+|--------|-------------|--------|----------|--------|
+| **FUS-1** | GMU baseline | 3-4h | HIGH | Complete |
+| **FUS-2** | Cross-attention fusion | 5-6h | HIGH | Not Started |
+| **FUS-3** | Perceiver fusion | 6-8h | LOW | Not Started |
+| **CLN-1** | Output constraint consolidation | 3-4h | MEDIUM | Not Started |
+| **CLN-2** | Normalization unification | 3-4h | MEDIUM | Not Started |
+| **CLN-3** | Remove unused params | 1-2h | LOW | Complete |
+| **CLN-4** | Extract shared utilities | 2-3h | LOW | Not Started |
+| **CLN-5** | DataParallel in train.py | 2-3h | MEDIUM | Complete |
+| **CLN-6** | Categorical docs/validation | 4-5h | MEDIUM | Not Started |
+| **CLN-7** | Toggle count prediction | 2-3h | MEDIUM | Not Started |
+| **CLN-8** | Categorical learning rate | 2-3h | MEDIUM | Not Started |
+| **Total** | | **28-45h** | |
 
 ## Recommended Order
 

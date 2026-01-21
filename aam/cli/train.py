@@ -242,8 +242,8 @@ from aam.cli.utils import (
 @click.option(
     "--categorical-fusion",
     default="concat",
-    type=click.Choice(["concat", "add"]),
-    help="Fusion strategy for categorical embeddings: concat (concatenate + project) or add (project + add). Default: concat",
+    type=click.Choice(["concat", "add", "gmu"]),
+    help="Fusion strategy for categorical embeddings: concat (concatenate + project), add (project + add), or gmu (gated multimodal unit after pooling). Default: concat",
 )
 @click.option(
     "--output-activation",

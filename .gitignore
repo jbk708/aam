@@ -27,7 +27,7 @@ MANIFEST
 *.pth.tar
 *.ckpt
 checkpoints/
-models/
+/models/
 *.onnx
 *.pb
 
