@@ -331,7 +331,7 @@ optimizer = AdamW(param_groups, weight_decay=weight_decay)
 ---
 
 ### CLN-9: Remove FiLM Conditioning
-**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Complete
 
 Remove FiLM (Feature-wise Linear Modulation) conditioning system entirely.
 
@@ -384,7 +384,7 @@ Remove FiLM (Feature-wise Linear Modulation) conditioning system entirely.
 | **CLN-6** | Categorical docs/validation | 4-5h | MEDIUM | Not Started |
 | **CLN-7** | Toggle count prediction | 2-3h | MEDIUM | Not Started |
 | **CLN-8** | Categorical learning rate | 2-3h | MEDIUM | Not Started |
-| **CLN-9** | Remove FiLM conditioning | 2-3h | MEDIUM | Not Started |
+| **CLN-9** | Remove FiLM conditioning | 2-3h | MEDIUM | Complete |
 | **Total** | | **30-48h** | |
 
 ## Recommended Order

@@ -150,7 +150,6 @@ aam train \
 | `--categorical-fusion` | Fusion strategy (see below) | concat |
 | `--cross-attn-heads` | Attention heads for cross-attention fusion | 8 |
 | `--conditional-output-scaling` | Columns for per-category output scale/bias | - |
-| `--film-conditioning` | Columns for FiLM conditioning in MLP layers | - |
 
 **Fusion Strategies (`--categorical-fusion`):**
 
@@ -173,18 +172,6 @@ Learn per-category scale and bias parameters applied after the base prediction: 
 aam train \
   --categorical-columns "location,season" \
   --conditional-output-scaling "location" \
-  # ... other flags
-```
-
-**FiLM Conditioning:**
-
-Feature-wise Linear Modulation applies learned scale (gamma) and shift (beta) at each MLP hidden layer based on categorical features. Requires `--regressor-hidden-dims`:
-
-```bash
-aam train \
-  --categorical-columns "location,season" \
-  --regressor-hidden-dims "64,32" \
-  --film-conditioning "location,season" \
   # ... other flags
 ```
 

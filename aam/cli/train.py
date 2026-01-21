@@ -292,11 +292,6 @@ from aam.cli.utils import (
     help="Comma-separated categorical column names for conditional output scaling. Learns per-category scale and bias applied after base prediction. Requires --categorical-columns.",
 )
 @click.option(
-    "--film-conditioning",
-    default=None,
-    help="Comma-separated categorical column names for FiLM (Feature-wise Linear Modulation) conditioning. Modulates MLP hidden layer activations via learned scale/shift parameters. Requires --categorical-columns and --regressor-hidden-dims.",
-)
-@click.option(
     "--best-metric",
     default="val_loss",
     type=click.Choice(["val_loss", "r2", "mae", "accuracy", "f1"]),
@@ -377,7 +372,6 @@ def train(
     regressor_hidden_dims: Optional[str],
     regressor_dropout: float,
     conditional_output_scaling: Optional[str],
-    film_conditioning: Optional[str],
     best_metric: str,
 ):
     """Train AAM model on microbial sequencing data."""
@@ -619,22 +613,6 @@ def train(
                         f"Conditional scaling column '{col}' not in --categorical-columns. Available: {categorical_column_list}"
                     )
             logger.info(f"Conditional output scaling columns: {conditional_scaling_columns}")
-
-        film_conditioning_columns: Optional[list[str]] = None
-        if film_conditioning:
-            if not categorical_columns:
-                raise click.ClickException("--film-conditioning requires --categorical-columns to be set")
-            if not regressor_hidden_dims:
-                raise click.ClickException(
-                    "--film-conditioning requires --regressor-hidden-dims to be set (FiLM modulates MLP hidden layers)"
-                )
-            film_conditioning_columns = [col.strip() for col in film_conditioning.split(",")]
-            for col in film_conditioning_columns:
-                if col not in categorical_column_list:
-                    raise click.ClickException(
-                        f"FiLM conditioning column '{col}' not in --categorical-columns. Available: {categorical_column_list}"
-                    )
-            logger.info(f"FiLM conditioning columns: {film_conditioning_columns}")
 
         # Extract train/val distance matrices
         train_distance_matrix = None
@@ -893,7 +871,6 @@ def train(
             regressor_hidden_dims=regressor_hidden_dims_list,
             regressor_dropout=regressor_dropout,
             conditional_scaling_columns=conditional_scaling_columns,
-            film_conditioning_columns=film_conditioning_columns,
         )
 
         log_model_summary(model, logger)
@@ -1119,7 +1096,6 @@ def train(
                 "regressor_hidden_dims": regressor_hidden_dims_list,
                 "regressor_dropout": regressor_dropout,
                 "conditional_scaling_columns": conditional_scaling_columns,
-                "film_conditioning_columns": film_conditioning_columns,
             }
             # Include categorical encoder state if categoricals are used
             if categorical_encoder is not None:
