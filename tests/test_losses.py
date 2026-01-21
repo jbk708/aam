@@ -196,6 +196,176 @@ class TestLossTypes:
         assert torch.allclose(loss_huber, loss_mae)
 
 
+class TestQuantileLoss:
+    """Test quantile regression loss computation."""
+
+    def test_quantile_loss_type_requires_quantiles(self):
+        """Test that quantile loss type requires quantiles parameter."""
+        with pytest.raises(ValueError, match="quantiles must be provided"):
+            MultiTaskLoss(target_loss_type="quantile")
+
+    def test_quantile_loss_empty_quantiles_raises_error(self):
+        """Test that empty quantiles list raises error."""
+        with pytest.raises(ValueError, match="must contain at least one value"):
+            MultiTaskLoss(target_loss_type="quantile", quantiles=[])
+
+    def test_quantile_loss_invalid_quantile_below_zero(self):
+        """Test that quantile <= 0 raises error."""
+        with pytest.raises(ValueError, match="must be in \\(0, 1\\)"):
+            MultiTaskLoss(target_loss_type="quantile", quantiles=[0.0, 0.5, 0.9])
+
+    def test_quantile_loss_invalid_quantile_above_one(self):
+        """Test that quantile >= 1 raises error."""
+        with pytest.raises(ValueError, match="must be in \\(0, 1\\)"):
+            MultiTaskLoss(target_loss_type="quantile", quantiles=[0.1, 0.5, 1.0])
+
+    def test_quantile_loss_valid_creation(self):
+        """Test successful creation with valid quantiles."""
+        loss_fn = MultiTaskLoss(target_loss_type="quantile", quantiles=[0.1, 0.5, 0.9])
+        assert loss_fn.target_loss_type == "quantile"
+        assert loss_fn.quantiles is not None
+        assert torch.allclose(loss_fn.quantiles, torch.tensor([0.1, 0.5, 0.9]))
+
+    def test_quantile_loss_single_quantile(self):
+        """Test quantile loss with single quantile (median)."""
+        loss_fn = MultiTaskLoss(target_loss_type="quantile", quantiles=[0.5])
+        assert len(loss_fn.quantiles) == 1
+
+    def test_pinball_loss_basic(self):
+        """Test basic pinball loss computation."""
+        from aam.training.losses import compute_pinball_loss
+
+        # pred: [batch=2, out_dim=1, num_quantiles=3]
+        pred = torch.tensor([[[0.3, 0.5, 0.7]], [[0.4, 0.6, 0.8]]])
+        target = torch.tensor([[0.5], [0.5]])  # [batch=2, out_dim=1]
+        quantiles = torch.tensor([0.1, 0.5, 0.9])
+
+        loss = compute_pinball_loss(pred, target, quantiles)
+
+        # Loss should be non-negative scalar
+        assert loss.dim() == 0
+        assert loss.item() >= 0
+
+    def test_pinball_loss_perfect_prediction(self):
+        """Test pinball loss when predictions exactly match targets."""
+        from aam.training.losses import compute_pinball_loss
+
+        # All quantiles predict the target exactly
+        pred = torch.tensor([[[0.5, 0.5, 0.5]]])  # [1, 1, 3]
+        target = torch.tensor([[0.5]])  # [1, 1]
+        quantiles = torch.tensor([0.1, 0.5, 0.9])
+
+        loss = compute_pinball_loss(pred, target, quantiles)
+
+        # Perfect predictions should have zero loss
+        assert torch.allclose(loss, torch.tensor(0.0), atol=1e-6)
+
+    def test_pinball_loss_underprediction_penalty(self):
+        """Test that underprediction is penalized more for high quantiles."""
+        from aam.training.losses import compute_pinball_loss
+
+        # Predict 0.0 when target is 1.0 (underprediction)
+        pred_low = torch.tensor([[[0.0]]])  # Predicting low quantile
+        pred_high = torch.tensor([[[0.0]]])  # Predicting high quantile
+        target = torch.tensor([[1.0]])
+
+        # For tau=0.9 (high quantile), underprediction penalty is tau * |error| = 0.9 * 1.0
+        # For tau=0.1 (low quantile), underprediction penalty is tau * |error| = 0.1 * 1.0
+        loss_low_q = compute_pinball_loss(pred_low, target, torch.tensor([0.1]))
+        loss_high_q = compute_pinball_loss(pred_high, target, torch.tensor([0.9]))
+
+        # High quantile should have higher loss for underprediction
+        assert loss_high_q.item() > loss_low_q.item()
+
+    def test_pinball_loss_overprediction_penalty(self):
+        """Test that overprediction is penalized more for low quantiles."""
+        from aam.training.losses import compute_pinball_loss
+
+        # Predict 1.0 when target is 0.0 (overprediction)
+        pred = torch.tensor([[[1.0]]])
+        target = torch.tensor([[0.0]])
+
+        # For tau=0.1 (low quantile), overprediction penalty is (1-tau) * |error| = 0.9 * 1.0
+        # For tau=0.9 (high quantile), overprediction penalty is (1-tau) * |error| = 0.1 * 1.0
+        loss_low_q = compute_pinball_loss(pred, target, torch.tensor([0.1]))
+        loss_high_q = compute_pinball_loss(pred, target, torch.tensor([0.9]))
+
+        # Low quantile should have higher loss for overprediction
+        assert loss_low_q.item() > loss_high_q.item()
+
+    def test_pinball_loss_median_symmetric(self):
+        """Test that median (tau=0.5) has symmetric loss."""
+        from aam.training.losses import compute_pinball_loss
+
+        quantiles = torch.tensor([0.5])
+        target = torch.tensor([[0.5]])
+
+        # Same magnitude error in both directions
+        pred_under = torch.tensor([[[0.3]]])  # Under by 0.2
+        pred_over = torch.tensor([[[0.7]]])  # Over by 0.2
+
+        loss_under = compute_pinball_loss(pred_under, target, quantiles)
+        loss_over = compute_pinball_loss(pred_over, target, quantiles)
+
+        # Should be equal for median
+        assert torch.allclose(loss_under, loss_over, atol=1e-6)
+
+    def test_pinball_loss_multi_output(self):
+        """Test pinball loss with multiple output dimensions."""
+        from aam.training.losses import compute_pinball_loss
+
+        # pred: [batch=2, out_dim=3, num_quantiles=2]
+        pred = torch.randn(2, 3, 2)
+        target = torch.randn(2, 3)
+        quantiles = torch.tensor([0.25, 0.75])
+
+        loss = compute_pinball_loss(pred, target, quantiles)
+
+        assert loss.dim() == 0
+        assert loss.item() >= 0
+
+    def test_pinball_loss_gradient_flow(self):
+        """Test that gradients flow through pinball loss."""
+        from aam.training.losses import compute_pinball_loss
+
+        pred = torch.randn(4, 2, 3, requires_grad=True)
+        target = torch.randn(4, 2)
+        quantiles = torch.tensor([0.1, 0.5, 0.9])
+
+        loss = compute_pinball_loss(pred, target, quantiles)
+        loss.backward()
+
+        assert pred.grad is not None
+        assert not torch.all(pred.grad == 0)
+
+    def test_quantile_loss_via_multitask(self):
+        """Test quantile loss through MultiTaskLoss.compute_target_loss."""
+        loss_fn = MultiTaskLoss(target_loss_type="quantile", quantiles=[0.1, 0.5, 0.9])
+
+        # pred shape: [batch=2, out_dim=1, num_quantiles=3]
+        target_pred = torch.tensor([[[0.3, 0.5, 0.7]], [[0.4, 0.6, 0.8]]])
+        target_true = torch.tensor([[0.5], [0.5]])
+
+        loss = loss_fn.compute_target_loss(target_pred, target_true, is_classifier=False)
+
+        assert loss.dim() == 0
+        assert loss.item() >= 0
+
+    def test_quantile_loss_does_not_affect_classification(self):
+        """Test that classification ignores quantile loss type."""
+        loss_fn = MultiTaskLoss(target_loss_type="quantile", quantiles=[0.1, 0.5, 0.9])
+
+        # For classification, should use NLL regardless of loss type
+        target_pred = torch.randn(4, 3)
+        target_pred = nn.functional.log_softmax(target_pred, dim=-1)
+        target_true = torch.randint(0, 3, (4,))
+
+        loss = loss_fn.compute_target_loss(target_pred, target_true, is_classifier=True)
+
+        expected = nn.functional.nll_loss(target_pred, target_true)
+        assert torch.allclose(loss, expected)
+
+
 class TestCountLoss:
     """Test count loss computation."""
 

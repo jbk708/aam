@@ -2188,3 +2188,164 @@ class TestConditionalOutputScaling:
             loaded_output = new_model(sample_tokens, categorical_ids=categorical_ids)["target_prediction"]
 
         assert torch.allclose(orig_output, loaded_output, atol=1e-6)
+
+
+class TestQuantileRegression:
+    """Test quantile regression support in SequencePredictor."""
+
+    @pytest.fixture
+    def sample_tokens(self):
+        """Create sample tokens for testing."""
+        return _create_sample_tokens(batch_size=2, num_asvs=10, seq_len=50)
+
+    def test_init_with_num_quantiles(self, sample_tokens):
+        """Test SequencePredictor initialization with num_quantiles."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=2,
+            num_quantiles=3,
+        )
+        assert model.num_quantiles == 3
+        assert model.out_dim == 2
+
+    def test_quantile_output_shape(self, sample_tokens):
+        """Test that quantile regression produces correct output shape."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=2,
+            num_quantiles=3,
+        )
+        result = model(sample_tokens)
+        # Output should be [batch=2, out_dim=2, num_quantiles=3]
+        assert result["target_prediction"].shape == (2, 2, 3)
+
+    def test_quantile_single_output_dim(self, sample_tokens):
+        """Test quantile regression with single output dimension."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            num_quantiles=5,
+        )
+        result = model(sample_tokens)
+        # Output should be [batch=2, out_dim=1, num_quantiles=5]
+        assert result["target_prediction"].shape == (2, 1, 5)
+
+    def test_quantile_single_quantile(self, sample_tokens):
+        """Test quantile regression with single quantile (e.g., median only)."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=3,
+            num_quantiles=1,
+        )
+        result = model(sample_tokens)
+        # Output should be [batch=2, out_dim=3, num_quantiles=1]
+        assert result["target_prediction"].shape == (2, 3, 1)
+
+    def test_quantile_cannot_use_with_classifier(self):
+        """Test that num_quantiles cannot be used with classifier."""
+        with pytest.raises(ValueError, match="Cannot use num_quantiles with is_classifier"):
+            SequencePredictor(
+                embedding_dim=64,
+                max_bp=150,
+                token_limit=1024,
+                out_dim=3,
+                is_classifier=True,
+                num_quantiles=3,
+            )
+
+    def test_quantile_invalid_num_quantiles(self):
+        """Test that invalid num_quantiles raises error."""
+        with pytest.raises(ValueError, match="num_quantiles must be >= 1"):
+            SequencePredictor(
+                embedding_dim=64,
+                max_bp=150,
+                token_limit=1024,
+                out_dim=1,
+                num_quantiles=0,
+            )
+
+    def test_quantile_gradients_flow(self, sample_tokens):
+        """Test that gradients flow through quantile regression model."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=2,
+            num_quantiles=3,
+        )
+        result = model(sample_tokens)
+        loss = result["target_prediction"].sum()
+        loss.backward()
+
+        # Check that gradients exist in target head
+        has_gradients = False
+        for param in model.target_head.parameters():
+            if param.grad is not None and not torch.all(param.grad == 0):
+                has_gradients = True
+                break
+        assert has_gradients
+
+    def test_quantile_no_output_constraints_applied(self, sample_tokens):
+        """Test that output constraints (sigmoid, activation) are not applied for quantiles."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            num_quantiles=3,
+            bounded_targets=True,  # Should be ignored for quantiles
+        )
+        result = model(sample_tokens)
+
+        # Output should not be bounded to [0, 1] when using quantiles
+        # (the model skips the bounded_targets logic for quantile regression)
+        # Just verify shape is correct
+        assert result["target_prediction"].shape == (2, 1, 3)
+
+    def test_quantile_with_mlp_head(self, sample_tokens):
+        """Test quantile regression with MLP regression head."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=2,
+            num_quantiles=3,
+            regressor_hidden_dims=[32, 16],
+        )
+        result = model(sample_tokens)
+        # Output should still be [batch=2, out_dim=2, num_quantiles=3]
+        assert result["target_prediction"].shape == (2, 2, 3)
+
+    def test_quantile_none_is_standard_regression(self, sample_tokens):
+        """Test that num_quantiles=None produces standard regression output."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=2,
+            num_quantiles=None,
+        )
+        result = model(sample_tokens)
+        # Standard regression: [batch=2, out_dim=2]
+        assert result["target_prediction"].shape == (2, 2)
+
+    def test_quantile_count_prediction_unaffected(self, sample_tokens):
+        """Test that count prediction is unaffected by quantile regression."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=2,
+            num_quantiles=3,
+        )
+        result = model(sample_tokens)
+        # Count prediction should still be [batch, num_asvs, 1]
+        assert result["count_prediction"].shape == (2, 10, 1)
