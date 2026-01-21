@@ -40,6 +40,31 @@ def is_rocm() -> bool:
         return False
 
 
+class MockBatchDataset:
+    """Mock dataset that yields dict batches with sample_ids for testing."""
+
+    def __init__(self, num_samples: int, device: torch.device):
+        self.num_samples = num_samples
+        self.device = device
+
+    def __len__(self) -> int:
+        return self.num_samples // 2
+
+    def __iter__(self):
+        from aam.data.tokenizer import SequenceTokenizer
+
+        batch_size = 2
+        for i in range(0, self.num_samples, batch_size):
+            tokens = torch.randint(1, 5, (batch_size, 10, 50))
+            tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
+            yield {
+                "tokens": tokens.to(self.device),
+                "counts": torch.rand(batch_size, 10, 1).to(self.device),
+                "y_target": torch.rand(batch_size, 1).to(self.device),
+                "sample_ids": [f"sample_{i + j}" for j in range(batch_size)],
+            }
+
+
 @pytest.fixture
 def device():
     """Get device for testing."""
@@ -3434,7 +3459,6 @@ class TestOutputArtifacts:
 
     def test_validate_epoch_collect_all_predictions(self, small_predictor, device):
         """Test validate_epoch with collect_all_predictions=True returns full predictions."""
-        # Use loss_fn without unifrac penalty to simplify test
         loss_fn = MultiTaskLoss(penalty=0.0, nuc_penalty=0.0)
 
         trainer = Trainer(
@@ -3443,30 +3467,7 @@ class TestOutputArtifacts:
             device=device,
         )
 
-        # Create a dataloader with dict batches that include sample_ids
-        class MockDataset:
-            def __init__(self, num_samples, device):
-                self.num_samples = num_samples
-                self.device = device
-
-            def __len__(self):
-                return self.num_samples
-
-            def __iter__(self):
-                from aam.data.tokenizer import SequenceTokenizer
-
-                batch_size = 2
-                for i in range(0, self.num_samples, batch_size):
-                    tokens = torch.randint(1, 5, (batch_size, 10, 50))
-                    tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
-                    yield {
-                        "tokens": tokens.to(self.device),
-                        "counts": torch.rand(batch_size, 10, 1).to(self.device),
-                        "y_target": torch.rand(batch_size, 1).to(self.device),
-                        "sample_ids": [f"sample_{i + j}" for j in range(batch_size)],
-                    }
-
-        dataloader = MockDataset(4, device)
+        dataloader = MockBatchDataset(4, device)
 
         result = trainer.validate_epoch(
             dataloader=dataloader,
@@ -3475,7 +3476,6 @@ class TestOutputArtifacts:
             collect_all_predictions=True,
         )
 
-        # Should return 4-tuple when collect_all_predictions=True
         assert len(result) == 4
         avg_losses, preds_dict, targs_dict, full_preds = result
 
@@ -3493,30 +3493,7 @@ class TestOutputArtifacts:
             device=device,
         )
 
-        # Create minimal dataloader
-        class MockDataset:
-            def __init__(self, num_samples, device):
-                self.num_samples = num_samples
-                self.device = device
-
-            def __len__(self):
-                return self.num_samples
-
-            def __iter__(self):
-                from aam.data.tokenizer import SequenceTokenizer
-
-                batch_size = 2
-                for i in range(0, self.num_samples, batch_size):
-                    tokens = torch.randint(1, 5, (batch_size, 10, 50))
-                    tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
-                    yield {
-                        "tokens": tokens.to(self.device),
-                        "counts": torch.rand(batch_size, 10, 1).to(self.device),
-                        "y_target": torch.rand(batch_size, 1).to(self.device),
-                        "sample_ids": [f"sample_{i + j}" for j in range(batch_size)],
-                    }
-
-        dataloader = MockDataset(4, device)
+        dataloader = MockBatchDataset(4, device)
 
         result = trainer.validate_epoch(
             dataloader=dataloader,
@@ -3525,7 +3502,6 @@ class TestOutputArtifacts:
             collect_all_predictions=False,
         )
 
-        # Should return 3-tuple when collect_all_predictions=False
         assert len(result) == 3
         avg_losses, preds_dict, targs_dict = result
         assert isinstance(avg_losses, dict)
@@ -3538,31 +3514,8 @@ class TestOutputArtifacts:
             device=device,
         )
 
-        # Create dataloader with sample_ids
-        class MockDataset:
-            def __init__(self, num_samples, device):
-                self.num_samples = num_samples
-                self.device = device
-
-            def __len__(self):
-                return self.num_samples // 2  # 2 batches
-
-            def __iter__(self):
-                from aam.data.tokenizer import SequenceTokenizer
-
-                batch_size = 2
-                for i in range(0, self.num_samples, batch_size):
-                    tokens = torch.randint(1, 5, (batch_size, 10, 50))
-                    tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
-                    yield {
-                        "tokens": tokens.to(self.device),
-                        "counts": torch.rand(batch_size, 10, 1).to(self.device),
-                        "y_target": torch.rand(batch_size, 1).to(self.device),
-                        "sample_ids": [f"sample_{i + j}" for j in range(batch_size)],
-                    }
-
-        train_loader = MockDataset(4, device)
-        val_loader = MockDataset(4, device)
+        train_loader = MockBatchDataset(4, device)
+        val_loader = MockBatchDataset(4, device)
 
         checkpoint_dir = tmp_path / "checkpoints"
         checkpoint_dir.mkdir()
@@ -3576,7 +3529,6 @@ class TestOutputArtifacts:
             save_plots=False,
         )
 
-        # Verify val_predictions.tsv was created
         output_file = tmp_path / "val_predictions.tsv"
         assert output_file.exists(), "val_predictions.tsv should be created during training"
 
@@ -3586,3 +3538,57 @@ class TestOutputArtifacts:
         assert "sample_id" in df.columns
         assert "prediction" in df.columns
         assert "actual" in df.columns
+
+    def test_val_predictions_saved_even_when_no_improvement(self, small_predictor, loss_fn, device, tmp_path):
+        """Test val_predictions.tsv is created even when validation never improves.
+
+        This simulates the --resume-from scenario where best_metric_value is already
+        very good and validation never beats it.
+        """
+        from unittest.mock import patch
+
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+        )
+
+        train_loader = MockBatchDataset(4, device)
+        val_loader = MockBatchDataset(4, device)
+
+        checkpoint_dir = tmp_path / "checkpoints"
+        checkpoint_dir.mkdir()
+
+        # Patch load_checkpoint to simulate resuming with an unbeatable best_val_loss
+        with patch.object(trainer, "load_checkpoint") as mock_load:
+            mock_load.return_value = {
+                "epoch": 0,
+                "best_val_loss": 0.0,  # Perfect loss - can't be beaten
+                "best_metric_value": 0.0,
+            }
+
+            # Run training with resume_from (the actual path doesn't matter due to mock)
+            trainer.train(
+                train_loader=train_loader,
+                val_loader=val_loader,
+                num_epochs=2,
+                checkpoint_dir=str(checkpoint_dir),
+                early_stopping_patience=10,
+                save_plots=False,
+                resume_from="/fake/checkpoint.pt",
+            )
+
+        # Even though validation never improved, val_predictions.tsv should be created
+        output_file = tmp_path / "val_predictions.tsv"
+        assert output_file.exists(), (
+            "val_predictions.tsv should be created at end of training "
+            "even when validation never improves (e.g., --resume-from scenario)"
+        )
+
+        import pandas as pd
+
+        df = pd.read_csv(output_file, sep="\t")
+        assert "sample_id" in df.columns
+        assert "prediction" in df.columns
+        assert "actual" in df.columns
+        assert len(df) > 0, "val_predictions.tsv should contain predictions"

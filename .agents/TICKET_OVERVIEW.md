@@ -54,6 +54,7 @@ No high-priority tickets remaining.
 | **PYT-MAINT-2** | TensorBoard logging | 2-4h | PYTORCH |
 | **CLN-3** | Remove unused params | 1-2h | FUSION_CLEANUP |
 | **CLN-4** | Extract shared utilities | 2-3h | FUSION_CLEANUP |
+| **CLN-11** | Consolidate test suite | 4-6h | FUSION_CLEANUP |
 | **COS-9.5-9.8** | ROCm infrastructure | 13-19h | COSMOS |
 
 ---
@@ -80,6 +81,7 @@ REG-6 (asymmetric loss)
 
 | Ticket | Description |
 |--------|-------------|
+| CLN-BUG-2 | val_predictions.tsv not written on resume (1 test) |
 | CLN-BUG-1 | Z-score denormalization in TensorBoard (6 tests) |
 | CLN-10 | Training output artifacts (8 tests) |
 | CLN-9 | Remove FiLM conditioning |
