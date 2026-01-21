@@ -418,7 +418,7 @@ output_dir/
 ---
 
 ### CLN-BUG-1: Z-Score Denormalization Missing in TensorBoard
-**Priority:** HIGH | **Effort:** 1-2 hours | **Status:** Not Started
+**Priority:** HIGH | **Effort:** 1-2 hours | **Status:** Complete
 
 TensorBoard plots show z-score normalized values instead of original scale when using `--target-normalization zscore`.
 
@@ -443,10 +443,10 @@ TensorBoard plots show z-score normalized values instead of original scale when 
 3. Add tests for z-score denormalization in TensorBoard/plots
 
 **Acceptance Criteria:**
-- [ ] TensorBoard plots show original scale when using `--target-normalization zscore`
-- [ ] `val_predictions.tsv` contains denormalized values
-- [ ] Metrics logged to TensorBoard are on original scale
-- [ ] 5+ tests
+- [x] TensorBoard plots show original scale when using `--target-normalization zscore`
+- [x] `val_predictions.tsv` contains denormalized values
+- [x] Metrics logged to TensorBoard are on original scale
+- [x] 6 tests (5 new z-score tests + 1 precedence test)
 
 **Files:** `aam/training/evaluation.py`, `aam/training/trainer.py`, `tests/test_trainer.py`
 
@@ -469,7 +469,7 @@ TensorBoard plots show z-score normalized values instead of original scale when 
 | **CLN-8** | Categorical learning rate | 2-3h | MEDIUM | Not Started |
 | **CLN-9** | Remove FiLM conditioning | 2-3h | MEDIUM | Complete |
 | **CLN-10** | Training output artifacts | 2-3h | HIGH | Complete |
-| **CLN-BUG-1** | Z-score denorm in TensorBoard | 1-2h | HIGH | Not Started |
+| **CLN-BUG-1** | Z-score denorm in TensorBoard | 1-2h | HIGH | Complete |
 | **Total** | | **33-53h** | |
 
 ## Recommended Order
