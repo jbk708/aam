@@ -366,6 +366,98 @@ class TestQuantileLoss:
         assert torch.allclose(loss, expected)
 
 
+class TestEvaluatorQuantileExtraction:
+    """Test Evaluator's handling of quantile regression outputs."""
+
+    def test_extract_median_quantile_3d_tensor(self):
+        """Test median quantile extraction from 3D predictions."""
+        from unittest.mock import Mock
+
+        from aam.training.evaluation import Evaluator
+
+        model = Mock()
+        model.num_quantiles = 3
+        loss_fn = Mock()
+        device = torch.device("cpu")
+
+        evaluator = Evaluator(model, loss_fn, device)
+
+        # 3D predictions: [batch=4, out_dim=2, num_quantiles=3]
+        predictions = torch.tensor([
+            [[0.1, 0.5, 0.9], [0.2, 0.6, 1.0]],
+            [[0.15, 0.55, 0.95], [0.25, 0.65, 1.05]],
+            [[0.12, 0.52, 0.92], [0.22, 0.62, 1.02]],
+            [[0.18, 0.58, 0.98], [0.28, 0.68, 1.08]],
+        ])
+
+        result = evaluator._extract_median_quantile(predictions)
+
+        # Should extract index 1 (middle quantile)
+        expected = torch.tensor([[0.5, 0.6], [0.55, 0.65], [0.52, 0.62], [0.58, 0.68]])
+        assert result.shape == (4, 2)
+        assert torch.allclose(result, expected)
+
+    def test_extract_median_quantile_2d_passthrough(self):
+        """Test that 2D predictions pass through unchanged."""
+        from unittest.mock import Mock
+
+        from aam.training.evaluation import Evaluator
+
+        model = Mock()
+        model.num_quantiles = None  # Standard regression
+        loss_fn = Mock()
+        device = torch.device("cpu")
+
+        evaluator = Evaluator(model, loss_fn, device)
+
+        predictions = torch.randn(4, 2)
+        result = evaluator._extract_median_quantile(predictions)
+
+        assert torch.equal(result, predictions)
+
+    def test_extract_median_quantile_no_num_quantiles(self):
+        """Test that predictions pass through when model has no num_quantiles."""
+        from unittest.mock import Mock
+
+        from aam.training.evaluation import Evaluator
+
+        model = Mock(spec=[])  # No num_quantiles attribute
+        loss_fn = Mock()
+        device = torch.device("cpu")
+
+        evaluator = Evaluator(model, loss_fn, device)
+
+        predictions = torch.randn(4, 2, 3)
+        result = evaluator._extract_median_quantile(predictions)
+
+        # Should pass through unchanged since model doesn't have num_quantiles
+        assert torch.equal(result, predictions)
+
+    def test_extract_median_quantile_ddp_wrapped(self):
+        """Test median quantile extraction with DDP-wrapped model."""
+        from unittest.mock import Mock, PropertyMock
+
+        from aam.training.evaluation import Evaluator
+
+        inner_model = Mock()
+        inner_model.num_quantiles = 5
+
+        model = Mock(spec=["module"])
+        model.module = inner_model
+
+        loss_fn = Mock()
+        device = torch.device("cpu")
+
+        evaluator = Evaluator(model, loss_fn, device)
+
+        predictions = torch.randn(4, 2, 5)
+        result = evaluator._extract_median_quantile(predictions)
+
+        # Should extract index 2 (middle of 5 quantiles)
+        assert result.shape == (4, 2)
+        assert torch.allclose(result, predictions[:, :, 2])
+
+
 class TestCountLoss:
     """Test count loss computation."""
 
