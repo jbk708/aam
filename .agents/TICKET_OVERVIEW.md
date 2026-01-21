@@ -39,6 +39,7 @@ No HIGH priority tickets remaining.
 | **CLN-6** | Categorical docs/validation | 4-5h | FUSION_CLEANUP |
 | **CLN-7** | Toggle count prediction | 2-3h | FUSION_CLEANUP |
 | **CLN-8** | Categorical learning rate | 2-3h | FUSION_CLEANUP |
+| **CLN-9** | Remove FiLM conditioning | 2-3h | FUSION_CLEANUP |
 
 ### LOW (12 tickets, ~48-63 hours)
 
