@@ -522,7 +522,8 @@ Reduce test code duplication by extracting shared fixtures and utilities.
 | **CLN-BUG-1** | Z-score denorm in TensorBoard | 1-2h | HIGH | Complete |
 | **CLN-BUG-2** | val_predictions.tsv not written on resume | 1-2h | HIGH | Complete |
 | **CLN-11** | Consolidate test suite | 4-6h | LOW | Not Started |
-| **Total** | | **37-59h** | |
+| **CLN-12** | Random Forest baseline script | 2-3h | LOW | Complete |
+| **Total** | | **39-62h** | |
 
 ## Recommended Order
 
@@ -544,3 +545,91 @@ Reduce test code duplication by extracting shared fixtures and utilities.
 **Phase 4 - Tech Debt:**
 8. CLN-4 (shared utilities)
 9. FUS-3 (perceiver, optional)
+
+---
+
+## UTIL: Utility Scripts
+
+### CLN-12: Random Forest Baseline Script
+**Priority:** LOW | **Effort:** 2-3 hours | **Status:** Complete
+
+Create a helper script to run Random Forest regression as a comparison baseline against AAM model results.
+
+**Motivation:**
+- Provide a simple ML baseline for comparison with AAM predictions
+- Use identical train/validation splits from AAM training (via CLN-10 output files)
+- Enable fair comparison of AAM vs traditional ML on the same data splits
+
+**Proposed CLI:**
+```bash
+python -m aam.cli.rf_baseline \
+    --table <biom_file> \
+    --metadata <metadata.tsv> \
+    --metadata-column <target_column> \
+    --train-samples <train_samples.txt> \
+    --val-samples <val_samples.txt> \
+    --output <predictions.tsv>
+```
+
+**Inputs:**
+- `--table`: BIOM table file (same as AAM training)
+- `--metadata`: Metadata TSV file with target column
+- `--metadata-column`: Column name for regression target
+- `--train-samples`: Text file with training sample IDs (one per line, from CLN-10)
+- `--val-samples`: Text file with validation sample IDs (one per line, from CLN-10)
+- `--output`: Output TSV file for predictions
+
+**Optional Inputs:**
+- `--n-estimators`: Number of trees (default: 500)
+- `--max-features`: Max features per tree (default: "sqrt")
+- `--random-seed`: Random seed for reproducibility (default: 42)
+- `--n-jobs`: Number of parallel jobs (default: -1, all cores)
+
+**Output Format (predictions.tsv):**
+```
+sample_id	actual	predicted
+sample_001	12.5	11.8
+sample_002	8.3	9.1
+...
+```
+
+**Console Output:**
+```
+Loaded 500 training samples, 100 validation samples
+Features: 1234 ASVs
+Training Random Forest (n_estimators=500)...
+Validation Metrics:
+  R²:   0.752
+  MAE:  1.23
+  RMSE: 1.56
+Predictions saved to: predictions.tsv
+```
+
+**Implementation Notes:**
+- Use `biom.load_table()` for BIOM loading (consistent with AAM)
+- Feature matrix: samples × ASVs (transposed from BIOM's ASVs × samples)
+- Filter BIOM to only include samples in train + val lists
+- Remove zero-sum features after filtering
+- Use scikit-learn `RandomForestRegressor`
+
+**Scope:**
+1. Create `aam/cli/rf_baseline.py` with CLI interface
+2. Load BIOM, metadata, and sample lists
+3. Train RandomForestRegressor on training samples
+4. Predict on validation samples
+5. Compute and display R², MAE, RMSE metrics
+6. Save predictions TSV
+
+**Acceptance Criteria:**
+- [x] Script runs with specified inputs
+- [x] Uses identical samples to AAM training (from train_samples.txt/val_samples.txt)
+- [x] Outputs metrics to console
+- [x] Saves predictions in same format as AAM's val_predictions.tsv
+- [x] Generates prediction plot matching AAM's TensorBoard style
+- [x] Handles missing samples gracefully (warns if sample not in BIOM)
+- [x] 20 tests (4 load_sample_ids, 2 load_biom, 3 train_rf, 3 metrics, 2 plot, 6 CLI)
+
+**Dependencies:**
+- CLN-10 (Training Output Artifacts) - provides train_samples.txt and val_samples.txt
+
+**Files:** `aam/cli/rf_baseline.py` (new), `tests/test_rf_baseline.py` (new)
