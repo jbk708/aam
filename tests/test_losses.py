@@ -4,7 +4,7 @@ import pytest
 import torch
 import torch.nn as nn
 
-from aam.training.losses import MultiTaskLoss
+from aam.training.losses import MultiTaskLoss, compute_asymmetric_loss
 
 
 @pytest.fixture
@@ -400,8 +400,6 @@ class TestAsymmetricLoss:
 
     def test_compute_asymmetric_loss_basic(self):
         """Test basic asymmetric loss computation."""
-        from aam.training.losses import compute_asymmetric_loss
-
         pred = torch.tensor([[0.5], [0.8]])
         target = torch.tensor([[0.3], [0.9]])
 
@@ -412,8 +410,6 @@ class TestAsymmetricLoss:
 
     def test_compute_asymmetric_loss_perfect_prediction(self):
         """Test asymmetric loss when predictions exactly match targets."""
-        from aam.training.losses import compute_asymmetric_loss
-
         pred = torch.tensor([[0.5], [0.8]])
         target = torch.tensor([[0.5], [0.8]])
 
@@ -423,8 +419,6 @@ class TestAsymmetricLoss:
 
     def test_compute_asymmetric_loss_overprediction_penalty(self):
         """Test that overpredictions are penalized by over_penalty."""
-        from aam.training.losses import compute_asymmetric_loss
-
         # Overprediction: pred > target
         pred = torch.tensor([[1.0]])
         target = torch.tensor([[0.0]])
@@ -437,8 +431,6 @@ class TestAsymmetricLoss:
 
     def test_compute_asymmetric_loss_underprediction_penalty(self):
         """Test that underpredictions are penalized by under_penalty."""
-        from aam.training.losses import compute_asymmetric_loss
-
         # Underprediction: pred < target
         pred = torch.tensor([[0.0]])
         target = torch.tensor([[1.0]])
@@ -451,8 +443,6 @@ class TestAsymmetricLoss:
 
     def test_compute_asymmetric_loss_equal_penalties_is_mae(self):
         """Test that equal penalties produce MAE-like behavior."""
-        from aam.training.losses import compute_asymmetric_loss
-
         pred = torch.tensor([[0.5], [0.8], [0.2]])
         target = torch.tensor([[0.3], [0.9], [0.5]])
 
@@ -463,8 +453,6 @@ class TestAsymmetricLoss:
 
     def test_compute_asymmetric_loss_multi_output(self):
         """Test asymmetric loss with multiple output dimensions."""
-        from aam.training.losses import compute_asymmetric_loss
-
         pred = torch.randn(4, 3)
         target = torch.randn(4, 3)
 
@@ -475,8 +463,6 @@ class TestAsymmetricLoss:
 
     def test_compute_asymmetric_loss_gradient_flow(self):
         """Test that gradients flow through asymmetric loss."""
-        from aam.training.losses import compute_asymmetric_loss
-
         pred = torch.randn(4, 2, requires_grad=True)
         target = torch.randn(4, 2)
 
@@ -514,8 +500,6 @@ class TestAsymmetricLoss:
 
     def test_asymmetric_loss_extreme_penalty_ratios(self):
         """Test asymmetric loss with extreme penalty ratios."""
-        from aam.training.losses import compute_asymmetric_loss
-
         # Only overpredictions
         pred_over = torch.tensor([[1.0], [2.0]])
         target_over = torch.tensor([[0.0], [0.0]])

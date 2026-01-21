@@ -355,9 +355,7 @@ class MultiTaskLoss(nn.Module):
                 assert self.quantiles is not None  # Validated in __init__
                 return compute_pinball_loss(target_pred, target_true, self.quantiles)
             elif self.target_loss_type == "asymmetric":
-                return compute_asymmetric_loss(
-                    target_pred, target_true, self.over_penalty, self.under_penalty
-                )
+                return compute_asymmetric_loss(target_pred, target_true, self.over_penalty, self.under_penalty)
             else:
                 # Fallback to MSE (shouldn't happen due to validation in __init__)
                 return nn.functional.mse_loss(target_pred, target_true)

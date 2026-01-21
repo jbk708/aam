@@ -507,7 +507,6 @@ def train(
                 raise click.ClickException(f"--over-penalty must be positive, got {over_penalty}")
             if under_penalty <= 0:
                 raise click.ClickException(f"--under-penalty must be positive, got {under_penalty}")
-            logger.info(f"Asymmetric loss enabled: over_penalty={over_penalty}, under_penalty={under_penalty}")
         else:
             # Warn if asymmetric penalty flags are set but loss type is not asymmetric
             if over_penalty != 1.0 or under_penalty != 1.0:
