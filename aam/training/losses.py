@@ -182,6 +182,9 @@ def compute_pinball_loss(
     based on the quantile level τ:
         L(y, ŷ, τ) = τ * max(y - ŷ, 0) + (1 - τ) * max(ŷ - y, 0)
 
+    This can be rewritten as:
+        L(y, ŷ, τ) = max(τ * (y - ŷ), (τ - 1) * (y - ŷ))
+
     Args:
         pred: Predicted quantiles [batch_size, out_dim, num_quantiles]
         target: True values [batch_size, out_dim]
@@ -190,7 +193,22 @@ def compute_pinball_loss(
     Returns:
         Scalar loss averaged over all samples, outputs, and quantiles
     """
-    raise NotImplementedError("Quantile loss not yet implemented")
+    # Expand target to match pred shape: [batch, out_dim] -> [batch, out_dim, num_quantiles]
+    target_expanded = target.unsqueeze(-1).expand_as(pred)
+
+    # Compute error: y - ŷ (positive means underprediction)
+    error = target_expanded - pred
+
+    # Expand quantiles for broadcasting: [num_quantiles] -> [1, 1, num_quantiles]
+    tau = quantiles.view(1, 1, -1)
+
+    # Pinball loss: max(τ * error, (τ - 1) * error)
+    # When error > 0 (underprediction): loss = τ * error
+    # When error < 0 (overprediction): loss = (τ - 1) * error = (1 - τ) * |error|
+    loss = torch.max(tau * error, (tau - 1) * error)
+
+    # Average over all dimensions
+    return loss.mean()
 
 
 class MultiTaskLoss(nn.Module):

@@ -482,10 +482,7 @@ def train(
                 )
             for q in quantiles_list:
                 if not (0 < q < 1):
-                    raise click.ClickException(
-                        f"Quantile values must be in (0, 1), got {q}. "
-                        "Example: --quantiles 0.1,0.5,0.9"
-                    )
+                    raise click.ClickException(f"Quantile values must be in (0, 1), got {q}. Example: --quantiles 0.1,0.5,0.9")
             num_quantiles = len(quantiles_list)
             if classifier:
                 raise click.ClickException("--loss-type quantile cannot be used with --classifier")
