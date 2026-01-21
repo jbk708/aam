@@ -231,68 +231,6 @@ class Trainer:
                 return False
             raise
 
-    def _log_film_gradients(self) -> None:
-        """Log FiLM-related parameter gradients for debugging DDP issues."""
-        try:
-            underlying_model = self.model.module if hasattr(self.model, "module") else self.model
-
-            if not hasattr(underlying_model, "target_head"):
-                logger.debug("FiLM debug: Model has no target_head attribute, skipping")
-                return
-
-            from aam.models.film import FiLMTargetHead
-
-            if not isinstance(underlying_model.target_head, FiLMTargetHead):
-                logger.debug(
-                    f"FiLM debug: target_head is {type(underlying_model.target_head).__name__}, "
-                    "not FiLMTargetHead. Skipping gradient logging."
-                )
-                return
-
-            logger.info("=== FiLM Debug: Parameter Gradients & Values ===")
-
-            for i, layer in enumerate(underlying_model.target_head.film_layers):
-                gamma_weight = layer.film.gamma_proj.weight
-                gamma_bias = layer.film.gamma_proj.bias
-                gamma_grad = gamma_weight.grad
-
-                beta_weight = layer.film.beta_proj.weight
-                beta_bias = layer.film.beta_proj.bias
-                beta_grad = beta_weight.grad
-
-                gamma_grad_norm = gamma_grad.norm().item() if gamma_grad is not None else 0.0
-                beta_grad_norm = beta_grad.norm().item() if beta_grad is not None else 0.0
-
-                gamma_weight_norm = gamma_weight.norm().item()
-                beta_weight_norm = beta_weight.norm().item()
-                gamma_bias_mean = gamma_bias.mean().item()
-                beta_bias_mean = beta_bias.mean().item()
-
-                logger.info(
-                    f"  FiLM Layer {i}: "
-                    f"gamma_w={gamma_weight_norm:.6f}, gamma_b_mean={gamma_bias_mean:.4f}, gamma_grad={gamma_grad_norm:.6f} | "
-                    f"beta_w={beta_weight_norm:.6f}, beta_b_mean={beta_bias_mean:.4f}, beta_grad={beta_grad_norm:.6f}"
-                )
-
-            if hasattr(underlying_model, "categorical_embedder") and underlying_model.categorical_embedder is not None:
-                for col_name, emb in underlying_model.categorical_embedder.embeddings.items():
-                    emb_grad = emb.weight.grad
-                    emb_grad_norm = emb_grad.norm().item() if emb_grad is not None else 0.0
-                    emb_weight_norm = emb.weight.norm().item()
-                    emb_weight_mean = emb.weight.mean().item()
-                    logger.info(
-                        f"  Embedding '{col_name}': weight_norm={emb_weight_norm:.6f}, "
-                        f"weight_mean={emb_weight_mean:.6f}, grad_norm={emb_grad_norm:.6f}"
-                    )
-
-            output_grad = underlying_model.target_head.output_layer.weight.grad
-            output_norm = output_grad.norm().item() if output_grad is not None else 0.0
-            logger.info(f"  Output Layer: grad_norm={output_norm:.6f}")
-            logger.info("=== End FiLM Debug ===")
-
-        except Exception as e:
-            logger.warning(f"FiLM debug logging failed: {e}. Training will continue.")
-
     def _prepare_batch(
         self, batch: Union[Dict, Tuple]
     ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor], Optional[Dict[str, torch.Tensor]]]:
@@ -790,11 +728,6 @@ class Trainer:
                     self.scaler.scale(scaled_loss).backward()
                 else:
                     scaled_loss.backward()
-
-                # Debug: Log FiLM parameter gradients if AAM_DEBUG_FILM is set
-                if os.environ.get("AAM_DEBUG_FILM") and (step == 1 or step == total_steps):
-                    logger.info(f"FiLM Debug at step {step}/{total_steps}:")
-                    self._log_film_gradients()
 
                 # Track GMU gate values for TensorBoard
                 if "gmu_gate" in outputs:

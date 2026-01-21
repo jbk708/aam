@@ -330,6 +330,45 @@ optimizer = AdamW(param_groups, weight_decay=weight_decay)
 
 ---
 
+### CLN-9: Remove FiLM Conditioning
+**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Complete
+
+Remove FiLM (Feature-wise Linear Modulation) conditioning system entirely.
+
+**Motivation:**
+- Cross-attention fusion (FUS-2) provides superior position-specific modulation
+- FiLM adds complexity without clear benefit over simpler alternatives
+- Reduces codebase complexity and maintenance burden
+
+**Scope:**
+- Remove `aam/models/film.py`
+- Remove `--film-conditioning` CLI flag
+- Remove FiLM integration from `SequencePredictor`
+- Remove FiLM from `predict.py` checkpoint loading
+- Remove FiLM tests from `tests/test_film.py`
+- Update README to remove FiLM documentation
+
+**Files to Remove:**
+- `aam/models/film.py`
+- `tests/test_film.py`
+
+**Files to Modify:**
+- `aam/models/sequence_predictor.py` - remove FiLM imports and usage
+- `aam/cli/train.py` - remove `--film-conditioning` flag
+- `aam/cli/predict.py` - remove FiLM checkpoint handling
+- `aam/training/trainer.py` - remove any FiLM logging
+- `README.md` - remove FiLM documentation
+
+**Acceptance Criteria:**
+- [ ] `aam/models/film.py` deleted
+- [ ] `tests/test_film.py` deleted
+- [ ] `--film-conditioning` flag removed
+- [ ] No FiLM references in codebase
+- [ ] All tests pass
+- [ ] README updated
+
+---
+
 ## Summary
 
 | Ticket | Description | Effort | Priority | Status |
@@ -345,7 +384,8 @@ optimizer = AdamW(param_groups, weight_decay=weight_decay)
 | **CLN-6** | Categorical docs/validation | 4-5h | MEDIUM | Not Started |
 | **CLN-7** | Toggle count prediction | 2-3h | MEDIUM | Not Started |
 | **CLN-8** | Categorical learning rate | 2-3h | MEDIUM | Not Started |
-| **Total** | | **28-45h** | |
+| **CLN-9** | Remove FiLM conditioning | 2-3h | MEDIUM | Complete |
+| **Total** | | **30-48h** | |
 
 ## Recommended Order
 

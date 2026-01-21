@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-21
-**Status:** ~21 outstanding tickets (~76-119 hours)
+**Status:** ~20 outstanding tickets (~73-116 hours)
 
 ---
 
@@ -26,7 +26,7 @@
 
 No HIGH priority tickets remaining.
 
-### MEDIUM (9 tickets, ~28-40 hours)
+### MEDIUM (8 tickets, ~25-37 hours)
 
 | Ticket | Description | Effort | File |
 |--------|-------------|--------|------|
@@ -80,6 +80,7 @@ REG-5 (quantile) → REG-6 (asymmetric)
 
 | Ticket | Description |
 |--------|-------------|
+| CLN-9 | Remove FiLM conditioning |
 | CLN-2 | Target normalization unification (27 tests) |
 | FUS-2 | Cross-attention fusion (33 tests) |
 | FUS-1 | GMU fusion (28 tests) |
