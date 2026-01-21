@@ -2386,8 +2386,6 @@ class TestTrainerTargetNormalization:
 
     def test_trainer_denormalize_zscore_with_log_transform(self, small_predictor, loss_fn, device):
         """Test Trainer._denormalize_targets with z-score and log transform."""
-        import math
-
         # Simulate log-z-score transform: log(x+1) then z-score
         # Original values: 0, ~147, ~400 -> log: 0, 5, 6 -> z-score with mean=3.67, std=2.49
         log_mean = 3.67
