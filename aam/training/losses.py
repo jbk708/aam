@@ -193,6 +193,9 @@ def compute_pinball_loss(
     Returns:
         Scalar loss averaged over all samples, outputs, and quantiles
     """
+    # Ensure quantiles are on the same device as predictions
+    quantiles = quantiles.to(pred.device)
+
     # Expand target to match pred shape: [batch, out_dim] -> [batch, out_dim, num_quantiles]
     target_expanded = target.unsqueeze(-1).expand_as(pred)
 
