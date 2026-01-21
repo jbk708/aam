@@ -15,7 +15,7 @@ from aam.data.unifrac_loader import UniFracLoader
 from aam.data.categorical import CategoricalEncoder
 
 if TYPE_CHECKING:
-    from aam.data.normalization import CategoryNormalizer
+    from aam.data.normalization import CategoryNormalizer, GlobalNormalizer
 
 
 def collate_fn(
@@ -159,6 +159,7 @@ class ASVDataset(Dataset):
         cache_sequences: bool = True,
         categorical_encoder: Optional[CategoricalEncoder] = None,
         category_normalizer: Optional["CategoryNormalizer"] = None,
+        global_normalizer: Optional["GlobalNormalizer"] = None,
     ):
         """Initialize ASVDataset.
 
@@ -184,6 +185,9 @@ class ASVDataset(Dataset):
             category_normalizer: Optional fitted CategoryNormalizer for per-category target normalization.
                 If provided, applies z-score normalization using category-specific statistics.
                 Mutually exclusive with normalize_targets.
+            global_normalizer: Optional fitted GlobalNormalizer for global z-score normalization.
+                If provided, applies global z-score normalization. Mutually exclusive with
+                normalize_targets and category_normalizer.
         """
         self.table = table
         self.metadata = metadata
@@ -311,6 +315,9 @@ class ASVDataset(Dataset):
                     row = metadata_indexed.loc[sample_id]
                     self._category_key_cache[sample_id] = category_normalizer.get_category_key(row)
 
+        # Global z-score normalization
+        self.global_normalizer = global_normalizer
+
     def __len__(self) -> int:
         """Return number of samples in dataset."""
         return len(self.sample_ids)
@@ -321,7 +328,7 @@ class ASVDataset(Dataset):
         Returns:
             Dictionary with normalization params if any transform is enabled, None otherwise.
             May include: 'target_min', 'target_max', 'target_scale', 'log_transform',
-            'category_normalizer' (serialized state).
+            'category_normalizer' (serialized state), 'global_normalizer' (serialized state).
         """
         params: Dict[str, Any] = {}
         if self.normalize_targets and self.target_scale is not None:
@@ -332,6 +339,8 @@ class ASVDataset(Dataset):
             params["log_transform"] = True
         if self.category_normalizer is not None and self.category_normalizer.is_fitted:
             params["category_normalizer"] = self.category_normalizer.to_dict()
+        if self.global_normalizer is not None and self.global_normalizer.is_fitted:
+            params["global_normalizer"] = self.global_normalizer.to_dict()
         return params if params else None
 
     def denormalize_targets(
@@ -485,7 +494,10 @@ class ASVDataset(Dataset):
                 category_key = self._category_key_cache.get(sample_id)
                 if category_key is not None:
                     target_float = float(self.category_normalizer.normalize(target_float, category_key))
-            # Apply global normalization if enabled (mutually exclusive with category normalization)
+            # Apply global z-score normalization if enabled
+            elif self.global_normalizer is not None and self.global_normalizer.is_fitted:
+                target_float = float(self.global_normalizer.normalize(target_float))
+            # Apply global min-max normalization if enabled (mutually exclusive with others)
             elif self.normalize_targets and self.target_scale is not None:
                 target_float = (target_float - self.target_min) / self.target_scale
 
