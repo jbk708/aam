@@ -29,12 +29,10 @@ class TestGMU:
         assert gmu.cat_dim == 512
 
     def test_init_has_expected_layers(self):
-        """Test GMU has seq_transform, cat_transform, and gate layers."""
+        """Test GMU has cat_transform and gate layers."""
         gmu = GMU(seq_dim=128, cat_dim=32)
-        assert hasattr(gmu, "seq_transform")
         assert hasattr(gmu, "cat_transform")
         assert hasattr(gmu, "gate")
-        assert isinstance(gmu.seq_transform, torch.nn.Linear)
         assert isinstance(gmu.cat_transform, torch.nn.Linear)
         assert isinstance(gmu.gate, torch.nn.Linear)
 
@@ -42,9 +40,6 @@ class TestGMU:
         """Test layer dimensions are correct."""
         seq_dim, cat_dim = 128, 32
         gmu = GMU(seq_dim=seq_dim, cat_dim=cat_dim)
-        # seq_transform: seq_dim -> seq_dim
-        assert gmu.seq_transform.in_features == seq_dim
-        assert gmu.seq_transform.out_features == seq_dim
         # cat_transform: cat_dim -> seq_dim
         assert gmu.cat_transform.in_features == cat_dim
         assert gmu.cat_transform.out_features == seq_dim
@@ -123,7 +118,6 @@ class TestGMU:
         loss = output.sum()
         loss.backward()
         # Check that gradients exist for GMU parameters
-        assert gmu.seq_transform.weight.grad is not None
         assert gmu.cat_transform.weight.grad is not None
         assert gmu.gate.weight.grad is not None
 
@@ -194,7 +188,6 @@ class TestGMU:
     def test_weights_initialized(self):
         """Test that weights are properly initialized (not all zeros)."""
         gmu = GMU(seq_dim=128, cat_dim=32)
-        assert gmu.seq_transform.weight.abs().sum() > 0
         assert gmu.cat_transform.weight.abs().sum() > 0
         assert gmu.gate.weight.abs().sum() > 0
 
@@ -203,13 +196,10 @@ class TestGMU:
         """Test GMU has expected number of parameters."""
         seq_dim, cat_dim = 128, 32
         gmu = GMU(seq_dim=seq_dim, cat_dim=cat_dim)
-        # seq_transform: seq_dim * seq_dim + seq_dim (bias)
         # cat_transform: cat_dim * seq_dim + seq_dim (bias)
         # gate: (seq_dim + cat_dim) * seq_dim + seq_dim (bias)
         expected = (
-            seq_dim * seq_dim
-            + seq_dim  # seq_transform
-            + cat_dim * seq_dim
+            cat_dim * seq_dim
             + seq_dim  # cat_transform
             + (seq_dim + cat_dim) * seq_dim
             + seq_dim  # gate

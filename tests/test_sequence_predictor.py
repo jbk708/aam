@@ -995,7 +995,6 @@ class TestCategoricalIntegration:
         loss.backward()
 
         # Check GMU gradients
-        assert model.gmu.seq_transform.weight.grad is not None
         assert model.gmu.cat_transform.weight.grad is not None
         assert model.gmu.gate.weight.grad is not None
 

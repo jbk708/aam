@@ -473,7 +473,6 @@ class Trainer:
         # Log GMU weight norms if present
         if hasattr(model, "gmu") and model.gmu is not None:
             gmu = model.gmu
-            self.writer.add_scalar("gmu/seq_transform_norm", gmu.seq_transform.weight.norm().item(), epoch)
             self.writer.add_scalar("gmu/cat_transform_norm", gmu.cat_transform.weight.norm().item(), epoch)
             self.writer.add_scalar("gmu/gate_norm", gmu.gate.weight.norm().item(), epoch)
 
