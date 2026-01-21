@@ -1,7 +1,8 @@
-"""Per-category target normalization for regression tasks."""
+"""Target normalization for regression tasks."""
 
 import logging
-from typing import Any, Dict, List, Optional, Union
+import warnings
+from typing import Any, Dict, List, Literal, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -11,6 +12,236 @@ logger = logging.getLogger(__name__)
 
 # Minimum std to avoid division by zero
 MIN_STD = 1e-8
+
+# Valid target transform types
+TargetTransform = Literal["none", "minmax", "zscore", "zscore-category", "log-minmax", "log-zscore"]
+
+
+class GlobalNormalizer:
+    """Global target normalization using min-max or z-score.
+
+    Computes global statistics from training data. At training time,
+    targets are normalized using these statistics. At inference,
+    predictions are denormalized using the same statistics.
+    """
+
+    def __init__(self, method: Literal["minmax", "zscore"] = "minmax") -> None:
+        """Initialize GlobalNormalizer.
+
+        Args:
+            method: Normalization method - "minmax" for [0, 1] range, "zscore" for standardization
+        """
+        self.method = method
+        self.min_val: float = 0.0
+        self.max_val: float = 1.0
+        self.scale: float = 1.0
+        self.mean: float = 0.0
+        self.std: float = 1.0
+        self._is_fitted: bool = False
+
+    def fit(self, targets: np.ndarray) -> "GlobalNormalizer":
+        """Fit normalizer on training data.
+
+        Args:
+            targets: Target values array [n_samples] or [n_samples, n_targets]
+
+        Returns:
+            self for method chaining
+
+        Raises:
+            ValueError: If all targets are NaN
+        """
+        # Flatten if multi-dimensional
+        if targets.ndim > 1:
+            targets_flat = targets.flatten()
+        else:
+            targets_flat = targets
+
+        # Filter NaN values
+        valid_mask = ~np.isnan(targets_flat)
+        if not valid_mask.any():
+            raise ValueError("All targets are NaN, cannot compute normalization statistics")
+
+        valid_targets = targets_flat[valid_mask]
+
+        # Compute statistics
+        self.min_val = float(np.min(valid_targets))
+        self.max_val = float(np.max(valid_targets))
+        self.scale = self.max_val - self.min_val
+        if self.scale < MIN_STD:
+            self.scale = 1.0
+            logger.warning(f"All target values are identical ({self.min_val}). Normalization will have no effect.")
+
+        self.mean = float(np.mean(valid_targets))
+        self.std = float(np.std(valid_targets))
+        if self.std < MIN_STD:
+            self.std = 1.0
+
+        self._is_fitted = True
+        return self
+
+    def normalize(
+        self,
+        target: Union[float, np.ndarray, torch.Tensor],
+    ) -> Union[float, np.ndarray, torch.Tensor]:
+        """Normalize a target value using global statistics.
+
+        Args:
+            target: Target value(s) to normalize
+
+        Returns:
+            Normalized target value(s)
+
+        Raises:
+            RuntimeError: If normalizer is not fitted
+        """
+        if not self._is_fitted:
+            raise RuntimeError("GlobalNormalizer must be fitted before calling normalize()")
+
+        # Convert scalar to float for consistent arithmetic
+        value = target if isinstance(target, (torch.Tensor, np.ndarray)) else float(target)
+
+        if self.method == "minmax":
+            return (value - self.min_val) / self.scale
+        return (value - self.mean) / self.std
+
+    def denormalize(
+        self,
+        prediction: Union[float, np.ndarray, torch.Tensor],
+    ) -> Union[float, np.ndarray, torch.Tensor]:
+        """Denormalize a prediction back to original scale.
+
+        Args:
+            prediction: Prediction value(s) to denormalize
+
+        Returns:
+            Denormalized prediction value(s)
+
+        Raises:
+            RuntimeError: If normalizer is not fitted
+        """
+        if not self._is_fitted:
+            raise RuntimeError("GlobalNormalizer must be fitted before calling denormalize()")
+
+        # Convert scalar to float for consistent arithmetic
+        value = prediction if isinstance(prediction, (torch.Tensor, np.ndarray)) else float(prediction)
+
+        if self.method == "minmax":
+            return value * self.scale + self.min_val
+        return value * self.std + self.mean
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize normalizer state to dictionary for checkpointing.
+
+        Returns:
+            Dictionary with normalizer state
+        """
+        return {
+            "method": self.method,
+            "min_val": self.min_val,
+            "max_val": self.max_val,
+            "scale": self.scale,
+            "mean": self.mean,
+            "std": self.std,
+        }
+
+    @classmethod
+    def from_dict(cls, state: Dict[str, Any]) -> "GlobalNormalizer":
+        """Reconstruct normalizer from serialized state.
+
+        Args:
+            state: Dictionary from to_dict()
+
+        Returns:
+            GlobalNormalizer instance
+        """
+        normalizer = cls(method=state.get("method", "minmax"))
+        normalizer.min_val = state["min_val"]
+        normalizer.max_val = state["max_val"]
+        normalizer.scale = state["scale"]
+        normalizer.mean = state["mean"]
+        normalizer.std = state["std"]
+        normalizer._is_fitted = True
+        return normalizer
+
+    @property
+    def is_fitted(self) -> bool:
+        """Return whether the normalizer has been fitted."""
+        return self._is_fitted
+
+
+def parse_target_transform(
+    target_transform: Optional[str],
+    normalize_targets: bool,
+    normalize_targets_by: Optional[str],
+    log_transform_targets: bool,
+) -> tuple[TargetTransform, bool]:
+    """Parse and validate target transform configuration.
+
+    Handles both new --target-transform flag and legacy flags with deprecation warnings.
+
+    Args:
+        target_transform: New unified flag value (none|minmax|zscore|zscore-category|log-minmax|log-zscore)
+        normalize_targets: Legacy --normalize-targets flag
+        normalize_targets_by: Legacy --normalize-targets-by columns
+        log_transform_targets: Legacy --log-transform-targets flag
+
+    Returns:
+        Tuple of (resolved_transform, uses_log_transform)
+
+    Raises:
+        ValueError: If conflicting options are specified
+    """
+    # Build list of legacy flags that differ from defaults
+    legacy_flags = []
+    if not normalize_targets:
+        legacy_flags.append("--no-normalize-targets")
+    if normalize_targets_by:
+        legacy_flags.append("--normalize-targets-by")
+    if log_transform_targets:
+        legacy_flags.append("--log-transform-targets")
+
+    # New flag takes precedence
+    if target_transform is not None:
+        if legacy_flags:
+            warnings.warn(
+                f"--target-transform is set, ignoring legacy flags: {', '.join(legacy_flags)}. "
+                "Remove legacy flags to suppress this warning.",
+                DeprecationWarning,
+                stacklevel=3,
+            )
+        uses_log = target_transform.startswith("log-")
+        return target_transform, uses_log  # type: ignore[return-value]
+
+    # Convert legacy flags to new transform
+    resolved = _legacy_to_new_transform(normalize_targets, normalize_targets_by, log_transform_targets)
+
+    if legacy_flags:
+        warnings.warn(
+            f"Legacy flags {', '.join(legacy_flags)} are deprecated. "
+            f"Use --target-transform {resolved} instead.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+
+    return resolved, log_transform_targets
+
+
+def _legacy_to_new_transform(
+    normalize_targets: bool,
+    normalize_targets_by: Optional[str],
+    log_transform_targets: bool,
+) -> TargetTransform:
+    """Convert legacy flag combination to new transform type."""
+    if normalize_targets_by:
+        # Per-category z-score
+        return "log-zscore" if log_transform_targets else "zscore-category"
+    elif normalize_targets:
+        # Global min-max (default)
+        return "log-minmax" if log_transform_targets else "minmax"
+    else:
+        # No normalization
+        return "none"
 
 
 class CategoryNormalizer:
@@ -171,10 +402,8 @@ class CategoryNormalizer:
             raise RuntimeError("CategoryNormalizer must be fitted before calling normalize()")
 
         mean, std = self._get_stats(category_key)
-
-        if isinstance(target, (torch.Tensor, np.ndarray)):
-            return (target - mean) / std
-        return (float(target) - mean) / std
+        value = target if isinstance(target, (torch.Tensor, np.ndarray)) else float(target)
+        return (value - mean) / std
 
     def denormalize(
         self,
@@ -197,10 +426,8 @@ class CategoryNormalizer:
             raise RuntimeError("CategoryNormalizer must be fitted before calling denormalize()")
 
         mean, std = self._get_stats(category_key)
-
-        if isinstance(prediction, (torch.Tensor, np.ndarray)):
-            return prediction * std + mean
-        return float(prediction) * std + mean
+        value = prediction if isinstance(prediction, (torch.Tensor, np.ndarray)) else float(prediction)
+        return value * std + mean
 
     def _get_stats(self, category_key: str) -> tuple:
         """Get mean and std for a category, falling back to global if unseen.

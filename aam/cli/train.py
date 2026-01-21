@@ -15,7 +15,7 @@ from aam.data.biom_loader import BIOMLoader
 from aam.data.unifrac_loader import UniFracLoader
 from aam.data.dataset import ASVDataset, collate_fn
 from aam.data.categorical import CategoricalEncoder
-from aam.data.normalization import CategoryNormalizer
+from aam.data.normalization import CategoryNormalizer, GlobalNormalizer, parse_target_transform
 from skbio import DistanceMatrix
 from aam.models.sequence_predictor import SequencePredictor
 from aam.models.transformer import AttnImplementation
@@ -161,21 +161,39 @@ from aam.cli.utils import (
     "--asv-chunk-size", default=256, type=int, help="Process ASVs in chunks to reduce memory (default: 256, use 0 to disable)"
 )
 @click.option(
+    "--target-transform",
+    default=None,
+    type=click.Choice(["none", "minmax", "zscore", "zscore-category", "log-minmax", "log-zscore"]),
+    help="Target normalization strategy: "
+    "none (no transform), "
+    "minmax (scale to [0,1]), "
+    "zscore (global z-score), "
+    "zscore-category (per-category z-score, requires --normalize-by), "
+    "log-minmax (log(y+1) then minmax), "
+    "log-zscore (log(y+1) then z-score). "
+    "Default: minmax. Replaces legacy --normalize-targets, --normalize-targets-by, --log-transform-targets.",
+)
+@click.option(
+    "--normalize-by",
+    default=None,
+    help="Categorical columns for per-category normalization (comma-separated). "
+    "Required with --target-transform zscore-category. Example: 'location' or 'location,season'.",
+)
+@click.option(
     "--normalize-targets/--no-normalize-targets",
     default=True,
-    help="Normalize target and count values to [0, 1] range during training (default: enabled)",
+    help="[DEPRECATED] Use --target-transform instead. Normalize targets to [0, 1] range (default: enabled).",
 )
 @click.option(
     "--normalize-targets-by",
     default=None,
-    help="Normalize targets per-category using comma-separated categorical column names (e.g., 'location' or 'location,season'). "
-    "Computes per-category mean/std from training data and applies z-score normalization. "
-    "Mutually exclusive with --normalize-targets. Unseen categories use global statistics.",
+    help="[DEPRECATED] Use --target-transform zscore-category --normalize-by instead. "
+    "Per-category z-score normalization using comma-separated column names.",
 )
 @click.option(
     "--log-transform-targets",
     is_flag=True,
-    help="Apply log(y+1) transform to targets. Best for non-negative targets with wide range (e.g., 0-600). Predictions are inverse-transformed via exp(x)-1.",
+    help="[DEPRECATED] Use --target-transform log-minmax or log-zscore instead. Apply log(y+1) transform.",
 )
 @click.option(
     "--loss-type",
@@ -336,6 +354,8 @@ def train(
     gradient_checkpointing: bool,
     attn_implementation: str,
     asv_chunk_size: int,
+    target_transform: Optional[str],
+    normalize_by: Optional[str],
     normalize_targets: bool,
     normalize_targets_by: Optional[str],
     log_transform_targets: bool,
@@ -388,28 +408,47 @@ def train(
             epochs=epochs,
         )
 
+        # Parse and validate target transform configuration
+        # Supports both new --target-transform and legacy flags with deprecation warnings
+        resolved_transform, uses_log_transform = parse_target_transform(
+            target_transform=target_transform,
+            normalize_targets=normalize_targets,
+            normalize_targets_by=normalize_targets_by,
+            log_transform_targets=log_transform_targets,
+        )
+
+        # Handle --normalize-by (new) and --normalize-targets-by (legacy) columns
+        normalize_by_columns: list[str] = []
+        if normalize_by:
+            normalize_by_columns = [col.strip() for col in normalize_by.split(",")]
+        elif normalize_targets_by:
+            normalize_by_columns = [col.strip() for col in normalize_targets_by.split(",")]
+
+        # Validate zscore-category requires normalize-by columns
+        if resolved_transform == "zscore-category" and not normalize_by_columns:
+            raise click.ClickException(
+                "--target-transform zscore-category requires --normalize-by to specify categorical columns. "
+                "Example: --target-transform zscore-category --normalize-by location,season"
+            )
+
+        # Map resolved transform to internal flags for backward compatibility with dataset
+        effective_normalize_targets = resolved_transform in ("minmax", "log-minmax")
+        effective_log_transform = uses_log_transform
+        use_zscore = resolved_transform in ("zscore", "log-zscore")
+        use_category_zscore = resolved_transform == "zscore-category"
+
+        logger.info(f"Target transform: {resolved_transform}")
+        if normalize_by_columns:
+            logger.info(f"Per-category normalization columns: {normalize_by_columns}")
+
         # Auto-enable bounded_targets when using log_transform with normalization
         # Without bounds, model can output values > 1 which explode after exp()
-        if log_transform_targets and normalize_targets and not bounded_targets and not classifier:
+        if effective_log_transform and effective_normalize_targets and not bounded_targets and not classifier:
             bounded_targets = True
             logger.info(
-                "Auto-enabling --bounded-targets for --log-transform-targets with --normalize-targets "
+                "Auto-enabling --bounded-targets for log transform with normalization "
                 "(prevents exp() overflow from unbounded predictions)"
             )
-
-        # Validate mutual exclusivity of normalization options
-        if normalize_targets_by and normalize_targets:
-            raise click.ClickException(
-                "Cannot use --normalize-targets-by and --normalize-targets together. "
-                "Use --normalize-targets-by for per-category normalization, "
-                "or --normalize-targets for global min-max normalization."
-            )
-
-        # Parse normalize-targets-by columns
-        normalize_by_columns: list[str] = []
-        if normalize_targets_by:
-            normalize_by_columns = [col.strip() for col in normalize_targets_by.split(",")]
-            logger.info(f"Per-category target normalization enabled for columns: {normalize_by_columns}")
 
         setup_expandable_segments(use_expandable_segments)
 
@@ -619,14 +658,16 @@ def train(
                 train_distance_matrix = unifrac_distances[train_indices]
                 val_distance_matrix = unifrac_distances[val_indices]
 
-        # Fit per-category normalizer if requested
+        # Fit normalizer based on resolved transform
         category_normalizer: Optional[CategoryNormalizer] = None
-        if normalize_by_columns:
-            # Validate columns exist in metadata
+        global_normalizer: Optional[GlobalNormalizer] = None
+
+        if use_category_zscore:
+            # Per-category z-score normalization
             for col in normalize_by_columns:
                 if col not in train_metadata.columns:
                     raise click.ClickException(
-                        f"Column '{col}' specified in --normalize-targets-by not found in metadata. "
+                        f"Column '{col}' specified in --normalize-by not found in metadata. "
                         f"Available columns: {list(train_metadata.columns)}"
                     )
 
@@ -634,10 +675,10 @@ def train(
             train_targets = train_metadata.set_index("sample_id")[metadata_column].values.astype(float)
 
             # Apply log transform to targets before fitting normalizer (if enabled)
-            if log_transform_targets:
+            if effective_log_transform:
                 train_targets = np.log(train_targets + 1)
 
-            # Fit the normalizer
+            # Fit the category normalizer
             category_normalizer = CategoryNormalizer()
             category_normalizer.fit(
                 targets=train_targets,
@@ -654,6 +695,18 @@ def train(
             if len(category_normalizer.stats) > 5:
                 logger.info(f"  ... and {len(category_normalizer.stats) - 5} more categories")
 
+        elif use_zscore:
+            # Global z-score normalization
+            train_targets = train_metadata.set_index("sample_id")[metadata_column].values.astype(float)
+
+            # Apply log transform before z-score (if enabled)
+            if effective_log_transform:
+                train_targets = np.log(train_targets + 1)
+
+            global_normalizer = GlobalNormalizer(method="zscore")
+            global_normalizer.fit(train_targets)
+            logger.info(f"Fitted GlobalNormalizer (zscore): mean={global_normalizer.mean:.4f}, std={global_normalizer.std:.4f}")
+
         logger.info("Creating datasets...")
         train_dataset = ASVDataset(
             table=train_table,
@@ -663,12 +716,13 @@ def train(
             token_limit=token_limit,
             target_column=metadata_column,
             unifrac_metric=unifrac_metric_name,
-            normalize_targets=normalize_targets if not normalize_by_columns else False,
-            log_transform_targets=log_transform_targets,
-            normalize_counts=normalize_targets,  # Normalize counts along with targets
+            normalize_targets=effective_normalize_targets,
+            log_transform_targets=effective_log_transform,
+            normalize_counts=effective_normalize_targets,  # Normalize counts along with targets
             cache_sequences=not no_sequence_cache,
             categorical_encoder=categorical_encoder,
             category_normalizer=category_normalizer,
+            global_normalizer=global_normalizer,
         )
 
         # Get normalization parameters from training set
@@ -699,18 +753,19 @@ def train(
             token_limit=token_limit,
             target_column=metadata_column,
             unifrac_metric=unifrac_metric_name,
-            normalize_targets=normalize_targets if not normalize_by_columns else False,
-            log_transform_targets=log_transform_targets,
+            normalize_targets=effective_normalize_targets,
+            log_transform_targets=effective_log_transform,
             # Use same normalization params as training set for consistency
-            target_min=train_dataset.target_min if normalize_targets else None,
-            target_max=train_dataset.target_max if normalize_targets else None,
-            normalize_counts=normalize_targets,  # Normalize counts along with targets
+            target_min=train_dataset.target_min if effective_normalize_targets else None,
+            target_max=train_dataset.target_max if effective_normalize_targets else None,
+            normalize_counts=effective_normalize_targets,  # Normalize counts along with targets
             # Use same count normalization params as training set for consistency
-            count_min=train_dataset.count_min if normalize_targets else None,
-            count_max=train_dataset.count_max if normalize_targets else None,
+            count_min=train_dataset.count_min if effective_normalize_targets else None,
+            count_max=train_dataset.count_max if effective_normalize_targets else None,
             cache_sequences=not no_sequence_cache,
             categorical_encoder=categorical_encoder,
             category_normalizer=category_normalizer,  # Use same normalizer as training set
+            global_normalizer=global_normalizer,  # Use same normalizer as training set
         )
 
         train_collate = partial(

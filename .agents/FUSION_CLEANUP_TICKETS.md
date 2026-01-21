@@ -132,7 +132,7 @@ Replace three overlapping output flags with unified interface.
 ---
 
 ### CLN-2: Unify Target Normalization
-**Priority:** MEDIUM | **Effort:** 3-4 hours | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** 3-4 hours | **Status:** Complete
 
 Replace fragmented normalization flags with single interface.
 
@@ -150,10 +150,10 @@ Replace fragmented normalization flags with single interface.
 ```
 
 **Acceptance Criteria:**
-- [ ] Single `--target-transform` flag
-- [ ] Old flags deprecated
-- [ ] Implicit behaviors made explicit
-- [ ] 15+ tests
+- [x] Single `--target-transform` flag
+- [x] Old flags deprecated with warnings
+- [x] Implicit behaviors made explicit
+- [x] 27+ tests (GlobalNormalizer, parse_target_transform, dataset integration)
 
 **Files:** `aam/cli/train.py`, `aam/data/dataset.py`, `aam/data/normalization.py`
 
@@ -338,7 +338,7 @@ optimizer = AdamW(param_groups, weight_decay=weight_decay)
 | **FUS-2** | Cross-attention fusion | 5-6h | HIGH | Complete |
 | **FUS-3** | Perceiver fusion | 6-8h | LOW | Not Started |
 | **CLN-1** | Output constraint consolidation | 3-4h | MEDIUM | Not Started |
-| **CLN-2** | Normalization unification | 3-4h | MEDIUM | Not Started |
+| **CLN-2** | Normalization unification | 3-4h | MEDIUM | Complete |
 | **CLN-3** | Remove unused params | 1-2h | LOW | Complete |
 | **CLN-4** | Extract shared utilities | 2-3h | LOW | Not Started |
 | **CLN-5** | DataParallel in train.py | 2-3h | MEDIUM | Complete |

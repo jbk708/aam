@@ -1,11 +1,17 @@
-"""Tests for per-category target normalization."""
+"""Tests for target normalization (global and per-category)."""
+
+import warnings
 
 import numpy as np
 import pandas as pd
 import pytest
 import torch
 
-from aam.data.normalization import CategoryNormalizer
+from aam.data.normalization import (
+    CategoryNormalizer,
+    GlobalNormalizer,
+    parse_target_transform,
+)
 
 
 class TestCategoryNormalizer:
@@ -522,3 +528,302 @@ class TestCategoryNormalizerEdgeCases:
         except ValueError:
             # Raising is also acceptable behavior
             pass
+
+
+class TestGlobalNormalizer:
+    """Tests for GlobalNormalizer class."""
+
+    def test_minmax_normalize(self):
+        """Test min-max normalization to [0, 1] range."""
+        normalizer = GlobalNormalizer(method="minmax")
+        targets = np.array([0.0, 50.0, 100.0])
+        normalizer.fit(targets)
+
+        assert normalizer.is_fitted
+        assert normalizer.min_val == 0.0
+        assert normalizer.max_val == 100.0
+        assert normalizer.scale == 100.0
+
+        # Normalize
+        normalized = normalizer.normalize(50.0)
+        assert normalized == 0.5
+
+        # Array normalization
+        normalized_arr = normalizer.normalize(targets)
+        np.testing.assert_array_almost_equal(normalized_arr, [0.0, 0.5, 1.0])
+
+    def test_zscore_normalize(self):
+        """Test z-score normalization (standardization)."""
+        normalizer = GlobalNormalizer(method="zscore")
+        targets = np.array([10.0, 20.0, 30.0])
+        normalizer.fit(targets)
+
+        assert normalizer.is_fitted
+        assert normalizer.mean == pytest.approx(20.0)
+        assert normalizer.std == pytest.approx(np.std(targets))
+
+        # Mean should normalize to 0
+        normalized = normalizer.normalize(20.0)
+        assert normalized == pytest.approx(0.0)
+
+    def test_minmax_denormalize(self):
+        """Test min-max denormalization."""
+        normalizer = GlobalNormalizer(method="minmax")
+        targets = np.array([0.0, 50.0, 100.0])
+        normalizer.fit(targets)
+
+        # Denormalize
+        denormalized = normalizer.denormalize(0.5)
+        assert denormalized == 50.0
+
+        # Array denormalization
+        denormalized_arr = normalizer.denormalize(np.array([0.0, 0.5, 1.0]))
+        np.testing.assert_array_almost_equal(denormalized_arr, targets)
+
+    def test_zscore_denormalize(self):
+        """Test z-score denormalization."""
+        normalizer = GlobalNormalizer(method="zscore")
+        targets = np.array([10.0, 20.0, 30.0])
+        normalizer.fit(targets)
+
+        # Denormalize z=0 should return mean
+        denormalized = normalizer.denormalize(0.0)
+        assert denormalized == pytest.approx(20.0)
+
+    def test_roundtrip_minmax(self):
+        """Test normalize followed by denormalize returns original (minmax)."""
+        normalizer = GlobalNormalizer(method="minmax")
+        targets = np.array([10.0, 50.0, 90.0])
+        normalizer.fit(targets)
+
+        original = 60.0
+        normalized = normalizer.normalize(original)
+        recovered = normalizer.denormalize(normalized)
+        assert recovered == pytest.approx(original)
+
+    def test_roundtrip_zscore(self):
+        """Test normalize followed by denormalize returns original (zscore)."""
+        normalizer = GlobalNormalizer(method="zscore")
+        targets = np.array([10.0, 50.0, 90.0])
+        normalizer.fit(targets)
+
+        original = 60.0
+        normalized = normalizer.normalize(original)
+        recovered = normalizer.denormalize(normalized)
+        assert recovered == pytest.approx(original)
+
+    def test_tensor_support(self):
+        """Test normalization with torch tensors."""
+        normalizer = GlobalNormalizer(method="minmax")
+        targets = np.array([0.0, 50.0, 100.0])
+        normalizer.fit(targets)
+
+        tensor = torch.tensor([0.0, 50.0, 100.0])
+        normalized = normalizer.normalize(tensor)
+
+        assert isinstance(normalized, torch.Tensor)
+        torch.testing.assert_close(normalized, torch.tensor([0.0, 0.5, 1.0]))
+
+    def test_to_dict_from_dict_roundtrip(self):
+        """Test serialization and deserialization."""
+        normalizer = GlobalNormalizer(method="zscore")
+        targets = np.array([10.0, 20.0, 30.0])
+        normalizer.fit(targets)
+
+        state = normalizer.to_dict()
+        restored = GlobalNormalizer.from_dict(state)
+
+        assert restored.is_fitted
+        assert restored.method == "zscore"
+        assert restored.mean == normalizer.mean
+        assert restored.std == normalizer.std
+
+    def test_identical_values_handling(self):
+        """Test handling of identical values (std=0)."""
+        normalizer = GlobalNormalizer(method="zscore")
+        targets = np.array([5.0, 5.0, 5.0])
+        normalizer.fit(targets)
+
+        # std should be set to 1.0 to avoid division by zero
+        assert normalizer.std == 1.0
+
+        # Normalization should still work
+        normalized = normalizer.normalize(5.0)
+        denormalized = normalizer.denormalize(normalized)
+        assert denormalized == pytest.approx(5.0)
+
+    def test_normalize_before_fit_raises(self):
+        """Test that normalize before fit raises error."""
+        normalizer = GlobalNormalizer()
+
+        with pytest.raises(RuntimeError):
+            normalizer.normalize(0.5)
+
+    def test_denormalize_before_fit_raises(self):
+        """Test that denormalize before fit raises error."""
+        normalizer = GlobalNormalizer()
+
+        with pytest.raises(RuntimeError):
+            normalizer.denormalize(0.5)
+
+
+class TestParseTargetTransform:
+    """Tests for parse_target_transform function."""
+
+    def test_new_flag_none(self):
+        """Test --target-transform none."""
+        transform, uses_log = parse_target_transform(
+            target_transform="none",
+            normalize_targets=True,  # Should be ignored
+            normalize_targets_by=None,
+            log_transform_targets=False,
+        )
+        assert transform == "none"
+        assert uses_log is False
+
+    def test_new_flag_minmax(self):
+        """Test --target-transform minmax."""
+        transform, uses_log = parse_target_transform(
+            target_transform="minmax",
+            normalize_targets=True,
+            normalize_targets_by=None,
+            log_transform_targets=False,
+        )
+        assert transform == "minmax"
+        assert uses_log is False
+
+    def test_new_flag_zscore(self):
+        """Test --target-transform zscore."""
+        transform, uses_log = parse_target_transform(
+            target_transform="zscore",
+            normalize_targets=True,
+            normalize_targets_by=None,
+            log_transform_targets=False,
+        )
+        assert transform == "zscore"
+        assert uses_log is False
+
+    def test_new_flag_zscore_category(self):
+        """Test --target-transform zscore-category."""
+        transform, uses_log = parse_target_transform(
+            target_transform="zscore-category",
+            normalize_targets=True,
+            normalize_targets_by=None,
+            log_transform_targets=False,
+        )
+        assert transform == "zscore-category"
+        assert uses_log is False
+
+    def test_new_flag_log_minmax(self):
+        """Test --target-transform log-minmax."""
+        transform, uses_log = parse_target_transform(
+            target_transform="log-minmax",
+            normalize_targets=True,
+            normalize_targets_by=None,
+            log_transform_targets=False,
+        )
+        assert transform == "log-minmax"
+        assert uses_log is True
+
+    def test_new_flag_log_zscore(self):
+        """Test --target-transform log-zscore."""
+        transform, uses_log = parse_target_transform(
+            target_transform="log-zscore",
+            normalize_targets=True,
+            normalize_targets_by=None,
+            log_transform_targets=False,
+        )
+        assert transform == "log-zscore"
+        assert uses_log is True
+
+    def test_legacy_normalize_targets_default(self):
+        """Test legacy --normalize-targets (default True) maps to minmax."""
+        with warnings.catch_warnings(record=True):
+            warnings.simplefilter("always")
+            transform, uses_log = parse_target_transform(
+                target_transform=None,
+                normalize_targets=True,
+                normalize_targets_by=None,
+                log_transform_targets=False,
+            )
+        assert transform == "minmax"
+        assert uses_log is False
+
+    def test_legacy_no_normalize_targets(self):
+        """Test legacy --no-normalize-targets maps to none."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            transform, uses_log = parse_target_transform(
+                target_transform=None,
+                normalize_targets=False,
+                normalize_targets_by=None,
+                log_transform_targets=False,
+            )
+        assert transform == "none"
+        assert uses_log is False
+        # Should emit deprecation warning
+        assert len(w) == 1
+        assert issubclass(w[0].category, DeprecationWarning)
+        assert "--no-normalize-targets" in str(w[0].message)
+
+    def test_legacy_normalize_targets_by(self):
+        """Test legacy --normalize-targets-by maps to zscore-category."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            transform, uses_log = parse_target_transform(
+                target_transform=None,
+                normalize_targets=False,
+                normalize_targets_by="location",
+                log_transform_targets=False,
+            )
+        assert transform == "zscore-category"
+        assert uses_log is False
+        # Should emit deprecation warning
+        assert len(w) == 1
+        assert issubclass(w[0].category, DeprecationWarning)
+
+    def test_legacy_log_transform_with_normalize(self):
+        """Test legacy --log-transform-targets with --normalize-targets maps to log-minmax."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            transform, uses_log = parse_target_transform(
+                target_transform=None,
+                normalize_targets=True,
+                normalize_targets_by=None,
+                log_transform_targets=True,
+            )
+        assert transform == "log-minmax"
+        assert uses_log is True
+        # Should emit deprecation warning
+        assert len(w) == 1
+        assert issubclass(w[0].category, DeprecationWarning)
+
+    def test_legacy_log_transform_with_category(self):
+        """Test legacy --log-transform-targets with --normalize-targets-by maps to log-zscore."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            transform, uses_log = parse_target_transform(
+                target_transform=None,
+                normalize_targets=False,
+                normalize_targets_by="location",
+                log_transform_targets=True,
+            )
+        assert transform == "log-zscore"
+        assert uses_log is True
+
+    def test_new_flag_ignores_legacy_with_warning(self):
+        """Test that new flag ignores legacy flags and emits warning."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            transform, uses_log = parse_target_transform(
+                target_transform="zscore",
+                normalize_targets=False,  # Legacy flag
+                normalize_targets_by="location",  # Legacy flag
+                log_transform_targets=True,  # Legacy flag
+            )
+        assert transform == "zscore"
+        assert uses_log is False  # New flag value, not legacy
+        # Should emit warning about ignoring legacy flags
+        assert len(w) == 1
+        assert issubclass(w[0].category, DeprecationWarning)
+        assert "ignoring legacy flags" in str(w[0].message)

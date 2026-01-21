@@ -1726,3 +1726,113 @@ class TestCategoricalIntegration:
                 metadata=None,
                 categorical_encoder=fitted_encoder,
             )
+
+
+class TestGlobalNormalizerIntegration:
+    """Tests for ASVDataset with GlobalNormalizer (CLN-2)."""
+
+    @pytest.fixture
+    def global_normalizer(self):
+        """Create a fitted GlobalNormalizer."""
+        from aam.data.normalization import GlobalNormalizer
+
+        normalizer = GlobalNormalizer(method="zscore")
+        targets = np.array([0.0, 50.0, 100.0])
+        normalizer.fit(targets)
+        return normalizer
+
+    def test_dataset_with_global_normalizer(self, rarefied_table, tokenizer, global_normalizer):
+        """Test dataset creation with global normalizer."""
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3"],
+                "target": [0.0, 50.0, 100.0],
+            }
+        )
+
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            metadata=metadata,
+            target_column="target",
+            global_normalizer=global_normalizer,
+        )
+
+        assert dataset.global_normalizer is not None
+        assert dataset.global_normalizer.is_fitted
+
+    def test_global_normalizer_applies_zscore(self, rarefied_table, tokenizer, global_normalizer):
+        """Test that global normalizer applies z-score to targets."""
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3"],
+                "target": [0.0, 50.0, 100.0],
+            }
+        )
+
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            metadata=metadata,
+            target_column="target",
+            global_normalizer=global_normalizer,
+        )
+
+        # Get sample with target=50 (mean), should normalize to ~0
+        sample_ids = list(rarefied_table.ids(axis="sample"))
+        sample2_idx = sample_ids.index("sample2")
+        sample = dataset[sample2_idx]
+
+        # Mean (50) should normalize to approximately 0
+        assert sample["y_target"].item() == pytest.approx(0.0, abs=0.1)
+
+    def test_global_normalizer_in_normalization_params(self, rarefied_table, tokenizer, global_normalizer):
+        """Test that global normalizer state is included in normalization params."""
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3"],
+                "target": [0.0, 50.0, 100.0],
+            }
+        )
+
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            metadata=metadata,
+            target_column="target",
+            global_normalizer=global_normalizer,
+        )
+
+        params = dataset.get_normalization_params()
+        assert params is not None
+        assert "global_normalizer" in params
+        assert params["global_normalizer"]["method"] == "zscore"
+
+    def test_global_normalizer_mutually_exclusive_with_minmax(self, rarefied_table, tokenizer, global_normalizer):
+        """Test that global normalizer takes precedence over minmax when both set."""
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3"],
+                "target": [0.0, 50.0, 100.0],
+            }
+        )
+
+        # Both normalize_targets and global_normalizer set
+        # global_normalizer should take precedence
+        dataset = ASVDataset(
+            table=rarefied_table,
+            tokenizer=tokenizer,
+            metadata=metadata,
+            target_column="target",
+            normalize_targets=True,
+            global_normalizer=global_normalizer,
+        )
+
+        # Get sample with target=50 (mean), should use z-score (not minmax)
+        sample_ids = list(rarefied_table.ids(axis="sample"))
+        sample2_idx = sample_ids.index("sample2")
+        sample = dataset[sample2_idx]
+
+        # Z-score of mean is 0, minmax would give 0.5
+        # We should get z-score value (close to 0)
+        assert sample["y_target"].item() == pytest.approx(0.0, abs=0.1)
