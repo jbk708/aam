@@ -81,6 +81,7 @@ REG-6 (asymmetric loss)
 
 | Ticket | Description |
 |--------|-------------|
+| CLN-12 | Random Forest baseline script (17 tests) |
 | CLN-BUG-2 | val_predictions.tsv not written on resume (1 test) |
 | CLN-BUG-1 | Z-score denormalization in TensorBoard (6 tests) |
 | CLN-10 | Training output artifacts (8 tests) |
