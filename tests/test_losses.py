@@ -435,7 +435,7 @@ class TestEvaluatorQuantileExtraction:
 
     def test_extract_median_quantile_ddp_wrapped(self):
         """Test median quantile extraction with DDP-wrapped model."""
-        from unittest.mock import Mock, PropertyMock
+        from unittest.mock import Mock
 
         from aam.training.evaluation import Evaluator
 
