@@ -553,6 +553,7 @@ class SequencePredictor(nn.Module):
         target_prediction = self.target_head(pooled_target)
 
         # Reshape for quantile regression: [batch, out_dim * num_quantiles] -> [batch, out_dim, num_quantiles]
+        # Quantile regression skips output transformations (scaling, activation, bounds)
         if self.num_quantiles is not None:
             batch_size = target_prediction.size(0)
             target_prediction = target_prediction.view(batch_size, self.out_dim, self.num_quantiles)
