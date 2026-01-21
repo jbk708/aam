@@ -11,7 +11,7 @@ from aam.models.attention_pooling import AttentionPooling
 from aam.models.transformer import AttnImplementation, TransformerEncoder
 from aam.models.categorical_embedder import CategoricalEmbedder
 from aam.models.film import FiLMTargetHead
-from aam.models.fusion import GMU
+from aam.models.fusion import CrossAttentionFusion, GMU
 
 
 class SequencePredictor(nn.Module):
@@ -76,6 +76,7 @@ class SequencePredictor(nn.Module):
         regressor_dropout: float = 0.0,
         conditional_scaling_columns: Optional[List[str]] = None,
         film_conditioning_columns: Optional[List[str]] = None,
+        cross_attn_heads: int = 8,
     ):
         """Initialize SequencePredictor.
 
@@ -142,6 +143,8 @@ class SequencePredictor(nn.Module):
                 Modulation) conditioning. FiLM applies learned scale (gamma) and shift (beta) parameters
                 at each MLP hidden layer, allowing categorical features to modulate which features matter.
                 Requires regressor_hidden_dims and categorical_cardinalities.
+            cross_attn_heads: Number of attention heads for cross-attention fusion (default: 8).
+                Only used when categorical_fusion='cross-attention'.
         """
         super().__init__()
 
@@ -267,9 +270,11 @@ class SequencePredictor(nn.Module):
             self.output_bias = None
 
         self.categorical_fusion = categorical_fusion
+        self.cross_attn_heads = cross_attn_heads
         if categorical_cardinalities:
-            if categorical_fusion not in ("concat", "add", "gmu"):
-                raise ValueError(f"categorical_fusion must be 'concat', 'add', or 'gmu', got '{categorical_fusion}'")
+            valid_fusions = ("concat", "add", "gmu", "cross-attention")
+            if categorical_fusion not in valid_fusions:
+                raise ValueError(f"categorical_fusion must be one of {valid_fusions}, got '{categorical_fusion}'")
             self.categorical_embedder: Optional[CategoricalEmbedder] = CategoricalEmbedder(
                 column_cardinalities=categorical_cardinalities,
                 embed_dim=categorical_embed_dim,
@@ -282,19 +287,32 @@ class SequencePredictor(nn.Module):
                     self.embedding_dim,
                 )
                 self.gmu: Optional[GMU] = None
+                self.cross_attn_fusion: Optional[CrossAttentionFusion] = None
             elif categorical_fusion == "add":
                 self.categorical_projection = nn.Linear(
                     total_cat_dim,
                     self.embedding_dim,
                 )
                 self.gmu = None
-            else:  # gmu
+                self.cross_attn_fusion = None
+            elif categorical_fusion == "gmu":
                 self.categorical_projection = None
                 self.gmu = GMU(seq_dim=self.embedding_dim, cat_dim=total_cat_dim)
+                self.cross_attn_fusion = None
+            else:  # cross-attention
+                self.categorical_projection = None
+                self.gmu = None
+                self.cross_attn_fusion = CrossAttentionFusion(
+                    seq_dim=self.embedding_dim,
+                    cat_dim=total_cat_dim,
+                    num_heads=cross_attn_heads,
+                    dropout=categorical_dropout,
+                )
         else:
             self.categorical_embedder = None
             self.categorical_projection = None
             self.gmu = None
+            self.cross_attn_fusion = None
 
         self.conditional_scaling_columns = conditional_scaling_columns
         self._init_conditional_scaling(categorical_cardinalities)
@@ -580,9 +598,18 @@ class SequencePredictor(nn.Module):
         count_embeddings = self.count_encoder(base_embeddings, mask=asv_mask)
         count_prediction = torch.sigmoid(self.count_head(count_embeddings))
 
-        # GMU fusion happens after pooling, so skip sequence-level fusion for GMU
+        # GMU and cross-attention use their own fusion; concat/add use _fuse_categorical
+        cross_attn_weights = None
         if self.categorical_fusion == "gmu":
             target_input = base_embeddings
+        elif self.categorical_fusion == "cross-attention":
+            if self.cross_attn_fusion is not None and self.categorical_embedder is not None and categorical_ids is not None:
+                cat_emb = self.categorical_embedder(categorical_ids)
+                target_input, cross_attn_weights = self.cross_attn_fusion(
+                    base_embeddings, cat_emb, return_weights=True
+                )
+            else:
+                target_input = base_embeddings
         else:
             target_input = self._fuse_categorical(base_embeddings, categorical_ids)
 
@@ -625,6 +652,9 @@ class SequencePredictor(nn.Module):
 
         if gmu_gate is not None:
             result["gmu_gate"] = gmu_gate
+
+        if cross_attn_weights is not None:
+            result["cross_attn_weights"] = cross_attn_weights
 
         # For UniFrac, pass embeddings through for distance computation
         if embeddings is not None:
