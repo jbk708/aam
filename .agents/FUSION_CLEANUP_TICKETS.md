@@ -417,6 +417,41 @@ output_dir/
 
 ---
 
+### CLN-BUG-1: Z-Score Denormalization Missing in TensorBoard
+**Priority:** HIGH | **Effort:** 1-2 hours | **Status:** Not Started
+
+TensorBoard plots show z-score normalized values instead of original scale when using `--target-normalization zscore`.
+
+**Current Behavior:**
+- When `--target-normalization zscore` is used, target values are z-score normalized during training
+- Validation metrics (R², MAE) are computed on normalized values
+- TensorBoard prediction plots display normalized values (e.g., -2 to +2) instead of original scale
+- `val_predictions.tsv` may also contain normalized values
+
+**Expected Behavior:**
+- TensorBoard plots should show predictions and actuals in original target scale
+- Metrics displayed should reflect denormalized values for interpretability
+- `val_predictions.tsv` should contain denormalized predictions
+
+**Root Cause:**
+- `Evaluator._denormalize_targets()` checks for `category_normalizer` but doesn't handle `global_normalizer` (z-score) denormalization
+- The `GlobalNormalizer` class has `denormalize()` method but it's not being called in the evaluation path
+
+**Scope:**
+1. Update `Evaluator._denormalize_targets()` to handle `global_normalizer` case
+2. Ensure `target_normalization_params` includes `global_normalizer` state when z-score is used
+3. Add tests for z-score denormalization in TensorBoard/plots
+
+**Acceptance Criteria:**
+- [ ] TensorBoard plots show original scale when using `--target-normalization zscore`
+- [ ] `val_predictions.tsv` contains denormalized values
+- [ ] Metrics logged to TensorBoard are on original scale
+- [ ] 5+ tests
+
+**Files:** `aam/training/evaluation.py`, `aam/training/trainer.py`, `tests/test_trainer.py`
+
+---
+
 ## Summary
 
 | Ticket | Description | Effort | Priority | Status |
@@ -434,12 +469,13 @@ output_dir/
 | **CLN-8** | Categorical learning rate | 2-3h | MEDIUM | Not Started |
 | **CLN-9** | Remove FiLM conditioning | 2-3h | MEDIUM | Complete |
 | **CLN-10** | Training output artifacts | 2-3h | HIGH | Complete |
-| **Total** | | **32-51h** | |
+| **CLN-BUG-1** | Z-score denorm in TensorBoard | 1-2h | HIGH | Not Started |
+| **Total** | | **33-53h** | |
 
 ## Recommended Order
 
 **Phase 0 - High Priority:**
-1. CLN-10 (training output artifacts)
+1. CLN-BUG-1 (z-score denormalization bug)
 
 **Phase 1 - Quick Wins:**
 2. CLN-3 (remove dead code)

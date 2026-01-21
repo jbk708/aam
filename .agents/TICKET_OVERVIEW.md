@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-21
-**Status:** ~20 outstanding tickets (~72-116 hours)
+**Status:** ~21 outstanding tickets (~73-118 hours)
 
 ---
 
@@ -22,9 +22,11 @@
 
 ## Priority Summary
 
-### HIGH (0 tickets)
+### HIGH (1 ticket, ~1-2 hours)
 
-No HIGH priority tickets remaining.
+| Ticket | Description | Effort | File |
+|--------|-------------|--------|------|
+| **CLN-BUG-1** | Z-score denorm in TensorBoard | 1-2h | FUSION_CLEANUP |
 
 ### MEDIUM (8 tickets, ~25-37 hours)
 
@@ -60,7 +62,15 @@ No HIGH priority tickets remaining.
 
 ## Recommended Next Steps
 
-### 1. User Experience (MEDIUM - ~8 hours)
+### 1. Bug Fix (HIGH - ~1-2 hours)
+
+Z-score normalization not denormalizing in TensorBoard:
+
+```
+CLN-BUG-1 (z-score denormalization)
+```
+
+### 2. User Experience (MEDIUM - ~8 hours)
 
 Flag consolidation and documentation:
 
@@ -68,7 +78,7 @@ Flag consolidation and documentation:
 CLN-1 (output flags) → CLN-6 (categorical docs)
 ```
 
-### 2. Loss Functions (MEDIUM - ~2-3 hours)
+### 3. Loss Functions (MEDIUM - ~2-3 hours)
 
 ```
 REG-6 (asymmetric loss)
