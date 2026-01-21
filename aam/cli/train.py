@@ -197,14 +197,26 @@ from aam.cli.utils import (
 )
 @click.option(
     "--loss-type",
-    type=click.Choice(["mse", "mae", "huber", "quantile"]),
+    type=click.Choice(["mse", "mae", "huber", "quantile", "asymmetric"]),
     default="huber",
-    help="Loss function for regression targets: mse, mae, huber (default), or quantile",
+    help="Loss function for regression targets: mse, mae, huber (default), quantile, or asymmetric",
 )
 @click.option(
     "--quantiles",
     default=None,
     help="Comma-separated quantile levels for quantile regression, e.g., '0.1,0.5,0.9'. Required when --loss-type=quantile.",
+)
+@click.option(
+    "--over-penalty",
+    type=float,
+    default=1.0,
+    help="Penalty weight for over-predictions (pred > actual) when using --loss-type=asymmetric. Default: 1.0",
+)
+@click.option(
+    "--under-penalty",
+    type=float,
+    default=1.0,
+    help="Penalty weight for under-predictions (pred < actual) when using --loss-type=asymmetric. Default: 1.0",
 )
 @click.option(
     "--no-sequence-cache",
@@ -361,6 +373,8 @@ def train(
     log_transform_targets: bool,
     loss_type: str,
     quantiles: Optional[str],
+    over_penalty: float,
+    under_penalty: float,
     no_sequence_cache: bool,
     distributed: bool,
     data_parallel: bool,
@@ -486,8 +500,22 @@ def train(
             num_quantiles = len(quantiles_list)
             if classifier:
                 raise click.ClickException("--loss-type quantile cannot be used with --classifier")
-            logger.info(f"Quantile regression enabled with quantiles: {quantiles_list}")
-        elif quantiles is not None:
+        elif loss_type == "asymmetric":
+            if classifier:
+                raise click.ClickException("--loss-type asymmetric cannot be used with --classifier")
+            if over_penalty <= 0:
+                raise click.ClickException(f"--over-penalty must be positive, got {over_penalty}")
+            if under_penalty <= 0:
+                raise click.ClickException(f"--under-penalty must be positive, got {under_penalty}")
+            logger.info(f"Asymmetric loss enabled: over_penalty={over_penalty}, under_penalty={under_penalty}")
+        else:
+            # Warn if asymmetric penalty flags are set but loss type is not asymmetric
+            if over_penalty != 1.0 or under_penalty != 1.0:
+                logger.warning(
+                    f"--over-penalty ({over_penalty}) and --under-penalty ({under_penalty}) are ignored "
+                    f"when --loss-type is not 'asymmetric'. Current loss type: {loss_type}"
+                )
+        if quantiles is not None and loss_type != "quantile":
             raise click.ClickException("--quantiles requires --loss-type quantile")
 
         # Setup distributed training if enabled
@@ -955,9 +983,13 @@ def train(
             class_weights=class_weights_tensor,
             target_loss_type=loss_type,
             quantiles=quantiles_list,
+            over_penalty=over_penalty,
+            under_penalty=under_penalty,
         )
         if loss_type == "quantile":
             logger.info(f"Using quantile loss with quantiles: {quantiles_list}")
+        elif loss_type == "asymmetric":
+            logger.info(f"Using asymmetric loss: over_penalty={over_penalty}, under_penalty={under_penalty}")
         else:
             logger.info(f"Using {loss_type} loss for regression targets")
         logger.info(

@@ -171,6 +171,26 @@ def compute_pairwise_distances(
     return distances
 
 
+def compute_asymmetric_loss(
+    pred: torch.Tensor,
+    target: torch.Tensor,
+    over_penalty: float = 1.0,
+    under_penalty: float = 1.0,
+) -> torch.Tensor:
+    """Compute asymmetric loss with different penalties for over/under prediction.
+
+    Args:
+        pred: Predicted values [batch_size, out_dim]
+        target: True values [batch_size, out_dim]
+        over_penalty: Penalty weight for over-predictions (pred > target)
+        under_penalty: Penalty weight for under-predictions (pred < target)
+
+    Returns:
+        Scalar loss averaged over all samples and outputs
+    """
+    raise NotImplementedError("AsymmetricLoss not yet implemented")
+
+
 def compute_pinball_loss(
     pred: torch.Tensor,
     target: torch.Tensor,
@@ -217,7 +237,7 @@ def compute_pinball_loss(
 class MultiTaskLoss(nn.Module):
     """Multi-task loss computation for AAM model."""
 
-    VALID_LOSS_TYPES = ("mse", "mae", "huber", "quantile")
+    VALID_LOSS_TYPES = ("mse", "mae", "huber", "quantile", "asymmetric")
 
     # Type annotations for attributes
     penalty: float
@@ -227,6 +247,8 @@ class MultiTaskLoss(nn.Module):
     target_loss_type: str
     class_weights: Optional[torch.Tensor]
     quantiles: Optional[torch.Tensor]
+    over_penalty: float
+    under_penalty: float
 
     def __init__(
         self,
@@ -237,6 +259,8 @@ class MultiTaskLoss(nn.Module):
         class_weights: Optional[torch.Tensor] = None,
         target_loss_type: str = "huber",
         quantiles: Optional[List[float]] = None,
+        over_penalty: float = 1.0,
+        under_penalty: float = 1.0,
     ):
         """Initialize MultiTaskLoss.
 
@@ -246,9 +270,11 @@ class MultiTaskLoss(nn.Module):
             target_penalty: Weight for target loss (default: 1.0)
             count_penalty: Weight for count loss (default: 1.0)
             class_weights: Optional class weights for classification (registered as buffer)
-            target_loss_type: Loss type for regression targets ('mse', 'mae', 'huber', 'quantile'). Default: 'huber'
+            target_loss_type: Loss type for regression targets ('mse', 'mae', 'huber', 'quantile', 'asymmetric'). Default: 'huber'
             quantiles: List of quantile levels for quantile regression, e.g., [0.1, 0.5, 0.9].
                 Required when target_loss_type='quantile'. Values must be in (0, 1).
+            over_penalty: Penalty weight for over-predictions when using asymmetric loss. Default: 1.0.
+            under_penalty: Penalty weight for under-predictions when using asymmetric loss. Default: 1.0.
         """
         super().__init__()
         self.penalty = penalty
@@ -272,6 +298,14 @@ class MultiTaskLoss(nn.Module):
         else:
             self.register_buffer("quantiles", None)
 
+        if target_loss_type == "asymmetric":
+            if over_penalty <= 0:
+                raise ValueError(f"over_penalty must be positive, got {over_penalty}")
+            if under_penalty <= 0:
+                raise ValueError(f"under_penalty must be positive, got {under_penalty}")
+        self.over_penalty = over_penalty
+        self.under_penalty = under_penalty
+
         if class_weights is not None:
             self.register_buffer("class_weights", class_weights)
         else:
@@ -286,7 +320,7 @@ class MultiTaskLoss(nn.Module):
         """Compute target loss based on configured loss type.
 
         For classification: NLL loss
-        For regression: MSE, MAE, Huber, or quantile loss based on target_loss_type
+        For regression: MSE, MAE, Huber, quantile, or asymmetric loss based on target_loss_type
 
         Args:
             target_pred: Predicted targets [batch_size, out_dim] or
@@ -311,6 +345,10 @@ class MultiTaskLoss(nn.Module):
             elif self.target_loss_type == "quantile":
                 assert self.quantiles is not None  # Validated in __init__
                 return compute_pinball_loss(target_pred, target_true, self.quantiles)
+            elif self.target_loss_type == "asymmetric":
+                return compute_asymmetric_loss(
+                    target_pred, target_true, self.over_penalty, self.under_penalty
+                )
             else:
                 # Fallback to MSE (shouldn't happen due to validation in __init__)
                 return nn.functional.mse_loss(target_pred, target_true)

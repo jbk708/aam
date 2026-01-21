@@ -1,16 +1,16 @@
 # Regressor Optimization Tickets
 
-**Last Updated:** 2026-01-20
-**Status:** 5 tickets remaining (~17-25 hours)
+**Last Updated:** 2026-01-21
+**Status:** 4 tickets remaining (~13-18 hours)
 
-**Completed:** REG-1 to REG-4, REG-BUG-1 (see `ARCHIVED_TICKETS.md`)
+**Completed:** REG-1 to REG-5, REG-BUG-1 (see `ARCHIVED_TICKETS.md`)
 
 ---
 
 ## Outstanding Tickets
 
 ### REG-5: Quantile Regression
-**Priority:** MEDIUM | **Effort:** 4-6 hours | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** 4-6 hours | **Status:** Complete
 
 Predict multiple quantiles for uncertainty estimation.
 
@@ -76,11 +76,11 @@ Separate expert heads per category with learned routing.
 
 ## Summary
 
-| Ticket | Description | Effort | Priority |
-|--------|-------------|--------|----------|
-| **REG-5** | Quantile regression | 4-6h | MEDIUM |
-| **REG-6** | Asymmetric loss | 2-3h | MEDIUM |
-| **REG-7** | Residual head | 2-3h | LOW |
-| **REG-8** | Per-output loss | 3-4h | LOW |
-| **REG-9** | Mixture of Experts | 6-8h | LOW |
-| **Total** | | **17-24h** | |
+| Ticket | Description | Effort | Priority | Status |
+|--------|-------------|--------|----------|--------|
+| **REG-5** | Quantile regression | 4-6h | MEDIUM | Complete |
+| **REG-6** | Asymmetric loss | 2-3h | MEDIUM | Not Started |
+| **REG-7** | Residual head | 2-3h | LOW | Not Started |
+| **REG-8** | Per-output loss | 3-4h | LOW | Not Started |
+| **REG-9** | Mixture of Experts | 6-8h | LOW | Not Started |
+| **Total** | | **13-18h** | |
