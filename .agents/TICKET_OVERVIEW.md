@@ -35,7 +35,7 @@ No HIGH priority tickets remaining.
 | **PYT-12.2** | Batch size optimization | 4-6h | PYTORCH |
 | **PYT-19.3** | Per-category loss weights | 3-4h | PYTORCH |
 | **CLN-1** | Output constraint consolidation | 3-4h | FUSION_CLEANUP |
-| **CLN-2** | Normalization unification | 3-4h | FUSION_CLEANUP |
+| **CLN-6** | Categorical docs/validation | 4-5h | FUSION_CLEANUP |
 | **CLN-6** | Categorical docs/validation | 4-5h | FUSION_CLEANUP |
 | **CLN-7** | Toggle count prediction | 2-3h | FUSION_CLEANUP |
 | **CLN-8** | Categorical learning rate | 2-3h | FUSION_CLEANUP |
@@ -60,12 +60,12 @@ No HIGH priority tickets remaining.
 
 ## Recommended Next Steps
 
-### 1. User Experience (MEDIUM - ~12 hours)
+### 1. User Experience (MEDIUM - ~8 hours)
 
 Flag consolidation and documentation:
 
 ```
-CLN-1 (output flags) → CLN-2 (normalization) → CLN-6 (categorical docs)
+CLN-1 (output flags) → CLN-6 (categorical docs)
 ```
 
 ### 2. Loss Functions (MEDIUM - ~7 hours)
@@ -80,6 +80,7 @@ REG-5 (quantile) → REG-6 (asymmetric)
 
 | Ticket | Description |
 |--------|-------------|
+| CLN-2 | Target normalization unification (27 tests) |
 | FUS-2 | Cross-attention fusion (33 tests) |
 | FUS-1 | GMU fusion (28 tests) |
 | CLN-5 | DataParallel in train.py |
