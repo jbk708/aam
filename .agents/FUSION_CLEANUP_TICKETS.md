@@ -258,20 +258,59 @@ Document and validate the three parallel categorical systems.
 
 ---
 
+### CLN-7: Expose Transformer Dropout and Add Attention Dropout
+**Priority:** MEDIUM | **Effort:** 3-4 hours | **Status:** Not Started
+
+Expose transformer dropout parameters via CLI and add true attention dropout.
+
+**Current State:**
+- Transformer dropout hardcoded to 0.1 (applied post-attention and post-FFN)
+- No dropout on attention weights themselves
+- Only `--regressor-dropout` and `--categorical-dropout` exposed via CLI
+
+**Proposed CLI Flags:**
+```bash
+--transformer-dropout 0.1       # Post-attention and post-FFN dropout (existing behavior)
+--attention-dropout 0.0         # Dropout on attention weights (pre-softmax)
+```
+
+**Implementation Options:**
+1. **Custom TransformerEncoderLayer** - Copy PyTorch's implementation, add `attn_dropout` to `MultiheadAttention`
+2. **Flash Attention** - Use `flash_attn` which has native `dropout_p` parameter
+3. **Scaled Dot Product Attention** - PyTorch 2.0+ `F.scaled_dot_product_attention(dropout_p=...)`
+
+**Scope:**
+- Add `--transformer-dropout` CLI flag (expose existing parameter)
+- Add `--attention-dropout` CLI flag (new functionality)
+- Update `TransformerEncoder` to support separate attention dropout
+- Propagate to all transformer layers (ASV, sample, encoder, count, target)
+
+**Acceptance Criteria:**
+- [ ] `--transformer-dropout` controls post-attention/FFN dropout
+- [ ] `--attention-dropout` controls attention weight dropout
+- [ ] Both work with Flash Attention when available
+- [ ] 10+ tests covering dropout behavior
+- [ ] Documentation updated
+
+**Files:** `aam/models/transformer.py`, `aam/models/sequence_predictor.py`, `aam/cli/train.py`, `aam/cli/pretrain.py`
+
+---
+
 ## Summary
 
-| Ticket | Description | Effort | Priority |
-|--------|-------------|--------|----------|
-| **FUS-1** | GMU baseline | 3-4h | HIGH |
-| **FUS-2** | Cross-attention fusion | 5-6h | HIGH |
-| **FUS-3** | Perceiver fusion | 6-8h | LOW |
-| **CLN-1** | Output constraint consolidation | 3-4h | MEDIUM |
-| **CLN-2** | Normalization unification | 3-4h | MEDIUM |
-| **CLN-3** | Remove unused params | 1-2h | LOW |
-| **CLN-4** | Extract shared utilities | 2-3h | LOW |
-| **CLN-5** | DataParallel in train.py | 2-3h | MEDIUM |
-| **CLN-6** | Categorical docs/validation | 4-5h | MEDIUM |
-| **Total** | | **24-39h** | |
+| Ticket | Description | Effort | Priority | Status |
+|--------|-------------|--------|----------|--------|
+| **FUS-1** | GMU baseline | 3-4h | HIGH | Complete |
+| **FUS-2** | Cross-attention fusion | 5-6h | HIGH | Not Started |
+| **FUS-3** | Perceiver fusion | 6-8h | LOW | Not Started |
+| **CLN-1** | Output constraint consolidation | 3-4h | MEDIUM | Not Started |
+| **CLN-2** | Normalization unification | 3-4h | MEDIUM | Not Started |
+| **CLN-3** | Remove unused params | 1-2h | LOW | Complete |
+| **CLN-4** | Extract shared utilities | 2-3h | LOW | Not Started |
+| **CLN-5** | DataParallel in train.py | 2-3h | MEDIUM | Complete |
+| **CLN-6** | Categorical docs/validation | 4-5h | MEDIUM | Not Started |
+| **CLN-7** | Attention dropout support | 3-4h | MEDIUM | Not Started |
+| **Total** | | **27-43h** | |
 
 ## Recommended Order
 

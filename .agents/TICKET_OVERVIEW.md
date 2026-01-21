@@ -28,7 +28,7 @@
 |--------|-------------|--------|------|
 | **FUS-2** | Cross-attention fusion | 5-6h | FUSION_CLEANUP |
 
-### MEDIUM (8 tickets, ~24-35 hours)
+### MEDIUM (8 tickets, ~27-38 hours)
 
 | Ticket | Description | Effort | File |
 |--------|-------------|--------|------|
@@ -38,8 +38,8 @@
 | **PYT-19.3** | Per-category loss weights | 3-4h | PYTORCH |
 | **CLN-1** | Output constraint consolidation | 3-4h | FUSION_CLEANUP |
 | **CLN-2** | Normalization unification | 3-4h | FUSION_CLEANUP |
-| **CLN-5** | DataParallel in train.py | 2-3h | FUSION_CLEANUP (Complete) |
 | **CLN-6** | Categorical docs/validation | 4-5h | FUSION_CLEANUP |
+| **CLN-7** | Attention dropout support | 3-4h | FUSION_CLEANUP |
 
 ### LOW (12 tickets, ~48-63 hours)
 
