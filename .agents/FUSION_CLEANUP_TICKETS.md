@@ -452,6 +452,56 @@ TensorBoard plots show z-score normalized values instead of original scale when 
 
 ---
 
+### CLN-BUG-2: val_predictions.tsv Not Written When Resuming Training
+**Priority:** HIGH | **Effort:** 1-2 hours | **Status:** Complete
+
+`val_predictions.tsv` was not created when using `--resume-from` if validation never improved beyond the loaded checkpoint's best metric.
+
+**Root Cause:**
+- When resuming, `best_metric_value` is loaded from the checkpoint
+- `_save_val_predictions()` was only called inside the "is better" block
+- If validation never improves, predictions were never saved
+
+**Fix:**
+1. Track whether val_predictions.tsv was saved during training
+2. Store the latest full_val_predictions from each validation epoch
+3. At end of training, save predictions if not yet saved
+4. Add warning when sample_ids are empty for debugging
+
+**Acceptance Criteria:**
+- [x] val_predictions.tsv created even when validation never improves
+- [x] Works with `--resume-from` scenario
+- [x] Warning logged when sample_ids empty
+- [x] 1 new test for resume scenario
+- [x] Shared MockBatchDataset class extracted
+
+**Files:** `aam/training/trainer.py`, `tests/test_trainer.py`
+
+---
+
+### CLN-11: Consolidate Test Suite
+**Priority:** LOW | **Effort:** 4-6 hours | **Status:** Not Started
+
+Reduce test code duplication by extracting shared fixtures and utilities.
+
+**Scope:**
+1. Extract shared mock classes (e.g., `MockBatchDataset`) to `tests/conftest.py` or `tests/fixtures.py`
+2. Consolidate similar test fixtures across test files
+3. Extract repeated test setup patterns into shared utilities
+4. Reduce inline class definitions in test methods
+5. Review test organization and consider grouping related tests
+
+**Acceptance Criteria:**
+- [ ] Shared mock classes extracted to central location
+- [ ] Duplicate fixtures consolidated
+- [ ] No functionality changes to tests
+- [ ] All tests pass
+- [ ] Reduced lines of test code
+
+**Files:** `tests/conftest.py`, `tests/test_trainer.py`, `tests/test_cli.py`
+
+---
+
 ## Summary
 
 | Ticket | Description | Effort | Priority | Status |
@@ -470,7 +520,9 @@ TensorBoard plots show z-score normalized values instead of original scale when 
 | **CLN-9** | Remove FiLM conditioning | 2-3h | MEDIUM | Complete |
 | **CLN-10** | Training output artifacts | 2-3h | HIGH | Complete |
 | **CLN-BUG-1** | Z-score denorm in TensorBoard | 1-2h | HIGH | Complete |
-| **Total** | | **33-53h** | |
+| **CLN-BUG-2** | val_predictions.tsv not written on resume | 1-2h | HIGH | Complete |
+| **CLN-11** | Consolidate test suite | 4-6h | LOW | Not Started |
+| **Total** | | **37-59h** | |
 
 ## Recommended Order
 
