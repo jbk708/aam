@@ -366,6 +366,173 @@ class TestQuantileLoss:
         assert torch.allclose(loss, expected)
 
 
+class TestAsymmetricLoss:
+    """Test asymmetric loss computation."""
+
+    def test_asymmetric_loss_type_valid_creation(self):
+        """Test successful creation with valid asymmetric parameters."""
+        loss_fn = MultiTaskLoss(target_loss_type="asymmetric", over_penalty=2.0, under_penalty=1.0)
+        assert loss_fn.target_loss_type == "asymmetric"
+        assert loss_fn.over_penalty == 2.0
+        assert loss_fn.under_penalty == 1.0
+
+    def test_asymmetric_loss_default_penalties(self):
+        """Test asymmetric loss with default penalty values."""
+        loss_fn = MultiTaskLoss(target_loss_type="asymmetric")
+        assert loss_fn.over_penalty == 1.0
+        assert loss_fn.under_penalty == 1.0
+
+    def test_asymmetric_loss_over_penalty_must_be_positive(self):
+        """Test that over_penalty <= 0 raises error."""
+        with pytest.raises(ValueError, match="over_penalty must be positive"):
+            MultiTaskLoss(target_loss_type="asymmetric", over_penalty=0.0)
+
+        with pytest.raises(ValueError, match="over_penalty must be positive"):
+            MultiTaskLoss(target_loss_type="asymmetric", over_penalty=-1.0)
+
+    def test_asymmetric_loss_under_penalty_must_be_positive(self):
+        """Test that under_penalty <= 0 raises error."""
+        with pytest.raises(ValueError, match="under_penalty must be positive"):
+            MultiTaskLoss(target_loss_type="asymmetric", under_penalty=0.0)
+
+        with pytest.raises(ValueError, match="under_penalty must be positive"):
+            MultiTaskLoss(target_loss_type="asymmetric", under_penalty=-1.0)
+
+    def test_compute_asymmetric_loss_basic(self):
+        """Test basic asymmetric loss computation."""
+        from aam.training.losses import compute_asymmetric_loss
+
+        pred = torch.tensor([[0.5], [0.8]])
+        target = torch.tensor([[0.3], [0.9]])
+
+        loss = compute_asymmetric_loss(pred, target, over_penalty=1.0, under_penalty=1.0)
+
+        assert loss.dim() == 0
+        assert loss.item() >= 0
+
+    def test_compute_asymmetric_loss_perfect_prediction(self):
+        """Test asymmetric loss when predictions exactly match targets."""
+        from aam.training.losses import compute_asymmetric_loss
+
+        pred = torch.tensor([[0.5], [0.8]])
+        target = torch.tensor([[0.5], [0.8]])
+
+        loss = compute_asymmetric_loss(pred, target, over_penalty=2.0, under_penalty=1.0)
+
+        assert torch.allclose(loss, torch.tensor(0.0), atol=1e-6)
+
+    def test_compute_asymmetric_loss_overprediction_penalty(self):
+        """Test that overpredictions are penalized by over_penalty."""
+        from aam.training.losses import compute_asymmetric_loss
+
+        # Overprediction: pred > target
+        pred = torch.tensor([[1.0]])
+        target = torch.tensor([[0.0]])
+
+        loss_high_over = compute_asymmetric_loss(pred, target, over_penalty=2.0, under_penalty=1.0)
+        loss_low_over = compute_asymmetric_loss(pred, target, over_penalty=1.0, under_penalty=2.0)
+
+        # Higher over_penalty should result in higher loss for overprediction
+        assert loss_high_over.item() > loss_low_over.item()
+
+    def test_compute_asymmetric_loss_underprediction_penalty(self):
+        """Test that underpredictions are penalized by under_penalty."""
+        from aam.training.losses import compute_asymmetric_loss
+
+        # Underprediction: pred < target
+        pred = torch.tensor([[0.0]])
+        target = torch.tensor([[1.0]])
+
+        loss_high_under = compute_asymmetric_loss(pred, target, over_penalty=1.0, under_penalty=2.0)
+        loss_low_under = compute_asymmetric_loss(pred, target, over_penalty=2.0, under_penalty=1.0)
+
+        # Higher under_penalty should result in higher loss for underprediction
+        assert loss_high_under.item() > loss_low_under.item()
+
+    def test_compute_asymmetric_loss_equal_penalties_is_mae(self):
+        """Test that equal penalties produce MAE-like behavior."""
+        from aam.training.losses import compute_asymmetric_loss
+
+        pred = torch.tensor([[0.5], [0.8], [0.2]])
+        target = torch.tensor([[0.3], [0.9], [0.5]])
+
+        loss = compute_asymmetric_loss(pred, target, over_penalty=1.0, under_penalty=1.0)
+        expected_mae = nn.functional.l1_loss(pred, target)
+
+        assert torch.allclose(loss, expected_mae, atol=1e-6)
+
+    def test_compute_asymmetric_loss_multi_output(self):
+        """Test asymmetric loss with multiple output dimensions."""
+        from aam.training.losses import compute_asymmetric_loss
+
+        pred = torch.randn(4, 3)
+        target = torch.randn(4, 3)
+
+        loss = compute_asymmetric_loss(pred, target, over_penalty=1.5, under_penalty=0.5)
+
+        assert loss.dim() == 0
+        assert loss.item() >= 0
+
+    def test_compute_asymmetric_loss_gradient_flow(self):
+        """Test that gradients flow through asymmetric loss."""
+        from aam.training.losses import compute_asymmetric_loss
+
+        pred = torch.randn(4, 2, requires_grad=True)
+        target = torch.randn(4, 2)
+
+        loss = compute_asymmetric_loss(pred, target, over_penalty=2.0, under_penalty=1.0)
+        loss.backward()
+
+        assert pred.grad is not None
+        assert not torch.all(pred.grad == 0)
+
+    def test_asymmetric_loss_via_multitask(self):
+        """Test asymmetric loss through MultiTaskLoss.compute_target_loss."""
+        loss_fn = MultiTaskLoss(target_loss_type="asymmetric", over_penalty=2.0, under_penalty=1.0)
+
+        target_pred = torch.tensor([[0.5], [0.8]])
+        target_true = torch.tensor([[0.3], [0.9]])
+
+        loss = loss_fn.compute_target_loss(target_pred, target_true, is_classifier=False)
+
+        assert loss.dim() == 0
+        assert loss.item() >= 0
+
+    def test_asymmetric_loss_does_not_affect_classification(self):
+        """Test that classification ignores asymmetric loss type."""
+        loss_fn = MultiTaskLoss(target_loss_type="asymmetric", over_penalty=2.0, under_penalty=1.0)
+
+        # For classification, should use NLL regardless of loss type
+        target_pred = torch.randn(4, 3)
+        target_pred = nn.functional.log_softmax(target_pred, dim=-1)
+        target_true = torch.randint(0, 3, (4,))
+
+        loss = loss_fn.compute_target_loss(target_pred, target_true, is_classifier=True)
+
+        expected = nn.functional.nll_loss(target_pred, target_true)
+        assert torch.allclose(loss, expected)
+
+    def test_asymmetric_loss_extreme_penalty_ratios(self):
+        """Test asymmetric loss with extreme penalty ratios."""
+        from aam.training.losses import compute_asymmetric_loss
+
+        # Mix of over and under predictions
+        pred = torch.tensor([[1.0], [0.0]])
+        target = torch.tensor([[0.0], [1.0]])  # First is over, second is under
+
+        # Very high over_penalty
+        loss_high_over = compute_asymmetric_loss(pred, target, over_penalty=10.0, under_penalty=1.0)
+        # Very high under_penalty
+        loss_high_under = compute_asymmetric_loss(pred, target, over_penalty=1.0, under_penalty=10.0)
+
+        # Both should be positive
+        assert loss_high_over.item() > 0
+        assert loss_high_under.item() > 0
+
+        # The losses should be different (one penalizes over more, other under more)
+        assert loss_high_over.item() != loss_high_under.item()
+
+
 class TestEvaluatorQuantileExtraction:
     """Test Evaluator's handling of quantile regression outputs."""
 
