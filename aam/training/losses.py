@@ -223,6 +223,7 @@ class MultiTaskLoss(nn.Module):
     count_penalty: float
     target_loss_type: str
     class_weights: Optional[torch.Tensor]
+    quantiles: Optional[torch.Tensor]
 
     def __init__(
         self,
@@ -305,6 +306,7 @@ class MultiTaskLoss(nn.Module):
                 # beta=1.0 is the threshold where it transitions from MSE to MAE
                 return nn.functional.smooth_l1_loss(target_pred, target_true, beta=1.0)
             elif self.target_loss_type == "quantile":
+                assert self.quantiles is not None  # Validated in __init__
                 return compute_pinball_loss(target_pred, target_true, self.quantiles)
             else:
                 # Fallback to MSE (shouldn't happen due to validation in __init__)

@@ -528,7 +528,10 @@ class SequencePredictor(nn.Module):
         if self.categorical_fusion == "gmu":
             target_input = base_embeddings
         elif (
-            self.categorical_fusion == "cross-attention" and self.cross_attn_fusion is not None and categorical_ids is not None
+            self.categorical_fusion == "cross-attention"
+            and self.cross_attn_fusion is not None
+            and self.categorical_embedder is not None
+            and categorical_ids is not None
         ):
             cat_emb = self.categorical_embedder(categorical_ids)
             target_input, cross_attn_weights = self.cross_attn_fusion(base_embeddings, cat_emb, return_weights=True)
@@ -556,7 +559,7 @@ class SequencePredictor(nn.Module):
         else:
             target_prediction = self._apply_conditional_scaling(target_prediction, categorical_ids)
 
-            if self.output_scale is not None:
+            if self.output_scale is not None and self.output_bias is not None:
                 target_prediction = target_prediction * self.output_scale + self.output_bias
 
             if self.is_classifier:
