@@ -171,10 +171,53 @@ def compute_pairwise_distances(
     return distances
 
 
+def compute_pinball_loss(
+    pred: torch.Tensor,
+    target: torch.Tensor,
+    quantiles: torch.Tensor,
+) -> torch.Tensor:
+    """Compute pinball (quantile) loss for quantile regression.
+
+    The pinball loss penalizes under-predictions and over-predictions asymmetrically
+    based on the quantile level τ:
+        L(y, ŷ, τ) = τ * max(y - ŷ, 0) + (1 - τ) * max(ŷ - y, 0)
+
+    This can be rewritten as:
+        L(y, ŷ, τ) = max(τ * (y - ŷ), (τ - 1) * (y - ŷ))
+
+    Args:
+        pred: Predicted quantiles [batch_size, out_dim, num_quantiles]
+        target: True values [batch_size, out_dim]
+        quantiles: Quantile levels [num_quantiles], values in (0, 1)
+
+    Returns:
+        Scalar loss averaged over all samples, outputs, and quantiles
+    """
+    # Ensure quantiles are on the same device as predictions
+    quantiles = quantiles.to(pred.device)
+
+    # Expand target to match pred shape: [batch, out_dim] -> [batch, out_dim, num_quantiles]
+    target_expanded = target.unsqueeze(-1).expand_as(pred)
+
+    # Compute error: y - ŷ (positive means underprediction)
+    error = target_expanded - pred
+
+    # Expand quantiles for broadcasting: [num_quantiles] -> [1, 1, num_quantiles]
+    tau = quantiles.view(1, 1, -1)
+
+    # Pinball loss: max(τ * error, (τ - 1) * error)
+    # When error > 0 (underprediction): loss = τ * error
+    # When error < 0 (overprediction): loss = (τ - 1) * error = (1 - τ) * |error|
+    loss = torch.max(tau * error, (tau - 1) * error)
+
+    # Average over all dimensions
+    return loss.mean()
+
+
 class MultiTaskLoss(nn.Module):
     """Multi-task loss computation for AAM model."""
 
-    VALID_LOSS_TYPES = ("mse", "mae", "huber")
+    VALID_LOSS_TYPES = ("mse", "mae", "huber", "quantile")
 
     # Type annotations for attributes
     penalty: float
@@ -183,6 +226,7 @@ class MultiTaskLoss(nn.Module):
     count_penalty: float
     target_loss_type: str
     class_weights: Optional[torch.Tensor]
+    quantiles: Optional[torch.Tensor]
 
     def __init__(
         self,
@@ -192,6 +236,7 @@ class MultiTaskLoss(nn.Module):
         count_penalty: float = 1.0,
         class_weights: Optional[torch.Tensor] = None,
         target_loss_type: str = "huber",
+        quantiles: Optional[List[float]] = None,
     ):
         """Initialize MultiTaskLoss.
 
@@ -201,7 +246,9 @@ class MultiTaskLoss(nn.Module):
             target_penalty: Weight for target loss (default: 1.0)
             count_penalty: Weight for count loss (default: 1.0)
             class_weights: Optional class weights for classification (registered as buffer)
-            target_loss_type: Loss type for regression targets ('mse', 'mae', 'huber'). Default: 'huber'
+            target_loss_type: Loss type for regression targets ('mse', 'mae', 'huber', 'quantile'). Default: 'huber'
+            quantiles: List of quantile levels for quantile regression, e.g., [0.1, 0.5, 0.9].
+                Required when target_loss_type='quantile'. Values must be in (0, 1).
         """
         super().__init__()
         self.penalty = penalty
@@ -212,6 +259,18 @@ class MultiTaskLoss(nn.Module):
         if target_loss_type not in self.VALID_LOSS_TYPES:
             raise ValueError(f"Invalid target_loss_type: {target_loss_type}. Must be one of: {self.VALID_LOSS_TYPES}")
         self.target_loss_type = target_loss_type
+
+        if target_loss_type == "quantile":
+            if quantiles is None:
+                raise ValueError("quantiles must be provided when target_loss_type='quantile'")
+            if len(quantiles) == 0:
+                raise ValueError("quantiles must contain at least one value")
+            for q in quantiles:
+                if not (0 < q < 1):
+                    raise ValueError(f"Quantile values must be in (0, 1), got {q}")
+            self.register_buffer("quantiles", torch.tensor(quantiles, dtype=torch.float32))
+        else:
+            self.register_buffer("quantiles", None)
 
         if class_weights is not None:
             self.register_buffer("class_weights", class_weights)
@@ -227,10 +286,11 @@ class MultiTaskLoss(nn.Module):
         """Compute target loss based on configured loss type.
 
         For classification: NLL loss
-        For regression: MSE, MAE, or Huber loss based on target_loss_type
+        For regression: MSE, MAE, Huber, or quantile loss based on target_loss_type
 
         Args:
-            target_pred: Predicted targets [batch_size, out_dim]
+            target_pred: Predicted targets [batch_size, out_dim] or
+                [batch_size, out_dim, num_quantiles] for quantile regression
             target_true: True targets [batch_size, out_dim] or [batch_size] for classification
             is_classifier: Whether using classification mode
 
@@ -248,6 +308,9 @@ class MultiTaskLoss(nn.Module):
                 # Huber loss (smooth L1): MSE for small errors, MAE for large errors
                 # beta=1.0 is the threshold where it transitions from MSE to MAE
                 return nn.functional.smooth_l1_loss(target_pred, target_true, beta=1.0)
+            elif self.target_loss_type == "quantile":
+                assert self.quantiles is not None  # Validated in __init__
+                return compute_pinball_loss(target_pred, target_true, self.quantiles)
             else:
                 # Fallback to MSE (shouldn't happen due to validation in __init__)
                 return nn.functional.mse_loss(target_pred, target_true)

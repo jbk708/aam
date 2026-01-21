@@ -309,6 +309,39 @@ class Evaluator:
         count_scale = self.count_normalization_params["count_scale"]
         return values * count_scale + count_min
 
+    def _get_num_quantiles(self) -> Optional[int]:
+        """Get num_quantiles from model if using quantile regression."""
+        if hasattr(self.model, "num_quantiles"):
+            return self.model.num_quantiles
+        # Handle torch.compile wrapped models
+        if hasattr(self.model, "_orig_mod") and hasattr(self.model._orig_mod, "num_quantiles"):
+            return self.model._orig_mod.num_quantiles
+        # Handle DDP wrapped models
+        if hasattr(self.model, "module") and hasattr(self.model.module, "num_quantiles"):
+            return self.model.module.num_quantiles
+        return None
+
+    def _extract_median_quantile(self, predictions: torch.Tensor) -> torch.Tensor:
+        """Extract median quantile from quantile regression predictions.
+
+        For metrics computation, we use the median quantile (typically τ=0.5)
+        as the central prediction estimate.
+
+        Args:
+            predictions: Predictions tensor, either [batch, out_dim] for standard
+                regression or [batch, out_dim, num_quantiles] for quantile regression
+
+        Returns:
+            Predictions tensor with shape [batch, out_dim]
+        """
+        num_quantiles = self._get_num_quantiles()
+        if num_quantiles is None or predictions.dim() != 3:
+            return predictions
+
+        # Extract the median quantile (middle index)
+        median_idx = num_quantiles // 2
+        return predictions[:, :, median_idx]
+
     def _prepare_batch(
         self, batch: Union[Dict, Tuple]
     ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor], Optional[Dict[str, torch.Tensor]]]:
@@ -578,6 +611,8 @@ class Evaluator:
                         if not is_pretraining and "target_prediction" in outputs and "target" in targets:
                             pred = outputs["target_prediction"]
                             true = targets["target"]
+                            # For quantile regression, extract median quantile for metrics
+                            pred = self._extract_median_quantile(pred)
                             pred_denorm = self._denormalize_targets(pred)
                             true_denorm = self._denormalize_targets(true)
                             target_metrics.update(pred_denorm, true_denorm)

@@ -11,7 +11,7 @@ Usage:
 import sys
 import time
 from contextlib import contextmanager
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
@@ -126,7 +126,7 @@ def numerical_comparison(
     head_dim: int = 32,
     batch_size: int = 8,
     dtype: torch.dtype = torch.float32,
-) -> Dict[str, Dict[str, float]]:
+) -> Dict[str, Union[Dict[str, float], str]]:
     """Compare numerical outputs between SDPA backends.
 
     Returns dict mapping backend pairs to their numerical differences.
@@ -178,7 +178,7 @@ def numerical_comparison_with_mask(
     batch_size: int = 8,
     dtype: torch.dtype = torch.float32,
     mask_ratio: float = 0.3,
-) -> Dict[str, Dict[str, float]]:
+) -> Dict[str, Union[Dict[str, float], str]]:
     """Compare numerical outputs with attention mask (padding mask).
 
     The AAM model uses src_key_padding_mask which creates masked positions.
@@ -235,7 +235,7 @@ def benchmark_backends(
     num_iterations: int = 100,
     warmup: int = 10,
     dtype: torch.dtype = torch.float32,
-) -> Dict[str, Dict[str, float]]:
+) -> Dict[str, Union[Dict[str, float], str]]:
     """Benchmark SDPA backends for performance."""
     if not torch.cuda.is_available():
         return {"error": "CUDA not available"}
@@ -289,7 +289,7 @@ def memory_comparison(
     head_dim: int = 64,
     batch_size: int = 32,
     dtype: torch.dtype = torch.float32,
-) -> Dict[str, Dict[str, float]]:
+) -> Dict[str, Union[Dict[str, float], str]]:
     """Compare memory usage between SDPA backends."""
     if not torch.cuda.is_available():
         return {"error": "CUDA not available"}
@@ -366,7 +366,7 @@ def gradient_test(
     head_dim: int = 32,
     batch_size: int = 4,
     dtype: torch.dtype = torch.float32,
-) -> Dict[str, Dict[str, float]]:
+) -> Dict[str, Union[Dict[str, float], str]]:
     """Test gradient computation accuracy between backends.
 
     This is critical because training divergence could be caused by

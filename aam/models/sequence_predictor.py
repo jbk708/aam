@@ -75,6 +75,7 @@ class SequencePredictor(nn.Module):
         regressor_dropout: float = 0.0,
         conditional_scaling_columns: Optional[List[str]] = None,
         cross_attn_heads: int = 8,
+        num_quantiles: Optional[int] = None,
     ):
         """Initialize SequencePredictor.
 
@@ -139,6 +140,9 @@ class SequencePredictor(nn.Module):
                 base prediction: output = prediction * scale[cat] + bias[cat]. Requires categorical_cardinalities.
             cross_attn_heads: Number of attention heads for cross-attention fusion (default: 8).
                 Only used when categorical_fusion='cross-attention'.
+            num_quantiles: Number of quantiles for quantile regression. If set, output dimension
+                becomes out_dim * num_quantiles and output is reshaped to [batch, out_dim, num_quantiles].
+                Set to None for standard regression (default: None).
         """
         super().__init__()
 
@@ -229,6 +233,13 @@ class SequencePredictor(nn.Module):
         if output_activation != "none" and is_classifier:
             raise ValueError("Cannot use output_activation with is_classifier (use for regression only)")
 
+        self.num_quantiles = num_quantiles
+        if num_quantiles is not None:
+            if is_classifier:
+                raise ValueError("Cannot use num_quantiles with is_classifier (quantile regression only)")
+            if num_quantiles < 1:
+                raise ValueError(f"num_quantiles must be >= 1, got {num_quantiles}")
+
         if target_layer_norm:
             self.target_norm = nn.LayerNorm(self.embedding_dim)
         else:
@@ -238,7 +249,9 @@ class SequencePredictor(nn.Module):
         self.regressor_dropout = regressor_dropout
         self.categorical_embed_dim = categorical_embed_dim
 
-        self.target_head = self._build_target_head(self.embedding_dim, out_dim)
+        # For quantile regression, expand output dimension
+        effective_out_dim = out_dim * num_quantiles if num_quantiles is not None else out_dim
+        self.target_head = self._build_target_head(self.embedding_dim, effective_out_dim)
 
         if learnable_output_scale:
             self.output_scale = nn.Parameter(torch.ones(out_dim))
@@ -515,7 +528,10 @@ class SequencePredictor(nn.Module):
         if self.categorical_fusion == "gmu":
             target_input = base_embeddings
         elif (
-            self.categorical_fusion == "cross-attention" and self.cross_attn_fusion is not None and categorical_ids is not None
+            self.categorical_fusion == "cross-attention"
+            and self.cross_attn_fusion is not None
+            and self.categorical_embedder is not None
+            and categorical_ids is not None
         ):
             cat_emb = self.categorical_embedder(categorical_ids)
             target_input, cross_attn_weights = self.cross_attn_fusion(base_embeddings, cat_emb, return_weights=True)
@@ -536,17 +552,23 @@ class SequencePredictor(nn.Module):
 
         target_prediction = self.target_head(pooled_target)
 
-        target_prediction = self._apply_conditional_scaling(target_prediction, categorical_ids)
+        # Reshape for quantile regression: [batch, out_dim * num_quantiles] -> [batch, out_dim, num_quantiles]
+        # Quantile regression skips output transformations (scaling, activation, bounds)
+        if self.num_quantiles is not None:
+            batch_size = target_prediction.size(0)
+            target_prediction = target_prediction.view(batch_size, self.out_dim, self.num_quantiles)
+        else:
+            target_prediction = self._apply_conditional_scaling(target_prediction, categorical_ids)
 
-        if self.output_scale is not None:
-            target_prediction = target_prediction * self.output_scale + self.output_bias
+            if self.output_scale is not None and self.output_bias is not None:
+                target_prediction = target_prediction * self.output_scale + self.output_bias
 
-        if self.is_classifier:
-            target_prediction = nn.functional.log_softmax(target_prediction, dim=-1)
-        elif self.bounded_targets:
-            target_prediction = torch.sigmoid(target_prediction)
-        elif self.output_activation != "none":
-            target_prediction = self._apply_output_activation(target_prediction)
+            if self.is_classifier:
+                target_prediction = nn.functional.log_softmax(target_prediction, dim=-1)
+            elif self.bounded_targets:
+                target_prediction = torch.sigmoid(target_prediction)
+            elif self.output_activation != "none":
+                target_prediction = self._apply_output_activation(target_prediction)
 
         result = {
             "target_prediction": target_prediction,

@@ -278,11 +278,35 @@ aam train --target-transform zscore-category --normalize-by "season" ...
 |--------|-------------|---------|
 | `--target-transform` | Target normalization (see above) | minmax |
 | `--normalize-by` | Columns for per-category normalization | - |
+| `--loss-type` | Loss function: 'mse', 'mae', 'huber', 'quantile' | huber |
+| `--quantiles` | Quantile levels for quantile regression (see below) | 0.1,0.5,0.9 |
 | `--bounded-targets` | Sigmoid to bound output to [0, 1] | False |
 | `--output-activation` | Non-negative constraint: 'none', 'relu', 'softplus', 'exp' | none |
 | `--learnable-output-scale` | Learnable scale and bias after target head | False |
 | `--regressor-hidden-dims` | MLP hidden layers, e.g., '64,32' | None (single linear) |
 | `--regressor-dropout` | Dropout between MLP layers | 0.0 |
+
+**Loss functions (`--loss-type`):**
+
+| Loss | Description | Use Case |
+|------|-------------|----------|
+| `huber` | Smooth L1 (MSE for small errors, MAE for large) | **Default.** Robust to outliers |
+| `mse` | Mean squared error | Standard regression |
+| `mae` | Mean absolute error | When outliers are important |
+| `quantile` | Pinball loss for quantile regression | Uncertainty estimation |
+
+**Quantile Regression:**
+
+Predict multiple quantiles (e.g., 10th, 50th, 90th percentiles) for uncertainty estimation:
+
+```bash
+aam train \
+  --loss-type quantile \
+  --quantiles 0.1,0.5,0.9 \
+  ...
+```
+
+Output shape becomes `[batch, out_dim, num_quantiles]`. The pinball loss penalizes under/over-predictions asymmetrically based on quantile level.
 
 **Choosing an output constraint:**
 - **`--target-transform log-minmax`** (recommended for wide ranges): Use for non-negative targets with wide range (e.g., 0-600). Compresses range via log(y+1) to ~[0, 6.4], model predicts directly in log space, exp(x)-1 gives original scale.
