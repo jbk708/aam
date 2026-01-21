@@ -6,6 +6,7 @@ from pathlib import Path
 
 import biom
 import click
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
@@ -70,6 +71,36 @@ def _filter_samples(
     if missing:
         logger.warning(f"{len(missing)} {split_name} samples not found in BIOM/metadata: {missing[:5]}...")
     return [s for s in sample_ids if s in valid_samples]
+
+
+def create_prediction_plot(
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    r2: float,
+    mae: float,
+    rmse: float,
+) -> plt.Figure:
+    """Create prediction vs actual scatter plot matching AAM's TensorBoard style."""
+    fig, ax = plt.subplots(figsize=(8, 6), dpi=100)
+    ax.scatter(y_true, y_pred, alpha=0.6, s=20)
+
+    min_val = min(y_true.min(), y_pred.min())
+    max_val = max(y_true.max(), y_pred.max())
+    ax.plot([min_val, max_val], [min_val, max_val], "k--", linewidth=1, label="Perfect Prediction", alpha=0.5)
+
+    if len(y_true) > 1:
+        z = np.polyfit(y_true, y_pred, 1)
+        p = np.poly1d(z)
+        x_line = np.linspace(min_val, max_val, 100)
+        ax.plot(x_line, p(x_line), "b-", linewidth=2, label=f"Linear Fit, R² = {r2:.4f}, MAE = {mae:.4f}")
+
+    ax.set_xlabel("Actual")
+    ax.set_ylabel("Predicted")
+    ax.set_title(f"Random Forest Baseline - R² = {r2:.3f}, MAE = {mae:.3f}, RMSE = {rmse:.3f}")
+    ax.legend(loc="upper left")
+
+    plt.tight_layout()
+    return fig
 
 
 @click.command()
@@ -149,6 +180,12 @@ def rf_baseline(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_df.to_csv(output_path, sep="\t", index=False)
     logger.info(f"Predictions saved to: {output}")
+
+    plot_path = output_path.with_suffix(".png")
+    fig = create_prediction_plot(y_val.values, y_pred, metrics["r2"], metrics["mae"], metrics["rmse"])
+    fig.savefig(plot_path, dpi=100, bbox_inches="tight")
+    plt.close(fig)
+    logger.info(f"Plot saved to: {plot_path}")
 
 
 if __name__ == "__main__":

@@ -11,6 +11,7 @@ from click.testing import CliRunner
 
 from aam.cli.rf_baseline import (
     compute_metrics,
+    create_prediction_plot,
     load_biom_as_dataframe,
     load_sample_ids,
     rf_baseline,
@@ -222,6 +223,48 @@ class TestComputeMetrics:
         assert "rmse" in metrics
 
 
+class TestCreatePredictionPlot:
+    """Tests for create_prediction_plot function."""
+
+    def test_create_prediction_plot_returns_figure(self):
+        """Test that plot creation returns a matplotlib figure."""
+        import matplotlib.pyplot as plt
+
+        y_true = np.array([1.0, 2.0, 3.0, 4.0])
+        y_pred = np.array([1.1, 2.2, 2.9, 4.1])
+
+        fig = create_prediction_plot(y_true, y_pred, r2=0.95, mae=0.15, rmse=0.18)
+
+        assert isinstance(fig, plt.Figure)
+        plt.close(fig)
+
+    def test_create_prediction_plot_can_save(self, temp_dir):
+        """Test that plot can be saved to file."""
+        y_true = np.array([1.0, 2.0, 3.0, 4.0])
+        y_pred = np.array([1.1, 2.2, 2.9, 4.1])
+
+        fig = create_prediction_plot(y_true, y_pred, r2=0.95, mae=0.15, rmse=0.18)
+        plot_path = temp_dir / "test_plot.png"
+        fig.savefig(plot_path)
+
+        assert plot_path.exists()
+        assert plot_path.stat().st_size > 0
+
+    def test_create_prediction_plot_contains_metrics_in_title(self):
+        """Test that plot title contains metrics."""
+        import matplotlib.pyplot as plt
+
+        y_true = np.array([1.0, 2.0, 3.0, 4.0])
+        y_pred = np.array([1.1, 2.2, 2.9, 4.1])
+
+        fig = create_prediction_plot(y_true, y_pred, r2=0.95, mae=0.15, rmse=0.18)
+
+        ax = fig.axes[0]
+        title = ax.get_title()
+        assert "0.95" in title or "R²" in title
+        plt.close(fig)
+
+
 class TestRFBaselineCLI:
     """Tests for rf_baseline CLI command."""
 
@@ -317,3 +360,15 @@ class TestRFBaselineCLI:
             _, result = self._run_cli(temp_dir, metadata_file, str(train_file), str(val_file), mock_table)
 
         assert "missing_sample" in caplog.text.lower() or "not found" in caplog.text.lower()
+
+    def test_cli_generates_plot(self, temp_dir, metadata_file, train_samples_file, val_samples_file):
+        """Test that CLI generates a prediction plot."""
+        sample_ids = ["sample1", "sample2", "sample3", "sample4", "sample5", "sample6"]
+        mock_table = _create_mock_biom_table(sample_ids, ["ASV1", "ASV2", "ASV3"])
+
+        output_file, result = self._run_cli(temp_dir, metadata_file, train_samples_file, val_samples_file, mock_table)
+
+        assert result.exit_code == 0
+        plot_file = output_file.with_suffix(".png")
+        assert plot_file.exists(), f"Plot file not found: {plot_file}"
+        assert plot_file.stat().st_size > 0
