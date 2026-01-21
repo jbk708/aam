@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
-from typing import Any, Dict, Optional, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 from pathlib import Path
 from tqdm import tqdm
 import matplotlib
@@ -21,7 +21,6 @@ from aam.training.metrics import (
 from aam.training.distributed import (
     gather_predictions_for_plot,
     is_distributed,
-    is_main_process,
 )
 
 
@@ -393,7 +392,12 @@ class Evaluator:
         epoch: int = 0,
         num_epochs: int = 1,
         return_predictions: bool = False,
-    ) -> Union[Dict[str, float], Tuple[Dict[str, float], Dict[str, torch.Tensor], Dict[str, torch.Tensor]]]:
+        collect_all_predictions: bool = False,
+    ) -> Union[
+        Dict[str, float],
+        Tuple[Dict[str, float], Dict[str, torch.Tensor], Dict[str, torch.Tensor]],
+        Tuple[Dict[str, float], Dict[str, torch.Tensor], Dict[str, torch.Tensor], Dict[str, Any]],
+    ]:
         """Run one validation epoch with streaming metrics computation.
 
         Uses O(batch) memory instead of O(dataset) by computing metrics incrementally.
@@ -405,9 +409,13 @@ class Evaluator:
             epoch: Current epoch number
             num_epochs: Total number of epochs
             return_predictions: Whether to return sampled predictions for plotting
+            collect_all_predictions: Whether to collect ALL predictions with sample IDs
+                (for writing to val_predictions.tsv). When True, returns a 4th element
+                containing {"sample_ids": [...], "predictions": tensor, "actuals": tensor}.
 
         Returns:
-            Dictionary with losses and metrics, optionally with prediction samples
+            Dictionary with losses and metrics, optionally with prediction samples.
+            If collect_all_predictions=True, returns (losses, preds, targs, full_predictions).
         """
         self.model.eval()
         total_losses: Dict[str, float] = {}
@@ -427,6 +435,11 @@ class Evaluator:
         has_unifrac = False
         has_target = False
         has_count = False
+
+        # Storage for full predictions when collect_all_predictions=True
+        all_sample_ids: List[str] = []
+        all_predictions: List[torch.Tensor] = []
+        all_actuals: List[torch.Tensor] = []
 
         with torch.no_grad():
             pbar = tqdm(
@@ -618,6 +631,14 @@ class Evaluator:
                             target_metrics.update(pred_denorm, true_denorm)
                             has_target = True
 
+                            # Collect full predictions with sample IDs for output file
+                            if collect_all_predictions:
+                                batch_sample_ids = batch.get("sample_ids", []) if isinstance(batch, dict) else []
+                                if batch_sample_ids:
+                                    all_sample_ids.extend(batch_sample_ids)
+                                    all_predictions.append(pred_denorm.detach().cpu())
+                                    all_actuals.append(true_denorm.detach().cpu())
+
                         if "count_prediction" in outputs and "counts" in targets:
                             count_pred = outputs["count_prediction"]
                             count_true = targets["counts"]
@@ -676,10 +697,11 @@ class Evaluator:
                 f"Outputs keys: {output_keys}, Target keys: {target_keys}, is_pretraining: {is_pretraining}"
             )
 
-        if return_predictions:
-            all_preds: Dict[str, torch.Tensor] = {}
-            all_targs: Dict[str, torch.Tensor] = {}
+        # Build plot data if requested
+        all_preds: Dict[str, torch.Tensor] = {}
+        all_targs: Dict[str, torch.Tensor] = {}
 
+        if return_predictions:
             if has_unifrac:
                 pred_samples, targ_samples = unifrac_metrics.get_plot_data()
                 all_preds["unifrac"] = pred_samples
@@ -701,6 +723,16 @@ class Evaluator:
                     all_preds[key] = gather_predictions_for_plot(all_preds[key])
                     all_targs[key] = gather_predictions_for_plot(all_targs[key])
 
+        # Build full predictions dict if requested (for val_predictions.tsv output)
+        if collect_all_predictions:
+            full_predictions: Dict[str, Any] = {
+                "sample_ids": all_sample_ids,
+                "predictions": torch.cat(all_predictions, dim=0) if all_predictions else torch.tensor([]),
+                "actuals": torch.cat(all_actuals, dim=0) if all_actuals else torch.tensor([]),
+            }
+            return avg_losses, all_preds, all_targs, full_predictions
+
+        if return_predictions:
             return avg_losses, all_preds, all_targs
 
         return avg_losses

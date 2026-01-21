@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-21
-**Status:** ~20 outstanding tickets (~73-116 hours)
+**Status:** ~20 outstanding tickets (~72-116 hours)
 
 ---
 
@@ -9,7 +9,7 @@
 
 | File | Status | Tickets |
 |------|--------|---------|
-| `FUSION_CLEANUP_TICKETS.md` | **NEW** | FUS-1 to FUS-3, CLN-1 to CLN-6 |
+| `FUSION_CLEANUP_TICKETS.md` | **NEW** | FUS-1 to FUS-3, CLN-1 to CLN-10 |
 | `REGRESSOR_OPTIMIZATION_TICKETS.md` | 5 remaining | REG-5 to REG-9 |
 | `PYTORCH_PORTING_TICKETS.md` | 6 remaining | PYT-12.2, PYT-18.5-18.6, PYT-19.3-19.4, PYT-MAINT-2 |
 | `COSMOS_ONBOARDING_TICKETS.md` | 4 remaining | COS-9.5 to COS-9.8 |
@@ -68,10 +68,10 @@ Flag consolidation and documentation:
 CLN-1 (output flags) → CLN-6 (categorical docs)
 ```
 
-### 2. Loss Functions (MEDIUM - ~7 hours)
+### 2. Loss Functions (MEDIUM - ~2-3 hours)
 
 ```
-REG-5 (quantile) → REG-6 (asymmetric)
+REG-6 (asymmetric loss)
 ```
 
 ---
@@ -80,6 +80,7 @@ REG-5 (quantile) → REG-6 (asymmetric)
 
 | Ticket | Description |
 |--------|-------------|
+| CLN-10 | Training output artifacts (8 tests) |
 | CLN-9 | Remove FiLM conditioning |
 | CLN-2 | Target normalization unification (27 tests) |
 | FUS-2 | Cross-attention fusion (33 tests) |

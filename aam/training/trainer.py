@@ -918,7 +918,12 @@ class Trainer:
         epoch: int = 0,
         num_epochs: int = 1,
         return_predictions: bool = False,
-    ) -> Union[Dict[str, float], Tuple[Dict[str, float], Dict[str, torch.Tensor], Dict[str, torch.Tensor]]]:
+        collect_all_predictions: bool = False,
+    ) -> Union[
+        Dict[str, float],
+        Tuple[Dict[str, float], Dict[str, torch.Tensor], Dict[str, torch.Tensor]],
+        Tuple[Dict[str, float], Dict[str, torch.Tensor], Dict[str, torch.Tensor], Dict[str, Any]],
+    ]:
         """Run one validation epoch with streaming metrics computation.
 
         Delegates to the Evaluator for validation logic.
@@ -929,6 +934,7 @@ class Trainer:
             epoch: Current epoch number
             num_epochs: Total number of epochs
             return_predictions: Whether to return sampled predictions for plotting
+            collect_all_predictions: Whether to collect ALL predictions with sample IDs
 
         Returns:
             Dictionary with losses and metrics, optionally with prediction samples
@@ -939,6 +945,7 @@ class Trainer:
             epoch=epoch,
             num_epochs=num_epochs,
             return_predictions=return_predictions,
+            collect_all_predictions=collect_all_predictions,
         )
 
     def train(
@@ -1055,17 +1062,27 @@ class Trainer:
                 val_results: Optional[Dict[str, float]] = None
                 val_predictions_dict: Dict[str, torch.Tensor] = {}
                 val_targets_dict: Dict[str, torch.Tensor] = {}
+                full_val_predictions: Optional[Dict[str, Any]] = None
                 if val_loader is not None:
                     # Return predictions if saving plots or logging to TensorBoard
                     return_predictions = save_plots or self.writer is not None
+                    # Collect all predictions for output file
+                    collect_all = checkpoint_dir is not None
                     val_output = self.validate_epoch(
                         val_loader,
                         compute_metrics=True,
                         epoch=epoch,
                         num_epochs=num_epochs,
                         return_predictions=return_predictions,
+                        collect_all_predictions=collect_all,
                     )
-                    if return_predictions:
+                    # Unpack based on what was requested
+                    if collect_all:
+                        val_results, val_predictions_dict, val_targets_dict, full_val_predictions = cast(
+                            Tuple[Dict[str, float], Dict[str, torch.Tensor], Dict[str, torch.Tensor], Dict[str, Any]],
+                            val_output,
+                        )
+                    elif return_predictions:
                         val_results, val_predictions_dict, val_targets_dict = cast(
                             Tuple[Dict[str, float], Dict[str, torch.Tensor], Dict[str, torch.Tensor]],
                             val_output,
@@ -1120,6 +1137,10 @@ class Trainer:
                                 val_results,
                                 checkpoint_dir,
                             )
+
+                        # Save full validation predictions to TSV (only on main process)
+                        if full_val_predictions and checkpoint_dir and is_main_process():
+                            self._save_val_predictions(full_val_predictions, checkpoint_dir)
                     else:
                         patience_counter += 1
                         if patience_counter >= early_stopping_patience:
@@ -1183,6 +1204,42 @@ class Trainer:
                 self.writer = None
 
         return history
+
+    def _save_val_predictions(
+        self,
+        full_predictions: Dict[str, Any],
+        checkpoint_dir: str,
+    ) -> None:
+        """Save validation predictions to TSV file.
+
+        Args:
+            full_predictions: Dictionary with 'sample_ids', 'predictions', 'actuals'
+            checkpoint_dir: Directory to save predictions file
+        """
+        import pandas as pd
+
+        sample_ids = full_predictions.get("sample_ids", [])
+        if not sample_ids:
+            return
+
+        predictions = full_predictions.get("predictions", torch.tensor([]))
+        actuals = full_predictions.get("actuals", torch.tensor([]))
+
+        # Convert to numpy and flatten
+        pred_np = predictions.numpy().squeeze()
+        actual_np = actuals.numpy().squeeze()
+
+        df = pd.DataFrame({
+            "sample_id": sample_ids,
+            "prediction": pred_np,
+            "actual": actual_np,
+        })
+
+        output_path = Path(checkpoint_dir).parent / "val_predictions.tsv"
+        if output_path.exists():
+            output_path.unlink()
+        df.to_csv(output_path, sep="\t", index=False)
+        logger.info(f"Saved validation predictions to {output_path} ({len(df)} samples)")
 
     def save_checkpoint(
         self,

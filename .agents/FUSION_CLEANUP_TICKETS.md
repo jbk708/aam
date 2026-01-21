@@ -1,7 +1,7 @@
 # Attention Fusion & Code Cleanup Tickets
 
-**Last Updated:** 2026-01-20
-**Status:** 9 tickets (~24-39 hours)
+**Last Updated:** 2026-01-21
+**Status:** 10 tickets (~26-42 hours)
 **Design Doc:** `_design_plan/17_attention_fusion.md`
 
 ---
@@ -369,6 +369,54 @@ Remove FiLM (Feature-wise Linear Modulation) conditioning system entirely.
 
 ---
 
+### CLN-10: Training Output Artifacts
+**Priority:** HIGH | **Effort:** 2-3 hours | **Status:** Complete
+
+Save training/validation splits and best model predictions to output directory.
+
+**Motivation:**
+- Reproducibility: Know exactly which samples were used for training vs validation
+- Analysis: Evaluate model predictions on validation set without re-running inference
+- Debugging: Compare predictions across training runs with consistent splits
+
+**Current State:**
+- Train/val split performed via `train_test_split()` at train.py:606-617
+- Sample IDs discarded after dataset creation
+- Best model predictions computed during validation but not saved
+- Users must re-run `aam predict` separately to get predictions
+
+**Proposed Output Files:**
+```
+output_dir/
+├── train_samples.txt       # One sample ID per line
+├── val_samples.txt         # One sample ID per line
+└── val_predictions.tsv     # sample_id, prediction, actual (from best epoch)
+```
+
+**Scope:**
+1. Save `train_samples.txt` and `val_samples.txt` after split (train.py)
+2. Capture validation predictions when best model is saved (trainer.py)
+3. Write `val_predictions.tsv` with sample_id, prediction, actual columns
+4. Include denormalized predictions (actual scale, not normalized)
+
+**Implementation Notes:**
+- Sample lists written immediately after `train_test_split()` in train.py
+- Validation predictions already computed in `Evaluator.validate_epoch()` (trainer.py:914-942)
+- Reservoir sampling captures up to 1000 samples for plots; need full predictions
+- Store predictions in Trainer, write when `save_checkpoint()` saves best model
+
+**Acceptance Criteria:**
+- [x] `train_samples.txt` written with training sample IDs
+- [x] `val_samples.txt` written with validation sample IDs
+- [x] `val_predictions.tsv` written with best epoch predictions
+- [x] Predictions denormalized to original scale
+- [x] Works with DDP/FSDP (only rank 0 writes)
+- [x] 8 tests (6 in test_trainer.py, 2 in test_cli.py)
+
+**Files:** `aam/cli/train.py`, `aam/training/trainer.py`, `aam/training/evaluation.py`, `tests/test_trainer.py`, `tests/test_cli.py`
+
+---
+
 ## Summary
 
 | Ticket | Description | Effort | Priority | Status |
@@ -385,22 +433,26 @@ Remove FiLM (Feature-wise Linear Modulation) conditioning system entirely.
 | **CLN-7** | Toggle count prediction | 2-3h | MEDIUM | Not Started |
 | **CLN-8** | Categorical learning rate | 2-3h | MEDIUM | Not Started |
 | **CLN-9** | Remove FiLM conditioning | 2-3h | MEDIUM | Complete |
-| **Total** | | **30-48h** | |
+| **CLN-10** | Training output artifacts | 2-3h | HIGH | Complete |
+| **Total** | | **32-51h** | |
 
 ## Recommended Order
 
+**Phase 0 - High Priority:**
+1. CLN-10 (training output artifacts)
+
 **Phase 1 - Quick Wins:**
-1. CLN-3 (remove dead code)
-2. CLN-5 (DataParallel parity)
+2. CLN-3 (remove dead code)
+3. CLN-5 (DataParallel parity)
 
 **Phase 2 - Fusion MVP:**
-3. FUS-1 (GMU baseline)
-4. FUS-2 (Cross-attention)
+4. FUS-1 (GMU baseline)
+5. FUS-2 (Cross-attention)
 
 **Phase 3 - User Experience:**
-5. CLN-1 + CLN-2 (flag consolidation)
-6. CLN-6 (categorical docs)
+6. CLN-1 + CLN-2 (flag consolidation)
+7. CLN-6 (categorical docs)
 
 **Phase 4 - Tech Debt:**
-7. CLN-4 (shared utilities)
-8. FUS-3 (perceiver, optional)
+8. CLN-4 (shared utilities)
+9. FUS-3 (perceiver, optional)

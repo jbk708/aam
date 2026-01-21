@@ -616,6 +616,18 @@ def train(
 
         logger.info(f"Train samples: {len(train_ids)}, Validation samples: {len(val_ids)}")
 
+        # Save train/val sample IDs to output directory (only on main process)
+        if not (distributed or fsdp) or is_main_process():
+            train_samples_path = output_path / "train_samples.txt"
+            val_samples_path = output_path / "val_samples.txt"
+            with open(train_samples_path, "w") as f:
+                for sample_id in train_ids:
+                    f.write(f"{sample_id}\n")
+            with open(val_samples_path, "w") as f:
+                for sample_id in val_ids:
+                    f.write(f"{sample_id}\n")
+            logger.info(f"Saved sample lists: {train_samples_path}, {val_samples_path}")
+
         logger.info("Filtering tables for train/val splits...")
         train_table = table_obj.filter(train_ids, axis="sample", inplace=False)
         val_table = table_obj.filter(val_ids, axis="sample", inplace=False)
