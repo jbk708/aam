@@ -356,8 +356,10 @@ class TestRFBaselineCLI:
             assert "MAE" in result.output
             assert "RMSE" in result.output
 
-    def test_cli_warns_missing_samples(self, temp_dir, metadata_file):
+    def test_cli_warns_missing_samples(self, temp_dir, metadata_file, caplog):
         """Test CLI warns when samples not found in BIOM."""
+        import logging
+
         biom_file = temp_dir / "test.biom"
         biom_file.touch()
         output_file = temp_dir / "predictions.tsv"
@@ -377,24 +379,25 @@ class TestRFBaselineCLI:
 
         with patch("biom.load_table", return_value=mock_table):
             runner = CliRunner()
-            result = runner.invoke(
-                rf_baseline,
-                [
-                    "--table",
-                    str(biom_file),
-                    "--metadata",
-                    metadata_file,
-                    "--metadata-column",
-                    "target",
-                    "--train-samples",
-                    str(train_file),
-                    "--val-samples",
-                    str(val_file),
-                    "--output",
-                    str(output_file),
-                    "--n-estimators",
-                    "10",
-                ],
-            )
+            with caplog.at_level(logging.WARNING):
+                result = runner.invoke(
+                    rf_baseline,
+                    [
+                        "--table",
+                        str(biom_file),
+                        "--metadata",
+                        metadata_file,
+                        "--metadata-column",
+                        "target",
+                        "--train-samples",
+                        str(train_file),
+                        "--val-samples",
+                        str(val_file),
+                        "--output",
+                        str(output_file),
+                        "--n-estimators",
+                        "10",
+                    ],
+                )
 
-            assert "missing_sample" in result.output.lower() or "warning" in result.output.lower()
+            assert "missing_sample" in caplog.text.lower() or "not in biom" in caplog.text.lower()
