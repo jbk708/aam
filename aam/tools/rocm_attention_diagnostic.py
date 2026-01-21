@@ -11,7 +11,7 @@ Usage:
 import sys
 import time
 from contextlib import contextmanager
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, Union
 
 import torch
 import torch.nn.functional as F

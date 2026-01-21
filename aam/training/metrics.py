@@ -9,7 +9,6 @@ from sklearn.metrics import (
     mean_squared_error,
     r2_score,
     accuracy_score,
-    confusion_matrix,
     precision_recall_fscore_support,
 )
 

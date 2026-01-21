@@ -1,8 +1,7 @@
 """Model summary utilities for logging layer structure and parameter counts."""
 
-import torch
 import torch.nn as nn
-from typing import Optional, List, Tuple
+from typing import Optional, Tuple
 import logging
 
 

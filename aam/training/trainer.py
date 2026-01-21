@@ -2,7 +2,6 @@
 
 import logging
 import math
-import os
 from pathlib import Path
 from typing import Any, Dict, Optional, Union, Tuple, cast, TYPE_CHECKING
 
@@ -516,7 +515,6 @@ class Trainer:
         total_losses = {}
         num_batches = 0
         accumulated_steps = 0
-        total_steps = len(dataloader)
         running_avg_loss = 0.0
         running_avg_unifrac_loss = 0.0
         running_avg_nuc_loss = 0.0
@@ -1633,7 +1631,7 @@ def load_pretrained_encoder(
     total_model_params = sum(p.numel() for p in target_module.parameters())
 
     # Perform the actual load
-    result = target_module.load_state_dict(state_dict, strict=strict)
+    target_module.load_state_dict(state_dict, strict=strict)
 
     # Verify loading worked
     if len(matching_keys) == 0:
