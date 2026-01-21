@@ -11,6 +11,7 @@ from aam.models.attention_pooling import AttentionPooling
 from aam.models.transformer import AttnImplementation, TransformerEncoder
 from aam.models.categorical_embedder import CategoricalEmbedder
 from aam.models.film import FiLMTargetHead
+from aam.models.fusion import GMU
 
 
 class SequencePredictor(nn.Module):
@@ -267,8 +268,8 @@ class SequencePredictor(nn.Module):
 
         self.categorical_fusion = categorical_fusion
         if categorical_cardinalities:
-            if categorical_fusion not in ("concat", "add"):
-                raise ValueError(f"categorical_fusion must be 'concat' or 'add', got '{categorical_fusion}'")
+            if categorical_fusion not in ("concat", "add", "gmu"):
+                raise ValueError(f"categorical_fusion must be 'concat', 'add', or 'gmu', got '{categorical_fusion}'")
             self.categorical_embedder: Optional[CategoricalEmbedder] = CategoricalEmbedder(
                 column_cardinalities=categorical_cardinalities,
                 embed_dim=categorical_embed_dim,
@@ -276,18 +277,24 @@ class SequencePredictor(nn.Module):
             )
             total_cat_dim = self.categorical_embedder.total_embed_dim
             if categorical_fusion == "concat":
-                self.categorical_projection = nn.Linear(
+                self.categorical_projection: Optional[nn.Linear] = nn.Linear(
                     self.embedding_dim + total_cat_dim,
                     self.embedding_dim,
                 )
-            else:  # add
+                self.gmu: Optional[GMU] = None
+            elif categorical_fusion == "add":
                 self.categorical_projection = nn.Linear(
                     total_cat_dim,
                     self.embedding_dim,
                 )
+                self.gmu = None
+            else:  # gmu
+                self.categorical_projection = None
+                self.gmu = GMU(seq_dim=self.embedding_dim, cat_dim=total_cat_dim)
         else:
             self.categorical_embedder = None
             self.categorical_projection = None
+            self.gmu = None
 
         self.conditional_scaling_columns = conditional_scaling_columns
         self._init_conditional_scaling(categorical_cardinalities)
@@ -573,13 +580,23 @@ class SequencePredictor(nn.Module):
         count_embeddings = self.count_encoder(base_embeddings, mask=asv_mask)
         count_prediction = torch.sigmoid(self.count_head(count_embeddings))
 
-        target_input = self._fuse_categorical(base_embeddings, categorical_ids)
+        # GMU fusion happens after pooling, so skip sequence-level fusion for GMU
+        if self.categorical_fusion == "gmu":
+            target_input = base_embeddings
+        else:
+            target_input = self._fuse_categorical(base_embeddings, categorical_ids)
 
         target_embeddings = self.target_encoder(target_input, mask=asv_mask)
         pooled_target = self.target_pooling(target_embeddings, mask=asv_mask)
 
         if self.target_norm is not None:
             pooled_target = self.target_norm(pooled_target)
+
+        # GMU fusion on pooled representation
+        gmu_gate = None
+        if self.gmu is not None and self.categorical_embedder is not None and categorical_ids is not None:
+            cat_emb = self.categorical_embedder(categorical_ids)
+            pooled_target, gmu_gate = self.gmu(pooled_target, cat_emb, return_gate=True)
 
         # Apply target head with FiLM conditioning if enabled
         if isinstance(self.target_head, FiLMTargetHead):
@@ -605,6 +622,9 @@ class SequencePredictor(nn.Module):
             "count_prediction": count_prediction,
             "base_embeddings": base_embeddings,
         }
+
+        if gmu_gate is not None:
+            result["gmu_gate"] = gmu_gate
 
         # For UniFrac, pass embeddings through for distance computation
         if embeddings is not None:
