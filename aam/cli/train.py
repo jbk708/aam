@@ -6,7 +6,7 @@ import logging
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from typing import Optional, cast
+from typing import List, Optional, cast
 from functools import partial
 from torch.utils.data import DataLoader
 from sklearn.model_selection import train_test_split
@@ -197,9 +197,14 @@ from aam.cli.utils import (
 )
 @click.option(
     "--loss-type",
-    type=click.Choice(["mse", "mae", "huber"]),
+    type=click.Choice(["mse", "mae", "huber", "quantile"]),
     default="huber",
-    help="Loss function for regression targets: mse, mae, or huber (default)",
+    help="Loss function for regression targets: mse, mae, huber (default), or quantile",
+)
+@click.option(
+    "--quantiles",
+    default=None,
+    help="Comma-separated quantile levels for quantile regression, e.g., '0.1,0.5,0.9'. Required when --loss-type=quantile.",
 )
 @click.option(
     "--no-sequence-cache",
@@ -355,6 +360,7 @@ def train(
     normalize_targets_by: Optional[str],
     log_transform_targets: bool,
     loss_type: str,
+    quantiles: Optional[str],
     no_sequence_cache: bool,
     distributed: bool,
     data_parallel: bool,
@@ -459,6 +465,33 @@ def train(
         # Validate --fsdp-sharded-checkpoint requires --fsdp
         if fsdp_sharded_checkpoint and not fsdp:
             raise click.ClickException("--fsdp-sharded-checkpoint requires --fsdp to be enabled.")
+
+        # Parse and validate quantile regression configuration
+        quantiles_list: Optional[List[float]] = None
+        num_quantiles: Optional[int] = None
+        if loss_type == "quantile":
+            if quantiles is None:
+                quantiles = "0.1,0.5,0.9"  # Default quantiles
+                logger.info(f"Using default quantiles: {quantiles}")
+            try:
+                quantiles_list = [float(q.strip()) for q in quantiles.split(",")]
+            except ValueError as e:
+                raise click.ClickException(
+                    f"Invalid --quantiles: could not parse '{quantiles}'. "
+                    f"Expected comma-separated values in (0, 1) like '0.1,0.5,0.9'. Error: {e}"
+                )
+            for q in quantiles_list:
+                if not (0 < q < 1):
+                    raise click.ClickException(
+                        f"Quantile values must be in (0, 1), got {q}. "
+                        "Example: --quantiles 0.1,0.5,0.9"
+                    )
+            num_quantiles = len(quantiles_list)
+            if classifier:
+                raise click.ClickException("--loss-type quantile cannot be used with --classifier")
+            logger.info(f"Quantile regression enabled with quantiles: {quantiles_list}")
+        elif quantiles is not None:
+            raise click.ClickException("--quantiles requires --loss-type quantile")
 
         # Setup distributed training if enabled
         train_sampler = None
@@ -871,6 +904,7 @@ def train(
             regressor_hidden_dims=regressor_hidden_dims_list,
             regressor_dropout=regressor_dropout,
             conditional_scaling_columns=conditional_scaling_columns,
+            num_quantiles=num_quantiles,
         )
 
         log_model_summary(model, logger)
@@ -911,8 +945,12 @@ def train(
             count_penalty=count_penalty,
             class_weights=class_weights_tensor,
             target_loss_type=loss_type,
+            quantiles=quantiles_list,
         )
-        logger.info(f"Using {loss_type} loss for regression targets")
+        if loss_type == "quantile":
+            logger.info(f"Using quantile loss with quantiles: {quantiles_list}")
+        else:
+            logger.info(f"Using {loss_type} loss for regression targets")
         logger.info(
             f"Loss weights: target={target_penalty}, unifrac={penalty}, nuc={effective_nuc_penalty}, count={count_penalty}"
         )
