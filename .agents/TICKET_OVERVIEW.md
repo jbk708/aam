@@ -1,7 +1,7 @@
 # Ticket Overview
 
-**Last Updated:** 2026-01-20
-**Status:** ~22 outstanding tickets (~81-125 hours)
+**Last Updated:** 2026-01-21
+**Status:** ~21 outstanding tickets (~76-119 hours)
 
 ---
 
@@ -22,11 +22,9 @@
 
 ## Priority Summary
 
-### HIGH (1 ticket, ~5-6 hours)
+### HIGH (0 tickets)
 
-| Ticket | Description | Effort | File |
-|--------|-------------|--------|------|
-| **FUS-2** | Cross-attention fusion | 5-6h | FUSION_CLEANUP |
+No HIGH priority tickets remaining.
 
 ### MEDIUM (9 tickets, ~28-40 hours)
 
@@ -62,15 +60,7 @@
 
 ## Recommended Next Steps
 
-### 1. Attention Fusion MVP (HIGH - ~5-6 hours)
-
-Position-specific categorical conditioning:
-
-```
-FUS-2 (Cross-attention) - builds on FUS-1 (complete)
-```
-
-### 2. User Experience (MEDIUM - ~12 hours)
+### 1. User Experience (MEDIUM - ~12 hours)
 
 Flag consolidation and documentation:
 
@@ -78,7 +68,7 @@ Flag consolidation and documentation:
 CLN-1 (output flags) → CLN-2 (normalization) → CLN-6 (categorical docs)
 ```
 
-### 3. Loss Functions (MEDIUM - ~7 hours)
+### 2. Loss Functions (MEDIUM - ~7 hours)
 
 ```
 REG-5 (quantile) → REG-6 (asymmetric)
@@ -86,10 +76,11 @@ REG-5 (quantile) → REG-6 (asymmetric)
 
 ---
 
-## Recently Completed (2026-01-20)
+## Recently Completed (2026-01-21)
 
 | Ticket | Description |
 |--------|-------------|
+| FUS-2 | Cross-attention fusion (33 tests) |
 | FUS-1 | GMU fusion (28 tests) |
 | CLN-5 | DataParallel in train.py |
 | CLN-3 | Remove unused params |

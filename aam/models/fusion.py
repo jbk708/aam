@@ -6,7 +6,7 @@ with categorical embeddings, enabling learned modality weighting.
 
 import torch
 import torch.nn as nn
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 
 class GMU(nn.Module):
@@ -84,3 +84,98 @@ class GMU(nn.Module):
         output = h_seq + z * h_cat_t
         gate_output = z if return_gate else None
         return output, gate_output
+
+
+class CrossAttentionFusion(nn.Module):
+    """Cross-attention fusion for position-specific categorical conditioning.
+
+    Enables each sequence position (ASV) to attend differently to categorical
+    metadata, allowing position-specific modulation. This contrasts with
+    broadcast-based fusion where all positions receive identical conditioning.
+
+    Architecture:
+        Sequence [B, S, D] --query--> MultiHeadAttention <--key/value-- Metadata [B, K, E]
+                                              |
+                                    Position-specific update [B, S, D]
+
+    Reference:
+        Cross-attention mechanism adapted from transformer architectures,
+        applied to multimodal fusion following FT-Transformer principles.
+    """
+
+    def __init__(
+        self,
+        seq_dim: int,
+        cat_dim: int,
+        num_heads: int = 8,
+        dropout: float = 0.1,
+    ) -> None:
+        """Initialize CrossAttentionFusion.
+
+        Args:
+            seq_dim: Dimension of sequence representations (embedding_dim).
+            cat_dim: Total dimension of categorical embeddings (total_cat_dim).
+            num_heads: Number of attention heads (default: 8).
+            dropout: Dropout rate for attention (default: 0.1).
+        """
+        super().__init__()
+        self.seq_dim = seq_dim
+        self.cat_dim = cat_dim
+        self.num_heads = num_heads
+
+        self.cat_projection = nn.Linear(cat_dim, seq_dim)
+
+        self.cross_attn = nn.MultiheadAttention(
+            embed_dim=seq_dim,
+            num_heads=num_heads,
+            dropout=dropout,
+            batch_first=True,
+        )
+        self.norm = nn.LayerNorm(seq_dim)
+
+        self._init_weights()
+
+    def _init_weights(self) -> None:
+        """Initialize weights with Xavier uniform."""
+        nn.init.xavier_uniform_(self.cat_projection.weight)
+        nn.init.zeros_(self.cat_projection.bias)
+
+    def forward(
+        self,
+        seq_repr: torch.Tensor,
+        cat_emb: torch.Tensor,
+        return_weights: bool = False,
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        """Forward pass through cross-attention fusion.
+
+        Each sequence position attends to categorical metadata tokens,
+        enabling position-specific conditioning.
+
+        Args:
+            seq_repr: Sequence representations [batch_size, seq_len, seq_dim].
+            cat_emb: Categorical embeddings [batch_size, cat_dim].
+            return_weights: If True, return attention weights for logging.
+
+        Returns:
+            If return_weights=False:
+                Fused representations [batch_size, seq_len, seq_dim]
+            If return_weights=True:
+                Tuple of:
+                    - Fused representations [batch_size, seq_len, seq_dim]
+                    - Attention weights [batch_size, num_heads, seq_len, num_cat_tokens]
+        """
+        metadata = self.cat_projection(cat_emb).unsqueeze(1)  # [B, 1, seq_dim]
+
+        attn_out, attn_weights = self.cross_attn(
+            query=seq_repr,
+            key=metadata,
+            value=metadata,
+            need_weights=return_weights,
+            average_attn_weights=False,
+        )
+
+        output = self.norm(seq_repr + attn_out)
+
+        if return_weights:
+            return output, attn_weights
+        return output

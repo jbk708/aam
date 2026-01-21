@@ -242,8 +242,14 @@ from aam.cli.utils import (
 @click.option(
     "--categorical-fusion",
     default="concat",
-    type=click.Choice(["concat", "add", "gmu"]),
-    help="Fusion strategy for categorical embeddings: concat (concatenate + project), add (project + add), or gmu (gated multimodal unit after pooling). Default: concat",
+    type=click.Choice(["concat", "add", "gmu", "cross-attention"]),
+    help="Fusion strategy for categorical embeddings: concat (concatenate + project), add (project + add), gmu (gated multimodal unit after pooling), or cross-attention (position-specific via cross-attention). Default: concat",
+)
+@click.option(
+    "--cross-attn-heads",
+    default=8,
+    type=click.IntRange(1, 64),
+    help="Number of attention heads for cross-attention fusion (default: 8). Only used with --categorical-fusion cross-attention.",
 )
 @click.option(
     "--output-activation",
@@ -346,6 +352,7 @@ def train(
     categorical_columns: Optional[str],
     categorical_embed_dim: int,
     categorical_fusion: str,
+    cross_attn_heads: int,
     output_activation: str,
     regressor_hidden_dims: Optional[str],
     regressor_dropout: float,
@@ -826,6 +833,7 @@ def train(
             categorical_cardinalities=categorical_cardinalities,
             categorical_embed_dim=categorical_embed_dim,
             categorical_fusion=categorical_fusion,
+            cross_attn_heads=cross_attn_heads,
             output_activation=output_activation,
             regressor_hidden_dims=regressor_hidden_dims_list,
             regressor_dropout=regressor_dropout,
@@ -1050,6 +1058,7 @@ def train(
                 "learnable_output_scale": learnable_output_scale,
                 "categorical_embed_dim": categorical_embed_dim,
                 "categorical_fusion": categorical_fusion,
+                "cross_attn_heads": cross_attn_heads,
                 "output_activation": output_activation,
                 "log_transform_targets": log_transform_targets,
                 "regressor_hidden_dims": regressor_hidden_dims_list,

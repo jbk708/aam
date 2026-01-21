@@ -418,6 +418,10 @@ class Trainer:
         if "gmu_gate_mean" in train_losses:
             self.writer.add_scalar("gmu/gate_mean", train_losses["gmu_gate_mean"], epoch)
 
+        # Log cross-attention weight mean under cross_attn/ category
+        if "cross_attn_weight_mean" in train_losses:
+            self.writer.add_scalar("cross_attn/weight_mean", train_losses["cross_attn_weight_mean"], epoch)
+
         if self.log_histograms and epoch % self.histogram_frequency == 0:
             for name, param in self.model.named_parameters():
                 if param.requires_grad and param.grad is not None:
@@ -582,6 +586,8 @@ class Trainer:
         running_avg_target_loss = 0.0
         running_avg_gmu_gate = 0.0
         gmu_gate_batches = 0
+        running_avg_cross_attn_weight = 0.0
+        cross_attn_batches = 0
 
         # Determine what metrics to show based on training mode
         is_pretraining = self._is_pretraining()
@@ -796,6 +802,14 @@ class Trainer:
                     running_avg_gmu_gate = (running_avg_gmu_gate * gmu_gate_batches + gate_mean) / (gmu_gate_batches + 1)
                     gmu_gate_batches += 1
 
+                # Track cross-attention weights for TensorBoard
+                if "cross_attn_weights" in outputs:
+                    attn_mean = outputs["cross_attn_weights"].detach().mean().item()
+                    running_avg_cross_attn_weight = (running_avg_cross_attn_weight * cross_attn_batches + attn_mean) / (
+                        cross_attn_batches + 1
+                    )
+                    cross_attn_batches += 1
+
                 del outputs, tokens, targets
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
@@ -960,6 +974,8 @@ class Trainer:
         avg_losses = {key: value / num_batches for key, value in total_losses.items()}
         if gmu_gate_batches > 0:
             avg_losses["gmu_gate_mean"] = running_avg_gmu_gate
+        if cross_attn_batches > 0:
+            avg_losses["cross_attn_weight_mean"] = running_avg_cross_attn_weight
         return avg_losses
 
     def validate_epoch(

@@ -54,7 +54,7 @@ class GMU(nn.Module):
 ---
 
 ### FUS-2: Cross-Attention Fusion
-**Priority:** HIGH | **Effort:** 5-6 hours | **Status:** Not Started
+**Priority:** HIGH | **Effort:** 5-6 hours | **Status:** Complete
 
 Position-specific metadata modulation via cross-attention.
 
@@ -69,10 +69,10 @@ Position-specific metadata modulation via cross-attention.
 - Cross-attention: Each ASV position attends differently to metadata
 
 **Acceptance Criteria:**
-- [ ] `--categorical-fusion cross-attention` works
-- [ ] Per-position attention weights extractable
-- [ ] `--cross-attn-heads` configurable (default 8)
-- [ ] 20+ unit tests
+- [x] `--categorical-fusion cross-attention` works
+- [x] Per-position attention weights extractable
+- [x] `--cross-attn-heads` configurable (default 8)
+- [x] 20+ unit tests (26 unit tests + 7 integration tests)
 
 **Files:** `aam/models/fusion.py`, `aam/models/sequence_predictor.py`, `aam/cli/train.py`, `tests/test_fusion.py`
 
@@ -335,7 +335,7 @@ optimizer = AdamW(param_groups, weight_decay=weight_decay)
 | Ticket | Description | Effort | Priority | Status |
 |--------|-------------|--------|----------|--------|
 | **FUS-1** | GMU baseline | 3-4h | HIGH | Complete |
-| **FUS-2** | Cross-attention fusion | 5-6h | HIGH | Not Started |
+| **FUS-2** | Cross-attention fusion | 5-6h | HIGH | Complete |
 | **FUS-3** | Perceiver fusion | 6-8h | LOW | Not Started |
 | **CLN-1** | Output constraint consolidation | 3-4h | MEDIUM | Not Started |
 | **CLN-2** | Normalization unification | 3-4h | MEDIUM | Not Started |

@@ -1035,6 +1035,133 @@ class TestCategoricalIntegration:
         assert not torch.isnan(result["count_prediction"]).any()
         assert not torch.isnan(result["gmu_gate"]).any()
 
+    # Cross-Attention fusion tests
+    def test_init_with_categoricals_cross_attention(self, categorical_cardinalities):
+        """Test initialization with categorical conditioning (cross-attention fusion)."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_embed_dim=16,
+            categorical_fusion="cross-attention",
+            cross_attn_heads=4,
+        )
+        assert model.categorical_embedder is not None
+        assert model.categorical_projection is None
+        assert model.gmu is None
+        assert model.cross_attn_fusion is not None
+        assert model.categorical_fusion == "cross-attention"
+        assert model.cross_attn_heads == 4
+        # Cross-attention dimensions
+        total_cat_dim = 16 * 2  # 2 columns * 16 embed_dim
+        assert model.cross_attn_fusion.seq_dim == 64
+        assert model.cross_attn_fusion.cat_dim == total_cat_dim
+        assert model.cross_attn_fusion.num_heads == 4
+
+    def test_forward_with_categoricals_cross_attention(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test forward pass with categorical conditioning (cross-attention fusion)."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_fusion="cross-attention",
+        )
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        assert "target_prediction" in result
+        assert "count_prediction" in result
+        assert "cross_attn_weights" in result
+        assert result["target_prediction"].shape == (2, 1)
+        assert result["count_prediction"].shape == (2, 10, 1)
+        # Attention weights: [B, num_heads, seq_len, num_metadata_tokens=1]
+        assert result["cross_attn_weights"].shape == (2, 8, 10, 1)
+
+    def test_cross_attention_no_weights_without_categorical_ids(self, sample_tokens, categorical_cardinalities):
+        """Test that cross-attention doesn't output weights when no categorical_ids provided."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_fusion="cross-attention",
+        )
+        result = model(sample_tokens, categorical_ids=None)
+        assert "cross_attn_weights" not in result
+
+    def test_cross_attention_gradients_flow(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test that gradients flow through cross-attention."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_fusion="cross-attention",
+        )
+        model.train()
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        loss = result["target_prediction"].sum()
+        loss.backward()
+
+        # Check cross-attention gradients
+        assert model.cross_attn_fusion.cat_projection.weight.grad is not None
+
+    def test_cross_attention_categorical_affects_prediction(self, sample_tokens, categorical_cardinalities):
+        """Test that different categorical values produce different predictions with cross-attention."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_fusion="cross-attention",
+        )
+        cat_ids_1 = {"location": torch.tensor([1, 1]), "season": torch.tensor([1, 1])}
+        cat_ids_2 = {"location": torch.tensor([2, 2]), "season": torch.tensor([2, 2])}
+
+        result_1 = model(sample_tokens, categorical_ids=cat_ids_1)
+        result_2 = model(sample_tokens, categorical_ids=cat_ids_2)
+
+        # Different categorical values should produce different predictions
+        assert not torch.allclose(
+            result_1["target_prediction"],
+            result_2["target_prediction"],
+        )
+
+    def test_cross_attention_no_nan_outputs(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test that cross-attention forward pass produces no NaN outputs."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_fusion="cross-attention",
+        )
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        assert not torch.isnan(result["target_prediction"]).any()
+        assert not torch.isnan(result["count_prediction"]).any()
+        assert not torch.isnan(result["cross_attn_weights"]).any()
+
+    def test_cross_attention_custom_heads(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test cross-attention with custom number of heads."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_fusion="cross-attention",
+            cross_attn_heads=2,
+        )
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        # With 2 heads, weights shape should be [B, 2, seq_len, 1]
+        assert result["cross_attn_weights"].shape == (2, 2, 10, 1)
+
 
 class TestOutputActivation:
     """Test suite for output activation constraints in SequencePredictor."""
