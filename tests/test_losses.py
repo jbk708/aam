@@ -383,12 +383,14 @@ class TestEvaluatorQuantileExtraction:
         evaluator = Evaluator(model, loss_fn, device)
 
         # 3D predictions: [batch=4, out_dim=2, num_quantiles=3]
-        predictions = torch.tensor([
-            [[0.1, 0.5, 0.9], [0.2, 0.6, 1.0]],
-            [[0.15, 0.55, 0.95], [0.25, 0.65, 1.05]],
-            [[0.12, 0.52, 0.92], [0.22, 0.62, 1.02]],
-            [[0.18, 0.58, 0.98], [0.28, 0.68, 1.08]],
-        ])
+        predictions = torch.tensor(
+            [
+                [[0.1, 0.5, 0.9], [0.2, 0.6, 1.0]],
+                [[0.15, 0.55, 0.95], [0.25, 0.65, 1.05]],
+                [[0.12, 0.52, 0.92], [0.22, 0.62, 1.02]],
+                [[0.18, 0.58, 0.98], [0.28, 0.68, 1.08]],
+            ]
+        )
 
         result = evaluator._extract_median_quantile(predictions)
 
