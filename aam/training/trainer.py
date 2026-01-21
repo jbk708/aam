@@ -1227,11 +1227,13 @@ class Trainer:
         pred_np = predictions.numpy().squeeze()
         actual_np = actuals.numpy().squeeze()
 
-        df = pd.DataFrame({
-            "sample_id": sample_ids,
-            "prediction": pred_np,
-            "actual": actual_np,
-        })
+        df = pd.DataFrame(
+            {
+                "sample_id": sample_ids,
+                "prediction": pred_np,
+                "actual": actual_np,
+            }
+        )
 
         output_path = Path(checkpoint_dir).parent / "val_predictions.tsv"
         if output_path.exists():
