@@ -223,7 +223,7 @@ class Evaluator:
         loss_fn: nn.Module,
         device: torch.device,
         mixed_precision: Optional[str] = None,
-        target_normalization_params: Optional[Dict[str, float]] = None,
+        target_normalization_params: Optional[Dict[str, Any]] = None,
         count_normalization_params: Optional[Dict[str, float]] = None,
     ):
         """Initialize Evaluator.
@@ -233,7 +233,10 @@ class Evaluator:
             loss_fn: Loss function
             device: Device to run evaluation on
             mixed_precision: Mixed precision mode ('fp16', 'bf16', or None)
-            target_normalization_params: Dict with 'target_min', 'target_max', 'target_scale'
+            target_normalization_params: Dict with normalization params. May include
+                'target_min', 'target_max', 'target_scale' (legacy min-max),
+                'global_normalizer' (GlobalNormalizer state dict for zscore/minmax),
+                'category_normalizer' (CategoryNormalizer state dict), 'log_transform' (bool)
             count_normalization_params: Dict with 'count_min', 'count_max', 'count_scale'
         """
         self.model = model
@@ -286,8 +289,15 @@ class Evaluator:
         if "category_normalizer" in self.target_normalization_params:
             return result
 
-        # First, denormalize if normalization was applied
-        if "target_scale" in self.target_normalization_params:
+        # Use GlobalNormalizer if present (handles both zscore and minmax)
+        if "global_normalizer" in self.target_normalization_params:
+            from aam.data.normalization import GlobalNormalizer
+
+            normalizer_state = cast(Dict[str, Any], self.target_normalization_params["global_normalizer"])
+            normalizer = GlobalNormalizer.from_dict(normalizer_state)
+            result = cast(torch.Tensor, normalizer.denormalize(result))
+        # Legacy path: direct min-max params
+        elif "target_scale" in self.target_normalization_params:
             target_min = self.target_normalization_params["target_min"]
             target_scale = self.target_normalization_params["target_scale"]
             result = result * target_scale + target_min

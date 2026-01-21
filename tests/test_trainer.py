@@ -2354,6 +2354,164 @@ class TestTrainerTargetNormalization:
         # exp(88) is approximately 1.65e38
         assert (denormalized > 1e30).all(), "Large values should still produce large outputs"
 
+    def test_trainer_denormalize_zscore_with_global_normalizer(self, small_predictor, loss_fn, device):
+        """Test that Trainer._denormalize_targets works with z-score GlobalNormalizer."""
+        # Z-score normalization params from GlobalNormalizer.to_dict()
+        normalization_params = {
+            "global_normalizer": {
+                "method": "zscore",
+                "min_val": 10.0,
+                "max_val": 110.0,
+                "scale": 100.0,
+                "mean": 60.0,
+                "std": 25.0,
+            }
+        }
+
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+            target_normalization_params=normalization_params,
+        )
+
+        # Z-score normalized values: (x - mean) / std
+        # z = -2 => x = -2 * 25 + 60 = 10
+        # z = 0  => x = 0 * 25 + 60 = 60
+        # z = 2  => x = 2 * 25 + 60 = 110
+        normalized = torch.tensor([-2.0, 0.0, 2.0])
+        denormalized = trainer._denormalize_targets(normalized)
+        expected = torch.tensor([10.0, 60.0, 110.0])
+        torch.testing.assert_close(denormalized, expected)
+
+    def test_trainer_denormalize_zscore_with_log_transform(self, small_predictor, loss_fn, device):
+        """Test Trainer._denormalize_targets with z-score and log transform."""
+        # Simulate log-z-score transform: log(x+1) then z-score
+        # Original values: 0, ~147, ~400 -> log: 0, 5, 6 -> z-score with mean=3.67, std=2.49
+        log_mean = 3.67
+        log_std = 2.49
+
+        normalization_params = {
+            "global_normalizer": {
+                "method": "zscore",
+                "min_val": 0.0,
+                "max_val": 6.0,
+                "scale": 6.0,
+                "mean": log_mean,
+                "std": log_std,
+            },
+            "log_transform": True,
+        }
+
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+            target_normalization_params=normalization_params,
+        )
+
+        # z = -1.47 => log = -1.47 * 2.49 + 3.67 = 0.0 => x = exp(0) - 1 = 0
+        # z = 0.53  => log = 0.53 * 2.49 + 3.67 = 4.99 => x = exp(4.99) - 1 ≈ 146
+        # z = 0.93  => log = 0.93 * 2.49 + 3.67 = 5.99 => x = exp(5.99) - 1 ≈ 398
+        z_scores = torch.tensor([-1.47, 0.53, 0.93])
+        denormalized = trainer._denormalize_targets(z_scores)
+
+        # Check approximate values
+        assert denormalized[0].item() < 1.0, "First value should be near 0"
+        assert 100 < denormalized[1].item() < 200, "Second value should be around 146"
+        assert 300 < denormalized[2].item() < 500, "Third value should be around 398"
+
+    def test_trainer_denormalize_minmax_with_global_normalizer(self, small_predictor, loss_fn, device):
+        """Test that min-max GlobalNormalizer also works via global_normalizer key."""
+        # Min-max normalization params from GlobalNormalizer.to_dict()
+        normalization_params = {
+            "global_normalizer": {
+                "method": "minmax",
+                "min_val": 10.0,
+                "max_val": 110.0,
+                "scale": 100.0,
+                "mean": 60.0,
+                "std": 25.0,
+            }
+        }
+
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+            target_normalization_params=normalization_params,
+        )
+
+        # Min-max: normalized * scale + min_val
+        # 0.0 => 0 * 100 + 10 = 10
+        # 0.5 => 0.5 * 100 + 10 = 60
+        # 1.0 => 1.0 * 100 + 10 = 110
+        normalized = torch.tensor([0.0, 0.5, 1.0])
+        denormalized = trainer._denormalize_targets(normalized)
+        expected = torch.tensor([10.0, 60.0, 110.0])
+        torch.testing.assert_close(denormalized, expected)
+
+    def test_evaluator_denormalize_zscore_directly(self, small_predictor, loss_fn, device):
+        """Test Evaluator._denormalize_targets directly with z-score params."""
+        from aam.training.evaluation import Evaluator
+
+        normalization_params = {
+            "global_normalizer": {
+                "method": "zscore",
+                "min_val": 0.0,
+                "max_val": 100.0,
+                "scale": 100.0,
+                "mean": 50.0,
+                "std": 20.0,
+            }
+        }
+
+        evaluator = Evaluator(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+            target_normalization_params=normalization_params,
+        )
+
+        # z = -1 => x = -1 * 20 + 50 = 30
+        # z = 0  => x = 0 * 20 + 50 = 50
+        # z = 1  => x = 1 * 20 + 50 = 70
+        normalized = torch.tensor([-1.0, 0.0, 1.0])
+        denormalized = evaluator._denormalize_targets(normalized)
+        expected = torch.tensor([30.0, 50.0, 70.0])
+        torch.testing.assert_close(denormalized, expected)
+
+    def test_global_normalizer_takes_precedence_over_legacy_params(self, small_predictor, loss_fn, device):
+        """Test that global_normalizer is used when both old and new params are present."""
+        # Both legacy params and global_normalizer present - global_normalizer should win
+        normalization_params = {
+            "target_min": 0.0,
+            "target_max": 100.0,
+            "target_scale": 100.0,
+            "global_normalizer": {
+                "method": "zscore",
+                "min_val": 0.0,
+                "max_val": 100.0,
+                "scale": 100.0,
+                "mean": 50.0,
+                "std": 10.0,
+            },
+        }
+
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+            target_normalization_params=normalization_params,
+        )
+
+        # If using z-score: z=1 => 1*10+50 = 60
+        # If using legacy min-max: n=1 => 1*100+0 = 100
+        normalized = torch.tensor([1.0])
+        denormalized = trainer._denormalize_targets(normalized)
+        expected_zscore = torch.tensor([60.0])
+        torch.testing.assert_close(denormalized, expected_zscore)
+
 
 class TestProgressBarFormat:
     """Test progress bar formatting for different training modes."""
