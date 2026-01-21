@@ -147,8 +147,23 @@ aam train \
 |--------|-------------|---------|
 | `--categorical-columns` | Comma-separated column names from metadata | - |
 | `--categorical-embed-dim` | Embedding dimension per category | 16 |
-| `--categorical-fusion` | `concat` (concatenate + project) or `add` (project + add) | concat |
-| `--conditional-output-scaling` | Columns for per-category output scale/bias (requires `--categorical-columns`) | - |
+| `--categorical-fusion` | Fusion strategy (see below) | concat |
+| `--cross-attn-heads` | Attention heads for cross-attention fusion | 8 |
+| `--conditional-output-scaling` | Columns for per-category output scale/bias | - |
+| `--film-conditioning` | Columns for FiLM conditioning in MLP layers | - |
+
+**Fusion Strategies (`--categorical-fusion`):**
+
+| Strategy | Description |
+|----------|-------------|
+| `concat` | Concatenate embeddings + project back to embedding_dim |
+| `add` | Project embeddings to embedding_dim + add |
+| `gmu` | Gated Multimodal Unit - learns to weight sequence vs categorical info |
+| `cross-attention` | Each ASV position attends to categorical metadata independently |
+
+**GMU (Gated Multimodal Unit):** Fuses after pooling using a learned gate that weights sequence vs categorical contributions. Good when you want the model to adaptively balance information sources.
+
+**Cross-Attention:** Position-specific fusion where each ASV can attend differently to metadata. Use when different taxa should respond differently to the same categorical feature (e.g., some taxa respond strongly to "summer" while others don't).
 
 **Conditional Output Scaling:**
 
@@ -158,6 +173,18 @@ Learn per-category scale and bias parameters applied after the base prediction: 
 aam train \
   --categorical-columns "location,season" \
   --conditional-output-scaling "location" \
+  # ... other flags
+```
+
+**FiLM Conditioning:**
+
+Feature-wise Linear Modulation applies learned scale (gamma) and shift (beta) at each MLP hidden layer based on categorical features. Requires `--regressor-hidden-dims`:
+
+```bash
+aam train \
+  --categorical-columns "location,season" \
+  --regressor-hidden-dims "64,32" \
+  --film-conditioning "location,season" \
   # ... other flags
 ```
 
@@ -429,6 +456,7 @@ tensorboard --logdir <output_dir>/tensorboard
 - **Losses:** `train/total_loss`, `train/target_loss`, `train/unifrac_loss`, `train/nuc_loss`
 - **Regression:** `val/mae`, `val/mse`, `val/r2`
 - **Classification:** `val/accuracy`, `val/precision`, `val/recall`, `val/f1`
+- **Fusion:** `gmu/gate_mean` (GMU gate values), `cross_attn/weight_mean` (cross-attention weights)
 
 ## Testing
 
