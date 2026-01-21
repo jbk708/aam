@@ -98,14 +98,12 @@ class GlobalNormalizer:
         if not self._is_fitted:
             raise RuntimeError("GlobalNormalizer must be fitted before calling normalize()")
 
+        # Convert scalar to float for consistent arithmetic
+        value = target if isinstance(target, (torch.Tensor, np.ndarray)) else float(target)
+
         if self.method == "minmax":
-            if isinstance(target, (torch.Tensor, np.ndarray)):
-                return (target - self.min_val) / self.scale
-            return (float(target) - self.min_val) / self.scale
-        else:  # zscore
-            if isinstance(target, (torch.Tensor, np.ndarray)):
-                return (target - self.mean) / self.std
-            return (float(target) - self.mean) / self.std
+            return (value - self.min_val) / self.scale
+        return (value - self.mean) / self.std
 
     def denormalize(
         self,
@@ -125,14 +123,12 @@ class GlobalNormalizer:
         if not self._is_fitted:
             raise RuntimeError("GlobalNormalizer must be fitted before calling denormalize()")
 
+        # Convert scalar to float for consistent arithmetic
+        value = prediction if isinstance(prediction, (torch.Tensor, np.ndarray)) else float(prediction)
+
         if self.method == "minmax":
-            if isinstance(prediction, (torch.Tensor, np.ndarray)):
-                return prediction * self.scale + self.min_val
-            return float(prediction) * self.scale + self.min_val
-        else:  # zscore
-            if isinstance(prediction, (torch.Tensor, np.ndarray)):
-                return prediction * self.std + self.mean
-            return float(prediction) * self.std + self.mean
+            return value * self.scale + self.min_val
+        return value * self.std + self.mean
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize normalizer state to dictionary for checkpointing.
@@ -196,52 +192,39 @@ def parse_target_transform(
     Raises:
         ValueError: If conflicting options are specified
     """
-    # Check for new flag usage
-    if target_transform is not None:
-        # Warn if legacy flags are also used
-        legacy_used = []
-        if not normalize_targets:  # default is True, so explicit False matters
-            legacy_used.append("--no-normalize-targets")
-        if normalize_targets_by:
-            legacy_used.append("--normalize-targets-by")
-        if log_transform_targets:
-            legacy_used.append("--log-transform-targets")
+    # Build list of legacy flags that differ from defaults
+    legacy_flags = []
+    if not normalize_targets:
+        legacy_flags.append("--no-normalize-targets")
+    if normalize_targets_by:
+        legacy_flags.append("--normalize-targets-by")
+    if log_transform_targets:
+        legacy_flags.append("--log-transform-targets")
 
-        if legacy_used:
+    # New flag takes precedence
+    if target_transform is not None:
+        if legacy_flags:
             warnings.warn(
-                f"--target-transform is set, ignoring legacy flags: {', '.join(legacy_used)}. "
+                f"--target-transform is set, ignoring legacy flags: {', '.join(legacy_flags)}. "
                 "Remove legacy flags to suppress this warning.",
                 DeprecationWarning,
                 stacklevel=3,
             )
-
         uses_log = target_transform.startswith("log-")
         return target_transform, uses_log  # type: ignore[return-value]
 
-    # Map legacy flags to new transform
-    has_legacy = (not normalize_targets) or normalize_targets_by or log_transform_targets
+    # Convert legacy flags to new transform
+    resolved = _legacy_to_new_transform(normalize_targets, normalize_targets_by, log_transform_targets)
 
-    if has_legacy:
-        # Emit deprecation warnings for legacy flags
-        legacy_flags = []
-        if not normalize_targets:
-            legacy_flags.append("--no-normalize-targets")
-        if normalize_targets_by:
-            legacy_flags.append("--normalize-targets-by")
-        if log_transform_targets:
-            legacy_flags.append("--log-transform-targets")
+    if legacy_flags:
+        warnings.warn(
+            f"Legacy flags {', '.join(legacy_flags)} are deprecated. "
+            f"Use --target-transform {resolved} instead.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
 
-        if legacy_flags:
-            new_flag = _legacy_to_new_transform(normalize_targets, normalize_targets_by, log_transform_targets)
-            warnings.warn(
-                f"Legacy flags {', '.join(legacy_flags)} are deprecated. "
-                f"Use --target-transform {new_flag} instead.",
-                DeprecationWarning,
-                stacklevel=3,
-            )
-
-    # Convert legacy flags to transform type
-    return _legacy_to_new_transform(normalize_targets, normalize_targets_by, log_transform_targets), log_transform_targets
+    return resolved, log_transform_targets
 
 
 def _legacy_to_new_transform(
@@ -419,10 +402,8 @@ class CategoryNormalizer:
             raise RuntimeError("CategoryNormalizer must be fitted before calling normalize()")
 
         mean, std = self._get_stats(category_key)
-
-        if isinstance(target, (torch.Tensor, np.ndarray)):
-            return (target - mean) / std
-        return (float(target) - mean) / std
+        value = target if isinstance(target, (torch.Tensor, np.ndarray)) else float(target)
+        return (value - mean) / std
 
     def denormalize(
         self,
@@ -445,10 +426,8 @@ class CategoryNormalizer:
             raise RuntimeError("CategoryNormalizer must be fitted before calling denormalize()")
 
         mean, std = self._get_stats(category_key)
-
-        if isinstance(prediction, (torch.Tensor, np.ndarray)):
-            return prediction * std + mean
-        return float(prediction) * std + mean
+        value = prediction if isinstance(prediction, (torch.Tensor, np.ndarray)) else float(prediction)
+        return value * std + mean
 
     def _get_stats(self, category_key: str) -> tuple:
         """Get mean and std for a category, falling back to global if unseen.
