@@ -226,42 +226,42 @@ class TestComputeMetrics:
 class TestCreatePredictionPlot:
     """Tests for create_prediction_plot function."""
 
-    def test_create_prediction_plot_returns_figure(self):
-        """Test that plot creation returns a matplotlib figure."""
+    @pytest.fixture
+    def sample_data(self):
+        """Sample prediction data for plotting tests."""
+        return {
+            "y_true": np.array([1.0, 2.0, 3.0, 4.0]),
+            "y_pred": np.array([1.1, 2.2, 2.9, 4.1]),
+            "r2": 0.95,
+            "mae": 0.15,
+            "rmse": 0.18,
+        }
+
+    def test_returns_figure_and_can_save(self, temp_dir, sample_data):
+        """Test that plot creation returns a matplotlib figure and can be saved."""
         import matplotlib.pyplot as plt
 
-        y_true = np.array([1.0, 2.0, 3.0, 4.0])
-        y_pred = np.array([1.1, 2.2, 2.9, 4.1])
-
-        fig = create_prediction_plot(y_true, y_pred, r2=0.95, mae=0.15, rmse=0.18)
+        fig = create_prediction_plot(**sample_data)
 
         assert isinstance(fig, plt.Figure)
-        plt.close(fig)
 
-    def test_create_prediction_plot_can_save(self, temp_dir):
-        """Test that plot can be saved to file."""
-        y_true = np.array([1.0, 2.0, 3.0, 4.0])
-        y_pred = np.array([1.1, 2.2, 2.9, 4.1])
-
-        fig = create_prediction_plot(y_true, y_pred, r2=0.95, mae=0.15, rmse=0.18)
         plot_path = temp_dir / "test_plot.png"
         fig.savefig(plot_path)
-
         assert plot_path.exists()
         assert plot_path.stat().st_size > 0
 
-    def test_create_prediction_plot_contains_metrics_in_title(self):
+        plt.close(fig)
+
+    def test_contains_metrics_in_title(self, sample_data):
         """Test that plot title contains metrics."""
         import matplotlib.pyplot as plt
 
-        y_true = np.array([1.0, 2.0, 3.0, 4.0])
-        y_pred = np.array([1.1, 2.2, 2.9, 4.1])
+        fig = create_prediction_plot(**sample_data)
 
-        fig = create_prediction_plot(y_true, y_pred, r2=0.95, mae=0.15, rmse=0.18)
-
-        ax = fig.axes[0]
-        title = ax.get_title()
-        assert "0.95" in title or "R²" in title
+        title = fig.axes[0].get_title()
+        assert "0.95" in title
+        assert "0.15" in title
+        assert "0.18" in title
         plt.close(fig)
 
 

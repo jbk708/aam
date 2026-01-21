@@ -627,7 +627,7 @@ Predictions saved to: predictions.tsv
 - [x] Saves predictions in same format as AAM's val_predictions.tsv
 - [x] Generates prediction plot matching AAM's TensorBoard style
 - [x] Handles missing samples gracefully (warns if sample not in BIOM)
-- [x] 21 tests (4 load_sample_ids, 2 load_biom, 3 train_rf, 3 metrics, 3 plot, 6 CLI)
+- [x] 20 tests (4 load_sample_ids, 2 load_biom, 3 train_rf, 3 metrics, 2 plot, 6 CLI)
 
 **Dependencies:**
 - CLN-10 (Training Output Artifacts) - provides train_samples.txt and val_samples.txt

@@ -88,15 +88,16 @@ def create_prediction_plot(
     max_val = max(y_true.max(), y_pred.max())
     ax.plot([min_val, max_val], [min_val, max_val], "k--", linewidth=1, label="Perfect Prediction", alpha=0.5)
 
+    metrics_str = f"R² = {r2:.4f}, MAE = {mae:.4f}"
     if len(y_true) > 1:
         z = np.polyfit(y_true, y_pred, 1)
         p = np.poly1d(z)
         x_line = np.linspace(min_val, max_val, 100)
-        ax.plot(x_line, p(x_line), "b-", linewidth=2, label=f"Linear Fit, R² = {r2:.4f}, MAE = {mae:.4f}")
+        ax.plot(x_line, p(x_line), "b-", linewidth=2, label=f"Linear Fit, {metrics_str}")
 
     ax.set_xlabel("Actual")
     ax.set_ylabel("Predicted")
-    ax.set_title(f"Random Forest Baseline - R² = {r2:.3f}, MAE = {mae:.3f}, RMSE = {rmse:.3f}")
+    ax.set_title(f"Random Forest Baseline ({metrics_str}, RMSE = {rmse:.4f})")
     ax.legend(loc="upper left")
 
     plt.tight_layout()
