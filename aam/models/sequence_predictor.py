@@ -605,9 +605,7 @@ class SequencePredictor(nn.Module):
         elif self.categorical_fusion == "cross-attention":
             if self.cross_attn_fusion is not None and self.categorical_embedder is not None and categorical_ids is not None:
                 cat_emb = self.categorical_embedder(categorical_ids)
-                target_input, cross_attn_weights = self.cross_attn_fusion(
-                    base_embeddings, cat_emb, return_weights=True
-                )
+                target_input, cross_attn_weights = self.cross_attn_fusion(base_embeddings, cat_emb, return_weights=True)
             else:
                 target_input = base_embeddings
         else:

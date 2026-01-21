@@ -69,7 +69,7 @@ def get_model_summary(
         lines.append(f"{layer_name:<45} {format_number(params):>15} {trainable_str:>10}")
 
         # Show sub-components for key modules
-        if hasattr(module, 'named_children'):
+        if hasattr(module, "named_children"):
             for sub_name, sub_module in module.named_children():
                 sub_params = count_parameters(sub_module)
                 sub_trainable = count_parameters(sub_module, trainable_only=True)

@@ -451,9 +451,7 @@ class TestCrossAttentionFusion:
         output = fusion(seq_repr, cat_emb)
         # Output should be normalized version of input (LayerNorm applied to residual)
         # Check that output is still correlated with input
-        correlation = torch.corrcoef(
-            torch.stack([seq_repr.flatten(), output.flatten()])
-        )[0, 1]
+        correlation = torch.corrcoef(torch.stack([seq_repr.flatten(), output.flatten()]))[0, 1]
         assert correlation > 0.5  # Should be positively correlated
 
     # Dropout test
