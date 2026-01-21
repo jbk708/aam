@@ -1208,12 +1208,7 @@ class Trainer:
 
             # Save validation predictions if not saved during training
             # This handles the case where training resumed and validation never improved
-            if (
-                not val_predictions_saved
-                and last_full_val_predictions
-                and checkpoint_dir
-                and is_main_process()
-            ):
+            if not val_predictions_saved and last_full_val_predictions and checkpoint_dir and is_main_process():
                 self._save_val_predictions(last_full_val_predictions, checkpoint_dir)
 
         return history
@@ -1234,8 +1229,7 @@ class Trainer:
         sample_ids = full_predictions.get("sample_ids", [])
         if not sample_ids:
             logger.warning(
-                "No sample_ids collected for val_predictions.tsv. "
-                "Ensure DataLoader batches include 'sample_ids' key."
+                "No sample_ids collected for val_predictions.tsv. Ensure DataLoader batches include 'sample_ids' key."
             )
             return
 
