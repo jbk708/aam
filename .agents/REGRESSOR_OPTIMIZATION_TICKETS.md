@@ -1,9 +1,9 @@
 # Regressor Optimization Tickets
 
 **Last Updated:** 2026-01-21
-**Status:** 4 tickets remaining (~13-18 hours)
+**Status:** 3 tickets remaining (~11-15 hours)
 
-**Completed:** REG-1 to REG-5, REG-BUG-1 (see `ARCHIVED_TICKETS.md`)
+**Completed:** REG-1 to REG-6, REG-BUG-1 (see `ARCHIVED_TICKETS.md`)
 
 ---
 
@@ -24,7 +24,7 @@ Predict multiple quantiles for uncertainty estimation.
 ---
 
 ### REG-6: Asymmetric Loss
-**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Complete
 
 Different penalties for over/under prediction.
 
@@ -32,7 +32,13 @@ Different penalties for over/under prediction.
 - `--loss-type asymmetric`
 - `--over-penalty 2.0 --under-penalty 1.0`
 
-**Files:** `aam/training/losses.py`, `aam/cli/train.py`
+**Acceptance Criteria:**
+- [x] `--loss-type asymmetric` works
+- [x] `--over-penalty` and `--under-penalty` CLI flags
+- [x] Validation for positive penalty values
+- [x] 14 unit tests
+
+**Files:** `aam/training/losses.py`, `aam/cli/train.py`, `tests/test_losses.py`
 
 ---
 
@@ -79,8 +85,8 @@ Separate expert heads per category with learned routing.
 | Ticket | Description | Effort | Priority | Status |
 |--------|-------------|--------|----------|--------|
 | **REG-5** | Quantile regression | 4-6h | MEDIUM | Complete |
-| **REG-6** | Asymmetric loss | 2-3h | MEDIUM | Not Started |
+| **REG-6** | Asymmetric loss | 2-3h | MEDIUM | Complete |
 | **REG-7** | Residual head | 2-3h | LOW | Not Started |
 | **REG-8** | Per-output loss | 3-4h | LOW | Not Started |
 | **REG-9** | Mixture of Experts | 6-8h | LOW | Not Started |
-| **Total** | | **13-18h** | |
+| **Total** | | **11-15h** | |
