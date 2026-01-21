@@ -78,7 +78,7 @@ def get_model_summary(
 
                 sub_trainable_str = "Yes" if sub_trainable > 0 else "No"
                 if sub_trainable > 0 and sub_trainable < sub_params:
-                    sub_trainable_str = f"Partial"
+                    sub_trainable_str = "Partial"
 
                 lines.append(f"{sub_layer_name:<45} {format_number(sub_params):>15} {sub_trainable_str:>10}")
 
