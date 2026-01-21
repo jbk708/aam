@@ -598,16 +598,16 @@ class SequencePredictor(nn.Module):
         count_embeddings = self.count_encoder(base_embeddings, mask=asv_mask)
         count_prediction = torch.sigmoid(self.count_head(count_embeddings))
 
-        # GMU and cross-attention use their own fusion; concat/add use _fuse_categorical
+        # Fusion strategy determines how categorical embeddings are combined:
+        # - gmu: fuses after pooling (handled below)
+        # - cross-attention: fuses before target encoder via attention
+        # - concat/add: fuses via _fuse_categorical
         cross_attn_weights = None
         if self.categorical_fusion == "gmu":
             target_input = base_embeddings
-        elif self.categorical_fusion == "cross-attention":
-            if self.cross_attn_fusion is not None and self.categorical_embedder is not None and categorical_ids is not None:
-                cat_emb = self.categorical_embedder(categorical_ids)
-                target_input, cross_attn_weights = self.cross_attn_fusion(base_embeddings, cat_emb, return_weights=True)
-            else:
-                target_input = base_embeddings
+        elif self.categorical_fusion == "cross-attention" and self.cross_attn_fusion is not None and categorical_ids is not None:
+            cat_emb = self.categorical_embedder(categorical_ids)
+            target_input, cross_attn_weights = self.cross_attn_fusion(base_embeddings, cat_emb, return_weights=True)
         else:
             target_input = self._fuse_categorical(base_embeddings, categorical_ids)
 
