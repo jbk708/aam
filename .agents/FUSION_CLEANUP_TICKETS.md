@@ -19,7 +19,7 @@ Two ticket series addressing:
 ## FUS: Attention Fusion Tickets
 
 ### FUS-1: Gated Multimodal Unit (GMU)
-**Priority:** HIGH | **Effort:** 3-4 hours | **Status:** Not Started
+**Priority:** HIGH | **Effort:** 3-4 hours | **Status:** Complete
 
 Learned gating between sequence and categorical modalities.
 
@@ -45,9 +45,9 @@ class GMU(nn.Module):
 ```
 
 **Acceptance Criteria:**
-- [ ] `--categorical-fusion gmu` works
-- [ ] Gate values logged to TensorBoard
-- [ ] 15+ unit tests
+- [x] `--categorical-fusion gmu` works
+- [x] Gate values logged to TensorBoard
+- [x] 15+ unit tests (21 GMU tests + 7 integration tests)
 
 **Files:** `aam/models/fusion.py`, `aam/models/sequence_predictor.py`, `aam/cli/train.py`, `tests/test_fusion.py`
 

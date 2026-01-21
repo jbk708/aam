@@ -22,11 +22,10 @@
 
 ## Priority Summary
 
-### HIGH (2 tickets, ~9 hours)
+### HIGH (1 ticket, ~5-6 hours)
 
 | Ticket | Description | Effort | File |
 |--------|-------------|--------|------|
-| **FUS-1** | GMU baseline fusion | 3-4h | FUSION_CLEANUP |
 | **FUS-2** | Cross-attention fusion | 5-6h | FUSION_CLEANUP |
 
 ### MEDIUM (8 tickets, ~24-35 hours)
@@ -62,21 +61,15 @@
 
 ## Recommended Next Steps
 
-### 1. Attention Fusion MVP (HIGH - ~9 hours)
+### 1. Attention Fusion MVP (HIGH - ~5-6 hours)
 
 Position-specific categorical conditioning:
 
 ```
-FUS-1 (GMU baseline) → FUS-2 (Cross-attention)
+FUS-2 (Cross-attention) - builds on FUS-1 (complete)
 ```
 
-### 2. Quick Wins (LOW effort, immediate impact)
-
-```
-CLN-3 (remove dead code, 1-2h) → CLN-5 (DataParallel parity, 2-3h)
-```
-
-### 3. User Experience (MEDIUM - ~12 hours)
+### 2. User Experience (MEDIUM - ~12 hours)
 
 Flag consolidation and documentation:
 
@@ -84,7 +77,7 @@ Flag consolidation and documentation:
 CLN-1 (output flags) → CLN-2 (normalization) → CLN-6 (categorical docs)
 ```
 
-### 4. Loss Functions (MEDIUM - ~7 hours)
+### 3. Loss Functions (MEDIUM - ~7 hours)
 
 ```
 REG-5 (quantile) → REG-6 (asymmetric)
@@ -92,17 +85,18 @@ REG-5 (quantile) → REG-6 (asymmetric)
 
 ---
 
-## Recently Completed (2026-01-14)
+## Recently Completed (2026-01-20)
 
 | Ticket | Description |
 |--------|-------------|
+| FUS-1 | GMU fusion (28 tests) |
+| CLN-5 | DataParallel in train.py |
+| CLN-3 | Remove unused params |
 | REG-BUG-1 | FiLM identity initialization fix |
 | REG-4 | FiLM layers (26 tests) |
 | REG-3 | Conditional output scaling (22 tests) |
 | REG-2 | Per-category normalization (26 tests) |
 | REG-1 | MLP regression head (25 tests) |
-| PYT-BUG-1-4 | Distributed validation fixes |
-| PYT-12.1a/b/c | FSDP implementation (50 tests) |
 
 See `ARCHIVED_TICKETS.md` for full history.
 
