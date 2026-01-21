@@ -242,7 +242,7 @@ With `--freeze-base`, only the categorical embedder and target prediction head a
 | `--pretrained-encoder` | Load pre-trained SequenceEncoder checkpoint | - |
 | `--freeze-base` | Freeze base model parameters | False |
 | `--classifier` | Classification mode (requires `--out-dim > 1`) | False |
-| `--normalize-targets` | Normalize regression targets to [0,1] | **True** |
+| `--target-transform` | Target normalization strategy (see below) | minmax |
 | `--lr` | Learning rate | 1e-4 |
 | `--optimizer` | 'adamw', 'adam', or 'sgd' | adamw |
 | `--scheduler` | LR scheduler (see below) | warmup_cosine |
@@ -257,11 +257,40 @@ With `--freeze-base`, only the categorical embedder and target prediction head a
 | `--target-penalty` | Weight for target loss | 1.0 |
 | `--count-penalty` | Weight for count loss | 1.0 |
 
+### Target Normalization (`--target-transform`)
+
+Controls how regression targets are normalized during training:
+
+| Transform | Description | Use Case |
+|-----------|-------------|----------|
+| `none` | No normalization | Targets already in good range |
+| `minmax` | Scale to [0, 1] range | **Default.** Most regression tasks |
+| `zscore` | Global z-score (standardization) | Targets with outliers |
+| `zscore-category` | Per-category z-score | Different target distributions per group |
+| `log-minmax` | log(y+1) then minmax | Non-negative targets with wide range (0-600) |
+| `log-zscore` | log(y+1) then z-score | Wide range with outliers |
+
+**Example usage:**
+
+```bash
+# Default min-max normalization
+aam train --target-transform minmax ...
+
+# Log transform for wide-range targets (recommended for 0-600 range)
+aam train --target-transform log-minmax ...
+
+# Per-category normalization (e.g., different seasons have different baselines)
+aam train --target-transform zscore-category --normalize-by "season" ...
+```
+
+**Note:** For `zscore-category`, use `--normalize-by` to specify categorical columns.
+
 ### Regression Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--log-transform-targets` | Apply log(y+1) transform to targets | False |
+| `--target-transform` | Target normalization (see above) | minmax |
+| `--normalize-by` | Columns for per-category normalization | - |
 | `--bounded-targets` | Sigmoid to bound output to [0, 1] | False |
 | `--output-activation` | Non-negative constraint: 'none', 'relu', 'softplus', 'exp' | none |
 | `--learnable-output-scale` | Learnable scale and bias after target head | False |
@@ -269,12 +298,14 @@ With `--freeze-base`, only the categorical embedder and target prediction head a
 | `--regressor-dropout` | Dropout between MLP layers | 0.0 |
 
 **Choosing an output constraint:**
-- **`--log-transform-targets --no-normalize-targets`** (recommended for wide ranges): Use for non-negative targets with wide range (e.g., 0-600). Compresses range via log(y+1) to ~[0, 6.4], model predicts directly in log space, exp(x)-1 gives original scale. No sigmoid needed since log range is small.
+- **`--target-transform log-minmax`** (recommended for wide ranges): Use for non-negative targets with wide range (e.g., 0-600). Compresses range via log(y+1) to ~[0, 6.4], model predicts directly in log space, exp(x)-1 gives original scale.
 - **`--bounded-targets`**: Use when targets are in [0, 1] range (e.g., normalized values, proportions)
-- **`--output-activation softplus`**: Use for non-negative targets without normalization. Note: may cause flat predictions near 0 when combined with `--normalize-targets`
+- **`--output-activation softplus`**: Use for non-negative targets without normalization. Note: may cause flat predictions near 0 when combined with minmax normalization
 - **`--output-activation exp`**: Use for strictly positive targets, but can cause numerical instability
 
-**Note:** If using `--log-transform-targets` WITH `--normalize-targets` (not recommended), `--bounded-targets` is auto-enabled to prevent exp() overflow, but this can cause predictions to cluster at extremes due to sigmoid saturation.
+**Note:** With `log-minmax` or `log-zscore`, `--bounded-targets` is auto-enabled to prevent exp() overflow.
+
+**Deprecated flags:** `--normalize-targets`, `--no-normalize-targets`, `--normalize-targets-by`, and `--log-transform-targets` still work but emit deprecation warnings. Use `--target-transform` instead.
 
 ### Masked Autoencoder (Nucleotide Prediction)
 
