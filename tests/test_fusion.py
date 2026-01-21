@@ -207,9 +207,12 @@ class TestGMU:
         # cat_transform: cat_dim * seq_dim + seq_dim (bias)
         # gate: (seq_dim + cat_dim) * seq_dim + seq_dim (bias)
         expected = (
-            seq_dim * seq_dim + seq_dim  # seq_transform
-            + cat_dim * seq_dim + seq_dim  # cat_transform
-            + (seq_dim + cat_dim) * seq_dim + seq_dim  # gate
+            seq_dim * seq_dim
+            + seq_dim  # seq_transform
+            + cat_dim * seq_dim
+            + seq_dim  # cat_transform
+            + (seq_dim + cat_dim) * seq_dim
+            + seq_dim  # gate
         )
         actual = sum(p.numel() for p in gmu.parameters())
         assert actual == expected
