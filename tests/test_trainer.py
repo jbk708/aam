@@ -2497,7 +2497,7 @@ class TestTrainerTargetNormalization:
                 "scale": 100.0,
                 "mean": 50.0,
                 "std": 10.0,
-            }
+            },
         }
 
         trainer = Trainer(

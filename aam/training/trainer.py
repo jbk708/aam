@@ -99,7 +99,7 @@ class Trainer:
         max_grad_norm: Optional[float] = None,
         mixed_precision: Optional[str] = None,
         compile_model: bool = False,
-        target_normalization_params: Optional[Dict[str, float]] = None,
+        target_normalization_params: Optional[Dict[str, Any]] = None,
         count_normalization_params: Optional[Dict[str, float]] = None,
         train_sampler: Optional[DistributedSampler] = None,
         use_sharded_checkpoint: bool = False,
@@ -119,8 +119,8 @@ class Trainer:
             max_grad_norm: Maximum gradient norm for clipping (None to disable)
             mixed_precision: Mixed precision mode ('fp16', 'bf16', or None)
             compile_model: Whether to compile model with torch.compile() for optimization
-            target_normalization_params: Dict with 'target_min', 'target_max', 'target_scale' for
-                denormalizing predictions when computing metrics. If None, no denormalization is applied.
+            target_normalization_params: Dict with normalization params for denormalizing
+                predictions when computing metrics. If None, no denormalization is applied.
             count_normalization_params: Dict with 'count_min', 'count_max', 'count_scale' for
                 denormalizing count predictions when computing metrics. If None, no denormalization is applied.
             train_sampler: DistributedSampler for distributed training. When provided,
