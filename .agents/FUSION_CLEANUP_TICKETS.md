@@ -197,14 +197,14 @@ Feature parity: DataParallel exists in pretrain.py but not train.py.
 ---
 
 ### CLN-6: Simplify Categorical Conditioning Docs
-**Priority:** MEDIUM | **Effort:** 4-5 hours | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** 4-5 hours | **Status:** Complete
 
-Document and validate the three parallel categorical systems.
+Document and validate the categorical conditioning systems.
 
 **Current Systems:**
 1. Base fusion (`--categorical-fusion concat|add`)
-2. Conditional scaling (`--conditional-output-scaling`)
-3. FiLM (`--film-conditioning`)
+2. Advanced fusion (`--categorical-fusion gmu|cross-attention`)
+3. Conditional scaling (`--conditional-output-scaling`)
 
 **Scope:**
 - Add `--categorical-help` showing decision tree
@@ -215,13 +215,14 @@ Document and validate the three parallel categorical systems.
 |----------|-------------|
 | Simple metadata | `--categorical-fusion concat` |
 | Per-category shift | `concat` + `--conditional-output-scaling` |
-| Feature modulation | `--film-conditioning` |
-| Position-specific | `--categorical-fusion cross-attention` (FUS-2) |
+| Adaptive weighting | `--categorical-fusion gmu` |
+| Position-specific | `--categorical-fusion cross-attention` |
 
 **Acceptance Criteria:**
-- [ ] Decision tree in `--categorical-help`
-- [ ] Validation warnings for redundant combos
-- [ ] README updated
+- [x] Decision tree in `--categorical-help`
+- [x] Validation warnings for redundant combos
+- [x] README updated
+- [x] 3 tests (1 help output + 2 parametrized warning tests)
 
 **Files:** `aam/cli/train.py`, `README.md`, `tests/test_cli.py`
 
@@ -648,7 +649,7 @@ pred_std = torch.stack(predictions).std(dim=0)  # Optional confidence
 | **CLN-3** | Remove unused params | 1-2h | LOW | Complete |
 | **CLN-4** | Extract shared utilities | 2-3h | LOW | Not Started |
 | **CLN-5** | DataParallel in train.py | 2-3h | MEDIUM | Complete |
-| **CLN-6** | Categorical docs/validation | 4-5h | MEDIUM | Not Started |
+| **CLN-6** | Categorical docs/validation | 4-5h | MEDIUM | Complete |
 | **CLN-7** | Toggle count prediction | 2-3h | MEDIUM | Complete |
 | **CLN-8** | Categorical learning rate | 2-3h | MEDIUM | Not Started |
 | **CLN-9** | Remove FiLM conditioning | 2-3h | MEDIUM | Complete |

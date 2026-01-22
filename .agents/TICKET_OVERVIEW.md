@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-21
-**Status:** ~19 outstanding tickets (~68-114 hours)
+**Status:** ~18 outstanding tickets (~63-109 hours)
 
 ---
 
@@ -26,13 +26,12 @@
 
 No high priority tickets remaining.
 
-### MEDIUM (4 tickets, ~14-18 hours)
+### MEDIUM (3 tickets, ~9-13 hours)
 
 | Ticket | Description | Effort | File |
 |--------|-------------|--------|------|
 | **PYT-12.2** | Batch size optimization | 4-6h | PYTORCH |
 | **PYT-19.3** | Per-category loss weights | 3-4h | PYTORCH |
-| **CLN-6** | Categorical docs/validation | 4-5h | FUSION_CLEANUP |
 | **CLN-8** | Categorical learning rate | 2-3h | FUSION_CLEANUP |
 
 ### LOW (13 tickets, ~51-67 hours)
@@ -56,12 +55,12 @@ No high priority tickets remaining.
 
 ## Recommended Next Steps
 
-### 1. User Experience (MEDIUM - ~7 hours)
+### 1. User Experience (MEDIUM - ~2-3 hours)
 
-Documentation and feature toggles:
+Categorical feature toggles:
 
 ```
-CLN-6 (categorical docs) → CLN-8 (categorical learning rate)
+CLN-8 (categorical learning rate)
 ```
 
 ---
@@ -70,6 +69,7 @@ CLN-6 (categorical docs) → CLN-8 (categorical learning rate)
 
 | Ticket | Description |
 |--------|-------------|
+| CLN-6 | Categorical docs/validation - --categorical-help (3 tests) |
 | CLN-13 | ASV sampling strategy - abundance/random (4 tests) |
 | CLN-BUG-4 | LR override undone by double load_checkpoint (1 test) |
 | CLN-BUG-3 | --resume-from ignores new learning rate (4 tests) |

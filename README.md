@@ -160,13 +160,28 @@ aam train \
 | `gmu` | Gated Multimodal Unit - learns to weight sequence vs categorical info |
 | `cross-attention` | Each ASV position attends to categorical metadata independently |
 
+**Choosing a Strategy:**
+
+For detailed guidance, run `aam train --categorical-help` to see a decision tree.
+
+| Use Case | Recommended Strategy |
+|----------|---------------------|
+| Simple metadata conditioning | `--categorical-fusion concat` (default) |
+| Per-category output adjustment | `concat` + `--conditional-output-scaling` |
+| Adaptive weighting | `--categorical-fusion gmu` |
+| Position-specific modulation | `--categorical-fusion cross-attention` |
+
+**Avoid redundant combinations:**
+- `--categorical-fusion gmu` + `--conditional-output-scaling` (both provide category-based modulation)
+- `--categorical-fusion cross-attention` + `--conditional-output-scaling` (both provide category-based modulation)
+
 **GMU (Gated Multimodal Unit):** Fuses after pooling using a learned gate that weights sequence vs categorical contributions. Good when you want the model to adaptively balance information sources.
 
 **Cross-Attention:** Position-specific fusion where each ASV can attend differently to metadata. Use when different taxa should respond differently to the same categorical feature (e.g., some taxa respond strongly to "summer" while others don't).
 
 **Conditional Output Scaling:**
 
-Learn per-category scale and bias parameters applied after the base prediction: `output = prediction * scale[cat] + bias[cat]`. Useful when different categories have systematically different output ranges even after normalization.
+Learn per-category scale and bias parameters applied after the base prediction: `output = prediction * scale[cat] + bias[cat]`. Useful when different categories have systematically different output ranges even after normalization. Works well with `concat` or `add` fusion strategies.
 
 ```bash
 aam train \

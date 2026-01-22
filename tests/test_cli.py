@@ -2895,3 +2895,105 @@ class TestOutputArtifacts:
 
         assert len(train_content) == 8, f"Expected 8 training samples, got {len(train_content)}"
         assert len(val_content) == 2, f"Expected 2 validation samples, got {len(val_content)}"
+
+
+class TestCategoricalHelp:
+    """Tests for --categorical-help decision tree."""
+
+    def test_categorical_help_output(self):
+        """Test that --categorical-help shows decision tree with all sections."""
+        runner = CliRunner()
+        result = runner.invoke(cli, ["train", "--categorical-help"])
+
+        assert result.exit_code == 0
+        assert "Categorical Conditioning Decision Tree" in result.output
+        assert "--categorical-fusion concat" in result.output
+        assert "--categorical-fusion cross-attention" in result.output
+        assert "--categorical-fusion gmu" in result.output
+        assert "--conditional-output-scaling" in result.output
+        assert "Recommended Combinations" in result.output
+        assert "Avoid" in result.output
+        assert "Example Usage" in result.output
+
+
+class TestCategoricalValidationWarnings:
+    """Tests for categorical validation warnings."""
+
+    @pytest.fixture
+    def metadata_with_location(self, temp_dir):
+        """Create metadata file with location column for categorical tests."""
+        metadata_file = temp_dir / "metadata_categorical.tsv"
+        metadata_file.write_text(
+            "sample_id\ttarget\tlocation\n"
+            "sample1\t1.0\tsite_a\n"
+            "sample2\t2.0\tsite_b\n"
+            "sample3\t3.0\tsite_a\n"
+            "sample4\t4.0\tsite_b\n"
+        )
+        return str(metadata_file)
+
+    @pytest.mark.parametrize("fusion_strategy", ["gmu", "cross-attention"])
+    @patch("aam.cli.train.BIOMLoader")
+    @patch("aam.cli.train.UniFracLoader")
+    @patch("aam.cli.train.ASVDataset")
+    @patch("aam.cli.train.DataLoader")
+    @patch("aam.cli.train.SequencePredictor")
+    @patch("aam.cli.train.Trainer")
+    def test_warning_conditional_scaling_with_advanced_fusion(
+        self,
+        mock_trainer,
+        mock_model,
+        mock_dataloader,
+        mock_dataset,
+        mock_unifrac_loader,
+        mock_biom_loader,
+        fusion_strategy,
+        temp_dir,
+        sample_biom_file,
+        sample_unifrac_matrix_file,
+        metadata_with_location,
+        caplog,
+    ):
+        """Test warning when using conditional-output-scaling with gmu or cross-attention fusion."""
+        import logging
+
+        _setup_train_data_parallel_mocks(mock_biom_loader, mock_unifrac_loader, mock_dataset, mock_dataloader, mock_model)
+        mock_trainer_instance = MagicMock()
+        mock_trainer.return_value = mock_trainer_instance
+        mock_trainer_instance.train.return_value = (1.0, {})
+
+        output_dir = str(temp_dir / "output")
+        runner = CliRunner()
+
+        with caplog.at_level(logging.WARNING):
+            runner.invoke(
+                cli,
+                [
+                    "train",
+                    "--table",
+                    sample_biom_file,
+                    "--unifrac-matrix",
+                    sample_unifrac_matrix_file,
+                    "--metadata",
+                    metadata_with_location,
+                    "--metadata-column",
+                    "target",
+                    "--output-dir",
+                    output_dir,
+                    "--categorical-columns",
+                    "location",
+                    "--categorical-fusion",
+                    fusion_strategy,
+                    "--conditional-output-scaling",
+                    "location",
+                    "--batch-size",
+                    "4",
+                    "--epochs",
+                    "1",
+                    "--device",
+                    "cpu",
+                ],
+            )
+
+        warning_found = any("redundant" in record.message.lower() for record in caplog.records)
+        assert warning_found, f"Expected warning about redundant usage with {fusion_strategy}"
