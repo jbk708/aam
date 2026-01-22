@@ -516,6 +516,70 @@ Epoch 57/1000: ... LR=4.95e-04  <-- LR reverted back!
 
 ---
 
+### CLN-BUG-5: zscore-cat TensorBoard Output Not Denormalized
+**Priority:** HIGH | **Effort:** 1-2 hours | **Status:** Not Started
+
+TensorBoard scatter plots for `--normalize zscore-cat` show normalized values (-1 to 2) instead of native scale (0 to max).
+
+**Current Behavior:**
+- `--normalize zscore` correctly denormalizes predictions in TensorBoard (shows native scale)
+- `--normalize zscore-cat` shows normalized values in TensorBoard scatter plots
+- Predictions appear as -1 to 2 instead of 0 to max_add_score
+
+**Expected Behavior:**
+- Both `zscore` and `zscore-cat` should denormalize predictions before TensorBoard logging
+- Scatter plots should show values in native scale for interpretability
+
+**Root Cause:**
+The denormalization logic in trainer likely only handles `zscore` normalization, not `zscore-cat` which uses per-category statistics.
+
+**Acceptance Criteria:**
+- [ ] `zscore-cat` predictions denormalized in TensorBoard scatter plots
+- [ ] Both train and validation scatter plots show native scale
+- [ ] Existing `zscore` denormalization continues to work
+- [ ] 2+ tests verifying denormalization for `zscore-cat`
+
+**Files:** `aam/training/trainer.py`, `tests/test_trainer.py`
+
+---
+
+### CLN-15: Multi-Pass Validation During Training
+**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Not Started
+
+When training with `--asv-sampling random`, validation metrics can vary between epochs due to different random ASV subsets. Add multi-pass aggregation for more stable validation metrics.
+
+**Current Behavior:**
+- `--asv-sampling random` applies same random sampling to both train and validation
+- Validation runs single pass per epoch
+- Validation metrics may fluctuate due to random sampling variance
+
+**Proposed Solution:**
+Add `--val-prediction-passes N` option to `train` command:
+1. Run N forward passes during validation with different random ASV subsets
+2. Aggregate predictions (mean for regression) before computing metrics
+3. Only applies when `--asv-sampling random` is used
+
+**Implementation:**
+- Reuse `_run_multi_pass` logic from `predict.py` or extract to shared utility
+- Apply during `trainer._validate()` when val_prediction_passes > 1
+- Log aggregated metrics to TensorBoard
+
+**Benefits:**
+- More stable validation metrics when using random ASV sampling
+- Better signal for early stopping and model selection
+- Consistent with inference behavior when using `--prediction-passes`
+
+**Acceptance Criteria:**
+- [ ] `--val-prediction-passes` CLI option for train command (default: 1)
+- [ ] Mean aggregation for regression during validation
+- [ ] Only applies when `--asv-sampling random` is used
+- [ ] Warning if used with non-random sampling
+- [ ] 3+ tests
+
+**Files:** `aam/cli/train.py`, `aam/training/trainer.py`, `tests/test_cli.py`
+
+---
+
 ### CLN-11: Consolidate Test Suite
 **Priority:** LOW | **Effort:** 4-6 hours | **Status:** Not Started
 
@@ -595,7 +659,7 @@ if num_asvs > token_limit:
 ---
 
 ### CLN-14: Multi-Pass Prediction Aggregation for Inference
-**Priority:** LOW | **Effort:** 3-4 hours | **Status:** Not Started
+**Priority:** LOW | **Effort:** 3-4 hours | **Status:** Complete
 
 When using `--asv-sampling random` during training, predictions at inference time could benefit from running multiple forward passes with different random ASV subsets and aggregating the results.
 
@@ -628,11 +692,11 @@ pred_std = torch.stack(predictions).std(dim=0)  # Optional confidence
 - Better matches training distribution when `random` sampling was used
 
 **Acceptance Criteria:**
-- [ ] `--prediction-passes` CLI option for predict command (default: 1)
-- [ ] Mean aggregation for regression
-- [ ] Optional variance/std output for confidence
-- [ ] Only applies when `--asv-sampling random` is used
-- [ ] 3+ tests
+- [x] `--prediction-passes` CLI option for predict command (default: 1)
+- [x] Mean aggregation for regression
+- [x] Optional variance/std output for confidence
+- [x] Only applies when `--asv-sampling random` is used
+- [x] 5 tests (exceeds requirement)
 
 **Files:** `aam/cli/predict.py`, `tests/test_cli.py`
 
@@ -658,32 +722,30 @@ pred_std = torch.stack(predictions).std(dim=0)  # Optional confidence
 | **CLN-BUG-2** | val_predictions.tsv not written on resume | 1-2h | HIGH | Complete |
 | **CLN-BUG-3** | --resume-from ignores new learning rate | 1-2h | HIGH | Complete |
 | **CLN-BUG-4** | LR override undone by double load_checkpoint | 0.5-1h | HIGH | Complete |
+| **CLN-BUG-5** | zscore-cat TensorBoard not denormalized | 1-2h | HIGH | Not Started |
+| **CLN-15** | Multi-pass validation during training | 2-3h | MEDIUM | Not Started |
 | **CLN-11** | Consolidate test suite | 4-6h | LOW | Not Started |
 | **CLN-12** | Random Forest baseline script | 2-3h | LOW | Complete |
 | **CLN-13** | ASV sampling strategy (abundance/random) | 2-3h | MEDIUM | Complete |
-| **CLN-14** | Multi-pass prediction aggregation | 3-4h | LOW | Not Started |
+| **CLN-14** | Multi-pass prediction aggregation | 3-4h | LOW | Complete |
 | **Total** | | **44-69h** | |
 
 ## Recommended Order
 
-**Phase 0 - High Priority:**
-1. CLN-BUG-1 (z-score denormalization bug)
+**Next Up - High Priority:**
+1. CLN-BUG-5 (zscore-cat TensorBoard denormalization)
+2. CLN-15 (multi-pass validation during training)
 
-**Phase 1 - Quick Wins:**
-2. CLN-3 (remove dead code)
-3. CLN-5 (DataParallel parity)
+**Completed:**
+- CLN-BUG-1 to CLN-BUG-4 (bug fixes)
+- FUS-1, FUS-2 (fusion MVP)
+- CLN-3, CLN-5, CLN-6, CLN-7, CLN-9, CLN-10, CLN-12, CLN-13, CLN-14
 
-**Phase 2 - Fusion MVP:**
-4. FUS-1 (GMU baseline)
-5. FUS-2 (Cross-attention)
-
-**Phase 3 - User Experience:**
-6. CLN-6 (categorical docs)
-7. CLN-7 (toggle count prediction)
-
-**Phase 4 - Tech Debt:**
-8. CLN-4 (shared utilities)
-9. FUS-3 (perceiver, optional)
+**Remaining - Low Priority:**
+- CLN-4 (shared utilities)
+- CLN-8 (categorical learning rate)
+- CLN-11 (consolidate test suite)
+- FUS-3 (perceiver fusion, optional)
 
 ---
 
