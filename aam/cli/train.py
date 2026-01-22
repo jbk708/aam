@@ -41,6 +41,65 @@ from aam.cli.utils import (
 )
 
 
+CATEGORICAL_HELP_TEXT = """
+Categorical Conditioning Decision Tree
+======================================
+
+Use categorical metadata to condition predictions based on sample attributes
+like location, season, or site type.
+
+When to use each approach:
+
+1. SIMPLE METADATA (start here)
+   └─> --categorical-fusion concat
+       Best for: Most use cases, easy interpretation
+
+2. POSITION-SPECIFIC MODULATION
+   └─> --categorical-fusion cross-attention
+       Best for: When different ASVs should respond differently to metadata
+       Example: Some taxa respond strongly to "summer" while others don't
+
+3. ADAPTIVE WEIGHTING
+   └─> --categorical-fusion gmu
+       Best for: When model should learn to balance sequence vs metadata
+
+4. PER-CATEGORY OUTPUT ADJUSTMENT
+   └─> --conditional-output-scaling <columns>
+       Best for: Adding category-specific scale/bias to predictions
+       Note: Can combine with concat/add fusion
+
+Recommended Combinations:
+-------------------------
+- Simple: --categorical-fusion concat (default)
+- With output scaling: --categorical-fusion concat --conditional-output-scaling <col>
+- Position-specific: --categorical-fusion cross-attention
+
+Avoid:
+------
+- --categorical-fusion gmu --conditional-output-scaling (redundant)
+- --categorical-fusion cross-attention --conditional-output-scaling (redundant)
+
+Example Usage:
+--------------
+# Simple metadata conditioning
+aam train --categorical-columns "location,season" --categorical-fusion concat ...
+
+# Position-specific (each ASV attends to metadata differently)
+aam train --categorical-columns "season" --categorical-fusion cross-attention ...
+
+# Per-category output scaling (with base fusion)
+aam train --categorical-columns "location" --conditional-output-scaling "location" ...
+"""
+
+
+def print_categorical_help(ctx: click.Context, param: click.Parameter, value: bool) -> None:
+    """Print categorical conditioning help and exit."""
+    if not value or ctx.resilient_parsing:
+        return
+    click.echo(CATEGORICAL_HELP_TEXT)
+    ctx.exit(0)
+
+
 @click.command()
 @click.option("--table", required=True, type=click.Path(exists=True), help="Path to BIOM table file")
 @click.option(
@@ -321,6 +380,14 @@ from aam.cli.utils import (
     "--conditional-output-scaling",
     default=None,
     help="Comma-separated categorical column names for conditional output scaling. Learns per-category scale and bias applied after base prediction. Requires --categorical-columns.",
+)
+@click.option(
+    "--categorical-help",
+    is_flag=True,
+    is_eager=True,
+    expose_value=False,
+    callback=print_categorical_help,
+    help="Show categorical conditioning decision tree and exit.",
 )
 @click.option(
     "--best-metric",
@@ -704,6 +771,14 @@ def train(
                         f"Conditional scaling column '{col}' not in --categorical-columns. Available: {categorical_column_list}"
                     )
             logger.info(f"Conditional output scaling columns: {conditional_scaling_columns}")
+
+            # Warn about redundant combinations with advanced fusion strategies
+            if categorical_fusion in ("gmu", "cross-attention"):
+                logger.warning(
+                    f"Using --conditional-output-scaling with --categorical-fusion {categorical_fusion} "
+                    "may be redundant. Both provide category-based modulation. Consider using one or the other. "
+                    "Run 'aam train --categorical-help' for guidance."
+                )
 
         # Extract train/val distance matrices
         train_distance_matrix = None
