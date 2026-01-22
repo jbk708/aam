@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-21
-**Status:** ~20 outstanding tickets (~72-116 hours)
+**Status:** ~18 outstanding tickets (~66-110 hours)
 
 ---
 
@@ -26,18 +26,13 @@
 
 No high-priority tickets remaining.
 
-### MEDIUM (8 tickets, ~25-37 hours)
+### MEDIUM (5 tickets, ~16-21 hours)
 
 | Ticket | Description | Effort | File |
 |--------|-------------|--------|------|
-| **REG-5** | Quantile regression | 4-6h | REGRESSOR |
-| **REG-6** | Asymmetric loss | 2-3h | REGRESSOR |
 | **PYT-12.2** | Batch size optimization | 4-6h | PYTORCH |
 | **PYT-19.3** | Per-category loss weights | 3-4h | PYTORCH |
-| **CLN-1** | Output constraint consolidation | 3-4h | FUSION_CLEANUP |
 | **CLN-6** | Categorical docs/validation | 4-5h | FUSION_CLEANUP |
-| **CLN-6** | Categorical docs/validation | 4-5h | FUSION_CLEANUP |
-| **CLN-7** | Toggle count prediction | 2-3h | FUSION_CLEANUP |
 | **CLN-8** | Categorical learning rate | 2-3h | FUSION_CLEANUP |
 
 ### LOW (12 tickets, ~48-63 hours)
@@ -61,18 +56,12 @@ No high-priority tickets remaining.
 
 ## Recommended Next Steps
 
-### 1. User Experience (MEDIUM - ~8 hours)
+### 1. User Experience (MEDIUM - ~7 hours)
 
-Flag consolidation and documentation:
-
-```
-CLN-1 (output flags) → CLN-6 (categorical docs)
-```
-
-### 2. Loss Functions (MEDIUM - ~2-3 hours)
+Documentation and feature toggles:
 
 ```
-REG-6 (asymmetric loss)
+CLN-6 (categorical docs) → CLN-8 (categorical learning rate)
 ```
 
 ---
@@ -81,6 +70,7 @@ REG-6 (asymmetric loss)
 
 | Ticket | Description |
 |--------|-------------|
+| CLN-7 | Toggle count prediction (8 tests) |
 | CLN-12 | Random Forest baseline script (17 tests) |
 | CLN-BUG-2 | val_predictions.tsv not written on resume (1 test) |
 | CLN-BUG-1 | Z-score denormalization in TensorBoard (6 tests) |

@@ -74,6 +74,7 @@ class SequencePredictor(nn.Module):
         conditional_scaling_columns: Optional[List[str]] = None,
         cross_attn_heads: int = 8,
         num_quantiles: Optional[int] = None,
+        count_prediction: bool = True,
     ):
         """Initialize SequencePredictor.
 
@@ -141,6 +142,8 @@ class SequencePredictor(nn.Module):
             num_quantiles: Number of quantiles for quantile regression. If set, output dimension
                 becomes out_dim * num_quantiles and output is reshaped to [batch, out_dim, num_quantiles].
                 Set to None for standard regression (default: None).
+            count_prediction: Whether to include count prediction head (default: True).
+                When False, count_encoder and count_head are not created, saving memory and compute.
         """
         super().__init__()
 
@@ -186,21 +189,26 @@ class SequencePredictor(nn.Module):
             for param in self.base_model.parameters():
                 param.requires_grad = False
 
-        if count_intermediate_size is None:
-            count_intermediate_size = 4 * self.embedding_dim
+        self.count_prediction_enabled = count_prediction
+        if count_prediction:
+            if count_intermediate_size is None:
+                count_intermediate_size = 4 * self.embedding_dim
 
-        self.count_encoder = TransformerEncoder(
-            num_layers=count_num_layers,
-            num_heads=count_num_heads,
-            hidden_dim=self.embedding_dim,
-            intermediate_size=count_intermediate_size,
-            dropout=count_dropout,
-            activation=count_activation,
-            gradient_checkpointing=gradient_checkpointing,
-            attn_implementation=attn_implementation,
-        )
+            self.count_encoder: Optional[TransformerEncoder] = TransformerEncoder(
+                num_layers=count_num_layers,
+                num_heads=count_num_heads,
+                hidden_dim=self.embedding_dim,
+                intermediate_size=count_intermediate_size,
+                dropout=count_dropout,
+                activation=count_activation,
+                gradient_checkpointing=gradient_checkpointing,
+                attn_implementation=attn_implementation,
+            )
 
-        self.count_head = nn.Linear(self.embedding_dim, 1)
+            self.count_head: Optional[nn.Linear] = nn.Linear(self.embedding_dim, 1)
+        else:
+            self.count_encoder = None
+            self.count_head = None
 
         if target_intermediate_size is None:
             target_intermediate_size = 4 * self.embedding_dim
@@ -423,8 +431,9 @@ class SequencePredictor(nn.Module):
                 if isinstance(module, nn.Linear):
                     nn.init.xavier_uniform_(module.weight)
                     nn.init.zeros_(module.bias)
-        nn.init.xavier_uniform_(self.count_head.weight)
-        nn.init.zeros_(self.count_head.bias)
+        if self.count_head is not None:
+            nn.init.xavier_uniform_(self.count_head.weight)
+            nn.init.zeros_(self.count_head.bias)
         if self.categorical_projection is not None:
             nn.init.xavier_uniform_(self.categorical_projection.weight)
             nn.init.zeros_(self.categorical_projection.bias)
@@ -497,7 +506,7 @@ class SequencePredictor(nn.Module):
         Returns:
             Dictionary with keys:
                 - 'target_prediction': [batch_size, out_dim]
-                - 'count_prediction': [batch_size, num_asvs, 1]
+                - 'count_prediction': [batch_size, num_asvs, 1] (if count_prediction_enabled)
                 - 'base_embeddings': [batch_size, num_asvs, embedding_dim]
                 - 'base_prediction': [batch_size, base_output_dim] (if return_nucleotides=True)
                 - 'nuc_predictions': [batch_size, num_asvs, seq_len, vocab_size] (if return_nucleotides=True)
@@ -515,8 +524,11 @@ class SequencePredictor(nn.Module):
         nuc_predictions = base_outputs.get("nuc_predictions")
         mask_indices = base_outputs.get("mask_indices")
 
-        count_embeddings = self.count_encoder(base_embeddings, mask=asv_mask)
-        count_prediction = torch.sigmoid(self.count_head(count_embeddings))
+        if self.count_encoder is not None and self.count_head is not None:
+            count_embeddings = self.count_encoder(base_embeddings, mask=asv_mask)
+            count_prediction = torch.sigmoid(self.count_head(count_embeddings))
+        else:
+            count_prediction = None
 
         # Fusion strategy determines how categorical embeddings are combined:
         # - gmu: fuses after pooling (handled below)
@@ -570,9 +582,11 @@ class SequencePredictor(nn.Module):
 
         result = {
             "target_prediction": target_prediction,
-            "count_prediction": count_prediction,
             "base_embeddings": base_embeddings,
         }
+
+        if count_prediction is not None:
+            result["count_prediction"] = count_prediction
 
         if gmu_gate is not None:
             result["gmu_gate"] = gmu_gate

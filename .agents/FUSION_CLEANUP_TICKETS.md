@@ -1,7 +1,7 @@
 # Attention Fusion & Code Cleanup Tickets
 
 **Last Updated:** 2026-01-21
-**Status:** 10 tickets (~26-42 hours)
+**Status:** 9 tickets (~23-38 hours)
 **Design Doc:** `_design_plan/17_attention_fusion.md`
 
 ---
@@ -99,37 +99,6 @@ Learned latent bottleneck for linear complexity fusion.
 ---
 
 ## CLN: Code Cleanup Tickets
-
-### CLN-1: Consolidate Output Constraint Flags
-**Priority:** MEDIUM | **Effort:** 3-4 hours | **Status:** Not Started
-
-Replace three overlapping output flags with unified interface.
-
-**Current (redundant):**
-```bash
---bounded-targets          # sigmoid → [0, 1]
---output-activation        # relu, softplus, exp
---learnable-output-scale   # learnable scale + bias
-```
-
-**Proposed:**
-```bash
---output-constraint none|bounded|nonnegative|nonnegative-learnable
-```
-
-**Scope:**
-- Add `--output-constraint` flag
-- Deprecate old flags with warning
-- Simplify validation logic
-
-**Acceptance Criteria:**
-- [ ] Single flag replaces three
-- [ ] Old flags deprecated with warning
-- [ ] 10+ migration tests
-
-**Files:** `aam/cli/train.py`, `aam/models/sequence_predictor.py`
-
----
 
 ### CLN-2: Unify Target Normalization
 **Priority:** MEDIUM | **Effort:** 3-4 hours | **Status:** Complete
@@ -259,7 +228,7 @@ Document and validate the three parallel categorical systems.
 ---
 
 ### CLN-7: Toggle Count Prediction
-**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Complete
 
 Allow disabling count prediction head entirely for simpler training.
 
@@ -280,12 +249,12 @@ Allow disabling count prediction head entirely for simpler training.
 - Validate `--count-penalty` warns if used with `--no-count-prediction`
 
 **Acceptance Criteria:**
-- [ ] `--no-count-prediction` disables count head
-- [ ] Memory/compute savings when disabled
-- [ ] Backward compatible (default enabled)
-- [ ] 5+ tests
+- [x] `--no-count-prediction` disables count head
+- [x] Memory/compute savings when disabled
+- [x] Backward compatible (default enabled)
+- [x] 8 tests (6 model tests + 2 CLI tests)
 
-**Files:** `aam/models/sequence_predictor.py`, `aam/cli/train.py`, `tests/test_sequence_predictor.py`
+**Files:** `aam/models/sequence_predictor.py`, `aam/cli/train.py`, `tests/test_sequence_predictor.py`, `tests/test_cli.py`
 
 ---
 
@@ -509,13 +478,12 @@ Reduce test code duplication by extracting shared fixtures and utilities.
 | **FUS-1** | GMU baseline | 3-4h | HIGH | Complete |
 | **FUS-2** | Cross-attention fusion | 5-6h | HIGH | Complete |
 | **FUS-3** | Perceiver fusion | 6-8h | LOW | Not Started |
-| **CLN-1** | Output constraint consolidation | 3-4h | MEDIUM | Not Started |
 | **CLN-2** | Normalization unification | 3-4h | MEDIUM | Complete |
 | **CLN-3** | Remove unused params | 1-2h | LOW | Complete |
 | **CLN-4** | Extract shared utilities | 2-3h | LOW | Not Started |
 | **CLN-5** | DataParallel in train.py | 2-3h | MEDIUM | Complete |
 | **CLN-6** | Categorical docs/validation | 4-5h | MEDIUM | Not Started |
-| **CLN-7** | Toggle count prediction | 2-3h | MEDIUM | Not Started |
+| **CLN-7** | Toggle count prediction | 2-3h | MEDIUM | Complete |
 | **CLN-8** | Categorical learning rate | 2-3h | MEDIUM | Not Started |
 | **CLN-9** | Remove FiLM conditioning | 2-3h | MEDIUM | Complete |
 | **CLN-10** | Training output artifacts | 2-3h | HIGH | Complete |
@@ -539,8 +507,8 @@ Reduce test code duplication by extracting shared fixtures and utilities.
 5. FUS-2 (Cross-attention)
 
 **Phase 3 - User Experience:**
-6. CLN-1 + CLN-2 (flag consolidation)
-7. CLN-6 (categorical docs)
+6. CLN-6 (categorical docs)
+7. CLN-7 (toggle count prediction)
 
 **Phase 4 - Tech Debt:**
 8. CLN-4 (shared utilities)

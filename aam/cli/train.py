@@ -78,6 +78,11 @@ from aam.cli.utils import (
 @click.option("--target-penalty", default=1.0, type=float, help="Weight for target loss (default: 1.0)")
 @click.option("--count-penalty", default=1.0, type=float, help="Weight for count loss (default: 1.0)")
 @click.option(
+    "--count-prediction/--no-count-prediction",
+    default=True,
+    help="Enable/disable count prediction head (default: enabled). Use --no-count-prediction to save memory.",
+)
+@click.option(
     "--nuc-mask-ratio",
     default=0.15,
     type=float,
@@ -340,6 +345,7 @@ def train(
     nuc_penalty: float,
     target_penalty: float,
     count_penalty: float,
+    count_prediction: bool,
     nuc_mask_ratio: float,
     nuc_mask_strategy: str,
     class_weights: Optional[str],
@@ -516,6 +522,12 @@ def train(
                 )
         if quantiles is not None and loss_type != "quantile":
             raise click.ClickException("--quantiles requires --loss-type quantile")
+
+        if not count_prediction and count_penalty != 0.0:
+            logger.warning(
+                f"--count-penalty ({count_penalty}) is ignored when --no-count-prediction is set. "
+                "Count prediction head is disabled."
+            )
 
         # Setup distributed training if enabled
         train_sampler = None
@@ -941,6 +953,7 @@ def train(
             regressor_dropout=regressor_dropout,
             conditional_scaling_columns=conditional_scaling_columns,
             num_quantiles=num_quantiles,
+            count_prediction=count_prediction,
         )
 
         log_model_summary(model, logger)
@@ -974,11 +987,13 @@ def train(
             weights_list = [float(w) for w in class_weights.split(",")]
             class_weights_tensor = torch.tensor(weights_list)
 
+        effective_count_penalty = count_penalty if count_prediction else 0.0
+
         loss_fn = MultiTaskLoss(
             penalty=penalty,
             nuc_penalty=effective_nuc_penalty,
             target_penalty=target_penalty,
-            count_penalty=count_penalty,
+            count_penalty=effective_count_penalty,
             class_weights=class_weights_tensor,
             target_loss_type=loss_type,
             quantiles=quantiles_list,
@@ -992,8 +1007,10 @@ def train(
         else:
             logger.info(f"Using {loss_type} loss for regression targets")
         logger.info(
-            f"Loss weights: target={target_penalty}, unifrac={penalty}, nuc={effective_nuc_penalty}, count={count_penalty}"
+            f"Loss weights: target={target_penalty}, unifrac={penalty}, nuc={effective_nuc_penalty}, count={effective_count_penalty}"
         )
+        if not count_prediction:
+            logger.info("Count prediction head disabled (--no-count-prediction)")
 
         # Handle distributed training setup
         if fsdp:
