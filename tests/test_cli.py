@@ -2999,6 +2999,62 @@ class TestCategoricalValidationWarnings:
         assert warning_found, f"Expected warning about redundant usage with {fusion_strategy}"
 
 
+def _setup_predict_mocks(
+    mock_setup_device,
+    mock_load,
+    mock_biom_loader,
+    mock_dataset,
+    mock_model_class,
+    mock_dataloader,
+    with_predictions: bool = False,
+):
+    """Set up common mocks for predict CLI tests.
+
+    Args:
+        with_predictions: If True, configure model to return predictions.
+    """
+    import numpy as np
+
+    mock_setup_device.return_value = torch.device("cpu")
+
+    mock_load.return_value = {
+        "model_state_dict": {},
+        "config": {"max_bp": 150, "token_limit": 1024, "embedding_dim": 128},
+    }
+
+    mock_biom_loader_instance = MagicMock()
+    mock_biom_loader.return_value = mock_biom_loader_instance
+    mock_biom_loader_instance.load_table.return_value = MagicMock()
+
+    mock_dataset.return_value = MagicMock()
+
+    mock_model_instance = MagicMock()
+    mock_model_class.return_value = mock_model_instance
+
+    if with_predictions:
+        mock_tensor = MagicMock()
+        mock_tensor.cpu.return_value.numpy.return_value = np.array([1.5])
+        mock_model_instance.return_value = {"target_prediction": mock_tensor}
+
+        mock_batch = {
+            "tokens": torch.tensor([[[1, 2, 3]]]),
+            "sample_ids": ["sample1"],
+        }
+
+        def create_dataloader_iterator(*args, **kwargs):
+            mock_dl = MagicMock()
+            mock_dl.__iter__ = MagicMock(return_value=iter([mock_batch]))
+            return mock_dl
+
+        mock_dataloader.side_effect = create_dataloader_iterator
+    else:
+        mock_dataloader_instance = MagicMock()
+        mock_dataloader_instance.__iter__ = MagicMock(return_value=iter([]))
+        mock_dataloader.return_value = mock_dataloader_instance
+
+    return mock_model_instance
+
+
 class TestMultiPassPrediction:
     """Tests for multi-pass prediction aggregation (CLN-14)."""
 
@@ -3039,41 +3095,37 @@ class TestMultiPassPrediction:
         """Test warning when --prediction-passes > 1 without --asv-sampling random."""
         import logging
 
-        mock_setup_device.return_value = torch.device("cpu")
-        mock_checkpoint = {
-            "model_state_dict": {},
-            "config": {"max_bp": 150, "token_limit": 1024, "embedding_dim": 128},
-        }
-        mock_load.return_value = mock_checkpoint
-
-        mock_biom_loader_instance = MagicMock()
-        mock_biom_loader.return_value = mock_biom_loader_instance
-        mock_biom_loader_instance.load_table.return_value = MagicMock()
-
-        mock_dataset.return_value = MagicMock()
-
-        mock_model_instance = MagicMock()
-        mock_model_class.return_value = mock_model_instance
-
-        mock_dataloader_instance = MagicMock()
-        mock_dataloader_instance.__iter__ = MagicMock(return_value=iter([]))
-        mock_dataloader.return_value = mock_dataloader_instance
+        _setup_predict_mocks(
+            mock_setup_device,
+            mock_load,
+            mock_biom_loader,
+            mock_dataset,
+            mock_model_class,
+            mock_dataloader,
+            with_predictions=False,
+        )
 
         model_file = temp_dir / "model.pt"
         model_file.touch()
         output_file = temp_dir / "predictions.tsv"
 
         with caplog.at_level(logging.WARNING):
-            result = runner.invoke(
+            runner.invoke(
                 cli,
                 [
                     "predict",
-                    "--model", str(model_file),
-                    "--table", sample_biom_file,
-                    "--output", str(output_file),
-                    "--prediction-passes", "5",
-                    "--asv-sampling", "abundance",
-                    "--device", "cpu",
+                    "--model",
+                    str(model_file),
+                    "--table",
+                    sample_biom_file,
+                    "--output",
+                    str(output_file),
+                    "--prediction-passes",
+                    "5",
+                    "--asv-sampling",
+                    "abundance",
+                    "--device",
+                    "cpu",
                 ],
             )
 
@@ -3104,40 +3156,34 @@ class TestMultiPassPrediction:
         """Test warning when --output-variance is used with single prediction pass."""
         import logging
 
-        mock_setup_device.return_value = torch.device("cpu")
-        mock_checkpoint = {
-            "model_state_dict": {},
-            "config": {"max_bp": 150, "token_limit": 1024, "embedding_dim": 128},
-        }
-        mock_load.return_value = mock_checkpoint
-
-        mock_biom_loader_instance = MagicMock()
-        mock_biom_loader.return_value = mock_biom_loader_instance
-        mock_biom_loader_instance.load_table.return_value = MagicMock()
-
-        mock_dataset.return_value = MagicMock()
-
-        mock_model_instance = MagicMock()
-        mock_model_class.return_value = mock_model_instance
-
-        mock_dataloader_instance = MagicMock()
-        mock_dataloader_instance.__iter__ = MagicMock(return_value=iter([]))
-        mock_dataloader.return_value = mock_dataloader_instance
+        _setup_predict_mocks(
+            mock_setup_device,
+            mock_load,
+            mock_biom_loader,
+            mock_dataset,
+            mock_model_class,
+            mock_dataloader,
+            with_predictions=False,
+        )
 
         model_file = temp_dir / "model.pt"
         model_file.touch()
         output_file = temp_dir / "predictions.tsv"
 
         with caplog.at_level(logging.WARNING):
-            result = runner.invoke(
+            runner.invoke(
                 cli,
                 [
                     "predict",
-                    "--model", str(model_file),
-                    "--table", sample_biom_file,
-                    "--output", str(output_file),
+                    "--model",
+                    str(model_file),
+                    "--table",
+                    sample_biom_file,
+                    "--output",
+                    str(output_file),
                     "--output-variance",
-                    "--device", "cpu",
+                    "--device",
+                    "cpu",
                 ],
             )
 
@@ -3165,39 +3211,15 @@ class TestMultiPassPrediction:
         temp_dir,
     ):
         """Test that multi-pass prediction creates a new dataloader for each pass."""
-        import numpy as np
-
-        mock_setup_device.return_value = torch.device("cpu")
-        mock_checkpoint = {
-            "model_state_dict": {},
-            "config": {"max_bp": 150, "token_limit": 1024, "embedding_dim": 128},
-        }
-        mock_load.return_value = mock_checkpoint
-
-        mock_biom_loader_instance = MagicMock()
-        mock_biom_loader.return_value = mock_biom_loader_instance
-        mock_biom_loader_instance.load_table.return_value = MagicMock()
-
-        mock_dataset_instance = MagicMock()
-        mock_dataset.return_value = mock_dataset_instance
-
-        mock_model_instance = MagicMock()
-        mock_tensor = MagicMock()
-        mock_tensor.cpu.return_value.numpy.return_value = np.array([1.5])
-        mock_model_instance.return_value = {"target_prediction": mock_tensor}
-        mock_model_class.return_value = mock_model_instance
-
-        mock_batch = {
-            "tokens": torch.tensor([[[1, 2, 3]]]),
-            "sample_ids": ["sample1"],
-        }
-
-        def create_dataloader_iterator(*args, **kwargs):
-            mock_dl = MagicMock()
-            mock_dl.__iter__ = MagicMock(return_value=iter([mock_batch]))
-            return mock_dl
-
-        mock_dataloader.side_effect = create_dataloader_iterator
+        _setup_predict_mocks(
+            mock_setup_device,
+            mock_load,
+            mock_biom_loader,
+            mock_dataset,
+            mock_model_class,
+            mock_dataloader,
+            with_predictions=True,
+        )
 
         model_file = temp_dir / "model.pt"
         model_file.touch()
@@ -3207,12 +3229,18 @@ class TestMultiPassPrediction:
             cli,
             [
                 "predict",
-                "--model", str(model_file),
-                "--table", sample_biom_file,
-                "--output", str(output_file),
-                "--prediction-passes", "3",
-                "--asv-sampling", "random",
-                "--device", "cpu",
+                "--model",
+                str(model_file),
+                "--table",
+                sample_biom_file,
+                "--output",
+                str(output_file),
+                "--prediction-passes",
+                "3",
+                "--asv-sampling",
+                "random",
+                "--device",
+                "cpu",
             ],
         )
 
@@ -3243,39 +3271,15 @@ class TestMultiPassPrediction:
         temp_dir,
     ):
         """Test that prediction_std column is included when --output-variance is used."""
-        import numpy as np
-
-        mock_setup_device.return_value = torch.device("cpu")
-        mock_checkpoint = {
-            "model_state_dict": {},
-            "config": {"max_bp": 150, "token_limit": 1024, "embedding_dim": 128},
-        }
-        mock_load.return_value = mock_checkpoint
-
-        mock_biom_loader_instance = MagicMock()
-        mock_biom_loader.return_value = mock_biom_loader_instance
-        mock_biom_loader_instance.load_table.return_value = MagicMock()
-
-        mock_dataset_instance = MagicMock()
-        mock_dataset.return_value = mock_dataset_instance
-
-        mock_model_instance = MagicMock()
-        mock_tensor = MagicMock()
-        mock_tensor.cpu.return_value.numpy.return_value = np.array([1.5])
-        mock_model_instance.return_value = {"target_prediction": mock_tensor}
-        mock_model_class.return_value = mock_model_instance
-
-        mock_batch = {
-            "tokens": torch.tensor([[[1, 2, 3]]]),
-            "sample_ids": ["sample1"],
-        }
-
-        def create_dataloader_iterator(*args, **kwargs):
-            mock_dl = MagicMock()
-            mock_dl.__iter__ = MagicMock(return_value=iter([mock_batch]))
-            return mock_dl
-
-        mock_dataloader.side_effect = create_dataloader_iterator
+        _setup_predict_mocks(
+            mock_setup_device,
+            mock_load,
+            mock_biom_loader,
+            mock_dataset,
+            mock_model_class,
+            mock_dataloader,
+            with_predictions=True,
+        )
 
         mock_df_instance = MagicMock()
         mock_df_class.return_value = mock_df_instance
@@ -3288,18 +3292,23 @@ class TestMultiPassPrediction:
             cli,
             [
                 "predict",
-                "--model", str(model_file),
-                "--table", sample_biom_file,
-                "--output", str(output_file),
-                "--prediction-passes", "3",
-                "--asv-sampling", "random",
+                "--model",
+                str(model_file),
+                "--table",
+                sample_biom_file,
+                "--output",
+                str(output_file),
+                "--prediction-passes",
+                "3",
+                "--asv-sampling",
+                "random",
                 "--output-variance",
-                "--device", "cpu",
+                "--device",
+                "cpu",
             ],
         )
 
         assert result.exit_code == 0
-        # Check that prediction_std column was added to dataframe
         mock_df_instance.__setitem__.assert_called()
         calls = mock_df_instance.__setitem__.call_args_list
         column_names = [call[0][0] for call in calls]
