@@ -339,31 +339,28 @@ class Evaluator:
         cat_state = cast(Dict[str, Any], self.target_normalization_params["category_normalizer"])
         normalizer = CategoryNormalizer.from_dict(cat_state)
 
-        # Build category keys for each sample
         columns = normalizer.columns
         batch_size = values.shape[0]
         result = values.clone()
 
         for i in range(batch_size):
-            # Build category key string (e.g., "location=A,season=summer")
             key_parts = []
             for col in columns:
                 if col in categorical_ids and col in encoder_mappings:
                     idx = int(categorical_ids[col][i].item())
-                    # Index 0 is unknown, use global stats via normalizer's fallback
                     category_str = encoder_mappings[col].get(idx, "unknown")
                     key_parts.append(f"{col}={category_str}")
                 else:
                     key_parts.append(f"{col}=unknown")
 
             category_key = ",".join(key_parts)
-            mean, std = normalizer._get_stats(category_key)
+            z_score = values[i, 0] if values.dim() == 2 else values[i]
+            denorm_value = normalizer.denormalize(z_score.item(), category_key)
 
-            # Denormalize: z * std + mean
             if values.dim() == 2:
-                result[i, 0] = values[i, 0] * std + mean
+                result[i, 0] = denorm_value
             else:
-                result[i] = values[i] * std + mean
+                result[i] = denorm_value
 
         return result
 
