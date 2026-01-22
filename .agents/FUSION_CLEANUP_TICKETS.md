@@ -516,6 +516,33 @@ Epoch 57/1000: ... LR=4.95e-04  <-- LR reverted back!
 
 ---
 
+### CLN-BUG-5: zscore-cat TensorBoard Output Not Denormalized
+**Priority:** HIGH | **Effort:** 1-2 hours | **Status:** Not Started
+
+TensorBoard scatter plots for `--normalize zscore-cat` show normalized values (-1 to 2) instead of native scale (0 to max).
+
+**Current Behavior:**
+- `--normalize zscore` correctly denormalizes predictions in TensorBoard (shows native scale)
+- `--normalize zscore-cat` shows normalized values in TensorBoard scatter plots
+- Predictions appear as -1 to 2 instead of 0 to max_add_score
+
+**Expected Behavior:**
+- Both `zscore` and `zscore-cat` should denormalize predictions before TensorBoard logging
+- Scatter plots should show values in native scale for interpretability
+
+**Root Cause:**
+The denormalization logic in trainer likely only handles `zscore` normalization, not `zscore-cat` which uses per-category statistics.
+
+**Acceptance Criteria:**
+- [ ] `zscore-cat` predictions denormalized in TensorBoard scatter plots
+- [ ] Both train and validation scatter plots show native scale
+- [ ] Existing `zscore` denormalization continues to work
+- [ ] 2+ tests verifying denormalization for `zscore-cat`
+
+**Files:** `aam/training/trainer.py`, `tests/test_trainer.py`
+
+---
+
 ### CLN-11: Consolidate Test Suite
 **Priority:** LOW | **Effort:** 4-6 hours | **Status:** Not Started
 
@@ -658,6 +685,7 @@ pred_std = torch.stack(predictions).std(dim=0)  # Optional confidence
 | **CLN-BUG-2** | val_predictions.tsv not written on resume | 1-2h | HIGH | Complete |
 | **CLN-BUG-3** | --resume-from ignores new learning rate | 1-2h | HIGH | Complete |
 | **CLN-BUG-4** | LR override undone by double load_checkpoint | 0.5-1h | HIGH | Complete |
+| **CLN-BUG-5** | zscore-cat TensorBoard not denormalized | 1-2h | HIGH | Not Started |
 | **CLN-11** | Consolidate test suite | 4-6h | LOW | Not Started |
 | **CLN-12** | Random Forest baseline script | 2-3h | LOW | Complete |
 | **CLN-13** | ASV sampling strategy (abundance/random) | 2-3h | MEDIUM | Complete |
