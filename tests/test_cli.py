@@ -2997,3 +2997,310 @@ class TestCategoricalValidationWarnings:
 
         warning_found = any("redundant" in record.message.lower() for record in caplog.records)
         assert warning_found, f"Expected warning about redundant usage with {fusion_strategy}"
+
+
+class TestMultiPassPrediction:
+    """Tests for multi-pass prediction aggregation (CLN-14)."""
+
+    @pytest.fixture
+    def runner(self):
+        """Create CLI runner."""
+        return CliRunner()
+
+    def test_predict_help_shows_multi_pass_options(self, runner):
+        """Test that predict help shows --asv-sampling, --prediction-passes, --output-variance."""
+        result = runner.invoke(cli, ["predict", "--help"])
+        assert result.exit_code == 0
+        assert "--asv-sampling" in result.output
+        assert "--prediction-passes" in result.output
+        assert "--output-variance" in result.output
+
+    @patch("aam.cli.predict.setup_device")
+    @patch("aam.cli.predict.validate_file_path")
+    @patch("aam.cli.predict.torch.load")
+    @patch("aam.cli.predict.SequencePredictor")
+    @patch("aam.cli.predict.BIOMLoader")
+    @patch("aam.cli.predict.ASVDataset")
+    @patch("aam.cli.predict.DataLoader")
+    def test_warning_prediction_passes_without_random_sampling(
+        self,
+        mock_dataloader,
+        mock_dataset,
+        mock_biom_loader,
+        mock_model_class,
+        mock_load,
+        mock_validate_file,
+        mock_setup_device,
+        runner,
+        sample_biom_file,
+        temp_dir,
+        caplog,
+    ):
+        """Test warning when --prediction-passes > 1 without --asv-sampling random."""
+        import logging
+
+        mock_setup_device.return_value = torch.device("cpu")
+        mock_checkpoint = {
+            "model_state_dict": {},
+            "config": {"max_bp": 150, "token_limit": 1024, "embedding_dim": 128},
+        }
+        mock_load.return_value = mock_checkpoint
+
+        mock_biom_loader_instance = MagicMock()
+        mock_biom_loader.return_value = mock_biom_loader_instance
+        mock_biom_loader_instance.load_table.return_value = MagicMock()
+
+        mock_dataset.return_value = MagicMock()
+
+        mock_model_instance = MagicMock()
+        mock_model_class.return_value = mock_model_instance
+
+        mock_dataloader_instance = MagicMock()
+        mock_dataloader_instance.__iter__ = MagicMock(return_value=iter([]))
+        mock_dataloader.return_value = mock_dataloader_instance
+
+        model_file = temp_dir / "model.pt"
+        model_file.touch()
+        output_file = temp_dir / "predictions.tsv"
+
+        with caplog.at_level(logging.WARNING):
+            result = runner.invoke(
+                cli,
+                [
+                    "predict",
+                    "--model", str(model_file),
+                    "--table", sample_biom_file,
+                    "--output", str(output_file),
+                    "--prediction-passes", "5",
+                    "--asv-sampling", "abundance",
+                    "--device", "cpu",
+                ],
+            )
+
+        warning_found = any("only has effect with --asv-sampling=random" in record.message for record in caplog.records)
+        assert warning_found, "Expected warning about prediction-passes only working with random sampling"
+
+    @patch("aam.cli.predict.setup_device")
+    @patch("aam.cli.predict.validate_file_path")
+    @patch("aam.cli.predict.torch.load")
+    @patch("aam.cli.predict.SequencePredictor")
+    @patch("aam.cli.predict.BIOMLoader")
+    @patch("aam.cli.predict.ASVDataset")
+    @patch("aam.cli.predict.DataLoader")
+    def test_warning_output_variance_with_single_pass(
+        self,
+        mock_dataloader,
+        mock_dataset,
+        mock_biom_loader,
+        mock_model_class,
+        mock_load,
+        mock_validate_file,
+        mock_setup_device,
+        runner,
+        sample_biom_file,
+        temp_dir,
+        caplog,
+    ):
+        """Test warning when --output-variance is used with single prediction pass."""
+        import logging
+
+        mock_setup_device.return_value = torch.device("cpu")
+        mock_checkpoint = {
+            "model_state_dict": {},
+            "config": {"max_bp": 150, "token_limit": 1024, "embedding_dim": 128},
+        }
+        mock_load.return_value = mock_checkpoint
+
+        mock_biom_loader_instance = MagicMock()
+        mock_biom_loader.return_value = mock_biom_loader_instance
+        mock_biom_loader_instance.load_table.return_value = MagicMock()
+
+        mock_dataset.return_value = MagicMock()
+
+        mock_model_instance = MagicMock()
+        mock_model_class.return_value = mock_model_instance
+
+        mock_dataloader_instance = MagicMock()
+        mock_dataloader_instance.__iter__ = MagicMock(return_value=iter([]))
+        mock_dataloader.return_value = mock_dataloader_instance
+
+        model_file = temp_dir / "model.pt"
+        model_file.touch()
+        output_file = temp_dir / "predictions.tsv"
+
+        with caplog.at_level(logging.WARNING):
+            result = runner.invoke(
+                cli,
+                [
+                    "predict",
+                    "--model", str(model_file),
+                    "--table", sample_biom_file,
+                    "--output", str(output_file),
+                    "--output-variance",
+                    "--device", "cpu",
+                ],
+            )
+
+        warning_found = any("no effect with single prediction pass" in record.message for record in caplog.records)
+        assert warning_found, "Expected warning about output-variance with single pass"
+
+    @patch("aam.cli.predict.setup_device")
+    @patch("aam.cli.predict.validate_file_path")
+    @patch("aam.cli.predict.torch.load")
+    @patch("aam.cli.predict.SequencePredictor")
+    @patch("aam.cli.predict.BIOMLoader")
+    @patch("aam.cli.predict.ASVDataset")
+    @patch("aam.cli.predict.DataLoader")
+    def test_multi_pass_creates_multiple_dataloaders(
+        self,
+        mock_dataloader,
+        mock_dataset,
+        mock_biom_loader,
+        mock_model_class,
+        mock_load,
+        mock_validate_file,
+        mock_setup_device,
+        runner,
+        sample_biom_file,
+        temp_dir,
+    ):
+        """Test that multi-pass prediction creates a new dataloader for each pass."""
+        import numpy as np
+
+        mock_setup_device.return_value = torch.device("cpu")
+        mock_checkpoint = {
+            "model_state_dict": {},
+            "config": {"max_bp": 150, "token_limit": 1024, "embedding_dim": 128},
+        }
+        mock_load.return_value = mock_checkpoint
+
+        mock_biom_loader_instance = MagicMock()
+        mock_biom_loader.return_value = mock_biom_loader_instance
+        mock_biom_loader_instance.load_table.return_value = MagicMock()
+
+        mock_dataset_instance = MagicMock()
+        mock_dataset.return_value = mock_dataset_instance
+
+        mock_model_instance = MagicMock()
+        mock_tensor = MagicMock()
+        mock_tensor.cpu.return_value.numpy.return_value = np.array([1.5])
+        mock_model_instance.return_value = {"target_prediction": mock_tensor}
+        mock_model_class.return_value = mock_model_instance
+
+        mock_batch = {
+            "tokens": torch.tensor([[[1, 2, 3]]]),
+            "sample_ids": ["sample1"],
+        }
+
+        def create_dataloader_iterator(*args, **kwargs):
+            mock_dl = MagicMock()
+            mock_dl.__iter__ = MagicMock(return_value=iter([mock_batch]))
+            return mock_dl
+
+        mock_dataloader.side_effect = create_dataloader_iterator
+
+        model_file = temp_dir / "model.pt"
+        model_file.touch()
+        output_file = temp_dir / "predictions.tsv"
+
+        result = runner.invoke(
+            cli,
+            [
+                "predict",
+                "--model", str(model_file),
+                "--table", sample_biom_file,
+                "--output", str(output_file),
+                "--prediction-passes", "3",
+                "--asv-sampling", "random",
+                "--device", "cpu",
+            ],
+        )
+
+        assert result.exit_code == 0
+        # Initial dataloader + 3 passes = 4 calls
+        assert mock_dataloader.call_count == 4
+
+    @patch("aam.cli.predict.setup_device")
+    @patch("aam.cli.predict.validate_file_path")
+    @patch("aam.cli.predict.torch.load")
+    @patch("aam.cli.predict.SequencePredictor")
+    @patch("aam.cli.predict.BIOMLoader")
+    @patch("aam.cli.predict.ASVDataset")
+    @patch("aam.cli.predict.DataLoader")
+    @patch("aam.cli.predict.pd.DataFrame")
+    def test_output_variance_column_included(
+        self,
+        mock_df_class,
+        mock_dataloader,
+        mock_dataset,
+        mock_biom_loader,
+        mock_model_class,
+        mock_load,
+        mock_validate_file,
+        mock_setup_device,
+        runner,
+        sample_biom_file,
+        temp_dir,
+    ):
+        """Test that prediction_std column is included when --output-variance is used."""
+        import numpy as np
+
+        mock_setup_device.return_value = torch.device("cpu")
+        mock_checkpoint = {
+            "model_state_dict": {},
+            "config": {"max_bp": 150, "token_limit": 1024, "embedding_dim": 128},
+        }
+        mock_load.return_value = mock_checkpoint
+
+        mock_biom_loader_instance = MagicMock()
+        mock_biom_loader.return_value = mock_biom_loader_instance
+        mock_biom_loader_instance.load_table.return_value = MagicMock()
+
+        mock_dataset_instance = MagicMock()
+        mock_dataset.return_value = mock_dataset_instance
+
+        mock_model_instance = MagicMock()
+        mock_tensor = MagicMock()
+        mock_tensor.cpu.return_value.numpy.return_value = np.array([1.5])
+        mock_model_instance.return_value = {"target_prediction": mock_tensor}
+        mock_model_class.return_value = mock_model_instance
+
+        mock_batch = {
+            "tokens": torch.tensor([[[1, 2, 3]]]),
+            "sample_ids": ["sample1"],
+        }
+
+        def create_dataloader_iterator(*args, **kwargs):
+            mock_dl = MagicMock()
+            mock_dl.__iter__ = MagicMock(return_value=iter([mock_batch]))
+            return mock_dl
+
+        mock_dataloader.side_effect = create_dataloader_iterator
+
+        mock_df_instance = MagicMock()
+        mock_df_class.return_value = mock_df_instance
+
+        model_file = temp_dir / "model.pt"
+        model_file.touch()
+        output_file = temp_dir / "predictions.tsv"
+
+        result = runner.invoke(
+            cli,
+            [
+                "predict",
+                "--model", str(model_file),
+                "--table", sample_biom_file,
+                "--output", str(output_file),
+                "--prediction-passes", "3",
+                "--asv-sampling", "random",
+                "--output-variance",
+                "--device", "cpu",
+            ],
+        )
+
+        assert result.exit_code == 0
+        # Check that prediction_std column was added to dataframe
+        mock_df_instance.__setitem__.assert_called()
+        calls = mock_df_instance.__setitem__.call_args_list
+        column_names = [call[0][0] for call in calls]
+        assert "prediction_std" in column_names
