@@ -342,7 +342,8 @@ class ASVDataset(Dataset):
         Returns:
             Dictionary with normalization params if any transform is enabled, None otherwise.
             May include: 'target_min', 'target_max', 'target_scale', 'log_transform',
-            'category_normalizer' (serialized state), 'global_normalizer' (serialized state).
+            'category_normalizer' (serialized state), 'global_normalizer' (serialized state),
+            'categorical_encoder_mappings' (reverse mappings for denormalization).
         """
         params: Dict[str, Any] = {}
         if self.normalize_targets and self.target_scale is not None:
@@ -353,6 +354,9 @@ class ASVDataset(Dataset):
             params["log_transform"] = True
         if self.category_normalizer is not None and self.category_normalizer.is_fitted:
             params["category_normalizer"] = self.category_normalizer.to_dict()
+            # Include encoder mappings for per-sample denormalization during validation
+            if self.categorical_encoder is not None and self.categorical_encoder.is_fitted:
+                params["categorical_encoder_mappings"] = self.categorical_encoder.get_reverse_mappings()
         if self.global_normalizer is not None and self.global_normalizer.is_fitted:
             params["global_normalizer"] = self.global_normalizer.to_dict()
         return params if params else None
