@@ -2957,9 +2957,7 @@ class TestCategoricalValidationWarnings:
         """Test warning when using conditional-output-scaling with gmu or cross-attention fusion."""
         import logging
 
-        _setup_train_data_parallel_mocks(
-            mock_biom_loader, mock_unifrac_loader, mock_dataset, mock_dataloader, mock_model
-        )
+        _setup_train_data_parallel_mocks(mock_biom_loader, mock_unifrac_loader, mock_dataset, mock_dataloader, mock_model)
         mock_trainer_instance = MagicMock()
         mock_trainer.return_value = mock_trainer_instance
         mock_trainer_instance.train.return_value = (1.0, {})
@@ -2972,17 +2970,28 @@ class TestCategoricalValidationWarnings:
                 cli,
                 [
                     "train",
-                    "--table", sample_biom_file,
-                    "--unifrac-matrix", sample_unifrac_matrix_file,
-                    "--metadata", metadata_with_location,
-                    "--metadata-column", "target",
-                    "--output-dir", output_dir,
-                    "--categorical-columns", "location",
-                    "--categorical-fusion", fusion_strategy,
-                    "--conditional-output-scaling", "location",
-                    "--batch-size", "4",
-                    "--epochs", "1",
-                    "--device", "cpu",
+                    "--table",
+                    sample_biom_file,
+                    "--unifrac-matrix",
+                    sample_unifrac_matrix_file,
+                    "--metadata",
+                    metadata_with_location,
+                    "--metadata-column",
+                    "target",
+                    "--output-dir",
+                    output_dir,
+                    "--categorical-columns",
+                    "location",
+                    "--categorical-fusion",
+                    fusion_strategy,
+                    "--conditional-output-scaling",
+                    "location",
+                    "--batch-size",
+                    "4",
+                    "--epochs",
+                    "1",
+                    "--device",
+                    "cpu",
                 ],
             )
 
