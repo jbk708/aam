@@ -2999,8 +2999,10 @@ class TestCategoricalValidationWarnings:
         sample_unifrac_matrix_file,
         sample_metadata_file,
         sample_output_dir,
+        caplog,
     ):
         """Test warning when using conditional-output-scaling with gmu fusion."""
+        import logging
         import numpy as np
         from skbio import DistanceMatrix
 
@@ -3045,27 +3047,39 @@ class TestCategoricalValidationWarnings:
         mock_trainer.return_value = mock_trainer_instance
         mock_trainer_instance.train.return_value = (1.0, {})
 
-        result = runner.invoke(
-            cli,
-            [
-                "train",
-                "--table", sample_biom_file,
-                "--unifrac-matrix", sample_unifrac_matrix_file,
-                "--metadata", sample_metadata_file,
-                "--metadata-column", "target",
-                "--output-dir", sample_output_dir,
-                "--categorical-columns", "location",
-                "--categorical-fusion", "gmu",
-                "--conditional-output-scaling", "location",
-                "--batch-size", "4",
-                "--epochs", "1",
-            ],
-        )
+        with caplog.at_level(logging.WARNING):
+            runner.invoke(
+                cli,
+                [
+                    "train",
+                    "--table",
+                    sample_biom_file,
+                    "--unifrac-matrix",
+                    sample_unifrac_matrix_file,
+                    "--metadata",
+                    sample_metadata_file,
+                    "--metadata-column",
+                    "target",
+                    "--output-dir",
+                    sample_output_dir,
+                    "--categorical-columns",
+                    "location",
+                    "--categorical-fusion",
+                    "gmu",
+                    "--conditional-output-scaling",
+                    "location",
+                    "--batch-size",
+                    "4",
+                    "--epochs",
+                    "1",
+                    "--device",
+                    "cpu",
+                ],
+            )
 
-        # Check for warning in output (captured via logging)
-        assert "redundant" in result.output.lower() or result.exit_code == 0, (
-            f"Expected warning about redundant usage. Exit code: {result.exit_code}, Output: {result.output}"
-        )
+        # Check for warning in captured logs
+        warning_found = any("redundant" in record.message.lower() for record in caplog.records)
+        assert warning_found, f"Expected warning about redundant usage in logs: {[r.message for r in caplog.records]}"
 
     @patch("aam.cli.train.BIOMLoader")
     @patch("aam.cli.train.UniFracLoader")
@@ -3086,8 +3100,10 @@ class TestCategoricalValidationWarnings:
         sample_unifrac_matrix_file,
         sample_metadata_file,
         sample_output_dir,
+        caplog,
     ):
         """Test warning when using conditional-output-scaling with cross-attention fusion."""
+        import logging
         import numpy as np
         from skbio import DistanceMatrix
 
@@ -3132,27 +3148,39 @@ class TestCategoricalValidationWarnings:
         mock_trainer.return_value = mock_trainer_instance
         mock_trainer_instance.train.return_value = (1.0, {})
 
-        result = runner.invoke(
-            cli,
-            [
-                "train",
-                "--table", sample_biom_file,
-                "--unifrac-matrix", sample_unifrac_matrix_file,
-                "--metadata", sample_metadata_file,
-                "--metadata-column", "target",
-                "--output-dir", sample_output_dir,
-                "--categorical-columns", "location",
-                "--categorical-fusion", "cross-attention",
-                "--conditional-output-scaling", "location",
-                "--batch-size", "4",
-                "--epochs", "1",
-            ],
-        )
+        with caplog.at_level(logging.WARNING):
+            runner.invoke(
+                cli,
+                [
+                    "train",
+                    "--table",
+                    sample_biom_file,
+                    "--unifrac-matrix",
+                    sample_unifrac_matrix_file,
+                    "--metadata",
+                    sample_metadata_file,
+                    "--metadata-column",
+                    "target",
+                    "--output-dir",
+                    sample_output_dir,
+                    "--categorical-columns",
+                    "location",
+                    "--categorical-fusion",
+                    "cross-attention",
+                    "--conditional-output-scaling",
+                    "location",
+                    "--batch-size",
+                    "4",
+                    "--epochs",
+                    "1",
+                    "--device",
+                    "cpu",
+                ],
+            )
 
-        # Check for warning in output (captured via logging)
-        assert "redundant" in result.output.lower() or result.exit_code == 0, (
-            f"Expected warning about redundant usage. Exit code: {result.exit_code}, Output: {result.output}"
-        )
+        # Check for warning in captured logs
+        warning_found = any("redundant" in record.message.lower() for record in caplog.records)
+        assert warning_found, f"Expected warning about redundant usage in logs: {[r.message for r in caplog.records]}"
 
     def test_no_warning_conditional_scaling_with_concat_fusion(self, runner):
         """Test no warning when using conditional-output-scaling with concat fusion."""
