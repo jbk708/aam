@@ -538,6 +538,61 @@ Reduce test code duplication by extracting shared fixtures and utilities.
 
 ---
 
+### CLN-13: ASV Sampling Strategy When Exceeding Token Limit
+**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Complete
+
+Currently when a sample has more ASVs than `--token-limit`, the first N ASVs are kept based on their matrix order in the BIOM file. This is arbitrary and may drop high-abundance ASVs.
+
+**Current Behavior:**
+```python
+# collate_fn in dataset.py
+if num_asvs > token_limit:
+    tokens = tokens[:token_limit]  # First N by matrix order
+    counts = counts[:token_limit]
+```
+
+**Proposed Options (`--asv-sampling`):**
+1. **`first`** (default, current behavior): Keep first N ASVs by matrix order
+2. **`abundance`**: Sort by count descending, keep top N most abundant ASVs
+3. **`random`**: Randomly sample N ASVs (different each batch = data augmentation)
+
+**Implementation:**
+1. Add `--asv-sampling` CLI option to train.py and pretrain.py
+2. Pass `asv_sampling` to `collate_fn` via `partial()`
+3. In `collate_fn`:
+   ```python
+   if num_asvs > token_limit:
+       if asv_sampling == "abundance":
+           # Sort by count descending
+           sorted_idx = torch.argsort(counts.squeeze(), descending=True)[:token_limit]
+           tokens = tokens[sorted_idx]
+           counts = counts[sorted_idx]
+       elif asv_sampling == "random":
+           # Random sample (varies per batch = augmentation)
+           perm = torch.randperm(num_asvs)[:token_limit]
+           tokens = tokens[perm]
+           counts = counts[perm]
+       else:  # "first"
+           tokens = tokens[:token_limit]
+           counts = counts[:token_limit]
+   ```
+
+**Benefits:**
+- `abundance`: Prioritizes most informative ASVs (higher counts = more signal)
+- `random`: Acts as data augmentation, model sees different ASV subsets each epoch
+
+**Acceptance Criteria:**
+- [x] `--asv-sampling` CLI option with choices: first, abundance, random
+- [x] Default behavior unchanged (`first`)
+- [x] `abundance` sorts by count before truncating
+- [x] `random` samples different ASVs each batch
+- [x] 4 tests covering all sampling strategies + edge case
+- [x] Documentation in CLI help text
+
+**Files:** `aam/data/dataset.py`, `aam/cli/train.py`, `aam/cli/pretrain.py`, `tests/test_dataset.py`
+
+---
+
 ## Summary
 
 | Ticket | Description | Effort | Priority | Status |
@@ -560,7 +615,8 @@ Reduce test code duplication by extracting shared fixtures and utilities.
 | **CLN-BUG-4** | LR override undone by double load_checkpoint | 0.5-1h | HIGH | Complete |
 | **CLN-11** | Consolidate test suite | 4-6h | LOW | Not Started |
 | **CLN-12** | Random Forest baseline script | 2-3h | LOW | Complete |
-| **Total** | | **39-62h** | |
+| **CLN-13** | ASV sampling strategy (abundance/random) | 2-3h | MEDIUM | Complete |
+| **Total** | | **41-65h** | |
 
 ## Recommended Order
 

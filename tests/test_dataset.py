@@ -362,6 +362,73 @@ class TestDatasetEdgeCases:
         assert result["counts"].shape[1] == token_limit
         assert result["tokens"].shape[0] == 1
 
+    def test_collate_fn_asv_sampling_first(self, tokenizer):
+        """Test asv_sampling='first' keeps first N ASVs by matrix order (default)."""
+        tokens = torch.LongTensor([[i, i, i] for i in range(1, 16)])  # 15 ASVs with distinct tokens
+        counts = torch.FloatTensor([[float(i)] for i in range(1, 16)])  # counts 1-15
+        batch = [{"tokens": tokens, "counts": counts, "sample_id": "sample1"}]
+
+        token_limit = 5
+        result = collate_fn(batch, token_limit, unifrac_distances=None, asv_sampling="first")
+
+        # Should keep first 5 ASVs (tokens 1-5, counts 1-5)
+        assert result["tokens"].shape[1] == token_limit
+        assert result["counts"][0, 0, 0].item() == 1.0  # First ASV has count=1
+        assert result["counts"][0, 4, 0].item() == 5.0  # Fifth ASV has count=5
+
+    def test_collate_fn_asv_sampling_abundance(self, tokenizer):
+        """Test asv_sampling='abundance' keeps top N most abundant ASVs."""
+        tokens = torch.LongTensor([[i, i, i] for i in range(1, 16)])  # 15 ASVs
+        # Counts: 1, 2, 3, ..., 15 - so highest abundance is at end
+        counts = torch.FloatTensor([[float(i)] for i in range(1, 16)])
+        batch = [{"tokens": tokens, "counts": counts, "sample_id": "sample1"}]
+
+        token_limit = 5
+        result = collate_fn(batch, token_limit, unifrac_distances=None, asv_sampling="abundance")
+
+        # Should keep top 5 by abundance (counts 15, 14, 13, 12, 11)
+        assert result["tokens"].shape[1] == token_limit
+        # Verify we got the highest counts (sorted descending)
+        selected_counts = result["counts"][0, :token_limit, 0].tolist()
+        assert sorted(selected_counts, reverse=True) == selected_counts  # Should be sorted descending
+        assert max(selected_counts) == 15.0  # Highest count should be present
+        assert min(selected_counts) == 11.0  # Fifth highest count
+
+    def test_collate_fn_asv_sampling_random(self, tokenizer):
+        """Test asv_sampling='random' randomly samples N ASVs (different each call)."""
+        tokens = torch.LongTensor([[i, i, i] for i in range(1, 101)])  # 100 ASVs
+        counts = torch.FloatTensor([[float(i)] for i in range(1, 101)])
+        token_limit = 10
+
+        # Call multiple times and verify different results (data augmentation behavior)
+        results = []
+        for _ in range(5):
+            batch = [{"tokens": tokens.clone(), "counts": counts.clone(), "sample_id": "sample1"}]
+            result = collate_fn(batch, token_limit, unifrac_distances=None, asv_sampling="random")
+            selected_counts = tuple(result["counts"][0, :token_limit, 0].tolist())
+            results.append(selected_counts)
+
+        # At least some results should differ (extremely unlikely all 5 are identical with 100 choose 10)
+        assert len(set(results)) > 1, "Random sampling should produce different results across calls"
+
+    def test_collate_fn_asv_sampling_no_truncation_needed(self, tokenizer):
+        """Test asv_sampling strategies don't affect samples under token_limit."""
+        tokens = torch.LongTensor([[i, i, i] for i in range(1, 6)])  # 5 ASVs
+        counts = torch.FloatTensor([[float(i)] for i in range(1, 6)])
+        batch = [{"tokens": tokens, "counts": counts, "sample_id": "sample1"}]
+
+        token_limit = 10  # More than num_asvs
+
+        for strategy in ["first", "abundance", "random"]:
+            result = collate_fn(batch, token_limit, unifrac_distances=None, asv_sampling=strategy)
+            # All 5 ASVs should be present (padded to token_limit)
+            assert result["tokens"].shape[1] == token_limit
+            # First 5 positions should have the original counts
+            assert result["counts"][0, 0, 0].item() == 1.0
+            assert result["counts"][0, 4, 0].item() == 5.0
+            # Padding positions should be zero
+            assert result["counts"][0, 5, 0].item() == 0.0
+
     def test_dataset_empty_sample(self, tokenizer, tmp_path):
         """Test dataset with empty sample (no ASVs)."""
         from biom import Table

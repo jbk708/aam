@@ -24,6 +24,7 @@ def collate_fn(
     unifrac_distances: Optional[Any] = None,  # DistanceMatrix, pd.Series, np.ndarray, or filtered variants
     unifrac_metric: str = "unweighted",
     unifrac_loader: Optional["UniFracLoader"] = None,
+    asv_sampling: str = "first",
 ) -> Dict[str, torch.Tensor]:
     """Custom collate function for batching samples with variable ASV counts.
 
@@ -33,6 +34,10 @@ def collate_fn(
         unifrac_distances: Optional full distance matrix/series/stripe matrix for batch extraction
         unifrac_metric: Type of UniFrac metric ("unweighted" or "faith_pd")
         unifrac_loader: UniFracLoader instance for batch extraction (optional, created if None)
+        asv_sampling: Strategy for selecting ASVs when exceeding token_limit:
+            - "first": Keep first N ASVs by matrix order (default, original behavior)
+            - "abundance": Keep top N most abundant ASVs (sorted by count descending)
+            - "random": Randomly sample N ASVs (different each batch, acts as augmentation)
 
     Returns:
         Batched dictionary with padded tensors. Includes:
@@ -58,8 +63,17 @@ def collate_fn(
         num_asvs = tokens.shape[0]
 
         if num_asvs > token_limit:
-            tokens = tokens[:token_limit]
-            counts = counts[:token_limit]
+            if asv_sampling == "abundance":
+                sorted_idx = torch.argsort(counts.squeeze(-1), descending=True)[:token_limit]
+                tokens = tokens[sorted_idx]
+                counts = counts[sorted_idx]
+            elif asv_sampling == "random":
+                perm = torch.randperm(num_asvs)[:token_limit]
+                tokens = tokens[perm]
+                counts = counts[perm]
+            else:  # "first" (default)
+                tokens = tokens[:token_limit]
+                counts = counts[:token_limit]
             num_asvs = token_limit
 
         # Verify sample has at least one ASV with count > 0
