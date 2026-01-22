@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-21
-**Status:** ~18 outstanding tickets (~65-110 hours)
+**Status:** ~19 outstanding tickets (~68-114 hours)
 
 ---
 
@@ -35,7 +35,7 @@ No high priority tickets remaining.
 | **CLN-6** | Categorical docs/validation | 4-5h | FUSION_CLEANUP |
 | **CLN-8** | Categorical learning rate | 2-3h | FUSION_CLEANUP |
 
-### LOW (12 tickets, ~48-63 hours)
+### LOW (13 tickets, ~51-67 hours)
 
 | Ticket | Description | Effort | File |
 |--------|-------------|--------|------|
@@ -47,9 +47,9 @@ No high priority tickets remaining.
 | **PYT-18.6** | Memory-aware batching | 4-6h | PYTORCH |
 | **PYT-19.4** | Hierarchical categories | 6-8h | PYTORCH |
 | **PYT-MAINT-2** | TensorBoard logging | 2-4h | PYTORCH |
-| **CLN-3** | Remove unused params | 1-2h | FUSION_CLEANUP |
 | **CLN-4** | Extract shared utilities | 2-3h | FUSION_CLEANUP |
 | **CLN-11** | Consolidate test suite | 4-6h | FUSION_CLEANUP |
+| **CLN-14** | Multi-pass prediction aggregation | 3-4h | FUSION_CLEANUP |
 | **COS-9.5-9.8** | ROCm infrastructure | 13-19h | COSMOS |
 
 ---

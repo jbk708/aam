@@ -593,6 +593,50 @@ if num_asvs > token_limit:
 
 ---
 
+### CLN-14: Multi-Pass Prediction Aggregation for Inference
+**Priority:** LOW | **Effort:** 3-4 hours | **Status:** Not Started
+
+When using `--asv-sampling random` during training, predictions at inference time could benefit from running multiple forward passes with different random ASV subsets and aggregating the results.
+
+**Problem:**
+- Models trained with `--asv-sampling random` see different ASV subsets during training
+- At inference, using a single random sample may give inconsistent predictions
+- Using `abundance` is deterministic but may not match the distribution seen during training
+
+**Proposed Solution:**
+Add `--prediction-passes N` option to `predict` command:
+1. Run N forward passes with different random ASV subsets
+2. Aggregate predictions (mean for regression, vote/mean-logits for classification)
+3. Optionally report prediction variance/confidence
+
+**Implementation:**
+```python
+# In predict.py
+for pass_idx in range(prediction_passes):
+    batch = collate_fn(samples, token_limit, asv_sampling="random")
+    pred = model(batch)
+    predictions.append(pred)
+# Aggregate
+final_pred = torch.stack(predictions).mean(dim=0)
+pred_std = torch.stack(predictions).std(dim=0)  # Optional confidence
+```
+
+**Benefits:**
+- More robust predictions for high-ASV samples
+- Provides uncertainty estimates via prediction variance
+- Better matches training distribution when `random` sampling was used
+
+**Acceptance Criteria:**
+- [ ] `--prediction-passes` CLI option for predict command (default: 1)
+- [ ] Mean aggregation for regression
+- [ ] Optional variance/std output for confidence
+- [ ] Only applies when `--asv-sampling random` is used
+- [ ] 3+ tests
+
+**Files:** `aam/cli/predict.py`, `tests/test_cli.py`
+
+---
+
 ## Summary
 
 | Ticket | Description | Effort | Priority | Status |
@@ -616,7 +660,8 @@ if num_asvs > token_limit:
 | **CLN-11** | Consolidate test suite | 4-6h | LOW | Not Started |
 | **CLN-12** | Random Forest baseline script | 2-3h | LOW | Complete |
 | **CLN-13** | ASV sampling strategy (abundance/random) | 2-3h | MEDIUM | Complete |
-| **Total** | | **41-65h** | |
+| **CLN-14** | Multi-pass prediction aggregation | 3-4h | LOW | Not Started |
+| **Total** | | **44-69h** | |
 
 ## Recommended Order
 
