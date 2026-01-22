@@ -1,7 +1,7 @@
 # Attention Fusion & Code Cleanup Tickets
 
 **Last Updated:** 2026-01-21
-**Status:** 10 tickets (~26-42 hours)
+**Status:** 9 tickets (~23-38 hours)
 **Design Doc:** `_design_plan/17_attention_fusion.md`
 
 ---
@@ -99,37 +99,6 @@ Learned latent bottleneck for linear complexity fusion.
 ---
 
 ## CLN: Code Cleanup Tickets
-
-### CLN-1: Consolidate Output Constraint Flags
-**Priority:** MEDIUM | **Effort:** 3-4 hours | **Status:** Not Started
-
-Replace three overlapping output flags with unified interface.
-
-**Current (redundant):**
-```bash
---bounded-targets          # sigmoid → [0, 1]
---output-activation        # relu, softplus, exp
---learnable-output-scale   # learnable scale + bias
-```
-
-**Proposed:**
-```bash
---output-constraint none|bounded|nonnegative|nonnegative-learnable
-```
-
-**Scope:**
-- Add `--output-constraint` flag
-- Deprecate old flags with warning
-- Simplify validation logic
-
-**Acceptance Criteria:**
-- [ ] Single flag replaces three
-- [ ] Old flags deprecated with warning
-- [ ] 10+ migration tests
-
-**Files:** `aam/cli/train.py`, `aam/models/sequence_predictor.py`
-
----
 
 ### CLN-2: Unify Target Normalization
 **Priority:** MEDIUM | **Effort:** 3-4 hours | **Status:** Complete
@@ -509,7 +478,6 @@ Reduce test code duplication by extracting shared fixtures and utilities.
 | **FUS-1** | GMU baseline | 3-4h | HIGH | Complete |
 | **FUS-2** | Cross-attention fusion | 5-6h | HIGH | Complete |
 | **FUS-3** | Perceiver fusion | 6-8h | LOW | Not Started |
-| **CLN-1** | Output constraint consolidation | 3-4h | MEDIUM | Not Started |
 | **CLN-2** | Normalization unification | 3-4h | MEDIUM | Complete |
 | **CLN-3** | Remove unused params | 1-2h | LOW | Complete |
 | **CLN-4** | Extract shared utilities | 2-3h | LOW | Not Started |
@@ -539,8 +507,8 @@ Reduce test code duplication by extracting shared fixtures and utilities.
 5. FUS-2 (Cross-attention)
 
 **Phase 3 - User Experience:**
-6. CLN-1 + CLN-2 (flag consolidation)
-7. CLN-6 (categorical docs)
+6. CLN-6 (categorical docs)
+7. CLN-7 (toggle count prediction)
 
 **Phase 4 - Tech Debt:**
 8. CLN-4 (shared utilities)
