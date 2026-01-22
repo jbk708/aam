@@ -543,6 +543,57 @@ The denormalization logic in trainer likely only handles `zscore` normalization,
 
 ---
 
+### CLN-BUG-6: Model Converging to Mean Prediction with freeze-base + cross-attention + random ASV sampling
+**Priority:** HIGH | **Effort:** 2-4 hours | **Status:** Not Started
+
+Training with `--freeze-base --categorical-fusion cross-attention --asv-sampling random` causes model to converge to predicting the mean, with R² decreasing over epochs.
+
+**Observed Behavior:**
+```
+Epoch 3: r2=0.0527, mae=0.8127
+Epoch 4: r2=0.0430, mae=0.8168
+Epoch 5: r2=0.0412, mae=0.8179
+Epoch 6: r2=0.0319, mae=0.8213
+```
+- R² **decreasing** over training (getting worse)
+- MAE **increasing** over training (getting worse)
+- MAE ~0.8 with zscore normalization = predicting the mean
+
+**Reproduction Command:**
+```bash
+torchrun --nproc_per_node=4 -m aam.cli train \
+    --distributed --freeze-base \
+    --categorical-columns facility,season \
+    --categorical-fusion cross-attention --cross-attn-heads 8 \
+    --conditional-output-scaling season \
+    --target-transform zscore-category --normalize-by season \
+    --asv-sampling random \
+    # ... other flags
+```
+
+**Investigation Areas:**
+1. Cross-attention fusion with frozen base embeddings - are gradients flowing correctly?
+2. Random ASV sampling + frozen base - does varying ASV subsets confuse training?
+3. Interaction between zscore-category normalization and conditional-output-scaling
+4. Check if target_encoder/target_head are receiving useful gradients
+5. Verify categorical embeddings are learning (not collapsed)
+
+**Diagnostic Steps:**
+- [ ] Log gradient norms for categorical embedder, cross-attention, target_head
+- [ ] Test without `--freeze-base` to isolate the issue
+- [ ] Test with `--asv-sampling abundance` instead of random
+- [ ] Test without `--conditional-output-scaling`
+- [ ] Check if issue reproduces without `--categorical-fusion cross-attention`
+
+**Acceptance Criteria:**
+- [ ] Root cause identified
+- [ ] Fix implemented (or workaround documented if architectural limitation)
+- [ ] Training with freeze-base + cross-attention shows improving R² over epochs
+
+**Files:** TBD based on investigation
+
+---
+
 ### CLN-15: Multi-Pass Validation During Training
 **Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Not Started
 
@@ -723,6 +774,7 @@ pred_std = torch.stack(predictions).std(dim=0)  # Optional confidence
 | **CLN-BUG-3** | --resume-from ignores new learning rate | 1-2h | HIGH | Complete |
 | **CLN-BUG-4** | LR override undone by double load_checkpoint | 0.5-1h | HIGH | Complete |
 | **CLN-BUG-5** | zscore-cat TensorBoard not denormalized | 1-2h | HIGH | Not Started |
+| **CLN-BUG-6** | Model converging to mean with freeze-base+cross-attn | 2-4h | HIGH | Not Started |
 | **CLN-15** | Multi-pass validation during training | 2-3h | MEDIUM | Not Started |
 | **CLN-11** | Consolidate test suite | 4-6h | LOW | Not Started |
 | **CLN-12** | Random Forest baseline script | 2-3h | LOW | Complete |
@@ -733,8 +785,9 @@ pred_std = torch.stack(predictions).std(dim=0)  # Optional confidence
 ## Recommended Order
 
 **Next Up - High Priority:**
-1. CLN-BUG-5 (zscore-cat TensorBoard denormalization)
-2. CLN-15 (multi-pass validation during training)
+1. CLN-BUG-6 (model converging to mean - CRITICAL training issue)
+2. CLN-BUG-5 (zscore-cat TensorBoard denormalization)
+3. CLN-15 (multi-pass validation during training)
 
 **Completed:**
 - CLN-BUG-1 to CLN-BUG-4 (bug fixes)
