@@ -1146,9 +1146,13 @@ def train(
             best_metric=best_metric,
         )
 
+        start_epoch = 0
+        initial_best_metric_value = None
         if resume_from is not None:
             logger.info(f"Resuming from checkpoint: {resume_from}")
-            trainer.load_checkpoint(resume_from, load_optimizer=True, load_scheduler=True, target_lr=lr)
+            checkpoint_info = trainer.load_checkpoint(resume_from, load_optimizer=True, load_scheduler=True, target_lr=lr)
+            start_epoch = checkpoint_info["epoch"] + 1
+            initial_best_metric_value = checkpoint_info.get("best_metric_value", checkpoint_info["best_val_loss"])
 
         logger.info("Starting training...")
         checkpoint_dir = output_path / "checkpoints"
@@ -1160,8 +1164,9 @@ def train(
             num_epochs=epochs,
             early_stopping_patience=patience,
             checkpoint_dir=str(checkpoint_dir),
-            resume_from=resume_from,
             gradient_accumulation_steps=gradient_accumulation_steps,
+            start_epoch=start_epoch,
+            initial_best_metric_value=initial_best_metric_value,
         )
 
         logger.info("Training completed")

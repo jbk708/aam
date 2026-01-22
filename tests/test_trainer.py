@@ -753,6 +753,43 @@ class TestCheckpointing:
         # Verify checkpoint LR was restored (existing behavior)
         assert trainer2.optimizer.param_groups[0]["lr"] == checkpoint_lr
 
+    def test_train_start_epoch_skips_resume_from_load(self, small_model, loss_fn, simple_dataloader_encoder, device, tmp_path):
+        """Test that start_epoch + initial_best_metric_value enables resume without resume_from.
+
+        This tests the CLI pattern where load_checkpoint() is called first with target_lr override,
+        then train() is called with start_epoch (not resume_from). The LR override should persist.
+        """
+        small_model = small_model.to(device)
+        checkpoint_lr = 1e-3
+        target_lr = 1e-5
+        optimizer = create_optimizer(small_model, lr=checkpoint_lr)
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            optimizer=optimizer,
+            device=device,
+        )
+
+        # Save checkpoint with checkpoint_lr
+        checkpoint_path = tmp_path / "checkpoint.pt"
+        trainer.save_checkpoint(str(checkpoint_path), epoch=5, best_val_loss=0.5)
+
+        # Load checkpoint with target_lr override (CLI does this before calling train)
+        checkpoint_info = trainer.load_checkpoint(str(checkpoint_path), load_optimizer=True, target_lr=target_lr)
+        assert trainer.optimizer.param_groups[0]["lr"] == target_lr
+
+        # Call train() with start_epoch (CLI pattern: no resume_from, use start_epoch instead)
+        history = trainer.train(
+            train_loader=simple_dataloader_encoder,
+            num_epochs=7,
+            start_epoch=checkpoint_info["epoch"] + 1,
+            initial_best_metric_value=checkpoint_info.get("best_metric_value"),
+        )
+
+        # LR should still be target_lr (no double-load occurred)
+        assert trainer.optimizer.param_groups[0]["lr"] == target_lr
+        assert len(history["train_loss"]) == 1
+
 
 class TestTrainingLoop:
     """Test main training loop."""

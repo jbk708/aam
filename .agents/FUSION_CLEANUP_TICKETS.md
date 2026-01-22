@@ -480,6 +480,41 @@ When using `--resume-from` with a different `--lr` value, the checkpoint's learn
 
 ---
 
+### CLN-BUG-4: --resume-from LR Override Undone by Double load_checkpoint Call
+**Priority:** HIGH | **Effort:** 0.5-1 hour | **Status:** Complete
+
+CLN-BUG-3 fix is bypassed because `load_checkpoint()` is called twice during resume.
+
+**Current Behavior:**
+```
+2026-01-21 20:15:13,544 - INFO - Overriding checkpoint learning rate: 4.95e-04 -> 1.00e-04 (from CLI --lr)
+...
+Epoch 57/1000: ... LR=4.95e-04  <-- LR reverted back!
+```
+
+**Root Cause:**
+1. `train.py:1151` calls `trainer.load_checkpoint(resume_from, target_lr=lr)` - LR override applied ✓
+2. `train.py:1157` calls `trainer.train(..., resume_from=resume_from)`
+3. `trainer.train()` at line 988 calls `self.load_checkpoint(resume_from)` **without** `target_lr`
+4. Second call restores checkpoint LR, undoing the fix
+
+**Fix Options:**
+1. **Remove duplicate call** (recommended): Don't pass `resume_from` to `trainer.train()` since CLI already handles it
+2. **OR** Add `target_lr` parameter to `Trainer.train()` and forward to `load_checkpoint()`
+3. **OR** Remove the `load_checkpoint()` call in train.py and let `trainer.train()` handle it with new `target_lr` param
+
+**Acceptance Criteria:**
+- [x] LR override persists through entire training (visible in progress bar)
+- [x] Only one "Overriding checkpoint learning rate" log message
+- [x] Existing resume tests still pass (139 tests pass)
+- [x] 1 new test verifying LR persists after train() starts
+
+**Fix Applied:** Added `start_epoch` and `initial_best_metric_value` params to `Trainer.train()`. CLI now captures checkpoint_info and passes these params instead of resume_from, avoiding the double load_checkpoint call.
+
+**Files:** `aam/cli/train.py`, `aam/training/trainer.py`, `tests/test_trainer.py`
+
+---
+
 ### CLN-11: Consolidate Test Suite
 **Priority:** LOW | **Effort:** 4-6 hours | **Status:** Not Started
 
@@ -522,6 +557,7 @@ Reduce test code duplication by extracting shared fixtures and utilities.
 | **CLN-BUG-1** | Z-score denorm in TensorBoard | 1-2h | HIGH | Complete |
 | **CLN-BUG-2** | val_predictions.tsv not written on resume | 1-2h | HIGH | Complete |
 | **CLN-BUG-3** | --resume-from ignores new learning rate | 1-2h | HIGH | Complete |
+| **CLN-BUG-4** | LR override undone by double load_checkpoint | 0.5-1h | HIGH | Complete |
 | **CLN-11** | Consolidate test suite | 4-6h | LOW | Not Started |
 | **CLN-12** | Random Forest baseline script | 2-3h | LOW | Complete |
 | **Total** | | **39-62h** | |

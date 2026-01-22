@@ -70,6 +70,7 @@ CLN-6 (categorical docs) → CLN-8 (categorical learning rate)
 
 | Ticket | Description |
 |--------|-------------|
+| CLN-BUG-4 | LR override undone by double load_checkpoint (1 test) |
 | CLN-BUG-3 | --resume-from ignores new learning rate (4 tests) |
 | CLN-7 | Toggle count prediction (8 tests) |
 | CLN-12 | Random Forest baseline script (17 tests) |
