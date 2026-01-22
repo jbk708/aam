@@ -1,6 +1,6 @@
 # Ticket Overview
 
-**Last Updated:** 2026-01-21
+**Last Updated:** 2026-01-22
 **Status:** ~18 outstanding tickets (~63-109 hours)
 
 ---
@@ -65,10 +65,11 @@ CLN-8 (categorical learning rate)
 
 ---
 
-## Recently Completed (2026-01-21)
+## Recently Completed (2026-01-22)
 
 | Ticket | Description |
 |--------|-------------|
+| CLN-BUG-5 | zscore-cat TensorBoard denormalization (2 tests) |
 | CLN-6 | Categorical docs/validation - --categorical-help (3 tests) |
 | CLN-13 | ASV sampling strategy - abundance/random (4 tests) |
 | CLN-BUG-4 | LR override undone by double load_checkpoint (1 test) |
