@@ -956,6 +956,8 @@ class Trainer:
         resume_from: Optional[str] = None,
         gradient_accumulation_steps: int = 1,
         save_plots: bool = True,
+        start_epoch: int = 0,
+        initial_best_metric_value: Optional[float] = None,
     ) -> Dict[str, list]:
         """Main training loop.
 
@@ -965,9 +967,11 @@ class Trainer:
             num_epochs: Maximum number of epochs
             early_stopping_patience: Patience for early stopping
             checkpoint_dir: Directory to save checkpoints
-            resume_from: Path to checkpoint to resume from
+            resume_from: Path to checkpoint to resume from (deprecated, use load_checkpoint + start_epoch)
             gradient_accumulation_steps: Number of steps to accumulate gradients before optimizer step
             save_plots: Whether to save prediction plots when validation improves
+            start_epoch: Epoch to start training from (use with load_checkpoint for resume)
+            initial_best_metric_value: Best metric value from checkpoint (use with load_checkpoint for resume)
 
         Returns:
             Dictionary with training history
@@ -978,14 +982,17 @@ class Trainer:
         }
 
         # Initialize best metric value based on mode (inf for min, -inf for max)
-        best_metric_value = float("inf") if self.best_metric_mode == "min" else float("-inf")
+        if initial_best_metric_value is not None:
+            best_metric_value = initial_best_metric_value
+        else:
+            best_metric_value = float("inf") if self.best_metric_mode == "min" else float("-inf")
         best_val_loss = float("inf")  # Keep for backwards compatibility
         patience_counter = 0
-        start_epoch = 0
         val_predictions_saved = False
         last_full_val_predictions: Optional[Dict[str, Any]] = None
 
-        if resume_from is not None:
+        # Legacy resume_from support (deprecated - prefer load_checkpoint + start_epoch params)
+        if resume_from is not None and start_epoch == 0:
             checkpoint_info = self.load_checkpoint(resume_from)
             start_epoch = checkpoint_info["epoch"] + 1
             best_val_loss = checkpoint_info["best_val_loss"]
