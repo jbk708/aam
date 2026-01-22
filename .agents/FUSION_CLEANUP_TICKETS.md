@@ -595,7 +595,7 @@ if num_asvs > token_limit:
 ---
 
 ### CLN-14: Multi-Pass Prediction Aggregation for Inference
-**Priority:** LOW | **Effort:** 3-4 hours | **Status:** Not Started
+**Priority:** LOW | **Effort:** 3-4 hours | **Status:** Complete
 
 When using `--asv-sampling random` during training, predictions at inference time could benefit from running multiple forward passes with different random ASV subsets and aggregating the results.
 
@@ -628,11 +628,11 @@ pred_std = torch.stack(predictions).std(dim=0)  # Optional confidence
 - Better matches training distribution when `random` sampling was used
 
 **Acceptance Criteria:**
-- [ ] `--prediction-passes` CLI option for predict command (default: 1)
-- [ ] Mean aggregation for regression
-- [ ] Optional variance/std output for confidence
-- [ ] Only applies when `--asv-sampling random` is used
-- [ ] 3+ tests
+- [x] `--prediction-passes` CLI option for predict command (default: 1)
+- [x] Mean aggregation for regression
+- [x] Optional variance/std output for confidence
+- [x] Only applies when `--asv-sampling random` is used
+- [x] 5 tests (exceeds requirement)
 
 **Files:** `aam/cli/predict.py`, `tests/test_cli.py`
 
@@ -661,7 +661,7 @@ pred_std = torch.stack(predictions).std(dim=0)  # Optional confidence
 | **CLN-11** | Consolidate test suite | 4-6h | LOW | Not Started |
 | **CLN-12** | Random Forest baseline script | 2-3h | LOW | Complete |
 | **CLN-13** | ASV sampling strategy (abundance/random) | 2-3h | MEDIUM | Complete |
-| **CLN-14** | Multi-pass prediction aggregation | 3-4h | LOW | Not Started |
+| **CLN-14** | Multi-pass prediction aggregation | 3-4h | LOW | Complete |
 | **Total** | | **44-69h** | |
 
 ## Recommended Order
