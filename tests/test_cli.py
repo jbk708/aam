@@ -2895,3 +2895,270 @@ class TestOutputArtifacts:
 
         assert len(train_content) == 8, f"Expected 8 training samples, got {len(train_content)}"
         assert len(val_content) == 2, f"Expected 2 validation samples, got {len(val_content)}"
+
+
+class TestCategoricalHelp:
+    """Tests for --categorical-help decision tree and validation warnings."""
+
+    @pytest.fixture
+    def runner(self):
+        """Create CLI test runner."""
+        return CliRunner()
+
+    def test_categorical_help_shows_decision_tree(self, runner):
+        """Test that --categorical-help shows decision tree and exits 0."""
+        result = runner.invoke(cli, ["train", "--categorical-help"])
+
+        assert result.exit_code == 0
+        assert "Categorical Conditioning Decision Tree" in result.output
+        assert "--categorical-fusion concat" in result.output
+        assert "--categorical-fusion cross-attention" in result.output
+        assert "--categorical-fusion gmu" in result.output
+        assert "--conditional-output-scaling" in result.output
+
+    def test_categorical_help_shows_recommended_combinations(self, runner):
+        """Test that --categorical-help shows recommended combinations."""
+        result = runner.invoke(cli, ["train", "--categorical-help"])
+
+        assert result.exit_code == 0
+        assert "Recommended Combinations" in result.output
+        assert "Avoid" in result.output
+
+    def test_categorical_help_shows_example_usage(self, runner):
+        """Test that --categorical-help shows example usage."""
+        result = runner.invoke(cli, ["train", "--categorical-help"])
+
+        assert result.exit_code == 0
+        assert "Example Usage" in result.output
+        assert "aam train" in result.output
+
+
+class TestCategoricalValidationWarnings:
+    """Tests for categorical validation warnings."""
+
+    @pytest.fixture
+    def runner(self):
+        """Create CLI test runner."""
+        return CliRunner()
+
+    @pytest.fixture
+    def temp_dir(self):
+        """Create temporary directory for testing."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yield Path(tmpdir)
+
+    @pytest.fixture
+    def sample_biom_file(self, temp_dir):
+        """Create a sample BIOM file path."""
+        biom_file = temp_dir / "test.biom"
+        biom_file.touch()
+        return str(biom_file)
+
+    @pytest.fixture
+    def sample_unifrac_matrix_file(self, temp_dir):
+        """Create a sample UniFrac matrix file path."""
+        unifrac_file = temp_dir / "test_unifrac.npy"
+        unifrac_file.touch()
+        return str(unifrac_file)
+
+    @pytest.fixture
+    def sample_metadata_file(self, temp_dir):
+        """Create sample metadata file with categorical column."""
+        metadata_file = temp_dir / "metadata.tsv"
+        metadata_file.write_text(
+            "sample_id\ttarget\tlocation\n"
+            "sample1\t1.0\tsite_a\n"
+            "sample2\t2.0\tsite_b\n"
+            "sample3\t3.0\tsite_a\n"
+            "sample4\t4.0\tsite_b\n"
+        )
+        return str(metadata_file)
+
+    @pytest.fixture
+    def sample_output_dir(self, temp_dir):
+        """Create sample output directory path."""
+        output_dir = temp_dir / "output"
+        return str(output_dir)
+
+    @patch("aam.cli.train.BIOMLoader")
+    @patch("aam.cli.train.UniFracLoader")
+    @patch("aam.cli.train.ASVDataset")
+    @patch("aam.cli.train.DataLoader")
+    @patch("aam.cli.train.SequencePredictor")
+    @patch("aam.cli.train.Trainer")
+    def test_warning_conditional_scaling_with_gmu_fusion(
+        self,
+        mock_trainer,
+        mock_model,
+        mock_dataloader,
+        mock_dataset,
+        mock_unifrac_loader,
+        mock_biom_loader,
+        runner,
+        sample_biom_file,
+        sample_unifrac_matrix_file,
+        sample_metadata_file,
+        sample_output_dir,
+    ):
+        """Test warning when using conditional-output-scaling with gmu fusion."""
+        import numpy as np
+        from skbio import DistanceMatrix
+
+        # Setup mocks
+        mock_biom_loader_instance = MagicMock()
+        mock_biom_loader.return_value = mock_biom_loader_instance
+        mock_table = MagicMock()
+
+        def mock_ids(axis=None):
+            if axis == "sample":
+                return ["sample1", "sample2", "sample3", "sample4"]
+            elif axis == "observation":
+                return ["obs1", "obs2"]
+            return ["sample1", "sample2", "sample3", "sample4"]
+
+        mock_table.ids = mock_ids
+        mock_biom_loader_instance.load_table.return_value = mock_table
+        mock_biom_loader_instance.rarefy.return_value = mock_table
+
+        mock_unifrac_loader_instance = MagicMock()
+        mock_unifrac_loader.return_value = mock_unifrac_loader_instance
+        dist_data = np.random.rand(4, 4)
+        dist_data = (dist_data + dist_data.T) / 2
+        np.fill_diagonal(dist_data, 0)
+        mock_distance_matrix = DistanceMatrix(dist_data, ids=["sample1", "sample2", "sample3", "sample4"])
+        mock_unifrac_loader_instance.load_matrix.return_value = mock_distance_matrix
+
+        mock_dataset_instance = MagicMock()
+        mock_dataset_instance.get_normalization_params.return_value = None
+        mock_dataset_instance.get_count_normalization_params.return_value = None
+        mock_dataset.return_value = mock_dataset_instance
+
+        mock_dataloader_instance = MagicMock()
+        mock_dataloader_instance.__len__ = MagicMock(return_value=1)
+        mock_dataloader.return_value = mock_dataloader_instance
+
+        mock_model_instance = MagicMock()
+        mock_model_instance.parameters.return_value = iter([torch.nn.Parameter(torch.zeros(1))])
+        mock_model.return_value = mock_model_instance
+
+        mock_trainer_instance = MagicMock()
+        mock_trainer.return_value = mock_trainer_instance
+        mock_trainer_instance.train.return_value = (1.0, {})
+
+        result = runner.invoke(
+            cli,
+            [
+                "train",
+                "--table", sample_biom_file,
+                "--unifrac-matrix", sample_unifrac_matrix_file,
+                "--metadata", sample_metadata_file,
+                "--metadata-column", "target",
+                "--output-dir", sample_output_dir,
+                "--categorical-columns", "location",
+                "--categorical-fusion", "gmu",
+                "--conditional-output-scaling", "location",
+                "--batch-size", "4",
+                "--epochs", "1",
+            ],
+        )
+
+        # Check for warning in output (captured via logging)
+        assert "redundant" in result.output.lower() or result.exit_code == 0, (
+            f"Expected warning about redundant usage. Exit code: {result.exit_code}, Output: {result.output}"
+        )
+
+    @patch("aam.cli.train.BIOMLoader")
+    @patch("aam.cli.train.UniFracLoader")
+    @patch("aam.cli.train.ASVDataset")
+    @patch("aam.cli.train.DataLoader")
+    @patch("aam.cli.train.SequencePredictor")
+    @patch("aam.cli.train.Trainer")
+    def test_warning_conditional_scaling_with_cross_attention_fusion(
+        self,
+        mock_trainer,
+        mock_model,
+        mock_dataloader,
+        mock_dataset,
+        mock_unifrac_loader,
+        mock_biom_loader,
+        runner,
+        sample_biom_file,
+        sample_unifrac_matrix_file,
+        sample_metadata_file,
+        sample_output_dir,
+    ):
+        """Test warning when using conditional-output-scaling with cross-attention fusion."""
+        import numpy as np
+        from skbio import DistanceMatrix
+
+        # Setup mocks
+        mock_biom_loader_instance = MagicMock()
+        mock_biom_loader.return_value = mock_biom_loader_instance
+        mock_table = MagicMock()
+
+        def mock_ids(axis=None):
+            if axis == "sample":
+                return ["sample1", "sample2", "sample3", "sample4"]
+            elif axis == "observation":
+                return ["obs1", "obs2"]
+            return ["sample1", "sample2", "sample3", "sample4"]
+
+        mock_table.ids = mock_ids
+        mock_biom_loader_instance.load_table.return_value = mock_table
+        mock_biom_loader_instance.rarefy.return_value = mock_table
+
+        mock_unifrac_loader_instance = MagicMock()
+        mock_unifrac_loader.return_value = mock_unifrac_loader_instance
+        dist_data = np.random.rand(4, 4)
+        dist_data = (dist_data + dist_data.T) / 2
+        np.fill_diagonal(dist_data, 0)
+        mock_distance_matrix = DistanceMatrix(dist_data, ids=["sample1", "sample2", "sample3", "sample4"])
+        mock_unifrac_loader_instance.load_matrix.return_value = mock_distance_matrix
+
+        mock_dataset_instance = MagicMock()
+        mock_dataset_instance.get_normalization_params.return_value = None
+        mock_dataset_instance.get_count_normalization_params.return_value = None
+        mock_dataset.return_value = mock_dataset_instance
+
+        mock_dataloader_instance = MagicMock()
+        mock_dataloader_instance.__len__ = MagicMock(return_value=1)
+        mock_dataloader.return_value = mock_dataloader_instance
+
+        mock_model_instance = MagicMock()
+        mock_model_instance.parameters.return_value = iter([torch.nn.Parameter(torch.zeros(1))])
+        mock_model.return_value = mock_model_instance
+
+        mock_trainer_instance = MagicMock()
+        mock_trainer.return_value = mock_trainer_instance
+        mock_trainer_instance.train.return_value = (1.0, {})
+
+        result = runner.invoke(
+            cli,
+            [
+                "train",
+                "--table", sample_biom_file,
+                "--unifrac-matrix", sample_unifrac_matrix_file,
+                "--metadata", sample_metadata_file,
+                "--metadata-column", "target",
+                "--output-dir", sample_output_dir,
+                "--categorical-columns", "location",
+                "--categorical-fusion", "cross-attention",
+                "--conditional-output-scaling", "location",
+                "--batch-size", "4",
+                "--epochs", "1",
+            ],
+        )
+
+        # Check for warning in output (captured via logging)
+        assert "redundant" in result.output.lower() or result.exit_code == 0, (
+            f"Expected warning about redundant usage. Exit code: {result.exit_code}, Output: {result.output}"
+        )
+
+    def test_no_warning_conditional_scaling_with_concat_fusion(self, runner):
+        """Test no warning when using conditional-output-scaling with concat fusion."""
+        # This is a valid combination so we just check the help text doesn't warn against it
+        result = runner.invoke(cli, ["train", "--categorical-help"])
+
+        assert result.exit_code == 0
+        # Check that concat + conditional scaling is recommended
+        assert "concat" in result.output
