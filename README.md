@@ -354,6 +354,7 @@ When both penalties equal 1.0, asymmetric loss is equivalent to MAE.
 | `--attention-layers` | Number of transformer layers | 4 |
 | `--max-bp` | Maximum base pairs per sequence | 150 |
 | `--token-limit` | Maximum ASVs per sample (**critical for memory**) | 1024 |
+| `--asv-sampling` | ASV selection when exceeding token-limit: `first` (matrix order), `abundance` (top by count), `random` (data augmentation) | first |
 
 ### Memory Optimization
 

@@ -63,6 +63,15 @@ from aam.cli.utils import (
 @click.option("--attention-layers", default=4, type=int, help="Number of transformer layers")
 @click.option("--max-bp", default=150, type=int, help="Maximum base pairs per sequence")
 @click.option("--token-limit", default=1024, type=int, help="Maximum ASVs per sample")
+@click.option(
+    "--asv-sampling",
+    default="first",
+    type=click.Choice(["first", "abundance", "random"]),
+    help="ASV selection strategy when sample exceeds token-limit: "
+    "first (default, by matrix order), "
+    "abundance (top N by count), "
+    "random (random N each batch, acts as data augmentation)",
+)
 @click.option("--out-dim", default=1, type=int, help="Output dimension")
 @click.option("--classifier", is_flag=True, help="Use classification mode")
 @click.option("--rarefy-depth", default=5000, type=int, help="Rarefaction depth")
@@ -336,6 +345,7 @@ def train(
     attention_layers: int,
     max_bp: int,
     token_limit: int,
+    asv_sampling: str,
     out_dim: int,
     classifier: bool,
     rarefy_depth: int,
@@ -833,6 +843,7 @@ def train(
             unifrac_distances=train_distance_matrix,
             unifrac_metric=unifrac_metric_name,
             unifrac_loader=unifrac_loader,
+            asv_sampling=asv_sampling,
         )
         val_collate = partial(
             collate_fn,
@@ -840,6 +851,7 @@ def train(
             unifrac_distances=val_distance_matrix,
             unifrac_metric=unifrac_metric_name,
             unifrac_loader=unifrac_loader,
+            asv_sampling=asv_sampling,
         )
 
         # Create dataloaders (with distributed sampler if distributed or fsdp)

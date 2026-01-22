@@ -70,6 +70,7 @@ CLN-6 (categorical docs) → CLN-8 (categorical learning rate)
 
 | Ticket | Description |
 |--------|-------------|
+| CLN-13 | ASV sampling strategy - abundance/random (4 tests) |
 | CLN-BUG-4 | LR override undone by double load_checkpoint (1 test) |
 | CLN-BUG-3 | --resume-from ignores new learning rate (4 tests) |
 | CLN-7 | Toggle count prediction (8 tests) |

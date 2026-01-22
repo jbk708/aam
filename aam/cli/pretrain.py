@@ -61,6 +61,15 @@ from aam.cli.utils import (
 @click.option("--attention-layers", default=4, type=int, help="Number of transformer layers")
 @click.option("--max-bp", default=150, type=int, help="Maximum base pairs per sequence")
 @click.option("--token-limit", default=1024, type=int, help="Maximum ASVs per sample")
+@click.option(
+    "--asv-sampling",
+    default="first",
+    type=click.Choice(["first", "abundance", "random"]),
+    help="ASV selection strategy when sample exceeds token-limit: "
+    "first (default, by matrix order), "
+    "abundance (top N by count), "
+    "random (random N each batch, acts as data augmentation)",
+)
 @click.option("--rarefy-depth", default=5000, type=int, help="Rarefaction depth")
 @click.option("--test-size", default=0.2, type=float, help="Validation split size")
 @click.option(
@@ -200,6 +209,7 @@ def pretrain(
     attention_layers: int,
     max_bp: int,
     token_limit: int,
+    asv_sampling: str,
     rarefy_depth: int,
     test_size: float,
     unifrac_metric: str,
@@ -412,6 +422,7 @@ def pretrain(
             unifrac_distances=train_distance_matrix,
             unifrac_metric=unifrac_metric_name,
             unifrac_loader=unifrac_loader,
+            asv_sampling=asv_sampling,
         )
         val_collate = partial(
             collate_fn,
@@ -419,6 +430,7 @@ def pretrain(
             unifrac_distances=val_distance_matrix,
             unifrac_metric=unifrac_metric_name,
             unifrac_loader=unifrac_loader,
+            asv_sampling=asv_sampling,
         )
 
         # Create dataloaders (with distributed sampler if using distributed training)
