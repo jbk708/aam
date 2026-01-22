@@ -1,15 +1,17 @@
 """Unit tests for training loop."""
 
+import logging
+import inspect
+import os
+import tempfile
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import numpy as np
 import pytest
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
-import tempfile
-import os
-from pathlib import Path
-import inspect
-import matplotlib.pyplot as plt
-import numpy as np
 
 from aam.training.trainer import (
     Trainer,
@@ -643,6 +645,113 @@ class TestCheckpointing:
         checkpoint_info = trainer.load_checkpoint(str(checkpoint_path), load_optimizer=False)
 
         assert checkpoint_info["epoch"] == 3
+
+    def test_load_checkpoint_with_lr_override(self, small_model, loss_fn, device, tmp_path):
+        """Test that target_lr overrides the checkpoint's learning rate."""
+        small_model = small_model.to(device)
+        original_lr = 1e-3
+        optimizer = create_optimizer(small_model, lr=original_lr)
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            optimizer=optimizer,
+            device=device,
+        )
+
+        checkpoint_path = tmp_path / "checkpoint.pt"
+        trainer.save_checkpoint(str(checkpoint_path), epoch=1, best_val_loss=0.5)
+
+        # Verify checkpoint has original LR
+        assert trainer.optimizer.param_groups[0]["lr"] == original_lr
+
+        # Load checkpoint with a different target_lr
+        new_lr = 5e-5
+        trainer.load_checkpoint(str(checkpoint_path), load_optimizer=True, target_lr=new_lr)
+
+        # Verify LR was overridden
+        for param_group in trainer.optimizer.param_groups:
+            assert param_group["lr"] == new_lr
+
+    def test_load_checkpoint_lr_override_updates_scheduler_base_lrs(self, small_model, loss_fn, device, tmp_path):
+        """Test that target_lr also updates WarmupCosineScheduler's base_lrs."""
+        small_model = small_model.to(device)
+        original_lr = 1e-3
+        optimizer = create_optimizer(small_model, lr=original_lr)
+        scheduler = create_scheduler(optimizer, scheduler_type="warmup_cosine", num_warmup_steps=10, num_training_steps=100)
+
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            device=device,
+        )
+
+        checkpoint_path = tmp_path / "checkpoint.pt"
+        trainer.save_checkpoint(str(checkpoint_path), epoch=1, best_val_loss=0.5)
+
+        # Verify scheduler has original base_lrs
+        assert trainer.scheduler.base_lrs == [original_lr]
+
+        # Load checkpoint with a different target_lr
+        new_lr = 5e-5
+        trainer.load_checkpoint(str(checkpoint_path), load_optimizer=True, load_scheduler=True, target_lr=new_lr)
+
+        # Verify scheduler's base_lrs were updated
+        assert trainer.scheduler.base_lrs == [new_lr]
+
+    def test_load_checkpoint_same_lr_no_override(self, small_model, loss_fn, device, tmp_path, caplog):
+        """Test that same target_lr as checkpoint doesn't log override message."""
+        small_model = small_model.to(device)
+        original_lr = 1e-4
+        optimizer = create_optimizer(small_model, lr=original_lr)
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            optimizer=optimizer,
+            device=device,
+        )
+
+        checkpoint_path = tmp_path / "checkpoint.pt"
+        trainer.save_checkpoint(str(checkpoint_path), epoch=1, best_val_loss=0.5)
+
+        # Load checkpoint with same target_lr
+        with caplog.at_level(logging.INFO):
+            trainer.load_checkpoint(str(checkpoint_path), load_optimizer=True, target_lr=original_lr)
+
+        # Verify no override message was logged
+        assert "Overriding checkpoint learning rate" not in caplog.text
+
+    def test_load_checkpoint_without_target_lr_preserves_checkpoint_lr(self, small_model, loss_fn, device, tmp_path):
+        """Test that without target_lr, checkpoint's learning rate is preserved (existing behavior)."""
+        small_model = small_model.to(device)
+        checkpoint_lr = 1e-3
+        optimizer = create_optimizer(small_model, lr=checkpoint_lr)
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            optimizer=optimizer,
+            device=device,
+        )
+
+        checkpoint_path = tmp_path / "checkpoint.pt"
+        trainer.save_checkpoint(str(checkpoint_path), epoch=1, best_val_loss=0.5)
+
+        # Create new trainer with different LR
+        new_lr = 5e-5
+        new_optimizer = create_optimizer(small_model, lr=new_lr)
+        trainer2 = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            optimizer=new_optimizer,
+            device=device,
+        )
+
+        # Load checkpoint without target_lr - should restore checkpoint's LR
+        trainer2.load_checkpoint(str(checkpoint_path), load_optimizer=True)
+
+        # Verify checkpoint LR was restored (existing behavior)
+        assert trainer2.optimizer.param_groups[0]["lr"] == checkpoint_lr
 
 
 class TestTrainingLoop:
@@ -3140,8 +3249,6 @@ class TestCategoricalCheckpointCompatibility:
         self, predictor_with_categoricals, pretrained_encoder_checkpoint, device, caplog
     ):
         """Test that load_pretrained_encoder logs info about new weights being initialized."""
-        import logging
-
         checkpoint_path, _ = pretrained_encoder_checkpoint
         predictor = predictor_with_categoricals.to(device)
 

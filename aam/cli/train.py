@@ -1148,7 +1148,7 @@ def train(
 
         if resume_from is not None:
             logger.info(f"Resuming from checkpoint: {resume_from}")
-            trainer.load_checkpoint(resume_from, load_optimizer=True, load_scheduler=True)
+            trainer.load_checkpoint(resume_from, load_optimizer=True, load_scheduler=True, target_lr=lr)
 
         logger.info("Starting training...")
         checkpoint_dir = output_path / "checkpoints"

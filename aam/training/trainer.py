@@ -1331,6 +1331,7 @@ class Trainer:
         filepath: str,
         load_optimizer: bool = True,
         load_scheduler: bool = True,
+        target_lr: Optional[float] = None,
     ) -> Dict:
         """Load training checkpoint.
 
@@ -1344,6 +1345,8 @@ class Trainer:
             filepath: Path to checkpoint file
             load_optimizer: Whether to load optimizer state
             load_scheduler: Whether to load scheduler state
+            target_lr: If provided, override the checkpoint's learning rate with this value.
+                The CLI-specified learning rate takes precedence over the checkpoint.
 
         Returns:
             Dictionary with checkpoint info (epoch, best_val_loss, metrics)
@@ -1403,6 +1406,16 @@ class Trainer:
             self.model.load_state_dict(checkpoint["model_state_dict"])
             if load_optimizer and "optimizer_state_dict" in checkpoint:
                 self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+
+        if target_lr is not None and load_optimizer:
+            checkpoint_lr = self.optimizer.param_groups[0]["lr"]
+            if abs(checkpoint_lr - target_lr) > 1e-10:
+                logger.info(f"Overriding checkpoint learning rate: {checkpoint_lr:.2e} -> {target_lr:.2e} (from CLI --lr)")
+                for param_group in self.optimizer.param_groups:
+                    param_group["lr"] = target_lr
+                # Also update scheduler's base_lrs so it uses the new LR as baseline
+                if self.scheduler is not None and isinstance(self.scheduler, WarmupCosineScheduler):
+                    self.scheduler.base_lrs = [target_lr] * len(self.optimizer.param_groups)
 
         if load_scheduler and self.scheduler is not None:
             if isinstance(self.scheduler, WarmupCosineScheduler) and "scheduler_step" in checkpoint:
