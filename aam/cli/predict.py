@@ -19,6 +19,102 @@ from aam.cli.utils import (
     validate_arguments,
 )
 
+import numpy as np
+
+
+def _run_inference(
+    model_obj,
+    dataloader,
+    dataset,
+    inference_collate,
+    device_obj,
+    prediction_passes: int,
+    batch_size: int,
+) -> tuple[list, list, list]:
+    """Run inference with optional multi-pass aggregation.
+
+    Args:
+        model_obj: The trained model
+        dataloader: DataLoader for inference
+        dataset: The ASVDataset
+        inference_collate: Collate function with asv_sampling configured
+        device_obj: Device to run inference on
+        prediction_passes: Number of forward passes (>1 for multi-pass aggregation)
+        batch_size: Batch size for inference
+
+    Returns:
+        Tuple of (predictions, variances, sample_ids)
+        variances is empty list if prediction_passes == 1
+    """
+    predictions = []
+    variances: list = []
+    sample_ids_list = []
+
+    if prediction_passes == 1:
+        with torch.no_grad():
+            for batch in dataloader:
+                tokens = batch["tokens"].to(device_obj)
+
+                categorical_ids = None
+                if "categorical_ids" in batch:
+                    categorical_ids = {col: ids.to(device_obj) for col, ids in batch["categorical_ids"].items()}
+
+                outputs = model_obj(tokens, categorical_ids=categorical_ids, return_nucleotides=False)
+
+                if "target_prediction" in outputs:
+                    pred = outputs["target_prediction"].cpu().numpy()
+                    if pred.ndim == 1:
+                        predictions.extend(pred.tolist())
+                    elif pred.ndim == 2 and pred.shape[1] == 1:
+                        predictions.extend(pred.squeeze(1).tolist())
+                    else:
+                        predictions.extend([p.tolist() for p in pred])
+                    sample_ids_list.extend(batch["sample_ids"])
+    else:
+        # Multi-pass prediction: run multiple forward passes and aggregate
+        # Collect all predictions per sample across passes
+        all_pass_predictions: dict[str, list] = {}
+
+        with torch.no_grad():
+            for pass_idx in range(prediction_passes):
+                # Create fresh dataloader for each pass to get different random samples
+                pass_dataloader = DataLoader(
+                    dataset,
+                    batch_size=batch_size,
+                    shuffle=False,
+                    num_workers=0,
+                    collate_fn=inference_collate,
+                    pin_memory=str(device_obj) == "cuda",
+                )
+
+                for batch in pass_dataloader:
+                    tokens = batch["tokens"].to(device_obj)
+
+                    categorical_ids = None
+                    if "categorical_ids" in batch:
+                        categorical_ids = {col: ids.to(device_obj) for col, ids in batch["categorical_ids"].items()}
+
+                    outputs = model_obj(tokens, categorical_ids=categorical_ids, return_nucleotides=False)
+
+                    if "target_prediction" in outputs:
+                        pred = outputs["target_prediction"].cpu().numpy()
+                        if pred.ndim == 2 and pred.shape[1] == 1:
+                            pred = pred.squeeze(1)
+
+                        for sample_id, p in zip(batch["sample_ids"], pred):
+                            if sample_id not in all_pass_predictions:
+                                all_pass_predictions[sample_id] = []
+                            all_pass_predictions[sample_id].append(p)
+
+        # Aggregate predictions (mean) and compute variance
+        for sample_id, preds in all_pass_predictions.items():
+            sample_ids_list.append(sample_id)
+            preds_array = np.array(preds)
+            predictions.append(float(np.mean(preds_array)))
+            variances.append(float(np.std(preds_array)))
+
+    return predictions, variances, sample_ids_list
+
 
 @click.command()
 @click.option("--model", required=True, type=click.Path(exists=True), help="Path to trained model checkpoint")
@@ -37,6 +133,23 @@ from aam.cli.utils import (
     is_flag=True,
     help="Disable sequence tokenization cache (enabled by default for faster inference)",
 )
+@click.option(
+    "--asv-sampling",
+    default="first",
+    type=click.Choice(["first", "abundance", "random"]),
+    help="ASV sampling strategy when exceeding token limit: first (default), abundance, or random",
+)
+@click.option(
+    "--prediction-passes",
+    default=1,
+    type=int,
+    help="Number of forward passes for prediction aggregation (only applies with --asv-sampling random)",
+)
+@click.option(
+    "--output-variance",
+    is_flag=True,
+    help="Output prediction variance/std when using multiple prediction passes",
+)
 def predict(
     model: str,
     table: str,
@@ -45,6 +158,9 @@ def predict(
     batch_size: int,
     device: str,
     no_sequence_cache: bool,
+    asv_sampling: str,
+    prediction_passes: int,
+    output_variance: bool,
 ):
     """Run inference with trained AAM model."""
     try:
@@ -56,6 +172,17 @@ def predict(
         validate_file_path(table, "BIOM table")
 
         validate_arguments(batch_size=batch_size)
+
+        if prediction_passes > 1 and asv_sampling != "random":
+            logger.warning(
+                f"--prediction-passes={prediction_passes} only has effect with --asv-sampling=random. "
+                f"Current sampling: {asv_sampling}. Using single pass."
+            )
+            prediction_passes = 1
+
+        if output_variance and prediction_passes == 1:
+            logger.warning("--output-variance has no effect with single prediction pass")
+            output_variance = False
 
         device_obj = setup_device(device)
 
@@ -115,6 +242,7 @@ def predict(
             token_limit=model_config.get("token_limit", 1024),
             unifrac_distances=None,
             unifrac_metric="unweighted",
+            asv_sampling=asv_sampling,
         )
         dataloader = DataLoader(
             dataset,
@@ -150,29 +278,18 @@ def predict(
         model_obj.eval()
 
         logger.info("Running inference...")
-        predictions = []
-        sample_ids_list = []
+        if prediction_passes > 1:
+            logger.info(f"Using {prediction_passes} prediction passes with random ASV sampling")
 
-        with torch.no_grad():
-            for batch in dataloader:
-                tokens = batch["tokens"].to(device_obj)
-
-                # Prepare categorical_ids if available
-                categorical_ids = None
-                if "categorical_ids" in batch:
-                    categorical_ids = {col: ids.to(device_obj) for col, ids in batch["categorical_ids"].items()}
-
-                outputs = model_obj(tokens, categorical_ids=categorical_ids, return_nucleotides=False)
-
-                if "target_prediction" in outputs:
-                    pred = outputs["target_prediction"].cpu().numpy()
-                    if pred.ndim == 1:
-                        predictions.extend(pred.tolist())
-                    elif pred.ndim == 2 and pred.shape[1] == 1:
-                        predictions.extend(pred.squeeze(1).tolist())
-                    else:
-                        predictions.extend([p.tolist() for p in pred])
-                    sample_ids_list.extend(batch["sample_ids"])
+        predictions, variances, sample_ids_list = _run_inference(
+            model_obj=model_obj,
+            dataloader=dataloader,
+            dataset=dataset,
+            inference_collate=inference_collate,
+            device_obj=device_obj,
+            prediction_passes=prediction_passes,
+            batch_size=batch_size,
+        )
 
         logger.info(f"Writing predictions to {output}...")
         if predictions and isinstance(predictions[0], list):
@@ -180,6 +297,10 @@ def predict(
             output_df = pd.DataFrame({"sample_id": sample_ids_list, **pred_cols})
         else:
             output_df = pd.DataFrame({"sample_id": sample_ids_list, "prediction": predictions})
+
+        if output_variance and variances:
+            output_df["prediction_std"] = variances
+
         output_path = Path(output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_df.to_csv(output_path, sep="\t", index=False)
