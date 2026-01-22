@@ -448,6 +448,38 @@ TensorBoard plots show z-score normalized values instead of original scale when 
 
 ---
 
+### CLN-BUG-3: --resume-from Ignores New Learning Rate
+**Priority:** HIGH | **Effort:** 1-2 hours | **Status:** Complete
+
+When using `--resume-from` with a different `--lr` value, the checkpoint's learning rate overrides the command-line argument.
+
+**Current Behavior:**
+- User specifies `--resume-from checkpoint.pt --lr 1e-4`
+- Training resumes with the learning rate from the checkpoint instead of 1e-4
+- No warning that the specified LR was ignored
+
+**Expected Behavior:**
+- Command-line `--lr` should override the checkpoint's learning rate
+- Or at minimum, warn the user that their specified LR is being ignored
+
+**Root Cause:**
+- Checkpoint loading restores optimizer state which includes learning rate
+- The CLI-specified learning rate is set before checkpoint loading, then overwritten
+
+**Scope:**
+1. After loading optimizer state, update LR to match CLI argument if specified
+2. Add logging to indicate when LR is being changed from checkpoint value
+3. Consider adding `--reset-lr` flag for explicit control
+
+**Acceptance Criteria:**
+- [x] `--lr` overrides checkpoint learning rate when resuming
+- [x] Log message indicates LR change from checkpoint value
+- [x] 4 tests (LR override, scheduler base_lrs update, same LR no log, preserve checkpoint LR without target_lr)
+
+**Files:** `aam/cli/train.py`, `aam/training/trainer.py`, `tests/test_trainer.py`
+
+---
+
 ### CLN-11: Consolidate Test Suite
 **Priority:** LOW | **Effort:** 4-6 hours | **Status:** Not Started
 
@@ -489,6 +521,7 @@ Reduce test code duplication by extracting shared fixtures and utilities.
 | **CLN-10** | Training output artifacts | 2-3h | HIGH | Complete |
 | **CLN-BUG-1** | Z-score denorm in TensorBoard | 1-2h | HIGH | Complete |
 | **CLN-BUG-2** | val_predictions.tsv not written on resume | 1-2h | HIGH | Complete |
+| **CLN-BUG-3** | --resume-from ignores new learning rate | 1-2h | HIGH | Complete |
 | **CLN-11** | Consolidate test suite | 4-6h | LOW | Not Started |
 | **CLN-12** | Random Forest baseline script | 2-3h | LOW | Complete |
 | **Total** | | **39-62h** | |

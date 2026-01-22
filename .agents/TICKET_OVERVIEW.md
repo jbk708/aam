@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-21
-**Status:** ~18 outstanding tickets (~66-110 hours)
+**Status:** ~18 outstanding tickets (~65-110 hours)
 
 ---
 
@@ -24,9 +24,9 @@
 
 ### HIGH (0 tickets)
 
-No high-priority tickets remaining.
+No high priority tickets remaining.
 
-### MEDIUM (5 tickets, ~16-21 hours)
+### MEDIUM (4 tickets, ~14-18 hours)
 
 | Ticket | Description | Effort | File |
 |--------|-------------|--------|------|
@@ -70,6 +70,7 @@ CLN-6 (categorical docs) → CLN-8 (categorical learning rate)
 
 | Ticket | Description |
 |--------|-------------|
+| CLN-BUG-3 | --resume-from ignores new learning rate (4 tests) |
 | CLN-7 | Toggle count prediction (8 tests) |
 | CLN-12 | Random Forest baseline script (17 tests) |
 | CLN-BUG-2 | val_predictions.tsv not written on resume (1 test) |
