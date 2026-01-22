@@ -228,7 +228,7 @@ Document and validate the three parallel categorical systems.
 ---
 
 ### CLN-7: Toggle Count Prediction
-**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Complete
 
 Allow disabling count prediction head entirely for simpler training.
 
@@ -249,12 +249,12 @@ Allow disabling count prediction head entirely for simpler training.
 - Validate `--count-penalty` warns if used with `--no-count-prediction`
 
 **Acceptance Criteria:**
-- [ ] `--no-count-prediction` disables count head
-- [ ] Memory/compute savings when disabled
-- [ ] Backward compatible (default enabled)
-- [ ] 5+ tests
+- [x] `--no-count-prediction` disables count head
+- [x] Memory/compute savings when disabled
+- [x] Backward compatible (default enabled)
+- [x] 8 tests (6 model tests + 2 CLI tests)
 
-**Files:** `aam/models/sequence_predictor.py`, `aam/cli/train.py`, `tests/test_sequence_predictor.py`
+**Files:** `aam/models/sequence_predictor.py`, `aam/cli/train.py`, `tests/test_sequence_predictor.py`, `tests/test_cli.py`
 
 ---
 
@@ -483,7 +483,7 @@ Reduce test code duplication by extracting shared fixtures and utilities.
 | **CLN-4** | Extract shared utilities | 2-3h | LOW | Not Started |
 | **CLN-5** | DataParallel in train.py | 2-3h | MEDIUM | Complete |
 | **CLN-6** | Categorical docs/validation | 4-5h | MEDIUM | Not Started |
-| **CLN-7** | Toggle count prediction | 2-3h | MEDIUM | Not Started |
+| **CLN-7** | Toggle count prediction | 2-3h | MEDIUM | Complete |
 | **CLN-8** | Categorical learning rate | 2-3h | MEDIUM | Not Started |
 | **CLN-9** | Remove FiLM conditioning | 2-3h | MEDIUM | Complete |
 | **CLN-10** | Training output artifacts | 2-3h | HIGH | Complete |
