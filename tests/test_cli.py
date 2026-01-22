@@ -2547,6 +2547,30 @@ class TestCountPenaltyCLI:
         assert count_penalty_param.default == 1.0
 
 
+class TestCountPredictionToggleCLI:
+    """Tests for --count-prediction/--no-count-prediction CLI option."""
+
+    @pytest.fixture
+    def runner(self):
+        return CliRunner()
+
+    def test_train_command_option_exists(self, runner):
+        """Test that --count-prediction option is available in train command."""
+        result = runner.invoke(cli, ["train", "--help"])
+        assert result.exit_code == 0
+        assert "--count-prediction" in result.output
+        assert "--no-count-prediction" in result.output
+
+    def test_train_command_default_value(self):
+        """Test that --count-prediction has default value of True in train command."""
+        count_prediction_param = next(
+            (p for p in train.params if isinstance(p, click.Option) and "--count-prediction" in p.opts),
+            None,
+        )
+        assert count_prediction_param is not None, "--count-prediction option not found in train command"
+        assert count_prediction_param.default is True
+
+
 class TestOutputArtifacts:
     """Tests for CLN-10: Training output artifacts (sample lists)."""
 

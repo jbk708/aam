@@ -2349,3 +2349,119 @@ class TestQuantileRegression:
         result = model(sample_tokens)
         # Count prediction should still be [batch, num_asvs, 1]
         assert result["count_prediction"].shape == (2, 10, 1)
+
+
+class TestCountPredictionToggle:
+    """Tests for count_prediction toggle feature."""
+
+    @pytest.fixture
+    def sample_tokens(self):
+        """Create sample tokens for testing."""
+        return _create_sample_tokens(batch_size=2, num_asvs=10, seq_len=50)
+
+    def test_count_prediction_enabled_by_default(self, sample_tokens):
+        """Test that count prediction is enabled by default."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+        )
+        assert model.count_prediction_enabled is True
+        assert model.count_encoder is not None
+        assert model.count_head is not None
+
+        result = model(sample_tokens)
+        assert "count_prediction" in result
+        assert result["count_prediction"].shape == (2, 10, 1)
+
+    def test_count_prediction_disabled(self, sample_tokens):
+        """Test that count prediction can be disabled."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            count_prediction=False,
+        )
+        assert model.count_prediction_enabled is False
+        assert model.count_encoder is None
+        assert model.count_head is None
+
+        result = model(sample_tokens)
+        assert "count_prediction" not in result
+        assert "target_prediction" in result
+        assert result["target_prediction"].shape == (2, 1)
+
+    def test_count_prediction_disabled_reduces_parameters(self):
+        """Test that disabling count prediction reduces parameter count."""
+        model_with_count = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            count_prediction=True,
+        )
+        model_without_count = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            count_prediction=False,
+        )
+
+        params_with = sum(p.numel() for p in model_with_count.parameters())
+        params_without = sum(p.numel() for p in model_without_count.parameters())
+
+        assert params_without < params_with
+
+    def test_count_prediction_disabled_with_categoricals(self, sample_tokens):
+        """Test that count prediction toggle works with categorical features."""
+        categorical_cardinalities = {"location": 5, "season": 4}
+        categorical_ids = {"location": torch.tensor([1, 2]), "season": torch.tensor([0, 1])}
+
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            count_prediction=False,
+            categorical_cardinalities=categorical_cardinalities,
+        )
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+
+        assert "count_prediction" not in result
+        assert "target_prediction" in result
+
+    def test_count_prediction_disabled_forward_still_works(self, sample_tokens):
+        """Test that forward pass works correctly when count prediction is disabled."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=3,
+            count_prediction=False,
+        )
+        result = model(sample_tokens)
+
+        assert "target_prediction" in result
+        assert "base_embeddings" in result
+        assert result["target_prediction"].shape == (2, 3)
+        assert result["base_embeddings"].shape == (2, 10, 64)
+
+    def test_count_prediction_disabled_gradients_flow(self, sample_tokens):
+        """Test that gradients flow correctly when count prediction is disabled."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            count_prediction=False,
+        )
+        result = model(sample_tokens)
+        loss = result["target_prediction"].sum()
+        loss.backward()
+
+        # Check gradients exist for target head
+        assert model.target_head.weight.grad is not None
+        assert model.target_head.weight.grad.abs().sum() > 0
