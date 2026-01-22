@@ -1,16 +1,16 @@
 # Regressor Optimization Tickets
 
-**Last Updated:** 2026-01-20
-**Status:** 5 tickets remaining (~17-25 hours)
+**Last Updated:** 2026-01-21
+**Status:** 3 tickets remaining (~11-15 hours)
 
-**Completed:** REG-1 to REG-4, REG-BUG-1 (see `ARCHIVED_TICKETS.md`)
+**Completed:** REG-1 to REG-6, REG-BUG-1 (see `ARCHIVED_TICKETS.md`)
 
 ---
 
 ## Outstanding Tickets
 
 ### REG-5: Quantile Regression
-**Priority:** MEDIUM | **Effort:** 4-6 hours | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** 4-6 hours | **Status:** Complete
 
 Predict multiple quantiles for uncertainty estimation.
 
@@ -24,7 +24,7 @@ Predict multiple quantiles for uncertainty estimation.
 ---
 
 ### REG-6: Asymmetric Loss
-**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Complete
 
 Different penalties for over/under prediction.
 
@@ -32,7 +32,13 @@ Different penalties for over/under prediction.
 - `--loss-type asymmetric`
 - `--over-penalty 2.0 --under-penalty 1.0`
 
-**Files:** `aam/training/losses.py`, `aam/cli/train.py`
+**Acceptance Criteria:**
+- [x] `--loss-type asymmetric` works
+- [x] `--over-penalty` and `--under-penalty` CLI flags
+- [x] Validation for positive penalty values
+- [x] 14 unit tests
+
+**Files:** `aam/training/losses.py`, `aam/cli/train.py`, `tests/test_losses.py`
 
 ---
 
@@ -76,11 +82,11 @@ Separate expert heads per category with learned routing.
 
 ## Summary
 
-| Ticket | Description | Effort | Priority |
-|--------|-------------|--------|----------|
-| **REG-5** | Quantile regression | 4-6h | MEDIUM |
-| **REG-6** | Asymmetric loss | 2-3h | MEDIUM |
-| **REG-7** | Residual head | 2-3h | LOW |
-| **REG-8** | Per-output loss | 3-4h | LOW |
-| **REG-9** | Mixture of Experts | 6-8h | LOW |
-| **Total** | | **17-24h** | |
+| Ticket | Description | Effort | Priority | Status |
+|--------|-------------|--------|----------|--------|
+| **REG-5** | Quantile regression | 4-6h | MEDIUM | Complete |
+| **REG-6** | Asymmetric loss | 2-3h | MEDIUM | Complete |
+| **REG-7** | Residual head | 2-3h | LOW | Not Started |
+| **REG-8** | Per-output loss | 3-4h | LOW | Not Started |
+| **REG-9** | Mixture of Experts | 6-8h | LOW | Not Started |
+| **Total** | | **11-15h** | |

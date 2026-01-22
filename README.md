@@ -278,7 +278,7 @@ aam train --target-transform zscore-category --normalize-by "season" ...
 |--------|-------------|---------|
 | `--target-transform` | Target normalization (see above) | minmax |
 | `--normalize-by` | Columns for per-category normalization | - |
-| `--loss-type` | Loss function: 'mse', 'mae', 'huber', 'quantile' | huber |
+| `--loss-type` | Loss function: 'mse', 'mae', 'huber', 'quantile', 'asymmetric' | huber |
 | `--quantiles` | Quantile levels for quantile regression (see below) | 0.1,0.5,0.9 |
 | `--bounded-targets` | Sigmoid to bound output to [0, 1] | False |
 | `--output-activation` | Non-negative constraint: 'none', 'relu', 'softplus', 'exp' | none |
@@ -294,6 +294,7 @@ aam train --target-transform zscore-category --normalize-by "season" ...
 | `mse` | Mean squared error | Standard regression |
 | `mae` | Mean absolute error | When outliers are important |
 | `quantile` | Pinball loss for quantile regression | Uncertainty estimation |
+| `asymmetric` | Different penalties for over/under prediction | Cost-sensitive regression |
 
 **Quantile Regression:**
 
@@ -307,6 +308,25 @@ aam train \
 ```
 
 Output shape becomes `[batch, out_dim, num_quantiles]`. The pinball loss penalizes under/over-predictions asymmetrically based on quantile level.
+
+**Asymmetric Loss:**
+
+Apply different penalties for over-predictions vs under-predictions. Useful when the cost of errors is asymmetric (e.g., under-predicting pollution is worse than over-predicting):
+
+```bash
+aam train \
+  --loss-type asymmetric \
+  --over-penalty 1.0 \
+  --under-penalty 2.0 \
+  ...
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--over-penalty` | Penalty for over-predictions (pred > actual) | 1.0 |
+| `--under-penalty` | Penalty for under-predictions (pred < actual) | 1.0 |
+
+When both penalties equal 1.0, asymmetric loss is equivalent to MAE.
 
 **Choosing an output constraint:**
 - **`--target-transform log-minmax`** (recommended for wide ranges): Use for non-negative targets with wide range (e.g., 0-600). Compresses range via log(y+1) to ~[0, 6.4], model predicts directly in log space, exp(x)-1 gives original scale.
