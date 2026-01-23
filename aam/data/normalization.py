@@ -546,10 +546,55 @@ class CategoryWeighter:
         Raises:
             ValueError: If metadata is None, columns is empty, or mode is invalid
         """
-        raise NotImplementedError("CategoryWeighter.fit() not yet implemented")
+        if metadata is None:
+            raise ValueError("metadata is required for CategoryWeighter.fit()")
 
-    def _create_category_key(self, row: Union[pd.Series, Dict[str, Any]]) -> str:
-        """Create category key string from metadata row."""
+        if not columns:
+            raise ValueError("At least one column is required for CategoryWeighter.fit()")
+
+        if mode not in ("auto", "manual"):
+            raise ValueError(f"Invalid mode '{mode}'. Must be 'auto' or 'manual'.")
+
+        # Validate columns exist
+        for col in columns:
+            if col not in metadata.columns:
+                raise KeyError(f"Column '{col}' not found in metadata. Available: {list(metadata.columns)}")
+
+        self.columns = list(columns)
+
+        if mode == "manual":
+            if manual_weights is None:
+                raise ValueError("manual_weights is required when mode='manual'")
+            self.weights = dict(manual_weights)
+        else:
+            # Auto mode: compute inverse frequency weights
+            # Create category keys for each sample
+            category_keys = self._create_category_keys(metadata)
+
+            # Count samples per category
+            category_counts = category_keys.value_counts()
+            n_total = len(metadata)
+            n_categories = len(category_counts)
+
+            # Compute inverse frequency weights: N_total / (N_categories * N_category)
+            # This ensures that weighted sum of samples equals N_total
+            self.weights = {}
+            for cat_key, count in category_counts.items():
+                self.weights[cat_key] = n_total / (n_categories * count)
+
+        self._is_fitted = True
+        return self
+
+    def _create_category_keys(self, metadata: pd.DataFrame) -> pd.Series:
+        """Create category key strings for each row in metadata."""
+        key_parts = [col + "=" + metadata[col].astype(str) for col in self.columns]
+
+        if len(key_parts) == 1:
+            return key_parts[0]
+        return key_parts[0].str.cat(key_parts[1:], sep=",")
+
+    def _create_category_key_from_row(self, row: Union[pd.Series, Dict[str, Any]]) -> str:
+        """Create category key string from a single metadata row."""
         return ",".join(f"{col}={row[col]}" for col in self.columns)
 
     def get_weight(self, category_key: str) -> float:
@@ -561,7 +606,18 @@ class CategoryWeighter:
         Returns:
             Weight for the category (default_weight if unseen)
         """
-        raise NotImplementedError("CategoryWeighter.get_weight() not yet implemented")
+        if not self._is_fitted:
+            raise RuntimeError("CategoryWeighter must be fitted before calling get_weight()")
+
+        if category_key in self.weights:
+            return self.weights[category_key]
+
+        if category_key not in self._warned_categories:
+            logger.warning(
+                f"Unseen category '{category_key}' - using default weight ({self.default_weight})"
+            )
+            self._warned_categories.add(category_key)
+        return self.default_weight
 
     def get_weight_for_sample(
         self,
@@ -578,7 +634,11 @@ class CategoryWeighter:
         Raises:
             RuntimeError: If weighter is not fitted
         """
-        raise NotImplementedError("CategoryWeighter.get_weight_for_sample() not yet implemented")
+        if not self._is_fitted:
+            raise RuntimeError("CategoryWeighter must be fitted before calling get_weight_for_sample()")
+
+        category_key = self._create_category_key_from_row(metadata_row)
+        return self.get_weight(category_key)
 
     def to_dict(self) -> Dict[str, Any]:
         """Serialize weighter state to dictionary for checkpointing."""

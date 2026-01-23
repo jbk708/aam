@@ -390,7 +390,42 @@ class MultiTaskLoss(nn.Module):
         Returns:
             Weighted loss scalar tensor
         """
-        raise NotImplementedError("_compute_weighted_regression_loss() not yet implemented")
+        # Compute per-sample loss (reduction='none' to get individual losses)
+        if self.target_loss_type == "mse":
+            # MSE per sample: mean over output dimensions
+            per_sample_loss = ((target_pred - target_true) ** 2).mean(dim=-1)
+        elif self.target_loss_type == "mae":
+            # MAE per sample: mean over output dimensions
+            per_sample_loss = (target_pred - target_true).abs().mean(dim=-1)
+        elif self.target_loss_type == "huber":
+            # Huber per sample: use smooth_l1_loss with reduction='none'
+            per_sample_loss = nn.functional.smooth_l1_loss(
+                target_pred, target_true, reduction="none", beta=1.0
+            ).mean(dim=-1)
+        elif self.target_loss_type == "quantile":
+            # Quantile loss is already averaged, need special handling
+            assert self.quantiles is not None
+            # Expand target for broadcasting: [batch, out_dim] -> [batch, out_dim, num_quantiles]
+            target_expanded = target_true.unsqueeze(-1).expand_as(target_pred)
+            error = target_expanded - target_pred
+            tau = self.quantiles.view(1, 1, -1)
+            # Pinball loss per position
+            loss_per_pos = torch.max(tau * error, (tau - 1) * error)
+            # Mean over output dims and quantiles to get per-sample
+            per_sample_loss = loss_per_pos.mean(dim=(-2, -1))
+        elif self.target_loss_type == "asymmetric":
+            # Asymmetric loss per sample
+            error = target_pred - target_true
+            over_error = torch.clamp(error, min=0)
+            under_error = torch.clamp(-error, min=0)
+            per_sample_loss = (self.over_penalty * over_error + self.under_penalty * under_error).mean(dim=-1)
+        else:
+            # Fallback to MSE
+            per_sample_loss = ((target_pred - target_true) ** 2).mean(dim=-1)
+
+        # Apply sample weights and compute weighted mean
+        weighted_loss = (per_sample_loss * sample_weights).mean()
+        return weighted_loss
 
     def compute_count_loss(
         self,
