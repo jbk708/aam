@@ -1,9 +1,9 @@
 # Outstanding PyTorch Tickets
 
 **Last Updated:** 2026-01-23
-**Status:** 6 tickets remaining (~20-32 hours)
+**Status:** 4 tickets remaining (~14-24 hours)
 
-**Completed:** PYT-BUG-1 to PYT-BUG-4, PYT-10.6-10.7, PYT-12.1a/b/c, PYT-12.2, PYT-19.1, PYT-19.3 (see `ARCHIVED_TICKETS.md`)
+**Completed:** PYT-BUG-1 to PYT-BUG-4, PYT-10.6-10.7, PYT-12.1a/b/c, PYT-12.2, PYT-18.6 (→PYT-12.2), PYT-19.1, PYT-19.3 (see `ARCHIVED_TICKETS.md`)
 
 ---
 
@@ -17,9 +17,9 @@ Only compute/return sample_embeddings when needed for loss.
 ---
 
 ### PYT-18.6: Memory-Aware Dynamic Batching
-**Priority:** LOW | **Effort:** 4-6 hours | **Status:** Not Started
+**Priority:** LOW | **Effort:** 4-6 hours | **Status:** Superseded by PYT-12.2
 
-Add `--max-memory-gb` flag for dynamic batch adjustment.
+*Note: This functionality was implemented as part of PYT-12.2 (Auto batch size optimization) via `--auto-batch-size` and `--max-memory-fraction` flags with the `BatchSizeFinder` class.*
 
 ---
 
@@ -85,10 +85,10 @@ Future enhancement phases (~50+ hours):
 | Ticket | Description | Effort | Priority | Notes |
 |--------|-------------|--------|----------|-------|
 | **PYT-18.5** | Lazy embeddings | 4-6h | LOW | |
-| **PYT-18.6** | Memory-aware batching | 4-6h | LOW | |
+| **PYT-18.6** | Memory-aware batching | 4-6h | LOW | → PYT-12.2 |
 | **PYT-19.2** | Cross-attention | 4-6h | MEDIUM | → FUS-2 |
 | ~~PYT-19.3~~ | ~~Category loss weights~~ | ~~3-4h~~ | ~~MEDIUM~~ | ✅ Complete |
 | **PYT-19.4** | Hierarchical categories | 6-8h | LOW | |
 | **PYT-MAINT-1** | CLI cleanup | 2-4h | LOW | → CLN-1/2 |
 | **PYT-MAINT-2** | TensorBoard | 2-4h | LOW | |
-| **Total (unique)** | | **~16-30h** | | |
+| **Total (unique)** | | **~14-24h** | | |
