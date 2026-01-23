@@ -218,8 +218,7 @@ def parse_target_transform(
 
     if legacy_flags:
         warnings.warn(
-            f"Legacy flags {', '.join(legacy_flags)} are deprecated. "
-            f"Use --target-transform {resolved} instead.",
+            f"Legacy flags {', '.join(legacy_flags)} are deprecated. Use --target-transform {resolved} instead.",
             DeprecationWarning,
             stacklevel=3,
         )
@@ -503,4 +502,160 @@ class CategoryNormalizer:
     @property
     def is_fitted(self) -> bool:
         """Return whether the normalizer has been fitted."""
+        return self._is_fitted
+
+
+class CategoryWeighter:
+    """Computes per-category sample weights for loss weighting.
+
+    For imbalanced categorical data, this class computes inverse frequency weights
+    so that samples from minority categories contribute more to the loss.
+
+    Supports two modes:
+    - "auto": Inverse frequency weighting (weight = N_total / (N_categories * N_category))
+    - Manual: User-specified weights per category via dictionary
+    """
+
+    def __init__(self) -> None:
+        """Initialize CategoryWeighter."""
+        self.weights: Dict[str, float] = {}
+        self.columns: List[str] = []
+        self.default_weight: float = 1.0
+        self._is_fitted: bool = False
+        self._warned_categories: set = set()
+
+    def fit(
+        self,
+        metadata: pd.DataFrame,
+        columns: List[str],
+        mode: str = "auto",
+        manual_weights: Optional[Dict[str, float]] = None,
+    ) -> "CategoryWeighter":
+        """Fit weighter on training data.
+
+        Args:
+            metadata: DataFrame with sample metadata
+            columns: List of categorical column names to group by
+            mode: Weighting mode - "auto" for inverse frequency, "manual" for user-specified
+            manual_weights: Dict mapping category keys to weights (required if mode="manual")
+
+        Returns:
+            self for method chaining
+
+        Raises:
+            ValueError: If metadata is None, columns is empty, or mode is invalid
+        """
+        if metadata is None:
+            raise ValueError("metadata is required for CategoryWeighter.fit()")
+
+        if not columns:
+            raise ValueError("At least one column is required for CategoryWeighter.fit()")
+
+        if mode not in ("auto", "manual"):
+            raise ValueError(f"Invalid mode '{mode}'. Must be 'auto' or 'manual'.")
+
+        # Validate columns exist
+        for col in columns:
+            if col not in metadata.columns:
+                raise KeyError(f"Column '{col}' not found in metadata. Available: {list(metadata.columns)}")
+
+        self.columns = list(columns)
+
+        if mode == "manual":
+            if manual_weights is None:
+                raise ValueError("manual_weights is required when mode='manual'")
+            self.weights = dict(manual_weights)
+        else:
+            # Auto mode: compute inverse frequency weights
+            # Create category keys for each sample
+            category_keys = self._create_category_keys(metadata)
+
+            # Count samples per category
+            category_counts = category_keys.value_counts()
+            n_total = len(metadata)
+            n_categories = len(category_counts)
+
+            # Compute inverse frequency weights: N_total / (N_categories * N_category)
+            # This ensures that weighted sum of samples equals N_total
+            self.weights = {}
+            for cat_key, count in category_counts.items():
+                self.weights[cat_key] = n_total / (n_categories * count)
+
+        self._is_fitted = True
+        return self
+
+    def _create_category_keys(self, metadata: pd.DataFrame) -> pd.Series:
+        """Create category key strings for each row in metadata."""
+        key_parts = [col + "=" + metadata[col].astype(str) for col in self.columns]
+
+        if len(key_parts) == 1:
+            return key_parts[0]
+        return key_parts[0].str.cat(key_parts[1:], sep=",")
+
+    def _create_category_key_from_row(self, row: Union[pd.Series, Dict[str, Any]]) -> str:
+        """Create category key string from a single metadata row."""
+        return ",".join(f"{col}={row[col]}" for col in self.columns)
+
+    def get_weight(self, category_key: str) -> float:
+        """Get weight for a category.
+
+        Args:
+            category_key: Category key (e.g., "location=A,season=summer")
+
+        Returns:
+            Weight for the category (default_weight if unseen)
+        """
+        if not self._is_fitted:
+            raise RuntimeError("CategoryWeighter must be fitted before calling get_weight()")
+
+        if category_key in self.weights:
+            return self.weights[category_key]
+
+        if category_key not in self._warned_categories:
+            logger.warning(f"Unseen category '{category_key}' - using default weight ({self.default_weight})")
+            self._warned_categories.add(category_key)
+        return self.default_weight
+
+    def get_weight_for_sample(
+        self,
+        metadata_row: Union[pd.Series, Dict[str, Any]],
+    ) -> float:
+        """Get weight for a sample from its metadata.
+
+        Args:
+            metadata_row: Row of metadata as Series or dict
+
+        Returns:
+            Weight for the sample's category
+
+        Raises:
+            RuntimeError: If weighter is not fitted
+        """
+        if not self._is_fitted:
+            raise RuntimeError("CategoryWeighter must be fitted before calling get_weight_for_sample()")
+
+        category_key = self._create_category_key_from_row(metadata_row)
+        return self.get_weight(category_key)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize weighter state to dictionary for checkpointing."""
+        return {
+            "weights": self.weights,
+            "columns": self.columns,
+            "default_weight": self.default_weight,
+        }
+
+    @classmethod
+    def from_dict(cls, state: Dict[str, Any]) -> "CategoryWeighter":
+        """Reconstruct weighter from serialized state."""
+        weighter = cls()
+        weighter.weights = state["weights"]
+        weighter.columns = state["columns"]
+        weighter.default_weight = state.get("default_weight", 1.0)
+        weighter._is_fitted = True
+        return weighter
+
+    @property
+    def is_fitted(self) -> bool:
+        """Return whether the weighter has been fitted."""
         return self._is_fitted

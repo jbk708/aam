@@ -325,6 +325,7 @@ class MultiTaskLoss(nn.Module):
         target_pred: torch.Tensor,
         target_true: torch.Tensor,
         is_classifier: bool = False,
+        sample_weights: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Compute target loss based on configured loss type.
 
@@ -336,13 +337,24 @@ class MultiTaskLoss(nn.Module):
                 [batch_size, out_dim, num_quantiles] for quantile regression
             target_true: True targets [batch_size, out_dim] or [batch_size] for classification
             is_classifier: Whether using classification mode
+            sample_weights: Optional per-sample weights [batch_size] for weighted loss.
+                If provided, loss is computed per-sample then weighted and averaged.
 
         Returns:
             Target loss scalar tensor
         """
         if is_classifier:
+            # Classification with sample weights
+            if sample_weights is not None:
+                # Compute per-sample loss, then apply weights
+                per_sample_loss = nn.functional.nll_loss(target_pred, target_true, weight=self.class_weights, reduction="none")
+                return (per_sample_loss * sample_weights).mean()
             return nn.functional.nll_loss(target_pred, target_true, weight=self.class_weights)
         else:
+            # Regression losses with optional sample weights
+            if sample_weights is not None:
+                return self._compute_weighted_regression_loss(target_pred, target_true, sample_weights)
+            # Standard unweighted losses
             if self.target_loss_type == "mse":
                 return nn.functional.mse_loss(target_pred, target_true)
             elif self.target_loss_type == "mae":
@@ -359,6 +371,57 @@ class MultiTaskLoss(nn.Module):
             else:
                 # Fallback to MSE (shouldn't happen due to validation in __init__)
                 return nn.functional.mse_loss(target_pred, target_true)
+
+    def _compute_weighted_regression_loss(
+        self,
+        target_pred: torch.Tensor,
+        target_true: torch.Tensor,
+        sample_weights: torch.Tensor,
+    ) -> torch.Tensor:
+        """Compute weighted regression loss with per-sample weights.
+
+        Args:
+            target_pred: Predicted targets [batch_size, out_dim]
+            target_true: True targets [batch_size, out_dim]
+            sample_weights: Per-sample weights [batch_size]
+
+        Returns:
+            Weighted loss scalar tensor
+        """
+        # Compute per-sample loss (reduction='none' to get individual losses)
+        if self.target_loss_type == "mse":
+            # MSE per sample: mean over output dimensions
+            per_sample_loss = ((target_pred - target_true) ** 2).mean(dim=-1)
+        elif self.target_loss_type == "mae":
+            # MAE per sample: mean over output dimensions
+            per_sample_loss = (target_pred - target_true).abs().mean(dim=-1)
+        elif self.target_loss_type == "huber":
+            # Huber per sample: use smooth_l1_loss with reduction='none'
+            per_sample_loss = nn.functional.smooth_l1_loss(target_pred, target_true, reduction="none", beta=1.0).mean(dim=-1)
+        elif self.target_loss_type == "quantile":
+            # Quantile loss is already averaged, need special handling
+            assert self.quantiles is not None
+            # Expand target for broadcasting: [batch, out_dim] -> [batch, out_dim, num_quantiles]
+            target_expanded = target_true.unsqueeze(-1).expand_as(target_pred)
+            error = target_expanded - target_pred
+            tau = self.quantiles.view(1, 1, -1)
+            # Pinball loss per position
+            loss_per_pos = torch.max(tau * error, (tau - 1) * error)
+            # Mean over output dims and quantiles to get per-sample
+            per_sample_loss = loss_per_pos.mean(dim=(-2, -1))
+        elif self.target_loss_type == "asymmetric":
+            # Asymmetric loss per sample
+            error = target_pred - target_true
+            over_error = torch.clamp(error, min=0)
+            under_error = torch.clamp(-error, min=0)
+            per_sample_loss = (self.over_penalty * over_error + self.under_penalty * under_error).mean(dim=-1)
+        else:
+            # Fallback to MSE
+            per_sample_loss = ((target_pred - target_true) ** 2).mean(dim=-1)
+
+        # Apply sample weights and compute weighted mean
+        weighted_loss = (per_sample_loss * sample_weights).mean()
+        return weighted_loss
 
     def compute_count_loss(
         self,
@@ -668,6 +731,7 @@ class MultiTaskLoss(nn.Module):
         is_classifier: bool = False,
         encoder_type: str = "unifrac",
         gather_for_distributed: bool = False,
+        sample_weights: Optional[torch.Tensor] = None,
     ) -> Dict[str, torch.Tensor]:
         """Compute all losses.
 
@@ -678,6 +742,8 @@ class MultiTaskLoss(nn.Module):
             encoder_type: Type of encoder for base loss
             gather_for_distributed: If True and in distributed mode, gather embeddings and targets
                 across all ranks for full pairwise distance computation. Used for FSDP pretraining.
+            sample_weights: Optional per-sample weights [batch_size] for weighted target loss.
+                Used for addressing class imbalance in categorical data.
 
         Returns:
             Dictionary with individual losses and total_loss
@@ -695,6 +761,7 @@ class MultiTaskLoss(nn.Module):
                 outputs["target_prediction"],
                 targets["target"],
                 is_classifier=is_classifier,
+                sample_weights=sample_weights,
             )
         else:
             if reference_tensor is not None:

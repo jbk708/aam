@@ -516,6 +516,144 @@ class TestAsymmetricLoss:
         assert loss_high_over.item() == loss_low_over.item() * 10
 
 
+class TestSampleWeightedLoss:
+    """Tests for per-sample weighted loss computation."""
+
+    def test_weighted_mse_loss_basic(self):
+        """Test weighted MSE loss with sample weights."""
+        loss_fn = MultiTaskLoss(target_loss_type="mse")
+
+        # 2 samples with same error but different weights
+        target_pred = torch.tensor([[0.5], [0.5]])
+        target_true = torch.tensor([[0.0], [0.0]])  # error = 0.5 for both
+        sample_weights = torch.tensor([1.0, 3.0])  # second sample weighted 3x
+
+        weighted_loss = loss_fn.compute_target_loss(
+            target_pred, target_true, is_classifier=False, sample_weights=sample_weights
+        )
+
+        # Per-sample MSE: 0.25 for both
+        # Weighted mean: (0.25 * 1.0 + 0.25 * 3.0) / 2 = 0.5
+        expected = torch.tensor(0.5)
+        assert torch.allclose(weighted_loss, expected, atol=1e-6)
+
+    def test_weighted_loss_equal_weights_matches_unweighted(self):
+        """Test that equal weights produce same result as unweighted."""
+        loss_fn = MultiTaskLoss(target_loss_type="mse")
+
+        target_pred = torch.randn(4, 1)
+        target_true = torch.randn(4, 1)
+        equal_weights = torch.ones(4)
+
+        weighted_loss = loss_fn.compute_target_loss(target_pred, target_true, is_classifier=False, sample_weights=equal_weights)
+        unweighted_loss = loss_fn.compute_target_loss(target_pred, target_true, is_classifier=False)
+
+        assert torch.allclose(weighted_loss, unweighted_loss, atol=1e-6)
+
+    def test_weighted_mae_loss(self):
+        """Test weighted MAE loss with sample weights."""
+        loss_fn = MultiTaskLoss(target_loss_type="mae")
+
+        target_pred = torch.tensor([[1.0], [2.0]])
+        target_true = torch.tensor([[0.0], [0.0]])  # errors: 1.0, 2.0
+        sample_weights = torch.tensor([1.0, 0.5])
+
+        weighted_loss = loss_fn.compute_target_loss(
+            target_pred, target_true, is_classifier=False, sample_weights=sample_weights
+        )
+
+        # Weighted mean: (1.0 * 1.0 + 2.0 * 0.5) / 2 = 1.0
+        expected = torch.tensor(1.0)
+        assert torch.allclose(weighted_loss, expected, atol=1e-6)
+
+    def test_weighted_huber_loss(self):
+        """Test weighted Huber loss with sample weights."""
+        loss_fn = MultiTaskLoss(target_loss_type="huber")
+
+        target_pred = torch.tensor([[0.5], [0.5]])
+        target_true = torch.tensor([[0.0], [0.0]])
+        sample_weights = torch.tensor([2.0, 2.0])
+
+        weighted_loss = loss_fn.compute_target_loss(
+            target_pred, target_true, is_classifier=False, sample_weights=sample_weights
+        )
+
+        # Equal weights should produce same as unweighted (scaled)
+        assert weighted_loss.item() > 0
+
+    def test_weighted_classification_loss(self):
+        """Test weighted NLL loss for classification with sample weights."""
+        loss_fn = MultiTaskLoss(target_loss_type="mse")
+
+        # Classification setup
+        target_pred = torch.tensor([[0.9, 0.1], [0.1, 0.9]])
+        target_pred = nn.functional.log_softmax(target_pred, dim=-1)
+        target_true = torch.tensor([0, 1])  # Correct predictions
+        sample_weights = torch.tensor([1.0, 2.0])
+
+        weighted_loss = loss_fn.compute_target_loss(target_pred, target_true, is_classifier=True, sample_weights=sample_weights)
+
+        assert weighted_loss.item() > 0  # Should be positive (NLL loss)
+
+    def test_weighted_loss_zero_weight_sample(self):
+        """Test that zero-weight sample does not contribute to loss."""
+        loss_fn = MultiTaskLoss(target_loss_type="mse")
+
+        target_pred = torch.tensor([[0.0], [1000.0]])  # Second has huge error
+        target_true = torch.tensor([[0.0], [0.0]])
+        sample_weights = torch.tensor([1.0, 0.0])  # Zero weight on huge error
+
+        weighted_loss = loss_fn.compute_target_loss(
+            target_pred, target_true, is_classifier=False, sample_weights=sample_weights
+        )
+
+        # Only first sample contributes: 0.0 error
+        expected = torch.tensor(0.0)
+        assert torch.allclose(weighted_loss, expected, atol=1e-6)
+
+    def test_weighted_loss_none_weights_unchanged(self):
+        """Test that None sample_weights produces standard unweighted loss."""
+        loss_fn = MultiTaskLoss(target_loss_type="mse")
+
+        target_pred = torch.randn(4, 1)
+        target_true = torch.randn(4, 1)
+
+        loss_with_none = loss_fn.compute_target_loss(target_pred, target_true, is_classifier=False, sample_weights=None)
+        loss_default = loss_fn.compute_target_loss(target_pred, target_true, is_classifier=False)
+
+        assert torch.allclose(loss_with_none, loss_default)
+
+    def test_weighted_loss_multidim_output(self):
+        """Test weighted loss with multi-dimensional output."""
+        loss_fn = MultiTaskLoss(target_loss_type="mse")
+
+        target_pred = torch.randn(4, 3)
+        target_true = torch.randn(4, 3)
+        sample_weights = torch.tensor([1.0, 2.0, 0.5, 1.5])
+
+        weighted_loss = loss_fn.compute_target_loss(
+            target_pred, target_true, is_classifier=False, sample_weights=sample_weights
+        )
+
+        assert weighted_loss.dim() == 0  # Scalar
+        assert weighted_loss.item() >= 0
+
+    def test_forward_passes_sample_weights(self):
+        """Test that forward() passes sample_weights to compute_target_loss."""
+        loss_fn = MultiTaskLoss(target_loss_type="mse")
+
+        outputs = {"target_prediction": torch.tensor([[0.5], [0.5]])}
+        targets = {"target": torch.tensor([[0.0], [0.0]])}
+        sample_weights = torch.tensor([1.0, 3.0])
+
+        losses = loss_fn.forward(outputs, targets, sample_weights=sample_weights)
+
+        # Should have target_loss computed with weights
+        assert "target_loss" in losses
+        expected = torch.tensor(0.5)
+        assert torch.allclose(losses["target_loss"], expected, atol=1e-6)
+
+
 class TestEvaluatorQuantileExtraction:
     """Test Evaluator's handling of quantile regression outputs."""
 
