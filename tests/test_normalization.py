@@ -9,6 +9,7 @@ import torch
 
 from aam.data.normalization import (
     CategoryNormalizer,
+    CategoryWeighter,
     GlobalNormalizer,
     parse_target_transform,
 )
@@ -827,3 +828,323 @@ class TestParseTargetTransform:
         assert len(w) == 1
         assert issubclass(w[0].category, DeprecationWarning)
         assert "ignoring legacy flags" in str(w[0].message)
+
+
+class TestCategoryWeighter:
+    """Tests for CategoryWeighter class (per-category loss weighting)."""
+
+    @pytest.fixture
+    def imbalanced_data(self):
+        """Create imbalanced categorical data for testing."""
+        # Location A: 80 samples (majority)
+        # Location B: 20 samples (minority)
+        n_a = 80
+        n_b = 20
+        n_total = n_a + n_b
+
+        metadata = pd.DataFrame(
+            {
+                "sample_id": [f"sample_{i}" for i in range(n_total)],
+                "location": ["A"] * n_a + ["B"] * n_b,
+                "season": (["summer", "winter"] * (n_total // 2)),
+            }
+        )
+
+        return {
+            "metadata": metadata,
+            "n_a": n_a,
+            "n_b": n_b,
+            "n_total": n_total,
+        }
+
+    def test_fit_auto_mode_inverse_frequency(self, imbalanced_data):
+        """Test auto mode computes inverse frequency weights."""
+        weighter = CategoryWeighter()
+
+        weighter.fit(
+            metadata=imbalanced_data["metadata"],
+            columns=["location"],
+            mode="auto",
+        )
+
+        assert weighter.is_fitted
+        assert weighter.columns == ["location"]
+        assert "location=A" in weighter.weights
+        assert "location=B" in weighter.weights
+
+        # Minority class (B) should have higher weight than majority (A)
+        assert weighter.weights["location=B"] > weighter.weights["location=A"]
+
+        # Verify inverse frequency formula: weight = N_total / (N_categories * N_category)
+        n_total = imbalanced_data["n_total"]
+        n_categories = 2
+        expected_weight_a = n_total / (n_categories * imbalanced_data["n_a"])
+        expected_weight_b = n_total / (n_categories * imbalanced_data["n_b"])
+
+        assert abs(weighter.weights["location=A"] - expected_weight_a) < 1e-6
+        assert abs(weighter.weights["location=B"] - expected_weight_b) < 1e-6
+
+    def test_fit_auto_mode_balanced_weights_sum(self, imbalanced_data):
+        """Test that auto weights are balanced (weighted sum = N_total)."""
+        weighter = CategoryWeighter()
+
+        weighter.fit(
+            metadata=imbalanced_data["metadata"],
+            columns=["location"],
+            mode="auto",
+        )
+
+        # Weighted sum of samples should equal unweighted sum
+        # sum(N_i * w_i) should equal N_total (or close to it, ensuring balance)
+        n_a = imbalanced_data["n_a"]
+        n_b = imbalanced_data["n_b"]
+        weighted_sum = n_a * weighter.weights["location=A"] + n_b * weighter.weights["location=B"]
+
+        # Should be equal to N_total (each category contributes equally after weighting)
+        assert abs(weighted_sum - imbalanced_data["n_total"]) < 1e-6
+
+    def test_fit_manual_mode(self, imbalanced_data):
+        """Test manual mode uses user-specified weights."""
+        weighter = CategoryWeighter()
+
+        manual_weights = {"location=A": 1.0, "location=B": 3.0}
+
+        weighter.fit(
+            metadata=imbalanced_data["metadata"],
+            columns=["location"],
+            mode="manual",
+            manual_weights=manual_weights,
+        )
+
+        assert weighter.is_fitted
+        assert weighter.weights["location=A"] == 1.0
+        assert weighter.weights["location=B"] == 3.0
+
+    def test_fit_multiple_columns(self, imbalanced_data):
+        """Test fitting with multiple categorical columns."""
+        weighter = CategoryWeighter()
+
+        weighter.fit(
+            metadata=imbalanced_data["metadata"],
+            columns=["location", "season"],
+            mode="auto",
+        )
+
+        assert weighter.is_fitted
+        assert weighter.columns == ["location", "season"]
+        # Should have combination keys
+        assert "location=A,season=summer" in weighter.weights
+        assert "location=A,season=winter" in weighter.weights
+        assert "location=B,season=summer" in weighter.weights
+        assert "location=B,season=winter" in weighter.weights
+
+    def test_get_weight(self, imbalanced_data):
+        """Test get_weight returns correct weight for category."""
+        weighter = CategoryWeighter()
+        weighter.fit(
+            metadata=imbalanced_data["metadata"],
+            columns=["location"],
+            mode="auto",
+        )
+
+        weight_a = weighter.get_weight("location=A")
+        weight_b = weighter.get_weight("location=B")
+
+        assert weight_a == weighter.weights["location=A"]
+        assert weight_b == weighter.weights["location=B"]
+
+    def test_get_weight_unseen_category(self, imbalanced_data):
+        """Test get_weight for unseen category returns default weight."""
+        weighter = CategoryWeighter()
+        weighter.fit(
+            metadata=imbalanced_data["metadata"],
+            columns=["location"],
+            mode="auto",
+        )
+
+        # Unseen category should return default weight
+        weight_c = weighter.get_weight("location=C")
+        assert weight_c == weighter.default_weight
+
+    def test_get_weight_for_sample(self, imbalanced_data):
+        """Test get_weight_for_sample from metadata row."""
+        weighter = CategoryWeighter()
+        weighter.fit(
+            metadata=imbalanced_data["metadata"],
+            columns=["location"],
+            mode="auto",
+        )
+
+        # Test with dict
+        row_dict = {"location": "A"}
+        weight = weighter.get_weight_for_sample(row_dict)
+        assert weight == weighter.weights["location=A"]
+
+        # Test with Series
+        row_series = pd.Series({"location": "B"})
+        weight = weighter.get_weight_for_sample(row_series)
+        assert weight == weighter.weights["location=B"]
+
+    def test_to_dict(self, imbalanced_data):
+        """Test serialization to dictionary."""
+        weighter = CategoryWeighter()
+        weighter.fit(
+            metadata=imbalanced_data["metadata"],
+            columns=["location"],
+            mode="auto",
+        )
+
+        state = weighter.to_dict()
+
+        assert "weights" in state
+        assert "columns" in state
+        assert "default_weight" in state
+        assert state["columns"] == ["location"]
+        assert "location=A" in state["weights"]
+        assert "location=B" in state["weights"]
+
+    def test_from_dict(self):
+        """Test deserialization from dictionary."""
+        state = {
+            "weights": {
+                "location=A": 0.5,
+                "location=B": 2.5,
+            },
+            "columns": ["location"],
+            "default_weight": 1.0,
+        }
+
+        weighter = CategoryWeighter.from_dict(state)
+
+        assert weighter.is_fitted
+        assert weighter.columns == ["location"]
+        assert weighter.weights["location=A"] == 0.5
+        assert weighter.weights["location=B"] == 2.5
+        assert weighter.default_weight == 1.0
+
+    def test_to_dict_from_dict_roundtrip(self, imbalanced_data):
+        """Test serialization roundtrip preserves state."""
+        weighter = CategoryWeighter()
+        weighter.fit(
+            metadata=imbalanced_data["metadata"],
+            columns=["location"],
+            mode="auto",
+        )
+
+        state = weighter.to_dict()
+        restored = CategoryWeighter.from_dict(state)
+
+        assert restored.is_fitted
+        assert restored.columns == weighter.columns
+        assert restored.default_weight == weighter.default_weight
+        for key in weighter.weights:
+            assert key in restored.weights
+            assert restored.weights[key] == weighter.weights[key]
+
+    def test_is_fitted_property(self):
+        """Test is_fitted property before and after fitting."""
+        weighter = CategoryWeighter()
+        assert not weighter.is_fitted
+
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["s1", "s2", "s3"],
+                "category": ["A", "A", "B"],
+            }
+        )
+
+        weighter.fit(metadata=metadata, columns=["category"], mode="auto")
+        assert weighter.is_fitted
+
+
+class TestCategoryWeighterEdgeCases:
+    """Edge case tests for CategoryWeighter."""
+
+    def test_fit_requires_metadata(self):
+        """Test that fit requires metadata."""
+        weighter = CategoryWeighter()
+
+        with pytest.raises((ValueError, TypeError)):
+            weighter.fit(metadata=None, columns=["category"], mode="auto")
+
+    def test_fit_requires_columns(self):
+        """Test that fit requires at least one column."""
+        weighter = CategoryWeighter()
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["s1", "s2"],
+                "category": ["A", "B"],
+            }
+        )
+
+        with pytest.raises((ValueError, TypeError)):
+            weighter.fit(metadata=metadata, columns=[], mode="auto")
+
+    def test_fit_validates_column_exists(self):
+        """Test that fit validates columns exist in metadata."""
+        weighter = CategoryWeighter()
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["s1", "s2"],
+                "category": ["A", "B"],
+            }
+        )
+
+        with pytest.raises((ValueError, KeyError)):
+            weighter.fit(metadata=metadata, columns=["nonexistent"], mode="auto")
+
+    def test_fit_manual_requires_weights(self):
+        """Test that manual mode requires manual_weights."""
+        weighter = CategoryWeighter()
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["s1", "s2"],
+                "category": ["A", "B"],
+            }
+        )
+
+        with pytest.raises((ValueError, TypeError)):
+            weighter.fit(metadata=metadata, columns=["category"], mode="manual", manual_weights=None)
+
+    def test_get_weight_before_fit_raises(self):
+        """Test that get_weight before fit raises error."""
+        weighter = CategoryWeighter()
+
+        with pytest.raises((ValueError, RuntimeError)):
+            weighter.get_weight("category=A")
+
+    def test_get_weight_for_sample_before_fit_raises(self):
+        """Test that get_weight_for_sample before fit raises error."""
+        weighter = CategoryWeighter()
+        row = {"category": "A"}
+
+        with pytest.raises((ValueError, RuntimeError)):
+            weighter.get_weight_for_sample(row)
+
+    def test_single_category(self):
+        """Test handling of single category (all samples same class)."""
+        weighter = CategoryWeighter()
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["s1", "s2", "s3"],
+                "category": ["A", "A", "A"],
+            }
+        )
+
+        weighter.fit(metadata=metadata, columns=["category"], mode="auto")
+
+        # Single category should have weight 1.0 (no imbalance)
+        assert weighter.weights["category=A"] == pytest.approx(1.0)
+
+    def test_invalid_mode(self):
+        """Test that invalid mode raises error."""
+        weighter = CategoryWeighter()
+        metadata = pd.DataFrame(
+            {
+                "sample_id": ["s1", "s2"],
+                "category": ["A", "B"],
+            }
+        )
+
+        with pytest.raises(ValueError):
+            weighter.fit(metadata=metadata, columns=["category"], mode="invalid_mode")
