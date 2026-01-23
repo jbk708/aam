@@ -596,6 +596,46 @@ torchrun --nproc_per_node=4 -m aam.cli train \
 
 ---
 
+### CLN-BUG-7: Checkpoints Not Saved to New Output Directory on Resume
+**Priority:** HIGH | **Effort:** 1-2 hours | **Status:** Complete
+
+When using `--resume-from` with a different `--output-dir`, checkpoints are not saved to the new output directory.
+
+**Reproduction:**
+```bash
+# Initial training saves to run1/
+python -m aam.cli train --output-dir run1/ ...
+
+# Resume with new output dir - checkpoints NOT saved to run2/
+python -m aam.cli train --resume-from run1/checkpoints/best.pt --output-dir run2/ ...
+```
+
+**Current Behavior:**
+- Training resumes correctly from checkpoint
+- New `--output-dir` is created
+- Checkpoints folder in new directory is empty or missing the latest model
+- Best model checkpoint not written to new location
+
+**Expected Behavior:**
+- Checkpoints should be saved to the new `--output-dir/checkpoints/`
+- Best model should be tracked and saved relative to new output directory
+- `val_predictions.tsv` and other artifacts should go to new directory
+
+**Root Cause:**
+Checkpoints were only saved when validation metric improved over `best_metric_value`. When resuming with an already-good metric, validation might never beat it, so no checkpoint was saved to the new directory.
+
+**Acceptance Criteria:**
+- [x] Checkpoints saved to `--output-dir/checkpoints/` when resuming
+- [x] Best model correctly tracked and saved to new location
+- [x] All training artifacts (plots, predictions) saved to new output dir
+- [x] Test verifying checkpoint saves to new directory on resume
+
+**Fix Applied:** Save an initial checkpoint to the new checkpoint_dir immediately after resume, ensuring there's always a checkpoint in the output directory even if validation never beats the original best metric.
+
+**Files:** `aam/training/trainer.py`, `tests/test_trainer.py`
+
+---
+
 ### CLN-15: Multi-Pass Validation During Training
 **Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Not Started
 
@@ -777,6 +817,7 @@ pred_std = torch.stack(predictions).std(dim=0)  # Optional confidence
 | **CLN-BUG-4** | LR override undone by double load_checkpoint | 0.5-1h | HIGH | Complete |
 | **CLN-BUG-5** | zscore-cat TensorBoard not denormalized | 1-2h | HIGH | Complete |
 | **CLN-BUG-6** | Model converging to mean with freeze-base+cross-attn | 2-4h | HIGH | Not Started |
+| **CLN-BUG-7** | Checkpoints not saved to new output dir on resume | 1-2h | HIGH | Complete |
 | **CLN-15** | Multi-pass validation during training | 2-3h | MEDIUM | Not Started |
 | **CLN-11** | Consolidate test suite | 4-6h | LOW | Not Started |
 | **CLN-12** | Random Forest baseline script | 2-3h | LOW | Complete |
@@ -791,7 +832,7 @@ pred_std = torch.stack(predictions).std(dim=0)  # Optional confidence
 2. CLN-15 (multi-pass validation during training)
 
 **Completed:**
-- CLN-BUG-1 to CLN-BUG-5 (bug fixes)
+- CLN-BUG-1 to CLN-BUG-7 (bug fixes)
 - FUS-1, FUS-2 (fusion MVP)
 - CLN-3, CLN-5, CLN-6, CLN-7, CLN-9, CLN-10, CLN-12, CLN-13, CLN-14
 

@@ -3816,3 +3816,41 @@ class TestOutputArtifacts:
         assert "prediction" in df.columns
         assert "actual" in df.columns
         assert len(df) > 0, "val_predictions.tsv should contain predictions"
+
+    def test_checkpoint_saved_to_new_dir_on_resume(self, small_predictor, loss_fn, device, tmp_path):
+        """Test checkpoint is saved to new directory when resuming with different output dir."""
+        from unittest.mock import patch
+
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+        )
+
+        train_loader = MockBatchDataset(4, device)
+        val_loader = MockBatchDataset(4, device)
+        new_checkpoint_dir = tmp_path / "new_run" / "checkpoints"
+
+        with patch.object(trainer, "load_checkpoint") as mock_load:
+            mock_load.return_value = {
+                "epoch": 0,
+                "best_val_loss": 0.0,  # Perfect loss - validation can't beat this
+                "best_metric_value": 0.0,
+            }
+
+            trainer.train(
+                train_loader=train_loader,
+                val_loader=val_loader,
+                num_epochs=2,
+                checkpoint_dir=str(new_checkpoint_dir),
+                early_stopping_patience=10,
+                save_plots=False,
+                resume_from="/old_run/checkpoints/best_model.pt",
+            )
+
+        # Even though validation never improved, checkpoint should exist in new directory
+        checkpoint_path = new_checkpoint_dir / "best_model.pt"
+        assert checkpoint_path.exists(), (
+            "best_model.pt should be saved to new checkpoint directory on resume, "
+            "even when validation never beats the original best metric"
+        )
