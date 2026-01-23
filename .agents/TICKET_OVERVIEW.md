@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-23
-**Status:** ~15 outstanding tickets (~52-97 hours)
+**Status:** ~14 outstanding tickets (~49-93 hours)
 
 ---
 
@@ -11,7 +11,7 @@
 |------|--------|---------|
 | `FUSION_CLEANUP_TICKETS.md` | **NEW** | FUS-1 to FUS-3, CLN-1 to CLN-10 |
 | `REGRESSOR_OPTIMIZATION_TICKETS.md` | 5 remaining | REG-5 to REG-9 |
-| `PYTORCH_PORTING_TICKETS.md` | 5 remaining | PYT-18.5-18.6, PYT-19.3-19.4, PYT-MAINT-2 |
+| `PYTORCH_PORTING_TICKETS.md` | 4 remaining | PYT-18.5-18.6, PYT-19.4, PYT-MAINT-2 |
 | `COSMOS_ONBOARDING_TICKETS.md` | 4 remaining | COS-9.5 to COS-9.8 |
 | `CATEGORICAL_FEATURE_TICKETS.md` | **COMPLETE** | - |
 | `DOCUMENTATION_TICKETS.md` | Backlog | DOC-2 to DOC-4 |
@@ -26,13 +26,11 @@
 
 No high priority tickets remaining.
 
-### MEDIUM (1 ticket, ~3-4 hours)
+### MEDIUM (0 tickets)
 
-| Ticket | Description | Effort | File |
-|--------|-------------|--------|------|
-| **PYT-19.3** | Per-category loss weights | 3-4h | PYTORCH |
+No medium priority tickets remaining.
 
-### LOW (12 tickets, ~47-63 hours)
+### LOW (11 tickets, ~44-59 hours)
 
 | Ticket | Description | Effort | File |
 |--------|-------------|--------|------|
@@ -52,10 +50,11 @@ No high priority tickets remaining.
 
 ## Recommended Next Steps
 
-### 1. Per-Category Loss Weights (MEDIUM - ~3-4 hours)
+### 1. Memory Optimization (LOW - ~4-6 hours each)
 
 ```
-PYT-19.3 (per-category loss weights for imbalanced data)
+PYT-18.5 (lazy embeddings) - Defer embedding materialization for memory efficiency
+PYT-18.6 (memory-aware batching) - Dynamic batch sizing based on available memory
 ```
 
 ---
@@ -64,6 +63,7 @@ PYT-19.3 (per-category loss weights for imbalanced data)
 
 | Ticket | Description |
 |--------|-------------|
+| PYT-19.3 | Per-category loss weights (28 tests) |
 | PYT-12.2 | Auto batch size optimization (12 tests) |
 | CLN-BUG-8 | Multi-pass validation distributed fix (1 test) |
 | CLN-8 | Categorical learning rate (5 tests) |
