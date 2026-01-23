@@ -637,7 +637,7 @@ Checkpoints were only saved when validation metric improved over `best_metric_va
 ---
 
 ### CLN-BUG-8: Multi-Pass Validation Fails in Distributed Training
-**Priority:** HIGH | **Effort:** 1-2 hours | **Status:** Not Started
+**Priority:** HIGH | **Effort:** 1-2 hours | **Status:** Complete
 
 Multi-pass validation (`--val-prediction-passes N`) crashes with `KeyError: 'total_loss'` when used with distributed training (`--distributed`).
 
@@ -678,10 +678,10 @@ The `_validate_epoch_multi_pass()` method in `Evaluator` likely returns a differ
 4. Test distributed vs non-distributed behavior
 
 **Acceptance Criteria:**
-- [ ] Multi-pass validation returns same dict structure as single-pass
-- [ ] `total_loss` key present in results
-- [ ] Works with `--distributed` and `torchrun`
-- [ ] 1+ test for distributed multi-pass validation
+- [x] Multi-pass validation returns same dict structure as single-pass
+- [x] `total_loss` key present in results (uses MAE for regression, 1-accuracy for classification)
+- [x] Works with `--distributed` and `torchrun`
+- [x] 1 test: test_evaluator_multi_pass_returns_total_loss
 
 **Files:** `aam/training/evaluation.py`, `aam/training/trainer.py`, `tests/test_trainer.py`
 
@@ -869,7 +869,7 @@ pred_std = torch.stack(predictions).std(dim=0)  # Optional confidence
 | **CLN-BUG-5** | zscore-cat TensorBoard not denormalized | 1-2h | HIGH | Complete |
 | **CLN-BUG-6** | Model converging to mean with freeze-base+cross-attn | 2-4h | HIGH | Not Started |
 | **CLN-BUG-7** | Checkpoints not saved to new output dir on resume | 1-2h | HIGH | Complete |
-| **CLN-BUG-8** | Multi-pass validation fails in distributed training | 1-2h | HIGH | Not Started |
+| **CLN-BUG-8** | Multi-pass validation fails in distributed training | 1-2h | HIGH | Complete |
 | **CLN-15** | Multi-pass validation during training | 2-3h | MEDIUM | Complete |
 | **CLN-11** | Consolidate test suite | 4-6h | LOW | Not Started |
 | **CLN-12** | Random Forest baseline script | 2-3h | LOW | Complete |
