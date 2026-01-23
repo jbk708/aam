@@ -15,7 +15,7 @@ from aam.data.biom_loader import BIOMLoader
 from aam.data.unifrac_loader import UniFracLoader
 from aam.data.dataset import ASVDataset, collate_fn
 from aam.data.categorical import CategoricalEncoder
-from aam.data.normalization import CategoryNormalizer, GlobalNormalizer, parse_target_transform
+from aam.data.normalization import CategoryNormalizer, CategoryWeighter, GlobalNormalizer, parse_target_transform
 from skbio import DistanceMatrix
 from aam.models.sequence_predictor import SequencePredictor
 from aam.models.transformer import AttnImplementation
@@ -914,6 +914,60 @@ def train(
             global_normalizer.fit(train_targets)
             logger.info(f"Fitted GlobalNormalizer (zscore): mean={global_normalizer.mean:.4f}, std={global_normalizer.std:.4f}")
 
+        # Fit CategoryWeighter for per-category loss weighting if requested
+        category_weighter: Optional[CategoryWeighter] = None
+        if categorical_loss_weights:
+            if not categorical_column_list:
+                raise click.ClickException("--categorical-loss-weights requires --categorical-columns to be set")
+
+            # Determine which column to use for weighting
+            loss_weight_columns: list[str]
+            if categorical_loss_weight_column:
+                if categorical_loss_weight_column not in categorical_column_list:
+                    raise click.ClickException(
+                        f"--categorical-loss-weight-column '{categorical_loss_weight_column}' not in --categorical-columns. "
+                        f"Available: {categorical_column_list}"
+                    )
+                loss_weight_columns = [categorical_loss_weight_column]
+            else:
+                # Default to first categorical column
+                loss_weight_columns = [categorical_column_list[0]]
+
+            category_weighter = CategoryWeighter()
+
+            if categorical_loss_weights.lower() == "auto":
+                # Inverse frequency weighting
+                category_weighter.fit(
+                    metadata=train_metadata,
+                    columns=loss_weight_columns,
+                    mode="auto",
+                )
+                logger.info(f"Fitted CategoryWeighter (auto) with {len(category_weighter.weights)} categories")
+                for cat_key, weight in list(category_weighter.weights.items())[:5]:
+                    logger.info(f"  {cat_key}: weight={weight:.4f}")
+                if len(category_weighter.weights) > 5:
+                    logger.info(f"  ... and {len(category_weighter.weights) - 5} more categories")
+            else:
+                # Parse JSON dict for manual weights
+                import json
+
+                try:
+                    manual_weights = json.loads(categorical_loss_weights)
+                except json.JSONDecodeError as e:
+                    raise click.ClickException(
+                        f"Invalid JSON for --categorical-loss-weights: {e}. "
+                        "Use 'auto' or provide a valid JSON dict like '{\"categoryA\": 2.0, \"categoryB\": 0.5}'"
+                    )
+                if not isinstance(manual_weights, dict):
+                    raise click.ClickException("--categorical-loss-weights must be 'auto' or a JSON dict of category weights")
+                category_weighter.fit(
+                    metadata=train_metadata,
+                    columns=loss_weight_columns,
+                    mode="manual",
+                    manual_weights=manual_weights,
+                )
+                logger.info(f"Fitted CategoryWeighter (manual) with {len(category_weighter.weights)} categories")
+
         logger.info("Creating datasets...")
         train_dataset = ASVDataset(
             table=train_table,
@@ -930,6 +984,7 @@ def train(
             categorical_encoder=categorical_encoder,
             category_normalizer=category_normalizer,
             global_normalizer=global_normalizer,
+            category_weighter=category_weighter,
         )
 
         # Get normalization parameters from training set
@@ -973,6 +1028,7 @@ def train(
             categorical_encoder=categorical_encoder,
             category_normalizer=category_normalizer,  # Use same normalizer as training set
             global_normalizer=global_normalizer,  # Use same normalizer as training set
+            category_weighter=category_weighter,  # Use same weighter for consistent weights
         )
 
         train_collate = partial(

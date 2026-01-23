@@ -237,16 +237,17 @@ class Trainer:
 
     def _prepare_batch(
         self, batch: Union[Dict, Tuple]
-    ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor], Optional[Dict[str, torch.Tensor]]]:
+    ) -> Tuple[torch.Tensor, Dict[str, torch.Tensor], Optional[Dict[str, torch.Tensor]], Optional[torch.Tensor]]:
         """Prepare batch for model forward pass.
 
         Args:
             batch: Batch from DataLoader (dict or tuple)
 
         Returns:
-            Tuple of (tokens, targets_dict, categorical_ids)
+            Tuple of (tokens, targets_dict, categorical_ids, sample_weights)
         """
         categorical_ids: Optional[Dict[str, torch.Tensor]] = None
+        sample_weights: Optional[torch.Tensor] = None
 
         if isinstance(batch, dict):
             tokens = batch["tokens"].to(self.device)
@@ -262,8 +263,10 @@ class Trainer:
                 targets["tokens"] = tokens
             if "categorical_ids" in batch:
                 categorical_ids = {col: ids.to(self.device) for col, ids in batch["categorical_ids"].items()}
+            if "sample_weights" in batch:
+                sample_weights = batch["sample_weights"].to(self.device)
 
-            return tokens, targets, categorical_ids
+            return tokens, targets, categorical_ids, sample_weights
         else:
             tokens = batch[0].to(self.device)
             targets = {"tokens": tokens}
@@ -277,7 +280,7 @@ class Trainer:
                     if len(batch) >= 4:
                         targets["base_target"] = batch[3].to(self.device)
 
-            return tokens, targets, categorical_ids
+            return tokens, targets, categorical_ids, sample_weights
 
     def _get_encoder_type(self) -> str:
         """Get encoder type from model."""
@@ -555,7 +558,7 @@ class Trainer:
 
         for step, batch in enumerate(pbar, 1):
             try:
-                tokens, targets, categorical_ids = self._prepare_batch(batch)
+                tokens, targets, categorical_ids, sample_weights = self._prepare_batch(batch)
 
                 # Check for invalid token values before model forward pass
                 import sys
@@ -698,6 +701,7 @@ class Trainer:
                     is_classifier=is_classifier,
                     encoder_type=encoder_type,
                     gather_for_distributed=self.gather_for_distributed,
+                    sample_weights=sample_weights,
                 )
 
                 # Check for NaN in loss after computation
