@@ -1,6 +1,7 @@
 """Training utilities for AAM model."""
 
 from aam.training.lr_finder import LearningRateFinder
+from aam.training.batch_size_finder import BatchSizeFinder, BatchSizeFinderResult
 from aam.training.distributed import (
     setup_distributed,
     cleanup_distributed,
@@ -21,6 +22,8 @@ from aam.training.distributed import (
 
 __all__ = [
     "LearningRateFinder",
+    "BatchSizeFinder",
+    "BatchSizeFinderResult",
     # Distributed training
     "setup_distributed",
     "cleanup_distributed",
