@@ -2683,6 +2683,86 @@ class TestTrainerTargetNormalization:
         expected_zscore = torch.tensor([60.0])
         torch.testing.assert_close(denormalized, expected_zscore)
 
+    def test_evaluator_denormalize_zscore_category_with_categorical_ids(self, small_predictor, loss_fn, device):
+        """Test Evaluator._denormalize_targets with zscore-category normalization.
+
+        When category_normalizer is present and categorical_ids are provided,
+        per-sample denormalization should be applied using the category-specific
+        statistics.
+        """
+        from aam.training.evaluation import Evaluator
+
+        # Category normalizer with two categories having different stats
+        # location=A: mean=10, std=2
+        # location=B: mean=50, std=5
+        normalization_params = {
+            "category_normalizer": {
+                "stats": {
+                    "location=A": {"mean": 10.0, "std": 2.0},
+                    "location=B": {"mean": 50.0, "std": 5.0},
+                },
+                "global_mean": 30.0,
+                "global_std": 20.0,
+                "columns": ["location"],
+            },
+            "categorical_encoder_mappings": {
+                "location": {1: "A", 2: "B"},
+            },
+        }
+
+        evaluator = Evaluator(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+            target_normalization_params=normalization_params,
+        )
+
+        # 4 samples: [A, A, B, B] with z-scores [0, 1, 0, 1]
+        # Expected denormalized:
+        #   A, z=0: 0 * 2 + 10 = 10
+        #   A, z=1: 1 * 2 + 10 = 12
+        #   B, z=0: 0 * 5 + 50 = 50
+        #   B, z=1: 1 * 5 + 50 = 55
+        normalized = torch.tensor([[0.0], [1.0], [0.0], [1.0]])
+        categorical_ids = {"location": torch.tensor([1, 1, 2, 2])}
+
+        denormalized = evaluator._denormalize_targets(normalized, categorical_ids=categorical_ids)
+        expected = torch.tensor([[10.0], [12.0], [50.0], [55.0]])
+        torch.testing.assert_close(denormalized, expected)
+
+    def test_evaluator_denormalize_zscore_category_without_categorical_ids_returns_unchanged(
+        self, small_predictor, loss_fn, device
+    ):
+        """Test that zscore-category without categorical_ids returns values unchanged.
+
+        This maintains backward compatibility - if categorical_ids aren't available,
+        the values are returned as-is (normalized z-scores).
+        """
+        from aam.training.evaluation import Evaluator
+
+        normalization_params = {
+            "category_normalizer": {
+                "stats": {
+                    "location=A": {"mean": 10.0, "std": 2.0},
+                },
+                "global_mean": 10.0,
+                "global_std": 2.0,
+                "columns": ["location"],
+            },
+        }
+
+        evaluator = Evaluator(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+            target_normalization_params=normalization_params,
+        )
+
+        # Without categorical_ids, should return unchanged
+        normalized = torch.tensor([[0.5], [1.0]])
+        denormalized = evaluator._denormalize_targets(normalized)
+        torch.testing.assert_close(denormalized, normalized)
+
 
 class TestProgressBarFormat:
     """Test progress bar formatting for different training modes."""

@@ -517,7 +517,7 @@ Epoch 57/1000: ... LR=4.95e-04  <-- LR reverted back!
 ---
 
 ### CLN-BUG-5: zscore-cat TensorBoard Output Not Denormalized
-**Priority:** HIGH | **Effort:** 1-2 hours | **Status:** Not Started
+**Priority:** HIGH | **Effort:** 1-2 hours | **Status:** Complete
 
 TensorBoard scatter plots for `--normalize zscore-cat` show normalized values (-1 to 2) instead of native scale (0 to max).
 
@@ -534,12 +534,65 @@ TensorBoard scatter plots for `--normalize zscore-cat` show normalized values (-
 The denormalization logic in trainer likely only handles `zscore` normalization, not `zscore-cat` which uses per-category statistics.
 
 **Acceptance Criteria:**
-- [ ] `zscore-cat` predictions denormalized in TensorBoard scatter plots
-- [ ] Both train and validation scatter plots show native scale
-- [ ] Existing `zscore` denormalization continues to work
-- [ ] 2+ tests verifying denormalization for `zscore-cat`
+- [x] `zscore-cat` predictions denormalized in TensorBoard scatter plots
+- [x] Both train and validation scatter plots show native scale
+- [x] Existing `zscore` denormalization continues to work
+- [x] 2+ tests verifying denormalization for `zscore-cat`
 
-**Files:** `aam/training/trainer.py`, `tests/test_trainer.py`
+**Fix Applied:** Added `get_reverse_mappings()` to CategoricalEncoder. Include categorical_encoder_mappings in target_normalization_params. Updated Evaluator._denormalize_targets() to handle per-sample category denormalization using the reverse mappings to reconstruct category keys from batch categorical_ids.
+
+**Files:** `aam/data/categorical.py`, `aam/data/dataset.py`, `aam/training/evaluation.py`, `aam/training/trainer.py`, `tests/test_categorical.py`, `tests/test_trainer.py`
+
+---
+
+### CLN-BUG-6: Model Converging to Mean Prediction with freeze-base + cross-attention + random ASV sampling
+**Priority:** HIGH | **Effort:** 2-4 hours | **Status:** Not Started
+
+Training with `--freeze-base --categorical-fusion cross-attention --asv-sampling random` causes model to converge to predicting the mean, with R² decreasing over epochs.
+
+**Observed Behavior:**
+```
+Epoch 3: r2=0.0527, mae=0.8127
+Epoch 4: r2=0.0430, mae=0.8168
+Epoch 5: r2=0.0412, mae=0.8179
+Epoch 6: r2=0.0319, mae=0.8213
+```
+- R² **decreasing** over training (getting worse)
+- MAE **increasing** over training (getting worse)
+- MAE ~0.8 with zscore normalization = predicting the mean
+
+**Reproduction Command:**
+```bash
+torchrun --nproc_per_node=4 -m aam.cli train \
+    --distributed --freeze-base \
+    --categorical-columns facility,season \
+    --categorical-fusion cross-attention --cross-attn-heads 8 \
+    --conditional-output-scaling season \
+    --target-transform zscore-category --normalize-by season \
+    --asv-sampling random \
+    # ... other flags
+```
+
+**Investigation Areas:**
+1. Cross-attention fusion with frozen base embeddings - are gradients flowing correctly?
+2. Random ASV sampling + frozen base - does varying ASV subsets confuse training?
+3. Interaction between zscore-category normalization and conditional-output-scaling
+4. Check if target_encoder/target_head are receiving useful gradients
+5. Verify categorical embeddings are learning (not collapsed)
+
+**Diagnostic Steps:**
+- [ ] Log gradient norms for categorical embedder, cross-attention, target_head
+- [ ] Test without `--freeze-base` to isolate the issue
+- [ ] Test with `--asv-sampling abundance` instead of random
+- [ ] Test without `--conditional-output-scaling`
+- [ ] Check if issue reproduces without `--categorical-fusion cross-attention`
+
+**Acceptance Criteria:**
+- [ ] Root cause identified
+- [ ] Fix implemented (or workaround documented if architectural limitation)
+- [ ] Training with freeze-base + cross-attention shows improving R² over epochs
+
+**Files:** TBD based on investigation
 
 ---
 
@@ -722,7 +775,8 @@ pred_std = torch.stack(predictions).std(dim=0)  # Optional confidence
 | **CLN-BUG-2** | val_predictions.tsv not written on resume | 1-2h | HIGH | Complete |
 | **CLN-BUG-3** | --resume-from ignores new learning rate | 1-2h | HIGH | Complete |
 | **CLN-BUG-4** | LR override undone by double load_checkpoint | 0.5-1h | HIGH | Complete |
-| **CLN-BUG-5** | zscore-cat TensorBoard not denormalized | 1-2h | HIGH | Not Started |
+| **CLN-BUG-5** | zscore-cat TensorBoard not denormalized | 1-2h | HIGH | Complete |
+| **CLN-BUG-6** | Model converging to mean with freeze-base+cross-attn | 2-4h | HIGH | Not Started |
 | **CLN-15** | Multi-pass validation during training | 2-3h | MEDIUM | Not Started |
 | **CLN-11** | Consolidate test suite | 4-6h | LOW | Not Started |
 | **CLN-12** | Random Forest baseline script | 2-3h | LOW | Complete |
@@ -733,11 +787,11 @@ pred_std = torch.stack(predictions).std(dim=0)  # Optional confidence
 ## Recommended Order
 
 **Next Up - High Priority:**
-1. CLN-BUG-5 (zscore-cat TensorBoard denormalization)
+1. CLN-BUG-6 (model converging to mean - CRITICAL training issue)
 2. CLN-15 (multi-pass validation during training)
 
 **Completed:**
-- CLN-BUG-1 to CLN-BUG-4 (bug fixes)
+- CLN-BUG-1 to CLN-BUG-5 (bug fixes)
 - FUS-1, FUS-2 (fusion MVP)
 - CLN-3, CLN-5, CLN-6, CLN-7, CLN-9, CLN-10, CLN-12, CLN-13, CLN-14
 

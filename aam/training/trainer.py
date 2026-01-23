@@ -297,9 +297,13 @@ class Trainer:
             return self.model._orig_mod.__class__.__name__ == "SequenceEncoder"
         return False
 
-    def _denormalize_targets(self, values: torch.Tensor) -> torch.Tensor:
+    def _denormalize_targets(
+        self,
+        values: torch.Tensor,
+        categorical_ids: Optional[Dict[str, torch.Tensor]] = None,
+    ) -> torch.Tensor:
         """Denormalize target values back to original scale. Delegates to Evaluator."""
-        return self.evaluator._denormalize_targets(values)
+        return self.evaluator._denormalize_targets(values, categorical_ids=categorical_ids)
 
     def _denormalize_counts(self, values: torch.Tensor) -> torch.Tensor:
         """Denormalize count values back to original scale. Delegates to Evaluator."""

@@ -269,24 +269,32 @@ class Evaluator:
             return self.model._orig_mod.__class__.__name__ == "SequenceEncoder"
         return False
 
-    def _denormalize_targets(self, values: torch.Tensor) -> torch.Tensor:
+    def _denormalize_targets(
+        self,
+        values: torch.Tensor,
+        categorical_ids: Optional[Dict[str, torch.Tensor]] = None,
+    ) -> torch.Tensor:
         """Denormalize/inverse-transform target values back to original scale.
 
-        Note: When category normalization is used, per-sample denormalization is not
-        currently supported (would require category keys for each sample). Metrics
-        are computed on normalized z-scores instead, which are still valid for model
-        comparison.
+        Args:
+            values: Normalized values [batch_size, 1] or [batch_size]
+            categorical_ids: Optional dict mapping column names to integer indices.
+                Required for per-sample denormalization with category_normalizer.
+
+        Returns:
+            Denormalized values in original scale
         """
         if self.target_normalization_params is None:
             return values
 
         result = values
 
-        # Skip denormalization for category normalization (would need per-sample category keys)
-        # The data flow is: raw → [log] → z-score. Without category keys, we can't reverse
-        # the z-score transform to get back to log or raw values. Metrics on z-scores
-        # are still valid for model comparison (R², etc.).
+        # Handle category normalization with per-sample denormalization
         if "category_normalizer" in self.target_normalization_params:
+            encoder_mappings = self.target_normalization_params.get("categorical_encoder_mappings")
+            if categorical_ids is not None and encoder_mappings is not None:
+                result = self._denormalize_with_category(values, categorical_ids, encoder_mappings)
+            # Without categorical_ids or encoder_mappings, return unchanged (backward compat)
             return result
 
         # Use GlobalNormalizer if present (handles both zscore and minmax)
@@ -307,6 +315,52 @@ class Evaluator:
             # Clamp to prevent exp() overflow (exp(88.7) overflows float32)
             MAX_EXP_INPUT = 88.0
             result = torch.exp(torch.clamp(result, max=MAX_EXP_INPUT)) - 1
+
+        return result
+
+    def _denormalize_with_category(
+        self,
+        values: torch.Tensor,
+        categorical_ids: Dict[str, torch.Tensor],
+        encoder_mappings: Dict[str, Dict[int, str]],
+    ) -> torch.Tensor:
+        """Denormalize values using per-sample category statistics.
+
+        Args:
+            values: Normalized z-scores [batch_size, 1] or [batch_size]
+            categorical_ids: Dict mapping column names to integer indices [batch_size]
+            encoder_mappings: Reverse mappings from int to category string
+
+        Returns:
+            Denormalized values in original scale
+        """
+        from aam.data.normalization import CategoryNormalizer
+
+        cat_state = cast(Dict[str, Any], self.target_normalization_params["category_normalizer"])
+        normalizer = CategoryNormalizer.from_dict(cat_state)
+
+        columns = normalizer.columns
+        batch_size = values.shape[0]
+        result = values.clone()
+
+        for i in range(batch_size):
+            key_parts = []
+            for col in columns:
+                if col in categorical_ids and col in encoder_mappings:
+                    idx = int(categorical_ids[col][i].item())
+                    category_str = encoder_mappings[col].get(idx, "unknown")
+                    key_parts.append(f"{col}={category_str}")
+                else:
+                    key_parts.append(f"{col}=unknown")
+
+            category_key = ",".join(key_parts)
+            z_score = values[i, 0] if values.dim() == 2 else values[i]
+            denorm_value = normalizer.denormalize(z_score.item(), category_key)
+
+            if values.dim() == 2:
+                result[i, 0] = denorm_value
+            else:
+                result[i] = denorm_value
 
         return result
 
@@ -636,8 +690,8 @@ class Evaluator:
                             true = targets["target"]
                             # For quantile regression, extract median quantile for metrics
                             pred = self._extract_median_quantile(pred)
-                            pred_denorm = self._denormalize_targets(pred)
-                            true_denorm = self._denormalize_targets(true)
+                            pred_denorm = self._denormalize_targets(pred, categorical_ids=categorical_ids)
+                            true_denorm = self._denormalize_targets(true, categorical_ids=categorical_ids)
                             target_metrics.update(pred_denorm, true_denorm)
                             has_target = True
 

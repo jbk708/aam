@@ -150,6 +150,21 @@ class CategoricalEncoder:
         self._check_fitted()
         return {col: dict(mapping) for col, mapping in self._mappings.items()}  # type: ignore[union-attr]
 
+    def get_reverse_mappings(self) -> dict[str, dict[int, str]]:
+        """Get index-to-category mappings for all columns.
+
+        Returns:
+            Dictionary mapping column name to index-to-category dict.
+
+        Raises:
+            RuntimeError: If encoder has not been fit.
+        """
+        self._check_fitted()
+        return {
+            col: {idx: category for category, idx in mapping.items()}
+            for col, mapping in self._mappings.items()  # type: ignore[union-attr]
+        }
+
     def save(self, path: Union[str, Path]) -> None:
         """Save encoder state to JSON file.
 

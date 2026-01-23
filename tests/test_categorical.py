@@ -209,6 +209,29 @@ class TestCategoricalEncoder:
         with pytest.raises(RuntimeError, match="[Ff]it|[Nn]ot fitted"):
             encoder.get_mappings()
 
+    def test_get_reverse_mappings(self, sample_metadata):
+        """Test get_reverse_mappings returns index-to-category dicts."""
+        encoder = CategoricalEncoder()
+        encoder.fit(sample_metadata, columns=["location", "season"])
+
+        reverse_mappings = encoder.get_reverse_mappings()
+
+        assert "location" in reverse_mappings
+        assert "season" in reverse_mappings
+        assert isinstance(reverse_mappings["location"], dict)
+
+        # Check that reverse mapping inverts the forward mapping
+        forward_mappings = encoder.get_mappings()
+        for col in ["location", "season"]:
+            for category, idx in forward_mappings[col].items():
+                assert reverse_mappings[col][idx] == category
+
+    def test_get_reverse_mappings_before_fit_raises(self):
+        """Test get_reverse_mappings raises when not fitted."""
+        encoder = CategoricalEncoder()
+        with pytest.raises(RuntimeError, match="[Ff]it|[Nn]ot fitted"):
+            encoder.get_reverse_mappings()
+
     def test_column_names_before_fit_raises(self):
         """Test column_names raises when not fitted."""
         encoder = CategoricalEncoder()
