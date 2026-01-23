@@ -636,6 +636,57 @@ Checkpoints were only saved when validation metric improved over `best_metric_va
 
 ---
 
+### CLN-BUG-8: Multi-Pass Validation Fails in Distributed Training
+**Priority:** HIGH | **Effort:** 1-2 hours | **Status:** Not Started
+
+Multi-pass validation (`--val-prediction-passes N`) crashes with `KeyError: 'total_loss'` when used with distributed training (`--distributed`).
+
+**Reproduction:**
+```bash
+torchrun --nproc_per_node=4 -m aam.cli train \
+    --distributed \
+    --asv-sampling random \
+    --val-prediction-passes 3 \
+    # ... other flags
+```
+
+**Error:**
+```
+KeyError: 'total_loss'
+  File "aam/training/trainer.py", line 1126, in train
+    val_loss = val_results["total_loss"]
+```
+
+**Current Behavior:**
+- Multi-pass validation runs on each rank
+- Each rank logs "Multi-pass validation: 3 passes, 96 samples aggregated"
+- `val_results` dictionary returned by multi-pass validation is missing `total_loss` key
+- Training crashes on all ranks
+
+**Expected Behavior:**
+- Multi-pass validation should return the same dictionary structure as single-pass validation
+- Must include `total_loss` key for training loop to continue
+- Should work correctly in distributed mode
+
+**Root Cause:**
+The `_validate_epoch_multi_pass()` method in `Evaluator` likely returns a different result structure than `validate_epoch()`, missing required keys like `total_loss`.
+
+**Investigation Areas:**
+1. Check `_validate_epoch_multi_pass()` return value structure
+2. Compare with `validate_epoch()` return value
+3. Ensure all required keys are present in multi-pass results
+4. Test distributed vs non-distributed behavior
+
+**Acceptance Criteria:**
+- [ ] Multi-pass validation returns same dict structure as single-pass
+- [ ] `total_loss` key present in results
+- [ ] Works with `--distributed` and `torchrun`
+- [ ] 1+ test for distributed multi-pass validation
+
+**Files:** `aam/training/evaluation.py`, `aam/training/trainer.py`, `tests/test_trainer.py`
+
+---
+
 ### CLN-15: Multi-Pass Validation During Training
 **Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Complete
 
@@ -818,7 +869,8 @@ pred_std = torch.stack(predictions).std(dim=0)  # Optional confidence
 | **CLN-BUG-5** | zscore-cat TensorBoard not denormalized | 1-2h | HIGH | Complete |
 | **CLN-BUG-6** | Model converging to mean with freeze-base+cross-attn | 2-4h | HIGH | Not Started |
 | **CLN-BUG-7** | Checkpoints not saved to new output dir on resume | 1-2h | HIGH | Complete |
-| **CLN-15** | Multi-pass validation during training | 2-3h | MEDIUM | Not Started |
+| **CLN-BUG-8** | Multi-pass validation fails in distributed training | 1-2h | HIGH | Not Started |
+| **CLN-15** | Multi-pass validation during training | 2-3h | MEDIUM | Complete |
 | **CLN-11** | Consolidate test suite | 4-6h | LOW | Not Started |
 | **CLN-12** | Random Forest baseline script | 2-3h | LOW | Complete |
 | **CLN-13** | ASV sampling strategy (abundance/random) | 2-3h | MEDIUM | Complete |
