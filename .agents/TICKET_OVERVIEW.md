@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-23
-**Status:** ~17 outstanding tickets (~58-105 hours)
+**Status:** ~16 outstanding tickets (~56-103 hours)
 
 ---
 
@@ -22,11 +22,9 @@
 
 ## Priority Summary
 
-### HIGH (1 ticket, ~1-2 hours)
+### HIGH (0 tickets)
 
-| Ticket | Description | Effort | File |
-|--------|-------------|--------|------|
-| **CLN-BUG-8** | Multi-pass validation fails in distributed training | 1-2h | FUSION_CLEANUP |
+No high priority tickets remaining.
 
 ### MEDIUM (2 tickets, ~7-10 hours)
 
@@ -55,13 +53,7 @@
 
 ## Recommended Next Steps
 
-### 1. URGENT Bug Fix (HIGH - ~1-2 hours)
-
-```
-CLN-BUG-8 (multi-pass validation fails in distributed training)
-```
-
-### 2. Performance Optimization (MEDIUM - ~4-6 hours)
+### 1. Performance Optimization (MEDIUM - ~4-6 hours)
 
 ```
 PYT-12.2 (batch size optimization)
@@ -73,6 +65,7 @@ PYT-12.2 (batch size optimization)
 
 | Ticket | Description |
 |--------|-------------|
+| CLN-BUG-8 | Multi-pass validation distributed fix (1 test) |
 | CLN-8 | Categorical learning rate (5 tests) |
 | CLN-15 | Multi-pass validation during training (7 tests) |
 | CLN-BUG-7 | Checkpoints not saved to new dir on resume (1 test) |
