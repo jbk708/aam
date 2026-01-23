@@ -1007,13 +1007,11 @@ class Trainer:
 
         if checkpoint_dir is not None:
             Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
-            # Save initial checkpoint when resuming to ensure new output dir has a checkpoint
-            # This handles the case where validation never beats the original best metric
             if (resumed_from_checkpoint or start_epoch > 0) and is_main_process():
-                initial_checkpoint_path = Path(checkpoint_dir) / "best_model.pt"
-                if not initial_checkpoint_path.exists():
+                checkpoint_path = Path(checkpoint_dir) / "best_model.pt"
+                if not checkpoint_path.exists():
                     self.save_checkpoint(
-                        str(initial_checkpoint_path),
+                        str(checkpoint_path),
                         epoch=start_epoch - 1,
                         best_val_loss=best_val_loss,
                         best_metric_value=best_metric_value,

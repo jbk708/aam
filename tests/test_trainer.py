@@ -3818,11 +3818,7 @@ class TestOutputArtifacts:
         assert len(df) > 0, "val_predictions.tsv should contain predictions"
 
     def test_checkpoint_saved_to_new_dir_on_resume(self, small_predictor, loss_fn, device, tmp_path):
-        """Test checkpoint is saved to new directory when resuming with different output dir.
-
-        When using --resume-from with a different --output-dir, the new checkpoint directory
-        should contain a checkpoint even if validation never beats the original best metric.
-        """
+        """Test checkpoint is saved to new directory when resuming with different output dir."""
         from unittest.mock import patch
 
         trainer = Trainer(
@@ -3833,12 +3829,8 @@ class TestOutputArtifacts:
 
         train_loader = MockBatchDataset(4, device)
         val_loader = MockBatchDataset(4, device)
-
-        # Simulate a NEW output directory (different from where we resumed)
         new_checkpoint_dir = tmp_path / "new_run" / "checkpoints"
-        new_checkpoint_dir.mkdir(parents=True)
 
-        # Patch load_checkpoint to simulate resuming with an unbeatable best_val_loss
         with patch.object(trainer, "load_checkpoint") as mock_load:
             mock_load.return_value = {
                 "epoch": 0,
