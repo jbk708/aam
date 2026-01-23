@@ -359,6 +359,10 @@ class Trainer:
         else:
             lr = self.optimizer.param_groups[0]["lr"]
         self.writer.add_scalar("train/learning_rate", lr, epoch)
+        # Log categorical learning rate if using separate parameter groups
+        if len(self.optimizer.param_groups) > 1:
+            categorical_lr = self.optimizer.param_groups[1]["lr"]
+            self.writer.add_scalar("train/categorical_learning_rate", categorical_lr, epoch)
 
         # Log GMU gate mean under gmu/ category for grouping with other GMU stats
         if "gmu_gate_mean" in train_losses:
@@ -1463,6 +1467,15 @@ class Trainer:
         }
 
 
+CATEGORICAL_PARAM_PREFIXES = (
+    "categorical_embedder",
+    "categorical_projection",
+    "gmu",
+    "output_scales",
+    "cross_attn_fusion",
+)
+
+
 def create_optimizer(
     model: nn.Module,
     optimizer_type: str = "adamw",
@@ -1470,6 +1483,7 @@ def create_optimizer(
     weight_decay: float = 0.01,
     freeze_base: bool = False,
     momentum: float = 0.9,
+    categorical_lr: Optional[float] = None,
 ) -> torch.optim.Optimizer:
     """Create optimizer, excluding frozen parameters if needed.
 
@@ -1480,27 +1494,54 @@ def create_optimizer(
         weight_decay: Weight decay (for AdamW/Adam)
         freeze_base: Whether base model parameters are frozen
         momentum: Momentum for SGD
+        categorical_lr: Learning rate for categorical parameters. If None, uses lr.
 
     Returns:
         Optimizer instance
     """
-    if freeze_base and hasattr(model, "base_model"):
-        trainable_params = []
+    # Separate categorical and base parameters if categorical_lr is specified
+    if categorical_lr is not None:
+        base_params = []
+        categorical_params = []
+
         for name, param in model.named_parameters():
-            if param.requires_grad and not name.startswith("base_model."):
-                trainable_params.append(param)
-        if not trainable_params:
-            trainable_params = [p for p in model.parameters() if p.requires_grad]
+            if not param.requires_grad:
+                continue
+            if freeze_base and hasattr(model, "base_model") and name.startswith("base_model."):
+                continue
+
+            # Check if parameter belongs to categorical modules
+            is_categorical = any(name.startswith(prefix) or f".{prefix}" in name for prefix in CATEGORICAL_PARAM_PREFIXES)
+
+            if is_categorical:
+                categorical_params.append(param)
+            else:
+                base_params.append(param)
+
+        param_groups = [
+            {"params": base_params, "lr": lr},
+            {"params": categorical_params, "lr": categorical_lr},
+        ]
     else:
-        trainable_params = [p for p in model.parameters() if p.requires_grad]
+        # Original single-group behavior
+        if freeze_base and hasattr(model, "base_model"):
+            trainable_params = []
+            for name, param in model.named_parameters():
+                if param.requires_grad and not name.startswith("base_model."):
+                    trainable_params.append(param)
+            if not trainable_params:
+                trainable_params = [p for p in model.parameters() if p.requires_grad]
+        else:
+            trainable_params = [p for p in model.parameters() if p.requires_grad]
+        param_groups = trainable_params
 
     optimizer_type = optimizer_type.lower()
     if optimizer_type == "adamw":
-        return torch.optim.AdamW(trainable_params, lr=lr, weight_decay=weight_decay)
+        return torch.optim.AdamW(param_groups, lr=lr, weight_decay=weight_decay)
     elif optimizer_type == "adam":
-        return torch.optim.Adam(trainable_params, lr=lr, weight_decay=weight_decay)
+        return torch.optim.Adam(param_groups, lr=lr, weight_decay=weight_decay)
     elif optimizer_type == "sgd":
-        return torch.optim.SGD(trainable_params, lr=lr, momentum=momentum, weight_decay=weight_decay)
+        return torch.optim.SGD(param_groups, lr=lr, momentum=momentum, weight_decay=weight_decay)
     else:
         raise ValueError(f"Unknown optimizer type: {optimizer_type}. Must be one of: 'adamw', 'adam', 'sgd'")
 
