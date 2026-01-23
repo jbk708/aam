@@ -833,8 +833,8 @@ class Evaluator:
         """Run multi-pass validation with prediction aggregation.
 
         Runs the validation dataloader multiple times and aggregates predictions
-        (using mean for regression) before computing metrics. This provides more
-        stable metrics when using random ASV sampling.
+        (using mean for regression, mode for classification) before computing
+        metrics. This provides more stable metrics when using random ASV sampling.
 
         Args:
             dataloader: Validation data loader
@@ -855,14 +855,12 @@ class Evaluator:
         self.model.eval()
         is_pretraining = self._is_pretraining()
         is_classifier = self._get_is_classifier()
-        encoder_type = self._get_encoder_type()
 
         # Storage for predictions across passes: {sample_id: [pred1, pred2, ...]}
         sample_predictions: Dict[str, List[torch.Tensor]] = {}
         sample_actuals: Dict[str, torch.Tensor] = {}
         sample_categorical_ids: Dict[str, Optional[Dict[str, torch.Tensor]]] = {}
 
-        # Run multiple passes
         with torch.no_grad():
             for pass_idx in range(num_passes):
                 pbar = tqdm(
@@ -896,8 +894,7 @@ class Evaluator:
                     # Collect target predictions by sample_id
                     if not is_pretraining and "target_prediction" in outputs and "target" in targets:
                         batch_sample_ids = batch.get("sample_ids", []) if isinstance(batch, dict) else []
-                        pred = outputs["target_prediction"]
-                        pred = self._extract_median_quantile(pred)
+                        pred = self._extract_median_quantile(outputs["target_prediction"])
                         true = targets["target"]
 
                         for i, sample_id in enumerate(batch_sample_ids):
@@ -905,7 +902,7 @@ class Evaluator:
                                 sample_predictions[sample_id] = []
                             sample_predictions[sample_id].append(pred[i].detach().cpu())
 
-                            # Store actuals (only on first pass)
+                            # Store actuals and categorical_ids on first encounter
                             if sample_id not in sample_actuals:
                                 sample_actuals[sample_id] = true[i].detach().cpu()
                                 if categorical_ids is not None:
@@ -913,16 +910,13 @@ class Evaluator:
                                         k: v[i].detach().cpu() for k, v in categorical_ids.items()
                                     }
 
-        # Aggregate predictions (mean for regression, mode for classification)
+        # Aggregate predictions across passes
         aggregated_predictions: Dict[str, torch.Tensor] = {}
         for sample_id, preds in sample_predictions.items():
+            stacked = torch.stack(preds)
             if is_classifier:
-                # For classification, use mode (most common prediction)
-                stacked = torch.stack(preds)
                 aggregated_predictions[sample_id] = stacked.mode(dim=0).values
             else:
-                # For regression, use mean
-                stacked = torch.stack(preds)
                 aggregated_predictions[sample_id] = stacked.mean(dim=0)
 
         logger.info(
@@ -930,8 +924,7 @@ class Evaluator:
             f"{len(aggregated_predictions)} samples aggregated"
         )
 
-        # Now compute metrics on aggregated predictions
-        unifrac_metrics = StreamingRegressionMetrics(max_plot_samples=1000)
+        # Compute metrics on aggregated predictions
         target_metrics: Union[StreamingClassificationMetrics, StreamingRegressionMetrics] = (
             StreamingClassificationMetrics(max_plot_samples=1000)
             if is_classifier
@@ -950,11 +943,10 @@ class Evaluator:
             true = sample_actuals[sample_id]
             cat_ids = sample_categorical_ids.get(sample_id)
 
-            # Move to device for denormalization
-            pred_t = pred.unsqueeze(0).to(self.device) if pred.dim() == 0 else pred.unsqueeze(0).to(self.device)
-            true_t = true.unsqueeze(0).to(self.device) if true.dim() == 0 else true.unsqueeze(0).to(self.device)
+            # Ensure batch dimension and move to device for denormalization
+            pred_t = pred.unsqueeze(0).to(self.device)
+            true_t = true.unsqueeze(0).to(self.device)
 
-            # Denormalize
             cat_ids_batch = None
             if cat_ids is not None:
                 cat_ids_batch = {k: v.unsqueeze(0).to(self.device) for k, v in cat_ids.items()}
@@ -990,7 +982,6 @@ class Evaluator:
                 all_preds["target"] = gather_predictions_for_plot(all_preds["target"])
                 all_targs["target"] = gather_predictions_for_plot(all_targs["target"])
 
-        # Build full predictions dict if requested
         if collect_all_predictions:
             full_predictions: Dict[str, Any] = {
                 "sample_ids": all_sample_ids,
