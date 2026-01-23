@@ -105,6 +105,7 @@ class Trainer:
         use_sharded_checkpoint: bool = False,
         gather_for_distributed: bool = False,
         best_metric: str = "val_loss",
+        val_prediction_passes: int = 1,
     ):
         """Initialize Trainer.
 
@@ -133,6 +134,9 @@ class Trainer:
                 for full pairwise distance computation in UniFrac loss. Used for FSDP pretraining.
             best_metric: Metric to use for best model selection. One of 'val_loss', 'r2', 'mae',
                 'accuracy', 'f1'. Default 'val_loss' for backwards compatibility.
+            val_prediction_passes: Number of forward passes during validation. Predictions are
+                averaged across passes for more stable metrics. Only effective with random ASV
+                sampling. Default 1 (single pass).
         """
         if best_metric not in METRIC_MODES:
             raise ValueError(f"Invalid best_metric '{best_metric}'. Must be one of: {list(METRIC_MODES.keys())}")
@@ -158,6 +162,7 @@ class Trainer:
         self.train_sampler = train_sampler
         self.use_sharded_checkpoint = use_sharded_checkpoint
         self.gather_for_distributed = gather_for_distributed
+        self.val_prediction_passes = val_prediction_passes
         self.writer: Optional[SummaryWriter] = None
         self.log_histograms: bool = True
         self.histogram_frequency: int = 50
@@ -921,6 +926,7 @@ class Trainer:
         num_epochs: int = 1,
         return_predictions: bool = False,
         collect_all_predictions: bool = False,
+        val_prediction_passes: Optional[int] = None,
     ) -> Union[
         Dict[str, float],
         Tuple[Dict[str, float], Dict[str, torch.Tensor], Dict[str, torch.Tensor]],
@@ -937,10 +943,13 @@ class Trainer:
             num_epochs: Total number of epochs
             return_predictions: Whether to return sampled predictions for plotting
             collect_all_predictions: Whether to collect ALL predictions with sample IDs
+            val_prediction_passes: Number of forward passes for multi-pass validation.
+                If None, uses self.val_prediction_passes. Predictions are averaged across passes.
 
         Returns:
             Dictionary with losses and metrics, optionally with prediction samples
         """
+        passes = val_prediction_passes if val_prediction_passes is not None else self.val_prediction_passes
         return self.evaluator.validate_epoch(
             dataloader=dataloader,
             compute_metrics=compute_metrics,
@@ -948,6 +957,7 @@ class Trainer:
             num_epochs=num_epochs,
             return_predictions=return_predictions,
             collect_all_predictions=collect_all_predictions,
+            val_prediction_passes=passes,
         )
 
     def train(

@@ -395,6 +395,14 @@ def print_categorical_help(ctx: click.Context, param: click.Parameter, value: bo
     type=click.Choice(["val_loss", "r2", "mae", "accuracy", "f1"]),
     help="Metric to use for best model selection: val_loss (default), r2 (higher better), mae (lower better), accuracy (higher better), f1 (higher better).",
 )
+@click.option(
+    "--val-prediction-passes",
+    default=1,
+    type=click.IntRange(1, 100),
+    help="Number of forward passes during validation with different random ASV subsets. "
+    "Predictions are averaged across passes for more stable metrics. "
+    "Only effective with --asv-sampling random. Default: 1 (single pass).",
+)
 def train(
     table: str,
     unifrac_matrix: str,
@@ -476,6 +484,7 @@ def train(
     regressor_dropout: float,
     conditional_output_scaling: Optional[str],
     best_metric: str,
+    val_prediction_passes: int,
 ):
     """Train AAM model on microbial sequencing data."""
     try:
@@ -604,6 +613,12 @@ def train(
             logger.warning(
                 f"--count-penalty ({count_penalty}) is ignored when --no-count-prediction is set. "
                 "Count prediction head is disabled."
+            )
+
+        if val_prediction_passes > 1 and asv_sampling != "random":
+            logger.warning(
+                f"--val-prediction-passes ({val_prediction_passes}) only has effect with --asv-sampling=random. "
+                f"Current sampling: {asv_sampling}. Multi-pass averaging will have no effect since ASV selection is deterministic."
             )
 
         # Setup distributed training if enabled
@@ -1231,6 +1246,7 @@ def train(
             train_sampler=train_sampler,
             use_sharded_checkpoint=fsdp_sharded_checkpoint,
             best_metric=best_metric,
+            val_prediction_passes=val_prediction_passes,
         )
 
         start_epoch = 0
