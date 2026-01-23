@@ -1,20 +1,13 @@
 # Outstanding PyTorch Tickets
 
-**Last Updated:** 2026-01-20
-**Status:** 8 tickets remaining (~27-42 hours)
+**Last Updated:** 2026-01-23
+**Status:** 7 tickets remaining (~23-36 hours)
 
-**Completed:** PYT-BUG-1 to PYT-BUG-4, PYT-10.6-10.7, PYT-12.1a/b/c, PYT-19.1 (see `ARCHIVED_TICKETS.md`)
+**Completed:** PYT-BUG-1 to PYT-BUG-4, PYT-10.6-10.7, PYT-12.1a/b/c, PYT-12.2, PYT-19.1 (see `ARCHIVED_TICKETS.md`)
 
 ---
 
 ## Outstanding Tickets
-
-### PYT-12.2: Batch Size Optimization
-**Priority:** MEDIUM | **Effort:** 4-6 hours | **Status:** Not Started
-
-Dynamic batch sizing and automatic batch size finder.
-
----
 
 ### PYT-18.5: Lazy Sample Embedding Computation
 **Priority:** LOW | **Effort:** 4-6 hours | **Status:** Not Started
@@ -84,7 +77,6 @@ Future enhancement phases (~50+ hours):
 
 | Ticket | Description | Effort | Priority | Notes |
 |--------|-------------|--------|----------|-------|
-| **PYT-12.2** | Batch size optimization | 4-6h | MEDIUM | |
 | **PYT-18.5** | Lazy embeddings | 4-6h | LOW | |
 | **PYT-18.6** | Memory-aware batching | 4-6h | LOW | |
 | **PYT-19.2** | Cross-attention | 4-6h | MEDIUM | → FUS-2 |
@@ -92,4 +84,4 @@ Future enhancement phases (~50+ hours):
 | **PYT-19.4** | Hierarchical categories | 6-8h | LOW | |
 | **PYT-MAINT-1** | CLI cleanup | 2-4h | LOW | → CLN-1/2 |
 | **PYT-MAINT-2** | TensorBoard | 2-4h | LOW | |
-| **Total (unique)** | | **~24-38h** | | |
+| **Total (unique)** | | **~20-34h** | | |
