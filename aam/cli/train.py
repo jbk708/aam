@@ -414,7 +414,7 @@ def print_categorical_help(ctx: click.Context, param: click.Parameter, value: bo
     default=None,
     help="Per-category loss weighting for imbalanced data. "
     "Use 'auto' for inverse frequency weighting (recommended), "
-    "or provide a JSON dict of category weights like '{\"categoryA\": 2.0, \"categoryB\": 0.5}'. "
+    'or provide a JSON dict of category weights like \'{"categoryA": 2.0, "categoryB": 0.5}\'. '
     "Requires --categorical-columns to be set.",
 )
 @click.option(

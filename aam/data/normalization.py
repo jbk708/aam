@@ -218,8 +218,7 @@ def parse_target_transform(
 
     if legacy_flags:
         warnings.warn(
-            f"Legacy flags {', '.join(legacy_flags)} are deprecated. "
-            f"Use --target-transform {resolved} instead.",
+            f"Legacy flags {', '.join(legacy_flags)} are deprecated. Use --target-transform {resolved} instead.",
             DeprecationWarning,
             stacklevel=3,
         )
@@ -613,9 +612,7 @@ class CategoryWeighter:
             return self.weights[category_key]
 
         if category_key not in self._warned_categories:
-            logger.warning(
-                f"Unseen category '{category_key}' - using default weight ({self.default_weight})"
-            )
+            logger.warning(f"Unseen category '{category_key}' - using default weight ({self.default_weight})")
             self._warned_categories.add(category_key)
         return self.default_weight
 

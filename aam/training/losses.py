@@ -347,9 +347,7 @@ class MultiTaskLoss(nn.Module):
             # Classification with sample weights
             if sample_weights is not None:
                 # Compute per-sample loss, then apply weights
-                per_sample_loss = nn.functional.nll_loss(
-                    target_pred, target_true, weight=self.class_weights, reduction="none"
-                )
+                per_sample_loss = nn.functional.nll_loss(target_pred, target_true, weight=self.class_weights, reduction="none")
                 return (per_sample_loss * sample_weights).mean()
             return nn.functional.nll_loss(target_pred, target_true, weight=self.class_weights)
         else:
@@ -399,9 +397,7 @@ class MultiTaskLoss(nn.Module):
             per_sample_loss = (target_pred - target_true).abs().mean(dim=-1)
         elif self.target_loss_type == "huber":
             # Huber per sample: use smooth_l1_loss with reduction='none'
-            per_sample_loss = nn.functional.smooth_l1_loss(
-                target_pred, target_true, reduction="none", beta=1.0
-            ).mean(dim=-1)
+            per_sample_loss = nn.functional.smooth_l1_loss(target_pred, target_true, reduction="none", beta=1.0).mean(dim=-1)
         elif self.target_loss_type == "quantile":
             # Quantile loss is already averaged, need special handling
             assert self.quantiles is not None
