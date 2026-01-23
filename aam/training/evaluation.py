@@ -355,7 +355,7 @@ class Evaluator:
 
             category_key = ",".join(key_parts)
             z_score = values[i, 0] if values.dim() == 2 else values[i]
-            denorm_value = normalizer.denormalize(z_score.item(), category_key)
+            denorm_value = float(normalizer.denormalize(z_score.item(), category_key))
 
             if values.dim() == 2:
                 result[i, 0] = denorm_value
