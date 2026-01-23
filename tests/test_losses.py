@@ -545,9 +545,7 @@ class TestSampleWeightedLoss:
         target_true = torch.randn(4, 1)
         equal_weights = torch.ones(4)
 
-        weighted_loss = loss_fn.compute_target_loss(
-            target_pred, target_true, is_classifier=False, sample_weights=equal_weights
-        )
+        weighted_loss = loss_fn.compute_target_loss(target_pred, target_true, is_classifier=False, sample_weights=equal_weights)
         unweighted_loss = loss_fn.compute_target_loss(target_pred, target_true, is_classifier=False)
 
         assert torch.allclose(weighted_loss, unweighted_loss, atol=1e-6)
@@ -593,9 +591,7 @@ class TestSampleWeightedLoss:
         target_true = torch.tensor([0, 1])  # Correct predictions
         sample_weights = torch.tensor([1.0, 2.0])
 
-        weighted_loss = loss_fn.compute_target_loss(
-            target_pred, target_true, is_classifier=True, sample_weights=sample_weights
-        )
+        weighted_loss = loss_fn.compute_target_loss(target_pred, target_true, is_classifier=True, sample_weights=sample_weights)
 
         assert weighted_loss.item() > 0  # Should be positive (NLL loss)
 
@@ -622,9 +618,7 @@ class TestSampleWeightedLoss:
         target_pred = torch.randn(4, 1)
         target_true = torch.randn(4, 1)
 
-        loss_with_none = loss_fn.compute_target_loss(
-            target_pred, target_true, is_classifier=False, sample_weights=None
-        )
+        loss_with_none = loss_fn.compute_target_loss(target_pred, target_true, is_classifier=False, sample_weights=None)
         loss_default = loss_fn.compute_target_loss(target_pred, target_true, is_classifier=False)
 
         assert torch.allclose(loss_with_none, loss_default)
