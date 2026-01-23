@@ -919,10 +919,7 @@ class Evaluator:
             else:
                 aggregated_predictions[sample_id] = stacked.mean(dim=0)
 
-        logger.info(
-            f"Multi-pass validation: {num_passes} passes, "
-            f"{len(aggregated_predictions)} samples aggregated"
-        )
+        logger.info(f"Multi-pass validation: {num_passes} passes, {len(aggregated_predictions)} samples aggregated")
 
         # Compute metrics on aggregated predictions
         target_metrics: Union[StreamingClassificationMetrics, StreamingRegressionMetrics] = (
