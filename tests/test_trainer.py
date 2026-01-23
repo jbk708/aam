@@ -232,6 +232,152 @@ class TestCreateOptimizer:
 
         assert len(param_ids & base_param_ids) == 0
 
+    def test_create_optimizer_categorical_lr_creates_param_groups(self):
+        """Test that categorical_lr creates separate parameter groups."""
+        model = SequencePredictor(
+            vocab_size=6,
+            embedding_dim=32,
+            max_bp=50,
+            token_limit=64,
+            asv_num_layers=1,
+            asv_num_heads=2,
+            sample_num_layers=1,
+            sample_num_heads=2,
+            encoder_num_layers=1,
+            encoder_num_heads=2,
+            count_num_layers=1,
+            count_num_heads=2,
+            target_num_layers=1,
+            target_num_heads=2,
+            out_dim=1,
+            categorical_cardinalities={"location": 5},
+            categorical_embed_dim=8,
+            categorical_fusion="concat",
+        )
+
+        optimizer = create_optimizer(model, optimizer_type="adamw", lr=1e-4, categorical_lr=1e-3)
+
+        assert len(optimizer.param_groups) == 2
+        assert optimizer.param_groups[0]["lr"] == 1e-4  # base params
+        assert optimizer.param_groups[1]["lr"] == 1e-3  # categorical params
+
+    def test_create_optimizer_categorical_lr_separates_params(self):
+        """Test that categorical parameters are correctly separated."""
+        model = SequencePredictor(
+            vocab_size=6,
+            embedding_dim=32,
+            max_bp=50,
+            token_limit=64,
+            asv_num_layers=1,
+            asv_num_heads=2,
+            sample_num_layers=1,
+            sample_num_heads=2,
+            encoder_num_layers=1,
+            encoder_num_heads=2,
+            count_num_layers=1,
+            count_num_heads=2,
+            target_num_layers=1,
+            target_num_heads=2,
+            out_dim=1,
+            categorical_cardinalities={"location": 5},
+            categorical_embed_dim=8,
+            categorical_fusion="gmu",
+        )
+
+        optimizer = create_optimizer(model, optimizer_type="adamw", lr=1e-4, categorical_lr=1e-3)
+
+        # Get categorical param ids from model
+        categorical_param_ids = set()
+        for name, param in model.named_parameters():
+            if "categorical_embedder" in name or "gmu" in name or "categorical_projection" in name:
+                categorical_param_ids.add(id(param))
+
+        # Check categorical params are in the second group
+        cat_group_param_ids = {id(p) for p in optimizer.param_groups[1]["params"]}
+        assert categorical_param_ids == cat_group_param_ids
+
+    def test_create_optimizer_categorical_lr_with_freeze_base(self):
+        """Test categorical_lr works correctly with freeze_base."""
+        model = SequencePredictor(
+            vocab_size=6,
+            embedding_dim=32,
+            max_bp=50,
+            token_limit=64,
+            asv_num_layers=1,
+            asv_num_heads=2,
+            sample_num_layers=1,
+            sample_num_heads=2,
+            encoder_num_layers=1,
+            encoder_num_heads=2,
+            count_num_layers=1,
+            count_num_heads=2,
+            target_num_layers=1,
+            target_num_heads=2,
+            out_dim=1,
+            categorical_cardinalities={"location": 5},
+            categorical_embed_dim=8,
+            categorical_fusion="concat",
+        )
+
+        # Freeze base model
+        for param in model.base_model.parameters():
+            param.requires_grad = False
+
+        optimizer = create_optimizer(model, optimizer_type="adamw", lr=1e-4, categorical_lr=1e-3, freeze_base=True)
+
+        # Check base model params are excluded
+        base_param_ids = {id(p) for p in model.base_model.parameters()}
+        all_optimizer_param_ids = {id(p) for group in optimizer.param_groups for p in group["params"]}
+        assert len(base_param_ids & all_optimizer_param_ids) == 0
+
+        # Check we still have 2 param groups with correct LRs
+        assert len(optimizer.param_groups) == 2
+        assert optimizer.param_groups[0]["lr"] == 1e-4
+        assert optimizer.param_groups[1]["lr"] == 1e-3
+
+    def test_create_optimizer_categorical_lr_none_uses_single_group(self, small_predictor):
+        """Test that categorical_lr=None uses single parameter group (default behavior)."""
+        optimizer = create_optimizer(small_predictor, optimizer_type="adamw", lr=1e-4, categorical_lr=None)
+
+        assert len(optimizer.param_groups) == 1
+        assert optimizer.param_groups[0]["lr"] == 1e-4
+
+    def test_create_optimizer_categorical_lr_with_output_scales(self):
+        """Test that output_scales params are in categorical group."""
+        model = SequencePredictor(
+            vocab_size=6,
+            embedding_dim=32,
+            max_bp=50,
+            token_limit=64,
+            asv_num_layers=1,
+            asv_num_heads=2,
+            sample_num_layers=1,
+            sample_num_heads=2,
+            encoder_num_layers=1,
+            encoder_num_heads=2,
+            count_num_layers=1,
+            count_num_heads=2,
+            target_num_layers=1,
+            target_num_heads=2,
+            out_dim=1,
+            categorical_cardinalities={"season": 4},
+            categorical_embed_dim=8,
+            categorical_fusion="concat",
+            conditional_scaling_columns=["season"],
+        )
+
+        optimizer = create_optimizer(model, optimizer_type="adamw", lr=1e-4, categorical_lr=1e-3)
+
+        # Get output_scales param ids
+        output_scales_param_ids = set()
+        for name, param in model.named_parameters():
+            if "output_scales" in name:
+                output_scales_param_ids.add(id(param))
+
+        # Check output_scales params are in categorical group
+        cat_group_param_ids = {id(p) for p in optimizer.param_groups[1]["params"]}
+        assert output_scales_param_ids.issubset(cat_group_param_ids)
+
 
 class TestCreateScheduler:
     """Test scheduler creation."""
