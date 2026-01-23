@@ -996,15 +996,28 @@ class Trainer:
         last_full_val_predictions: Optional[Dict[str, Any]] = None
 
         # Legacy resume_from support (deprecated - prefer load_checkpoint + start_epoch params)
+        resumed_from_checkpoint = False
         if resume_from is not None and start_epoch == 0:
             checkpoint_info = self.load_checkpoint(resume_from)
             start_epoch = checkpoint_info["epoch"] + 1
             best_val_loss = checkpoint_info["best_val_loss"]
             # Load best_metric_value if available, otherwise use best_val_loss
             best_metric_value = checkpoint_info.get("best_metric_value", best_val_loss)
+            resumed_from_checkpoint = True
 
         if checkpoint_dir is not None:
             Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
+            # Save initial checkpoint when resuming to ensure new output dir has a checkpoint
+            # This handles the case where validation never beats the original best metric
+            if (resumed_from_checkpoint or start_epoch > 0) and is_main_process():
+                initial_checkpoint_path = Path(checkpoint_dir) / "best_model.pt"
+                if not initial_checkpoint_path.exists():
+                    self.save_checkpoint(
+                        str(initial_checkpoint_path),
+                        epoch=start_epoch - 1,
+                        best_val_loss=best_val_loss,
+                        best_metric_value=best_metric_value,
+                    )
 
         if self.tensorboard_dir is not None:
             tensorboard_path = Path(self.tensorboard_dir) / "tensorboard"
