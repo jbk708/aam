@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-23
-**Status:** ~17 outstanding tickets (~60-106 hours)
+**Status:** ~16 outstanding tickets (~57-103 hours)
 
 ---
 
@@ -26,13 +26,12 @@
 
 No high priority tickets remaining.
 
-### MEDIUM (3 tickets, ~9-13 hours)
+### MEDIUM (2 tickets, ~7-10 hours)
 
 | Ticket | Description | Effort | File |
 |--------|-------------|--------|------|
 | **PYT-12.2** | Batch size optimization | 4-6h | PYTORCH |
 | **PYT-19.3** | Per-category loss weights | 3-4h | PYTORCH |
-| **CLN-8** | Categorical learning rate | 2-3h | FUSION_CLEANUP |
 
 ### LOW (12 tickets, ~47-63 hours)
 
@@ -54,12 +53,10 @@ No high priority tickets remaining.
 
 ## Recommended Next Steps
 
-### 1. User Experience (MEDIUM - ~2-3 hours)
-
-Categorical feature toggles:
+### 1. Performance Optimization (MEDIUM - ~4-6 hours)
 
 ```
-CLN-8 (categorical learning rate)
+PYT-12.2 (batch size optimization)
 ```
 
 ---
@@ -68,6 +65,7 @@ CLN-8 (categorical learning rate)
 
 | Ticket | Description |
 |--------|-------------|
+| CLN-8 | Categorical learning rate (5 tests) |
 | CLN-15 | Multi-pass validation during training (7 tests) |
 | CLN-BUG-7 | Checkpoints not saved to new dir on resume (1 test) |
 | CLN-BUG-5 | zscore-cat TensorBoard denormalization (2 tests) |

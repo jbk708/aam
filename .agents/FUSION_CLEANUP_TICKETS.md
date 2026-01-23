@@ -260,7 +260,7 @@ Allow disabling count prediction head entirely for simpler training.
 ---
 
 ### CLN-8: Separate Learning Rate for Categorical Parameters
-**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Complete
 
 Allow different learning rate for categorical embeddings and fusion layers.
 
@@ -277,7 +277,7 @@ Allow different learning rate for categorical embeddings and fusion layers.
 **Scope:**
 - Add `--categorical-lr` flag
 - Create parameter groups in optimizer: base params vs categorical params
-- Categorical params include: `categorical_embedder`, `categorical_projection`, `gmu`, `conditional_scale`, `conditional_bias`
+- Categorical params include: `categorical_embedder`, `categorical_projection`, `gmu`, `output_scales`, `cross_attn_fusion`
 - Support with AdamW optimizer
 
 **Implementation:**
@@ -290,11 +290,11 @@ optimizer = AdamW(param_groups, weight_decay=weight_decay)
 ```
 
 **Acceptance Criteria:**
-- [ ] `--categorical-lr` sets separate LR for categorical params
-- [ ] Default behavior unchanged (uses --lr for all)
-- [ ] Works with all optimizers
-- [ ] TensorBoard logs both learning rates
-- [ ] 5+ tests
+- [x] `--categorical-lr` sets separate LR for categorical params
+- [x] Default behavior unchanged (uses --lr for all)
+- [x] Works with all optimizers
+- [x] TensorBoard logs both learning rates
+- [x] 5+ tests (5 tests)
 
 **Files:** `aam/training/trainer.py`, `aam/cli/train.py`, `tests/test_trainer.py`
 
@@ -808,7 +808,7 @@ pred_std = torch.stack(predictions).std(dim=0)  # Optional confidence
 | **CLN-5** | DataParallel in train.py | 2-3h | MEDIUM | Complete |
 | **CLN-6** | Categorical docs/validation | 4-5h | MEDIUM | Complete |
 | **CLN-7** | Toggle count prediction | 2-3h | MEDIUM | Complete |
-| **CLN-8** | Categorical learning rate | 2-3h | MEDIUM | Not Started |
+| **CLN-8** | Categorical learning rate | 2-3h | MEDIUM | Complete |
 | **CLN-9** | Remove FiLM conditioning | 2-3h | MEDIUM | Complete |
 | **CLN-10** | Training output artifacts | 2-3h | HIGH | Complete |
 | **CLN-BUG-1** | Z-score denorm in TensorBoard | 1-2h | HIGH | Complete |
@@ -834,11 +834,10 @@ pred_std = torch.stack(predictions).std(dim=0)  # Optional confidence
 **Completed:**
 - CLN-BUG-1 to CLN-BUG-7 (bug fixes)
 - FUS-1, FUS-2 (fusion MVP)
-- CLN-3, CLN-5, CLN-6, CLN-7, CLN-9, CLN-10, CLN-12, CLN-13, CLN-14
+- CLN-3, CLN-5, CLN-6, CLN-7, CLN-8, CLN-9, CLN-10, CLN-12, CLN-13, CLN-14
 
 **Remaining - Low Priority:**
 - CLN-4 (shared utilities)
-- CLN-8 (categorical learning rate)
 - CLN-11 (consolidate test suite)
 - FUS-3 (perceiver fusion, optional)
 

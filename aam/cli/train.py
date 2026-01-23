@@ -114,6 +114,12 @@ def print_categorical_help(ctx: click.Context, param: click.Parameter, value: bo
 @click.option("--epochs", default=100, type=int, help="Number of training epochs")
 @click.option("--batch-size", default=8, type=int, help="Batch size")
 @click.option("--lr", default=1e-4, type=float, help="Learning rate")
+@click.option(
+    "--categorical-lr",
+    default=None,
+    type=float,
+    help="Learning rate for categorical parameters (embedder, fusion, scaling). If not set, uses --lr.",
+)
 @click.option("--patience", default=10, type=int, help="Early stopping patience")
 @click.option("--warmup-steps", default=10000, type=int, help="Learning rate warmup steps")
 @click.option("--weight-decay", default=0.01, type=float, help="Weight decay for AdamW")
@@ -412,6 +418,7 @@ def train(
     epochs: int,
     batch_size: int,
     lr: float,
+    categorical_lr: Optional[float],
     patience: int,
     warmup_steps: int,
     weight_decay: float,
@@ -1194,8 +1201,15 @@ def train(
         effective_batches_per_epoch = len(train_loader) // gradient_accumulation_steps
         num_training_steps = effective_batches_per_epoch * epochs
         optimizer_obj = create_optimizer(
-            model, optimizer_type=optimizer, lr=lr, weight_decay=weight_decay, freeze_base=freeze_base
+            model,
+            optimizer_type=optimizer,
+            lr=lr,
+            weight_decay=weight_decay,
+            freeze_base=freeze_base,
+            categorical_lr=categorical_lr,
         )
+        if categorical_lr is not None:
+            logger.info(f"Using separate learning rates: base_lr={lr}, categorical_lr={categorical_lr}")
         # Build scheduler kwargs based on scheduler type and provided options
         scheduler_kwargs = {}
         if scheduler == "cosine_restarts":
