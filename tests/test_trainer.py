@@ -4049,6 +4049,33 @@ class TestMultiPassValidation:
         # Multi-pass returns metrics (r2, mae, mse) computed on aggregated predictions
         assert "r2" in results or "mae" in results or "mse" in results
 
+    def test_evaluator_multi_pass_returns_total_loss(self, small_predictor, loss_fn, device):
+        """Test that multi-pass validation returns total_loss key (CLN-BUG-8).
+
+        This is required for compatibility with the training loop which expects
+        total_loss to be present in validation results.
+        """
+        from aam.training.evaluation import Evaluator
+
+        small_predictor = small_predictor.to(device)
+        evaluator = Evaluator(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+        )
+
+        val_loader = MockBatchDataset(4, device)
+
+        # Multi-pass validation must return total_loss for training loop compatibility
+        results = evaluator.validate_epoch(
+            val_loader,
+            compute_metrics=True,
+            val_prediction_passes=3,
+        )
+        assert "total_loss" in results, "Multi-pass validation must return 'total_loss' key"
+        assert isinstance(results["total_loss"], float)
+        assert results["total_loss"] >= 0
+
     def test_trainer_passes_val_prediction_passes_to_evaluator(self, small_predictor, loss_fn, device):
         """Test that Trainer correctly passes val_prediction_passes to Evaluator."""
         trainer = Trainer(

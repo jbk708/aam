@@ -966,6 +966,16 @@ class Evaluator:
             metrics = target_metrics.compute()
             avg_losses.update(metrics)
 
+        # Add total_loss for compatibility with training loop (logging, LR scheduler)
+        # Multi-pass validation computes metrics on denormalized predictions, so we use
+        # MAE as proxy (MSE would be huge on native scale). For classifiers, use 1-accuracy.
+        if "mae" in avg_losses:
+            avg_losses["total_loss"] = avg_losses["mae"]
+        elif "accuracy" in avg_losses:
+            avg_losses["total_loss"] = 1.0 - avg_losses["accuracy"]
+        else:
+            avg_losses["total_loss"] = 0.0
+
         # Build plot data if requested
         all_preds: Dict[str, torch.Tensor] = {}
         all_targs: Dict[str, torch.Tensor] = {}
