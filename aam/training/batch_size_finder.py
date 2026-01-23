@@ -8,7 +8,7 @@ import logging
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset, Subset
-from typing import Callable, Optional, Tuple, Sized, Union
+from typing import Callable, Optional, Tuple
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)

@@ -1172,7 +1172,6 @@ def train(
                     )
 
                     old_batch_size = batch_size
-                    old_grad_accum = gradient_accumulation_steps
                     batch_size = result.batch_size
                     gradient_accumulation_steps = result.gradient_accumulation_steps
 
