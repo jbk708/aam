@@ -637,7 +637,7 @@ Checkpoints were only saved when validation metric improved over `best_metric_va
 ---
 
 ### CLN-15: Multi-Pass Validation During Training
-**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Complete
 
 When training with `--asv-sampling random`, validation metrics can vary between epochs due to different random ASV subsets. Add multi-pass aggregation for more stable validation metrics.
 
@@ -653,9 +653,9 @@ Add `--val-prediction-passes N` option to `train` command:
 3. Only applies when `--asv-sampling random` is used
 
 **Implementation:**
-- Reuse `_run_multi_pass` logic from `predict.py` or extract to shared utility
-- Apply during `trainer._validate()` when val_prediction_passes > 1
-- Log aggregated metrics to TensorBoard
+- Added `_validate_epoch_multi_pass()` method to Evaluator
+- Collects predictions per sample_id across all passes
+- Aggregates using mean (regression) or mode (classification)
 
 **Benefits:**
 - More stable validation metrics when using random ASV sampling
@@ -663,13 +663,13 @@ Add `--val-prediction-passes N` option to `train` command:
 - Consistent with inference behavior when using `--prediction-passes`
 
 **Acceptance Criteria:**
-- [ ] `--val-prediction-passes` CLI option for train command (default: 1)
-- [ ] Mean aggregation for regression during validation
-- [ ] Only applies when `--asv-sampling random` is used
-- [ ] Warning if used with non-random sampling
-- [ ] 3+ tests
+- [x] `--val-prediction-passes` CLI option for train command (default: 1)
+- [x] Mean aggregation for regression during validation
+- [x] Only applies when `--asv-sampling random` is used
+- [x] Warning if used with non-random sampling
+- [x] 7 tests (4 trainer, 3 CLI)
 
-**Files:** `aam/cli/train.py`, `aam/training/trainer.py`, `tests/test_cli.py`
+**Files:** `aam/cli/train.py`, `aam/training/trainer.py`, `aam/training/evaluation.py`, `tests/test_cli.py`, `tests/test_trainer.py`
 
 ---
 
