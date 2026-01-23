@@ -21,6 +21,7 @@ from aam.models.sequence_predictor import SequencePredictor
 from aam.models.transformer import AttnImplementation
 from aam.training.losses import MultiTaskLoss
 from aam.training.trainer import Trainer, create_optimizer, create_scheduler, load_pretrained_encoder
+from aam.training.batch_size_finder import BatchSizeFinder
 from aam.training.distributed import (
     setup_distributed,
     cleanup_distributed,
@@ -112,7 +113,28 @@ def print_categorical_help(ctx: click.Context, param: click.Parameter, value: bo
 @click.option("--metadata-column", required=True, help="Column name for target prediction")
 @click.option("--output-dir", required=True, type=click.Path(), help="Output directory for checkpoints and logs")
 @click.option("--epochs", default=100, type=int, help="Number of training epochs")
-@click.option("--batch-size", default=8, type=int, help="Batch size")
+@click.option(
+    "--batch-size", default=8, type=int, help="Batch size (ignored if --auto-batch-size finds a different optimal size)"
+)
+@click.option(
+    "--auto-batch-size/--no-auto-batch-size",
+    default=True,
+    help="Automatically find optimal batch size for GPU memory (default: enabled). "
+    "Disable with --no-auto-batch-size to use --batch-size directly.",
+)
+@click.option(
+    "--max-memory-fraction",
+    default=0.8,
+    type=float,
+    help="Maximum GPU memory fraction to use for auto batch size finding (default: 0.8 = 80%%)",
+)
+@click.option(
+    "--target-effective-batch-size",
+    default=None,
+    type=int,
+    help="Target effective batch size for gradient accumulation tuning. "
+    "If set and larger than found batch size, gradient accumulation steps are auto-computed.",
+)
 @click.option("--lr", default=1e-4, type=float, help="Learning rate")
 @click.option(
     "--categorical-lr",
@@ -417,6 +439,9 @@ def train(
     output_dir: str,
     epochs: int,
     batch_size: int,
+    auto_batch_size: bool,
+    max_memory_fraction: float,
+    target_effective_batch_size: Optional[int],
     lr: float,
     categorical_lr: Optional[float],
     patience: int,
@@ -1120,6 +1145,75 @@ def train(
         )
         if not count_prediction:
             logger.info("Count prediction head disabled (--no-count-prediction)")
+
+        # Auto batch size finding (only for single-GPU CUDA training)
+        if auto_batch_size and device == "cuda" and not (distributed or fsdp or data_parallel):
+            if not torch.cuda.is_available():
+                logger.warning("Auto batch size requires CUDA. Using --batch-size value directly.")
+            else:
+                logger.info("Finding optimal batch size...")
+                # Move model to GPU temporarily for batch size finding
+                model = model.to(device_obj)
+
+                finder = BatchSizeFinder(
+                    model=model,
+                    loss_fn=loss_fn,
+                    device=device_obj,
+                    collate_fn=train_collate,
+                )
+
+                try:
+                    result = finder.find_batch_size(
+                        dataset=train_dataset,
+                        min_batch_size=2,
+                        max_batch_size=256,
+                        target_effective_batch_size=target_effective_batch_size,
+                        max_memory_fraction=max_memory_fraction,
+                    )
+
+                    old_batch_size = batch_size
+                    batch_size = result.batch_size
+                    gradient_accumulation_steps = result.gradient_accumulation_steps
+
+                    logger.info(
+                        f"Auto batch size: {batch_size} "
+                        f"(was: {old_batch_size}, effective: {result.effective_batch_size}, "
+                        f"grad_accum: {gradient_accumulation_steps}, "
+                        f"memory: {result.peak_memory_mb:.0f}MB = {result.memory_fraction:.0%})"
+                    )
+
+                    # Recreate DataLoaders with optimal batch size if it changed
+                    if batch_size != old_batch_size:
+                        train_loader = DataLoader(
+                            train_dataset,
+                            batch_size=batch_size,
+                            shuffle=True,
+                            num_workers=num_workers,
+                            collate_fn=train_collate,
+                            drop_last=True,
+                            prefetch_factor=2 if num_workers > 0 else None,
+                            pin_memory=True,
+                        )
+                        val_loader = DataLoader(
+                            val_dataset,
+                            batch_size=batch_size,
+                            shuffle=False,
+                            num_workers=num_workers,
+                            collate_fn=val_collate,
+                            drop_last=True,
+                            prefetch_factor=2 if num_workers > 0 else None,
+                            pin_memory=True,
+                        )
+                        logger.info(f"DataLoaders recreated with batch_size={batch_size}")
+
+                except RuntimeError as e:
+                    logger.warning(f"Auto batch size failed: {e}. Using --batch-size={batch_size}")
+                    # Move model back to CPU to avoid issues
+                    model = model.cpu()
+                    torch.cuda.empty_cache()
+
+        elif auto_batch_size and (distributed or fsdp or data_parallel):
+            logger.info("Auto batch size disabled for distributed training. Using --batch-size directly.")
 
         # Handle distributed training setup
         if fsdp:
