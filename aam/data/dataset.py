@@ -15,7 +15,7 @@ from aam.data.unifrac_loader import UniFracLoader
 from aam.data.categorical import CategoricalEncoder
 
 if TYPE_CHECKING:
-    from aam.data.normalization import CategoryNormalizer, GlobalNormalizer
+    from aam.data.normalization import CategoryNormalizer, CategoryWeighter, GlobalNormalizer
 
 
 def collate_fn(
@@ -56,6 +56,7 @@ def collate_fn(
     sample_ids = []
     y_targets = []
     categorical_ids: Dict[str, List[int]] = {}
+    sample_weights: List[float] = []
 
     for sample in batch:
         tokens = sample["tokens"]
@@ -107,6 +108,10 @@ def collate_fn(
                     categorical_ids[col_name] = []
                 categorical_ids[col_name].append(idx)
 
+        # Collect sample weights if available
+        if "sample_weight" in sample:
+            sample_weights.append(sample["sample_weight"])
+
     result: Dict[str, Any] = {
         "tokens": torch.stack(tokens_list),
         "counts": torch.stack(counts_list),
@@ -119,6 +124,10 @@ def collate_fn(
     # Convert categorical indices to tensors
     if categorical_ids:
         result["categorical_ids"] = {col: torch.tensor(indices, dtype=torch.long) for col, indices in categorical_ids.items()}
+
+    # Convert sample weights to tensor (only if all samples have weights)
+    if sample_weights and len(sample_weights) == batch_size:
+        result["sample_weights"] = torch.tensor(sample_weights, dtype=torch.float32)
 
     if unifrac_distances is not None:
         # Extract batch distances from pre-computed matrix
@@ -174,6 +183,7 @@ class ASVDataset(Dataset):
         categorical_encoder: Optional[CategoricalEncoder] = None,
         category_normalizer: Optional["CategoryNormalizer"] = None,
         global_normalizer: Optional["GlobalNormalizer"] = None,
+        category_weighter: Optional["CategoryWeighter"] = None,
     ):
         """Initialize ASVDataset.
 
@@ -202,6 +212,8 @@ class ASVDataset(Dataset):
             global_normalizer: Optional fitted GlobalNormalizer for global z-score normalization.
                 If provided, applies global z-score normalization. Mutually exclusive with
                 normalize_targets and category_normalizer.
+            category_weighter: Optional fitted CategoryWeighter for per-sample loss weighting.
+                If provided, returns sample_weight in __getitem__ based on category.
         """
         self.table = table
         self.metadata = metadata
@@ -331,6 +343,20 @@ class ASVDataset(Dataset):
 
         # Global z-score normalization
         self.global_normalizer = global_normalizer
+
+        # Per-category loss weighting
+        self.category_weighter = category_weighter
+        self._sample_weight_cache: Optional[Dict[str, float]] = None
+        if category_weighter is not None and category_weighter.is_fitted:
+            if metadata is None:
+                raise ValueError("metadata is required when using category_weighter")
+            # Pre-compute sample weights for all samples
+            self._sample_weight_cache = {}
+            metadata_indexed = metadata.set_index("sample_id")
+            for sample_id in self.sample_ids:
+                if sample_id in metadata_indexed.index:
+                    row = metadata_indexed.loc[sample_id]
+                    self._sample_weight_cache[sample_id] = category_weighter.get_weight_for_sample(row)
 
     def __len__(self) -> int:
         """Return number of samples in dataset."""
@@ -524,5 +550,9 @@ class ASVDataset(Dataset):
         # Add categorical indices if available
         if self._categorical_cache is not None and sample_id in self._categorical_cache:
             result["categorical_ids"] = self._categorical_cache[sample_id]
+
+        # Add sample weight if available
+        if self._sample_weight_cache is not None and sample_id in self._sample_weight_cache:
+            result["sample_weight"] = self._sample_weight_cache[sample_id]
 
         return result

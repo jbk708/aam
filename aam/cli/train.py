@@ -410,6 +410,20 @@ def print_categorical_help(ctx: click.Context, param: click.Parameter, value: bo
     help="Comma-separated categorical column names for conditional output scaling. Learns per-category scale and bias applied after base prediction. Requires --categorical-columns.",
 )
 @click.option(
+    "--categorical-loss-weights",
+    default=None,
+    help="Per-category loss weighting for imbalanced data. "
+    "Use 'auto' for inverse frequency weighting (recommended), "
+    "or provide a JSON dict of category weights like '{\"categoryA\": 2.0, \"categoryB\": 0.5}'. "
+    "Requires --categorical-columns to be set.",
+)
+@click.option(
+    "--categorical-loss-weight-column",
+    default=None,
+    help="Categorical column to use for loss weighting (default: first column in --categorical-columns). "
+    "Must be a column listed in --categorical-columns.",
+)
+@click.option(
     "--categorical-help",
     is_flag=True,
     is_eager=True,
@@ -515,6 +529,8 @@ def train(
     regressor_hidden_dims: Optional[str],
     regressor_dropout: float,
     conditional_output_scaling: Optional[str],
+    categorical_loss_weights: Optional[str],
+    categorical_loss_weight_column: Optional[str],
     best_metric: str,
     val_prediction_passes: int,
 ):

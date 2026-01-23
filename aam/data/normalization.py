@@ -504,3 +504,101 @@ class CategoryNormalizer:
     def is_fitted(self) -> bool:
         """Return whether the normalizer has been fitted."""
         return self._is_fitted
+
+
+class CategoryWeighter:
+    """Computes per-category sample weights for loss weighting.
+
+    For imbalanced categorical data, this class computes inverse frequency weights
+    so that samples from minority categories contribute more to the loss.
+
+    Supports two modes:
+    - "auto": Inverse frequency weighting (weight = N_total / (N_categories * N_category))
+    - Manual: User-specified weights per category via dictionary
+    """
+
+    def __init__(self) -> None:
+        """Initialize CategoryWeighter."""
+        self.weights: Dict[str, float] = {}
+        self.columns: List[str] = []
+        self.default_weight: float = 1.0
+        self._is_fitted: bool = False
+        self._warned_categories: set = set()
+
+    def fit(
+        self,
+        metadata: pd.DataFrame,
+        columns: List[str],
+        mode: str = "auto",
+        manual_weights: Optional[Dict[str, float]] = None,
+    ) -> "CategoryWeighter":
+        """Fit weighter on training data.
+
+        Args:
+            metadata: DataFrame with sample metadata
+            columns: List of categorical column names to group by
+            mode: Weighting mode - "auto" for inverse frequency, "manual" for user-specified
+            manual_weights: Dict mapping category keys to weights (required if mode="manual")
+
+        Returns:
+            self for method chaining
+
+        Raises:
+            ValueError: If metadata is None, columns is empty, or mode is invalid
+        """
+        raise NotImplementedError("CategoryWeighter.fit() not yet implemented")
+
+    def _create_category_key(self, row: Union[pd.Series, Dict[str, Any]]) -> str:
+        """Create category key string from metadata row."""
+        return ",".join(f"{col}={row[col]}" for col in self.columns)
+
+    def get_weight(self, category_key: str) -> float:
+        """Get weight for a category.
+
+        Args:
+            category_key: Category key (e.g., "location=A,season=summer")
+
+        Returns:
+            Weight for the category (default_weight if unseen)
+        """
+        raise NotImplementedError("CategoryWeighter.get_weight() not yet implemented")
+
+    def get_weight_for_sample(
+        self,
+        metadata_row: Union[pd.Series, Dict[str, Any]],
+    ) -> float:
+        """Get weight for a sample from its metadata.
+
+        Args:
+            metadata_row: Row of metadata as Series or dict
+
+        Returns:
+            Weight for the sample's category
+
+        Raises:
+            RuntimeError: If weighter is not fitted
+        """
+        raise NotImplementedError("CategoryWeighter.get_weight_for_sample() not yet implemented")
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Serialize weighter state to dictionary for checkpointing."""
+        return {
+            "weights": self.weights,
+            "columns": self.columns,
+            "default_weight": self.default_weight,
+        }
+
+    @classmethod
+    def from_dict(cls, state: Dict[str, Any]) -> "CategoryWeighter":
+        """Reconstruct weighter from serialized state."""
+        weighter = cls()
+        weighter.weights = state["weights"]
+        weighter.columns = state["columns"]
+        weighter.default_weight = state.get("default_weight", 1.0)
+        weighter._is_fitted = True
+        return weighter
+
+    @property
+    def is_fitted(self) -> bool:
+        """Return whether the weighter has been fitted."""
+        return self._is_fitted
