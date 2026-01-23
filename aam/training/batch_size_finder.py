@@ -8,7 +8,7 @@ import logging
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset, Subset
-from typing import Callable, Optional, Tuple
+from typing import Callable, Optional, Tuple, Sized, Union
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -49,10 +49,7 @@ class BatchSizeFinder:
             collate_fn: Collate function for DataLoader
         """
         if device.type != "cuda":
-            raise ValueError(
-                "BatchSizeFinder requires CUDA device for memory profiling. "
-                "Use --no-auto-batch-size on CPU."
-            )
+            raise ValueError("BatchSizeFinder requires CUDA device for memory profiling. Use --no-auto-batch-size on CPU.")
 
         self.model = model
         self.loss_fn = loss_fn
@@ -184,7 +181,7 @@ class BatchSizeFinder:
         torch.cuda.empty_cache()
         torch.cuda.reset_peak_memory_stats()
 
-        subset_size = min(batch_size * num_iterations, len(dataset))
+        subset_size = min(batch_size * num_iterations, len(dataset))  # type: ignore[arg-type]
         subset = Subset(dataset, list(range(subset_size)))
 
         loader = DataLoader(

@@ -113,7 +113,9 @@ def print_categorical_help(ctx: click.Context, param: click.Parameter, value: bo
 @click.option("--metadata-column", required=True, help="Column name for target prediction")
 @click.option("--output-dir", required=True, type=click.Path(), help="Output directory for checkpoints and logs")
 @click.option("--epochs", default=100, type=int, help="Number of training epochs")
-@click.option("--batch-size", default=8, type=int, help="Batch size (ignored if --auto-batch-size finds a different optimal size)")
+@click.option(
+    "--batch-size", default=8, type=int, help="Batch size (ignored if --auto-batch-size finds a different optimal size)"
+)
 @click.option(
     "--auto-batch-size/--no-auto-batch-size",
     default=True,

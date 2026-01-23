@@ -52,7 +52,9 @@ from aam.cli.utils import (
 )
 @click.option("--output-dir", required=True, type=click.Path(), help="Output directory for checkpoints and logs")
 @click.option("--epochs", default=100, type=int, help="Number of training epochs")
-@click.option("--batch-size", default=8, type=int, help="Batch size (ignored if --auto-batch-size finds a different optimal size)")
+@click.option(
+    "--batch-size", default=8, type=int, help="Batch size (ignored if --auto-batch-size finds a different optimal size)"
+)
 @click.option(
     "--auto-batch-size/--no-auto-batch-size",
     default=True,
