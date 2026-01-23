@@ -355,7 +355,7 @@ class Evaluator:
 
             category_key = ",".join(key_parts)
             z_score = values[i, 0] if values.dim() == 2 else values[i]
-            denorm_value = normalizer.denormalize(z_score.item(), category_key)
+            denorm_value = float(normalizer.denormalize(z_score.item(), category_key))
 
             if values.dim() == 2:
                 result[i, 0] = denorm_value
@@ -457,6 +457,7 @@ class Evaluator:
         num_epochs: int = 1,
         return_predictions: bool = False,
         collect_all_predictions: bool = False,
+        val_prediction_passes: int = 1,
     ) -> Union[
         Dict[str, float],
         Tuple[Dict[str, float], Dict[str, torch.Tensor], Dict[str, torch.Tensor]],
@@ -476,11 +477,25 @@ class Evaluator:
             collect_all_predictions: Whether to collect ALL predictions with sample IDs
                 (for writing to val_predictions.tsv). When True, returns a 4th element
                 containing {"sample_ids": [...], "predictions": tensor, "actuals": tensor}.
+            val_prediction_passes: Number of forward passes for multi-pass validation.
+                Predictions are averaged across passes for more stable metrics when using
+                random ASV sampling. Default 1 (single pass).
 
         Returns:
             Dictionary with losses and metrics, optionally with prediction samples.
             If collect_all_predictions=True, returns (losses, preds, targs, full_predictions).
         """
+        # Multi-pass validation: aggregate predictions across multiple passes
+        if val_prediction_passes > 1:
+            return self._validate_epoch_multi_pass(
+                dataloader=dataloader,
+                compute_metrics=compute_metrics,
+                epoch=epoch,
+                num_epochs=num_epochs,
+                return_predictions=return_predictions,
+                collect_all_predictions=collect_all_predictions,
+                num_passes=val_prediction_passes,
+            )
         self.model.eval()
         total_losses: Dict[str, float] = {}
         num_batches = 0
@@ -793,6 +808,182 @@ class Evaluator:
                 "sample_ids": all_sample_ids,
                 "predictions": torch.cat(all_predictions, dim=0) if all_predictions else torch.tensor([]),
                 "actuals": torch.cat(all_actuals, dim=0) if all_actuals else torch.tensor([]),
+            }
+            return avg_losses, all_preds, all_targs, full_predictions
+
+        if return_predictions:
+            return avg_losses, all_preds, all_targs
+
+        return avg_losses
+
+    def _validate_epoch_multi_pass(
+        self,
+        dataloader: DataLoader,
+        compute_metrics: bool,
+        epoch: int,
+        num_epochs: int,
+        return_predictions: bool,
+        collect_all_predictions: bool,
+        num_passes: int,
+    ) -> Union[
+        Dict[str, float],
+        Tuple[Dict[str, float], Dict[str, torch.Tensor], Dict[str, torch.Tensor]],
+        Tuple[Dict[str, float], Dict[str, torch.Tensor], Dict[str, torch.Tensor], Dict[str, Any]],
+    ]:
+        """Run multi-pass validation with prediction aggregation.
+
+        Runs the validation dataloader multiple times and aggregates predictions
+        (using mean for regression, mode for classification) before computing
+        metrics. This provides more stable metrics when using random ASV sampling.
+
+        Args:
+            dataloader: Validation data loader
+            compute_metrics: Whether to compute metrics
+            epoch: Current epoch number
+            num_epochs: Total number of epochs
+            return_predictions: Whether to return sampled predictions for plotting
+            collect_all_predictions: Whether to collect ALL predictions with sample IDs
+            num_passes: Number of forward passes to run
+
+        Returns:
+            Same return type as validate_epoch
+        """
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        self.model.eval()
+        is_pretraining = self._is_pretraining()
+        is_classifier = self._get_is_classifier()
+
+        # Storage for predictions across passes: {sample_id: [pred1, pred2, ...]}
+        sample_predictions: Dict[str, List[torch.Tensor]] = {}
+        sample_actuals: Dict[str, torch.Tensor] = {}
+        sample_categorical_ids: Dict[str, Optional[Dict[str, torch.Tensor]]] = {}
+
+        with torch.no_grad():
+            for pass_idx in range(num_passes):
+                pbar = tqdm(
+                    dataloader,
+                    desc=f"Epoch {epoch + 1}/{num_epochs} [Val Pass {pass_idx + 1}/{num_passes}]",
+                    leave=False,
+                )
+
+                for batch in pbar:
+                    tokens, targets, categorical_ids = self._prepare_batch(batch)
+
+                    return_nucleotides = "nucleotides" in targets or cast(float, self.loss_fn.nuc_penalty) > 0
+
+                    autocast_dtype = None
+                    if self.mixed_precision == "fp16":
+                        autocast_dtype = torch.float16
+                    elif self.mixed_precision == "bf16":
+                        autocast_dtype = torch.bfloat16
+
+                    supports_categorical = hasattr(self.model, "categorical_embedder")
+                    forward_kwargs: Dict[str, Any] = {"return_nucleotides": return_nucleotides}
+                    if supports_categorical and categorical_ids is not None:
+                        forward_kwargs["categorical_ids"] = categorical_ids
+
+                    if autocast_dtype is not None and self.device.type == "cuda":
+                        with torch.amp.autocast(device_type="cuda", dtype=autocast_dtype):
+                            outputs = self.model(tokens, **forward_kwargs)
+                    else:
+                        outputs = self.model(tokens, **forward_kwargs)
+
+                    # Collect target predictions by sample_id
+                    if not is_pretraining and "target_prediction" in outputs and "target" in targets:
+                        batch_sample_ids = batch.get("sample_ids", []) if isinstance(batch, dict) else []
+                        pred = self._extract_median_quantile(outputs["target_prediction"])
+                        true = targets["target"]
+
+                        for i, sample_id in enumerate(batch_sample_ids):
+                            if sample_id not in sample_predictions:
+                                sample_predictions[sample_id] = []
+                            sample_predictions[sample_id].append(pred[i].detach().cpu())
+
+                            # Store actuals and categorical_ids on first encounter
+                            if sample_id not in sample_actuals:
+                                sample_actuals[sample_id] = true[i].detach().cpu()
+                                if categorical_ids is not None:
+                                    sample_categorical_ids[sample_id] = {
+                                        k: v[i].detach().cpu() for k, v in categorical_ids.items()
+                                    }
+
+        # Aggregate predictions across passes
+        aggregated_predictions: Dict[str, torch.Tensor] = {}
+        for sample_id, preds in sample_predictions.items():
+            stacked = torch.stack(preds)
+            if is_classifier:
+                aggregated_predictions[sample_id] = stacked.mode(dim=0).values
+            else:
+                aggregated_predictions[sample_id] = stacked.mean(dim=0)
+
+        logger.info(f"Multi-pass validation: {num_passes} passes, {len(aggregated_predictions)} samples aggregated")
+
+        # Compute metrics on aggregated predictions
+        target_metrics: Union[StreamingClassificationMetrics, StreamingRegressionMetrics] = (
+            StreamingClassificationMetrics(max_plot_samples=1000)
+            if is_classifier
+            else StreamingRegressionMetrics(max_plot_samples=1000)
+        )
+
+        has_target = False
+        all_sample_ids: List[str] = []
+        all_predictions_list: List[torch.Tensor] = []
+        all_actuals_list: List[torch.Tensor] = []
+
+        for sample_id, pred in aggregated_predictions.items():
+            if sample_id not in sample_actuals:
+                continue
+
+            true = sample_actuals[sample_id]
+            cat_ids = sample_categorical_ids.get(sample_id)
+
+            # Ensure batch dimension and move to device for denormalization
+            pred_t = pred.unsqueeze(0).to(self.device)
+            true_t = true.unsqueeze(0).to(self.device)
+
+            cat_ids_batch = None
+            if cat_ids is not None:
+                cat_ids_batch = {k: v.unsqueeze(0).to(self.device) for k, v in cat_ids.items()}
+
+            pred_denorm = self._denormalize_targets(pred_t, categorical_ids=cat_ids_batch)
+            true_denorm = self._denormalize_targets(true_t, categorical_ids=cat_ids_batch)
+
+            target_metrics.update(pred_denorm, true_denorm)
+            has_target = True
+
+            if collect_all_predictions:
+                all_sample_ids.append(sample_id)
+                all_predictions_list.append(pred_denorm.detach().cpu())
+                all_actuals_list.append(true_denorm.detach().cpu())
+
+        # Compute final metrics
+        avg_losses: Dict[str, float] = {}
+        if compute_metrics and has_target:
+            target_metrics.sync_distributed()
+            metrics = target_metrics.compute()
+            avg_losses.update(metrics)
+
+        # Build plot data if requested
+        all_preds: Dict[str, torch.Tensor] = {}
+        all_targs: Dict[str, torch.Tensor] = {}
+
+        if return_predictions and has_target:
+            pred_samples, targ_samples = target_metrics.get_plot_data()
+            all_preds["target"] = pred_samples
+            all_targs["target"] = targ_samples
+
+            if is_distributed():
+                all_preds["target"] = gather_predictions_for_plot(all_preds["target"])
+                all_targs["target"] = gather_predictions_for_plot(all_targs["target"])
+
+        if collect_all_predictions:
+            full_predictions: Dict[str, Any] = {
+                "sample_ids": all_sample_ids,
+                "predictions": torch.cat(all_predictions_list, dim=0) if all_predictions_list else torch.tensor([]),
+                "actuals": torch.cat(all_actuals_list, dim=0) if all_actuals_list else torch.tensor([]),
             }
             return avg_losses, all_preds, all_targs, full_predictions
 

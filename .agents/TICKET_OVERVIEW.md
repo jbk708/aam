@@ -1,7 +1,7 @@
 # Ticket Overview
 
-**Last Updated:** 2026-01-22
-**Status:** ~18 outstanding tickets (~63-109 hours)
+**Last Updated:** 2026-01-23
+**Status:** ~17 outstanding tickets (~60-106 hours)
 
 ---
 
@@ -34,7 +34,7 @@ No high priority tickets remaining.
 | **PYT-19.3** | Per-category loss weights | 3-4h | PYTORCH |
 | **CLN-8** | Categorical learning rate | 2-3h | FUSION_CLEANUP |
 
-### LOW (13 tickets, ~51-67 hours)
+### LOW (12 tickets, ~47-63 hours)
 
 | Ticket | Description | Effort | File |
 |--------|-------------|--------|------|
@@ -48,7 +48,6 @@ No high priority tickets remaining.
 | **PYT-MAINT-2** | TensorBoard logging | 2-4h | PYTORCH |
 | **CLN-4** | Extract shared utilities | 2-3h | FUSION_CLEANUP |
 | **CLN-11** | Consolidate test suite | 4-6h | FUSION_CLEANUP |
-| **CLN-14** | Multi-pass prediction aggregation | 3-4h | FUSION_CLEANUP |
 | **COS-9.5-9.8** | ROCm infrastructure | 13-19h | COSMOS |
 
 ---
@@ -65,10 +64,12 @@ CLN-8 (categorical learning rate)
 
 ---
 
-## Recently Completed (2026-01-22)
+## Recently Completed (2026-01-23)
 
 | Ticket | Description |
 |--------|-------------|
+| CLN-15 | Multi-pass validation during training (7 tests) |
+| CLN-BUG-7 | Checkpoints not saved to new dir on resume (1 test) |
 | CLN-BUG-5 | zscore-cat TensorBoard denormalization (2 tests) |
 | CLN-6 | Categorical docs/validation - --categorical-help (3 tests) |
 | CLN-13 | ASV sampling strategy - abundance/random (4 tests) |

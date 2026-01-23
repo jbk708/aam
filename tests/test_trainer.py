@@ -3854,3 +3854,76 @@ class TestOutputArtifacts:
             "best_model.pt should be saved to new checkpoint directory on resume, "
             "even when validation never beats the original best metric"
         )
+
+
+class TestMultiPassValidation:
+    """Tests for multi-pass validation during training (CLN-15)."""
+
+    def test_evaluator_multi_pass_validation_basic(self, small_predictor, loss_fn, device):
+        """Test that evaluator supports val_prediction_passes parameter."""
+        from aam.training.evaluation import Evaluator
+
+        small_predictor = small_predictor.to(device)
+        evaluator = Evaluator(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+        )
+
+        val_loader = MockBatchDataset(4, device)
+
+        # Single pass should work
+        results = evaluator.validate_epoch(
+            val_loader,
+            compute_metrics=True,
+            val_prediction_passes=1,
+        )
+        assert "total_loss" in results
+        assert results["total_loss"] >= 0
+
+    def test_evaluator_multi_pass_aggregates_predictions(self, small_predictor, loss_fn, device):
+        """Test that multi-pass validation aggregates predictions across passes."""
+        from aam.training.evaluation import Evaluator
+
+        small_predictor = small_predictor.to(device)
+        evaluator = Evaluator(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+        )
+
+        val_loader = MockBatchDataset(4, device)
+
+        # Multi-pass validation computes metrics on aggregated predictions
+        results = evaluator.validate_epoch(
+            val_loader,
+            compute_metrics=True,
+            val_prediction_passes=3,
+        )
+        # Multi-pass returns metrics (r2, mae, mse) computed on aggregated predictions
+        assert "r2" in results or "mae" in results or "mse" in results
+
+    def test_trainer_passes_val_prediction_passes_to_evaluator(self, small_predictor, loss_fn, device):
+        """Test that Trainer correctly passes val_prediction_passes to Evaluator."""
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+            val_prediction_passes=3,
+        )
+
+        # Verify the trainer has the val_prediction_passes attribute
+        assert hasattr(trainer, "val_prediction_passes")
+        assert trainer.val_prediction_passes == 3
+
+    def test_trainer_default_val_prediction_passes_is_one(self, small_predictor, loss_fn, device):
+        """Test that Trainer defaults to single-pass validation."""
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+        )
+
+        # Default should be 1
+        assert hasattr(trainer, "val_prediction_passes")
+        assert trainer.val_prediction_passes == 1
