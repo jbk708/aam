@@ -1,6 +1,6 @@
 # Regressor Optimization Tickets
 
-**Last Updated:** 2026-01-21
+**Last Updated:** 2026-01-23
 **Status:** 3 tickets remaining (~11-15 hours)
 
 **Completed:** REG-1 to REG-6, REG-BUG-1 (see `ARCHIVED_TICKETS.md`)

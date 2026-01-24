@@ -1,7 +1,7 @@
 # Attention Fusion & Code Cleanup Tickets
 
-**Last Updated:** 2026-01-21
-**Status:** 9 tickets (~23-38 hours)
+**Last Updated:** 2026-01-23
+**Status:** 5 tickets remaining (~14-24 hours)
 **Design Doc:** `_design_plan/17_attention_fusion.md`
 
 ---
@@ -881,14 +881,14 @@ pred_std = torch.stack(predictions).std(dim=0)  # Optional confidence
 
 **Next Up - High Priority:**
 1. CLN-BUG-6 (model converging to mean - CRITICAL training issue)
-2. CLN-15 (multi-pass validation during training)
 
 **Completed:**
-- CLN-BUG-1 to CLN-BUG-7 (bug fixes)
+- CLN-BUG-1 to CLN-BUG-5, CLN-BUG-7, CLN-BUG-8 (bug fixes)
 - FUS-1, FUS-2 (fusion MVP)
-- CLN-3, CLN-5, CLN-6, CLN-7, CLN-8, CLN-9, CLN-10, CLN-12, CLN-13, CLN-14
+- CLN-2, CLN-5, CLN-6, CLN-7, CLN-8, CLN-9, CLN-10, CLN-12, CLN-13, CLN-14, CLN-15
 
 **Remaining - Low Priority:**
+- CLN-3 (remove unused params)
 - CLN-4 (shared utilities)
 - CLN-11 (consolidate test suite)
 - FUS-3 (perceiver fusion, optional)

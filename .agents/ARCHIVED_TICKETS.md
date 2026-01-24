@@ -1,8 +1,57 @@
 # Archived Tickets - Completed Work
 
-**Last Updated:** 2026-01-20
+**Last Updated:** 2026-01-23
 
 Completed tickets for historical reference. For active work, see `TICKET_OVERVIEW.md`.
+
+---
+
+## Recent Completions (2026-01-23)
+
+### PyTorch Porting
+| Ticket | Description | Tests |
+|--------|-------------|-------|
+| **PYT-12.2** | Auto batch size optimization (`--auto-batch-size`, `--max-memory-fraction`) | 12 |
+| **PYT-18.6** | Memory-aware batching (superseded by PYT-12.2) | - |
+| **PYT-19.3** | Per-category loss weighting (`--categorical-loss-weights`) | 28 |
+
+### Attention Fusion
+| Ticket | Description | Tests |
+|--------|-------------|-------|
+| **FUS-1** | GMU baseline (`--categorical-fusion gmu`) | 28 |
+| **FUS-2** | Cross-attention fusion (`--categorical-fusion cross-attention`) | 33 |
+
+### Regressor Optimization
+| Ticket | Description | Tests |
+|--------|-------------|-------|
+| **REG-5** | Quantile regression (`--loss-type quantile`) | 14+ |
+| **REG-6** | Asymmetric loss (`--loss-type asymmetric`) | 14 |
+
+### Code Cleanup
+| Ticket | Description | Tests |
+|--------|-------------|-------|
+| **CLN-2** | Target normalization unification (`--target-transform`) | 27 |
+| **CLN-5** | DataParallel in train.py | 5 |
+| **CLN-6** | Categorical docs/validation (`--categorical-help`) | 3 |
+| **CLN-7** | Toggle count prediction (`--no-count-prediction`) | 8 |
+| **CLN-8** | Categorical learning rate (`--categorical-lr`) | 5 |
+| **CLN-9** | Remove FiLM conditioning | - |
+| **CLN-10** | Training output artifacts (train/val samples, predictions) | 8 |
+| **CLN-12** | Random Forest baseline script | 17 |
+| **CLN-13** | ASV sampling strategy (`--asv-sampling`) | 4 |
+| **CLN-14** | Multi-pass prediction aggregation | 5+ |
+| **CLN-15** | Multi-pass validation during training (`--val-prediction-passes`) | 7 |
+
+### Bug Fixes
+| Ticket | Description |
+|--------|-------------|
+| **CLN-BUG-1** | Z-score denormalization in TensorBoard (6 tests) |
+| **CLN-BUG-2** | val_predictions.tsv not written on resume (1 test) |
+| **CLN-BUG-3** | --resume-from ignores new learning rate (4 tests) |
+| **CLN-BUG-4** | LR override undone by double load_checkpoint (1 test) |
+| **CLN-BUG-5** | zscore-cat TensorBoard denormalization (2 tests) |
+| **CLN-BUG-7** | Checkpoints not saved to new dir on resume (1 test) |
+| **CLN-BUG-8** | Multi-pass validation fails in distributed training (1 test) |
 
 ---
 
