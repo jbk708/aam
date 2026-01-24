@@ -118,3 +118,9 @@ exclude_lines = [
 [tool.setuptools_scm]
 version_scheme = "guess-next-dev"
 local_scheme = "node-and-timestamp"
+
+[tool.uv]
+workspace = ["."]
+required-environments = [
+    "sys_platform == 'linux' and platform_machine == 'x86_64'"
+]
