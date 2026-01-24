@@ -2,7 +2,6 @@
 requires = ["setuptools", "wheel", "setuptools_scm"]
 build-backend = "setuptools.build_meta"
 
-
 [project]
 name = "aam"
 requires-python = ">= 3.9,<3.13"
@@ -26,8 +25,8 @@ classifiers = [
     "Framework :: Pytorch"
 ]
 dependencies = [
-    "torch >= 2.3.0",
-    "numpy",
+    "torch >= 2.3.0, < 2.6.0",  # Constrained for manylinux_2_17
+    "numpy >= 1.20, < 2.0",     # Constrained for GCC 4.8.5
     "pandas",
     "biom-format",
     "scikit-bio >= 0.6",
@@ -47,10 +46,8 @@ aam = "aam.cli:main"
 "Bug Tracker" = "https://github.com/jbk708/aam/issues"
 "Source Code" = "https://github.com/jbk708/aam"
 
-
 [tool.setuptools.packages.find]
 where = ["."]
-
 
 [project.optional-dependencies]
 dev = [
@@ -74,7 +71,6 @@ all = [
     "aam[dev,docs,training]",
 ]
 
-
 [tool.ruff]
 line-length = 128
 
@@ -86,41 +82,7 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = [
-    "-v",
-    "--strict-markers",
-    "--tb=short",
-]
-markers = [
-    "unit: Unit tests",
-    "integration: Integration tests",
-    "slow: Slow running tests",
-]
-
-[tool.coverage.run]
-source = ["aam"]
-omit = [
-    "*/tests/*",
-    "*/test_*.py",
-]
-
-[tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
-    "def __repr__",
-    "raise AssertionError",
-    "raise NotImplementedError",
-    "if __name__ == .__main__.:",
-    "if TYPE_CHECKING:",
-]
-
-
-[tool.setuptools_scm]
-version_scheme = "guess-next-dev"
-local_scheme = "node-and-timestamp"
+addopts = ["-v"]
 
 [tool.uv]
-workspace = ["."]
-required-environments = [
-    "sys_platform == 'linux' and platform_machine == 'x86_64'"
-]
+dev-dependencies = []
