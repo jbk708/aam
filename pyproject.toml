@@ -156,7 +156,7 @@ docs = [
 ]
 training = [
     "pytorch-lightning >= 2.0",
-    "wandb >= 0.15.0",
+    
     "tensorboard >= 2.13.0",
 ]
 all = [
