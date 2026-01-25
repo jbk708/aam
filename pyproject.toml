@@ -25,8 +25,8 @@ classifiers = [
     "Framework :: Pytorch"
 ]
 dependencies = [
-    "torch >= 2.3.0, < 2.6.0",  # Constrained for manylinux_2_17
-    "numpy >= 1.20, < 2.0",     # Constrained for GCC 4.8.5
+    "torch >= 2.3.0, < 2.6.0", 
+    "numpy >= 1.20, < 2.0",    
     "pandas",
     "biom-format",
     "scikit-bio >= 0.6",
@@ -36,6 +36,7 @@ dependencies = [
     "tqdm",
     "tensorboard >= 2.13.0",
     "matplotlib",
+"h5py >= 3.0, < 3.11",
 ]
 keywords = ["aam", "pytorch", "deep-learning", "microbiome", "unifrac"]
 
@@ -118,3 +119,24 @@ local_scheme = "node-and-timestamp"
 
 [tool.uv]
 dev-dependencies = []
+required-environments = [ "sys_platform == 'linux' and platform_machine == 'x86_64'" ]
+
+
+
+
+[tool.uv.workspace]
+members = [
+    ".",
+    ".",
+    ".",
+    ".",
+    ".",
+]
+
+[tool.uv.sources]
+aam = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "aam[dev,docs]",
+]
