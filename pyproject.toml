@@ -65,7 +65,6 @@ docs = [
 ]
 training = [
     "pytorch-lightning >= 2.0",
-    "wandb >= 0.15.0, < 0.17.0",
     "tensorboard >= 2.13.0",
 ]
 all = [
@@ -120,9 +119,6 @@ local_scheme = "node-and-timestamp"
 [tool.uv]
 dev-dependencies = []
 required-environments = [ "sys_platform == 'linux' and platform_machine == 'x86_64'" ]
-
-
-
 
 [tool.uv.workspace]
 members = [
