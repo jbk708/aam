@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-23
-**Status:** ~14 outstanding tickets (~49-93 hours)
+**Status:** ~11 outstanding tickets (~35-53 hours)
 
 ---
 
@@ -9,11 +9,10 @@
 
 | File | Status | Tickets |
 |------|--------|---------|
-| `FUSION_CLEANUP_TICKETS.md` | **NEW** | FUS-1 to FUS-3, CLN-1 to CLN-10 |
-| `REGRESSOR_OPTIMIZATION_TICKETS.md` | 5 remaining | REG-5 to REG-9 |
-| `PYTORCH_PORTING_TICKETS.md` | 4 remaining | PYT-18.5-18.6, PYT-19.4, PYT-MAINT-2 |
+| `FUSION_CLEANUP_TICKETS.md` | 4 remaining | FUS-3, CLN-3, CLN-4, CLN-11, CLN-BUG-6 |
+| `REGRESSOR_OPTIMIZATION_TICKETS.md` | 3 remaining | REG-7 to REG-9 |
+| `PYTORCH_PORTING_TICKETS.md` | 3 remaining | PYT-18.5, PYT-19.4, PYT-MAINT-2 |
 | `COSMOS_ONBOARDING_TICKETS.md` | 4 remaining | COS-9.5 to COS-9.8 |
-| `CATEGORICAL_FEATURE_TICKETS.md` | **COMPLETE** | - |
 | `DOCUMENTATION_TICKETS.md` | Backlog | DOC-2 to DOC-4 |
 | `ARCHIVED_TICKETS.md` | Reference | All completed work |
 | `WORKFLOW.md` | Reference | Branch naming, commit style |
@@ -22,15 +21,17 @@
 
 ## Priority Summary
 
-### HIGH (0 tickets)
+### HIGH (1 ticket, ~2-4 hours)
 
-No high priority tickets remaining.
+| Ticket | Description | Effort | File |
+|--------|-------------|--------|------|
+| **CLN-BUG-6** | Model converging to mean with freeze-base + cross-attention | 2-4h | FUSION_CLEANUP |
 
 ### MEDIUM (0 tickets)
 
 No medium priority tickets remaining.
 
-### LOW (11 tickets, ~44-59 hours)
+### LOW (10 tickets, ~33-49 hours)
 
 | Ticket | Description | Effort | File |
 |--------|-------------|--------|------|
@@ -39,22 +40,33 @@ No medium priority tickets remaining.
 | **REG-8** | Per-output loss | 3-4h | REGRESSOR |
 | **REG-9** | Mixture of Experts | 6-8h | REGRESSOR |
 | **PYT-18.5** | Lazy embeddings | 4-6h | PYTORCH |
-| **PYT-18.6** | Memory-aware batching | 4-6h | PYTORCH |
 | **PYT-19.4** | Hierarchical categories | 6-8h | PYTORCH |
 | **PYT-MAINT-2** | TensorBoard logging | 2-4h | PYTORCH |
+| **CLN-3** | Remove unused params | 1-2h | FUSION_CLEANUP |
 | **CLN-4** | Extract shared utilities | 2-3h | FUSION_CLEANUP |
 | **CLN-11** | Consolidate test suite | 4-6h | FUSION_CLEANUP |
+
+### Backlog (~13-19 hours)
+
+| Ticket | Description | Effort | File |
+|--------|-------------|--------|------|
 | **COS-9.5-9.8** | ROCm infrastructure | 13-19h | COSMOS |
+| **DOC-2 to DOC-4** | Documentation backlog | TBD | DOCUMENTATION |
 
 ---
 
 ## Recommended Next Steps
 
-### 1. Memory Optimization (LOW - ~4-6 hours each)
+### 1. Critical Bug Fix (HIGH)
+
+```
+CLN-BUG-6 (model converging to mean) - CRITICAL training issue with freeze-base + cross-attention
+```
+
+### 2. Memory Optimization (LOW - ~4-6 hours)
 
 ```
 PYT-18.5 (lazy embeddings) - Defer embedding materialization for memory efficiency
-PYT-18.6 (memory-aware batching) - Dynamic batch sizing based on available memory
 ```
 
 ---
@@ -65,6 +77,7 @@ PYT-18.6 (memory-aware batching) - Dynamic batch sizing based on available memor
 |--------|-------------|
 | PYT-19.3 | Per-category loss weights (28 tests) |
 | PYT-12.2 | Auto batch size optimization (12 tests) |
+| PYT-18.6 | Memory-aware batching (superseded by PYT-12.2) |
 | CLN-BUG-8 | Multi-pass validation distributed fix (1 test) |
 | CLN-8 | Categorical learning rate (5 tests) |
 | CLN-15 | Multi-pass validation during training (7 tests) |
@@ -84,12 +97,8 @@ PYT-18.6 (memory-aware batching) - Dynamic batch sizing based on available memor
 | FUS-2 | Cross-attention fusion (33 tests) |
 | FUS-1 | GMU fusion (28 tests) |
 | CLN-5 | DataParallel in train.py |
-| CLN-3 | Remove unused params |
-| REG-BUG-1 | FiLM identity initialization fix |
-| REG-4 | FiLM layers (26 tests) |
-| REG-3 | Conditional output scaling (22 tests) |
-| REG-2 | Per-category normalization (26 tests) |
-| REG-1 | MLP regression head (25 tests) |
+| REG-6 | Asymmetric loss (14 tests) |
+| REG-5 | Quantile regression |
 
 See `ARCHIVED_TICKETS.md` for full history.
 
