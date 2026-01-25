@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aam"
-requires-python = ">= 3.9,<3.13"
+requires-python = ">= 3.11,<3.13"
 dynamic = ["version"]
 description = "Deep Learning Method for Microbial Sequencing Data using PyTorch"
 readme = "README.md"
