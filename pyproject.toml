@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aam"
-requires-python = ">= 3.11,<3.13"
+requires-python = ">= 3.12,<3.13"
 dynamic = ["version"]
 description = "Deep Learning Method for Microbial Sequencing Data using PyTorch"
 readme = "README.md"
@@ -156,7 +156,7 @@ docs = [
 ]
 training = [
     "pytorch-lightning >= 2.0",
-    "wandb >= 0.15.0, < 0.17.0",
+    
     "tensorboard >= 2.13.0",
 ]
 all = [
