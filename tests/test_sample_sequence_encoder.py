@@ -44,20 +44,6 @@ def sample_encoder_with_nucleotides():
 
 
 @pytest.fixture
-def sample_tokens():
-    """Create sample tokens for testing [B, S, L]."""
-    from aam.data.tokenizer import SequenceTokenizer
-
-    batch_size = 2
-    num_asvs = 10
-    seq_len = 50
-    tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
-    tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
-    tokens[:, :, 40:] = 0
-    return tokens
-
-
-@pytest.fixture
 def sample_tokens_with_partial_asvs():
     """Create sample tokens with some ASVs fully padded."""
     batch_size = 2

@@ -20,21 +20,6 @@ def transformer_encoder():
     )
 
 
-@pytest.fixture
-def sample_embeddings():
-    """Create sample embeddings for testing."""
-    batch_size = 2
-    seq_len = 10
-    hidden_dim = 64
-    return torch.randn(batch_size, seq_len, hidden_dim)
-
-
-@pytest.fixture
-def sample_mask():
-    """Create sample mask for testing."""
-    return torch.tensor([[1, 1, 1, 1, 1, 0, 0, 0, 0, 0], [1, 1, 1, 0, 0, 0, 0, 0, 0, 0]])
-
-
 class TestTransformerEncoder:
     """Test suite for TransformerEncoder class."""
 
