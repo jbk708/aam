@@ -739,7 +739,7 @@ Reduce test code duplication by extracting shared fixtures and utilities.
 ---
 
 ### CLN-11.1: Consolidate Duplicate Fixtures to conftest.py
-**Priority:** HIGH | **Effort:** 2-3 hours | **Status:** Not Started
+**Priority:** HIGH | **Effort:** 2-3 hours | **Status:** Complete
 
 Move duplicate fixtures from individual test files to shared `tests/conftest.py`.
 
@@ -761,14 +761,13 @@ Move duplicate fixtures from individual test files to shared `tests/conftest.py`
 5. Remove duplicate definitions from individual test files
 
 **Acceptance Criteria:**
-- [ ] All fixtures moved to conftest.py
-- [ ] Duplicate definitions removed from test files
-- [ ] All 1276 tests pass
-- [ ] ~100 lines removed
+- [x] All fixtures moved to conftest.py
+- [x] Duplicate definitions removed from test files
+- [x] All 1276 tests pass
+- [x] ~100 lines removed (122 lines removed, 67 added = 40 net reduction)
 
 **Files:**
 - `tests/conftest.py` (expand)
-- `tests/test_sequence_encoder.py` (remove fixture)
 - `tests/test_sample_sequence_encoder.py` (remove fixture)
 - `tests/test_asv_encoder.py` (remove fixture)
 - `tests/test_biom_loader.py` (remove helper + fixture)
@@ -1023,7 +1022,7 @@ pred_std = torch.stack(predictions).std(dim=0)  # Optional confidence
 | **CLN-BUG-8** | Multi-pass validation fails in distributed training | 1-2h | HIGH | Complete |
 | **CLN-15** | Multi-pass validation during training | 2-3h | MEDIUM | Complete |
 | **CLN-11** | Consolidate test suite (parent) | 8-12h | LOW | In Progress |
-| **CLN-11.1** | Consolidate duplicate fixtures | 2-3h | HIGH | Not Started |
+| **CLN-11.1** | Consolidate duplicate fixtures | 2-3h | HIGH | Complete |
 | **CLN-11.2** | Parametrize variation tests | 3-4h | MEDIUM | Not Started |
 | **CLN-11.3** | Extract shared utilities | 2-3h | LOW | Not Started |
 | **CLN-12** | Random Forest baseline script | 2-3h | LOW | Complete |
@@ -1034,16 +1033,13 @@ pred_std = torch.stack(predictions).std(dim=0)  # Optional confidence
 
 ## Recommended Order
 
-**Next Up - High Priority:**
-1. CLN-11.1 (consolidate duplicate fixtures) - Move 5 duplicate fixtures to conftest.py
-
-**Medium Priority:**
-- CLN-11.2 (parametrize variation tests) - Better test output and parallelization
+**Next Up - Medium Priority:**
+1. CLN-11.2 (parametrize variation tests) - Better test output and parallelization
 
 **Completed:**
 - CLN-BUG-1 to CLN-BUG-8 (bug fixes)
 - FUS-1, FUS-2 (fusion MVP)
-- CLN-2, CLN-5, CLN-6, CLN-7, CLN-8, CLN-9, CLN-10, CLN-12, CLN-13, CLN-14, CLN-15, CLN-16
+- CLN-2, CLN-5, CLN-6, CLN-7, CLN-8, CLN-9, CLN-10, CLN-11.1, CLN-12, CLN-13, CLN-14, CLN-15, CLN-16
 
 **Remaining - Low Priority:**
 - CLN-3 (remove unused params)
