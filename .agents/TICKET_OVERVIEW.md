@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-27
-**Status:** ~7 outstanding tickets (~27-50 hours)
+**Status:** ~5 outstanding tickets (~20-41 hours)
 
 ---
 
@@ -29,13 +29,13 @@ None remaining.
 
 None remaining.
 
-### LOW (7 tickets, ~25-43 hours)
+### LOW (5 tickets, ~18-32 hours)
 
 | Ticket | Description | Effort | File |
 |--------|-------------|--------|------|
-| **CLN-17** | Reduce total test count | 4-6h | FUSION_CLEANUP |
+| ~~CLN-17~~ | ~~Reduce total test count~~ | ~~4-6h~~ | ~~FUSION_CLEANUP~~ |
 | **FUS-3** | Perceiver fusion | 6-8h | FUSION_CLEANUP |
-| **REG-7** | Residual head | 2-3h | REGRESSOR |
+| ~~REG-7~~ | ~~Residual head~~ | ~~2-3h~~ | ~~REGRESSOR~~ |
 | **REG-8** | Per-output loss | 3-4h | REGRESSOR |
 | **REG-9** | Mixture of Experts | 6-8h | REGRESSOR |
 | **PYT-19.4** | Hierarchical categories | 6-8h | PYTORCH |
@@ -52,10 +52,10 @@ None remaining.
 
 ## Recommended Next Steps
 
-### 1. Regressor Improvements (LOW - ~2-3 hours)
+### 1. Regressor Improvements (LOW - ~3-4 hours)
 
 ```
-REG-7 (Residual head) - Add residual connection to regression head
+REG-8 (Per-output loss) - Different loss per target column for multi-output regression
 ```
 
 ---
@@ -64,6 +64,8 @@ REG-7 (Residual head) - Add residual connection to regression head
 
 | Ticket | Description |
 |--------|-------------|
+| REG-7 | Residual regression head (15 tests) |
+| CLN-17 | Consolidate test suite (22 tests removed, 521 lines reduced) |
 | CLN-11.3 | Extract shared test utilities to conftest.py (75 lines removed) |
 | CLN-11.2 | Parametrize batch/sequence variation tests (improved test output) |
 | CLN-11.1 | Consolidate duplicate fixtures to conftest.py (122 lines removed) |

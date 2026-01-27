@@ -11,6 +11,44 @@ from aam.models.categorical_embedder import CategoricalEmbedder
 from aam.models.fusion import CrossAttentionFusion, GMU
 
 
+class ResidualRegressionHead(nn.Module):
+    """Regression head with skip connection: output = Linear(x) + MLP(x)."""
+
+    def __init__(
+        self,
+        in_dim: int,
+        out_dim: int,
+        hidden_dims: List[int],
+        dropout: float = 0.0,
+    ):
+        """Initialize ResidualRegressionHead.
+
+        Args:
+            in_dim: Input dimension (embedding_dim)
+            out_dim: Output dimension (number of targets)
+            hidden_dims: Hidden layer dimensions for MLP branch
+            dropout: Dropout rate between MLP layers
+        """
+        super().__init__()
+
+        self.skip = nn.Linear(in_dim, out_dim)
+
+        layers: List[nn.Module] = []
+        current_dim = in_dim
+        for hidden_dim in hidden_dims:
+            layers.append(nn.Linear(current_dim, hidden_dim))
+            layers.append(nn.ReLU())
+            if dropout > 0:
+                layers.append(nn.Dropout(dropout))
+            current_dim = hidden_dim
+        layers.append(nn.Linear(current_dim, out_dim))
+        self.mlp = nn.Sequential(*layers)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass with residual connection."""
+        return self.skip(x) + self.mlp(x)
+
+
 class SequencePredictor(nn.Module):
     """Main model for predicting sample-level targets and ASV counts.
 
@@ -71,6 +109,7 @@ class SequencePredictor(nn.Module):
         categorical_dropout: float = 0.1,
         regressor_hidden_dims: Optional[List[int]] = None,
         regressor_dropout: float = 0.0,
+        residual_regression_head: bool = False,
         conditional_scaling_columns: Optional[List[str]] = None,
         cross_attn_heads: int = 8,
         num_quantiles: Optional[int] = None,
@@ -134,6 +173,8 @@ class SequencePredictor(nn.Module):
             regressor_hidden_dims: Hidden layer dimensions for MLP regression head. If None, uses single
                 linear layer. E.g., [64, 32] creates MLP: embedding_dim -> 64 -> 32 -> out_dim
             regressor_dropout: Dropout rate between MLP layers (default: 0.0, no dropout)
+            residual_regression_head: Add skip connection: output = Linear(x) + MLP(x). Requires
+                regressor_hidden_dims to be set. Default: False
             conditional_scaling_columns: List of categorical column names to use for conditional output
                 scaling. For each column, learns per-category scale and bias parameters applied after
                 base prediction: output = prediction * scale[cat] + bias[cat]. Requires categorical_cardinalities.
@@ -253,7 +294,14 @@ class SequencePredictor(nn.Module):
 
         self.regressor_hidden_dims = regressor_hidden_dims
         self.regressor_dropout = regressor_dropout
+        self.residual_regression_head = residual_regression_head
         self.categorical_embed_dim = categorical_embed_dim
+
+        if residual_regression_head and (regressor_hidden_dims is None or len(regressor_hidden_dims) == 0):
+            raise ValueError(
+                "residual_regression_head requires regressor_hidden_dims to be set. "
+                "Use --regressor-hidden-dims to specify MLP hidden dimensions."
+            )
 
         # For quantile regression, expand output dimension
         effective_out_dim = out_dim * num_quantiles if num_quantiles is not None else out_dim
@@ -317,14 +365,14 @@ class SequencePredictor(nn.Module):
         self._init_weights()
 
     def _build_target_head(self, in_dim: int, out_dim: int) -> nn.Module:
-        """Build target prediction head (single layer or MLP).
+        """Build target prediction head (single layer, MLP, or residual).
 
         Args:
             in_dim: Input dimension (embedding_dim)
             out_dim: Output dimension (number of targets)
 
         Returns:
-            nn.Module: Linear layer or Sequential MLP
+            nn.Module: Linear layer, Sequential MLP, or ResidualRegressionHead
 
         Raises:
             ValueError: If any hidden dimension is not a positive integer
@@ -338,6 +386,14 @@ class SequencePredictor(nn.Module):
                     f"regressor_hidden_dims[{i}] must be a positive integer, got {dim}. "
                     f"Full hidden dims: {self.regressor_hidden_dims}"
                 )
+
+        if self.residual_regression_head:
+            return ResidualRegressionHead(
+                in_dim=in_dim,
+                out_dim=out_dim,
+                hidden_dims=self.regressor_hidden_dims,
+                dropout=self.regressor_dropout,
+            )
 
         layers: List[nn.Module] = []
         current_dim = in_dim

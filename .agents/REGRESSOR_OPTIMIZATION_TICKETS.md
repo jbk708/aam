@@ -1,7 +1,7 @@
 # Regressor Optimization Tickets
 
-**Last Updated:** 2026-01-23
-**Status:** 3 tickets remaining (~11-15 hours)
+**Last Updated:** 2026-01-27
+**Status:** 2 tickets remaining (~9-12 hours)
 
 **Completed:** REG-1 to REG-6, REG-BUG-1 (see `ARCHIVED_TICKETS.md`)
 
@@ -43,13 +43,19 @@ Different penalties for over/under prediction.
 ---
 
 ### REG-7: Residual Regression Head
-**Priority:** LOW | **Effort:** 2-3 hours | **Status:** Not Started
+**Priority:** LOW | **Effort:** 2-3 hours | **Status:** Complete
 
 Skip connection: `output = Linear(x) + MLP(x)`
 
 **Scope:**
 - `--residual-regression-head` flag
 - Requires `--regressor-hidden-dims`
+
+**Acceptance Criteria:**
+- [x] `--residual-regression-head` CLI flag
+- [x] ResidualRegressionHead class with skip + mlp branches
+- [x] Validation: requires regressor_hidden_dims
+- [x] 15 unit tests
 
 **Files:** `aam/models/sequence_predictor.py`, `aam/cli/train.py`
 
@@ -86,7 +92,7 @@ Separate expert heads per category with learned routing.
 |--------|-------------|--------|----------|--------|
 | **REG-5** | Quantile regression | 4-6h | MEDIUM | Complete |
 | **REG-6** | Asymmetric loss | 2-3h | MEDIUM | Complete |
-| **REG-7** | Residual head | 2-3h | LOW | Not Started |
+| **REG-7** | Residual head | 2-3h | LOW | Complete |
 | **REG-8** | Per-output loss | 3-4h | LOW | Not Started |
 | **REG-9** | Mixture of Experts | 6-8h | LOW | Not Started |
-| **Total** | | **11-15h** | |
+| **Total** | | **9-12h** | |
