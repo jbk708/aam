@@ -160,7 +160,7 @@ class TestSequencePredictor:
 
     def test_forward_shape_basic(self, sequence_predictor, sample_tokens):
         """Test forward pass output shape."""
-        result = sequence_predictor(sample_tokens, return_nucleotides=False)
+        result = sequence_predictor(sample_tokens, return_nucleotides=False, return_sample_embeddings=True)
         assert isinstance(result, dict)
         assert "target_prediction" in result
         assert "count_prediction" in result
@@ -171,7 +171,7 @@ class TestSequencePredictor:
 
     def test_forward_shape_with_nucleotides(self, sequence_predictor_with_nucleotides, sample_tokens):
         """Test forward pass output shape with nucleotide predictions."""
-        result = sequence_predictor_with_nucleotides(sample_tokens, return_nucleotides=True)
+        result = sequence_predictor_with_nucleotides(sample_tokens, return_nucleotides=True, return_sample_embeddings=True)
         assert isinstance(result, dict)
         assert "target_prediction" in result
         assert "count_prediction" in result
@@ -195,7 +195,7 @@ class TestSequencePredictor:
     def test_forward_different_batch_sizes(self, sequence_predictor, batch_size):
         """Test forward pass with different batch sizes."""
         tokens = torch.randint(1, 5, (batch_size, 10, 50))
-        result = sequence_predictor(tokens)
+        result = sequence_predictor(tokens, return_sample_embeddings=True)
         assert result["target_prediction"].shape == (batch_size, 1)
         assert result["count_prediction"].shape == (batch_size, 10, 1)
         assert result["base_embeddings"].shape == (batch_size, 10, 64)
@@ -204,7 +204,7 @@ class TestSequencePredictor:
     def test_forward_different_num_asvs(self, sequence_predictor, num_asvs):
         """Test forward pass with different numbers of ASVs."""
         tokens = torch.randint(1, 5, (2, num_asvs, 50))
-        result = sequence_predictor(tokens)
+        result = sequence_predictor(tokens, return_sample_embeddings=True)
         assert result["target_prediction"].shape == (2, 1)
         assert result["count_prediction"].shape == (2, num_asvs, 1)
         assert result["base_embeddings"].shape == (2, num_asvs, 64)
@@ -213,14 +213,14 @@ class TestSequencePredictor:
     def test_forward_different_seq_lengths(self, sequence_predictor, seq_len):
         """Test forward pass with different sequence lengths."""
         tokens = torch.randint(1, 5, (2, 10, seq_len))
-        result = sequence_predictor(tokens)
+        result = sequence_predictor(tokens, return_sample_embeddings=True)
         assert result["target_prediction"].shape == (2, 1)
         assert result["count_prediction"].shape == (2, 10, 1)
         assert result["base_embeddings"].shape == (2, 10, 64)
 
     def test_forward_with_padding(self, sequence_predictor, sample_tokens):
         """Test forward pass with padded sequences."""
-        result = sequence_predictor(sample_tokens)
+        result = sequence_predictor(sample_tokens, return_sample_embeddings=True)
         assert not torch.isnan(result["target_prediction"]).any()
         assert not torch.isnan(result["count_prediction"]).any()
         assert not torch.isnan(result["base_embeddings"]).any()
@@ -252,7 +252,7 @@ class TestSequencePredictor:
     def test_gradients_flow_unfrozen(self, sequence_predictor, sample_tokens):
         """Test that gradients flow correctly with unfrozen base."""
         sequence_predictor.train()
-        result = sequence_predictor(sample_tokens)
+        result = sequence_predictor(sample_tokens, return_sample_embeddings=True)
         loss = result["target_prediction"].sum() + result["count_prediction"].sum() + result["base_embeddings"].sum()
         loss.backward()
 
@@ -2442,7 +2442,7 @@ class TestCountPredictionToggle:
             out_dim=3,
             count_prediction=False,
         )
-        result = model(sample_tokens)
+        result = model(sample_tokens, return_sample_embeddings=True)
 
         assert "target_prediction" in result
         assert "base_embeddings" in result
@@ -2465,3 +2465,158 @@ class TestCountPredictionToggle:
         # Check gradients exist for target head
         assert model.target_head.weight.grad is not None
         assert model.target_head.weight.grad.abs().sum() > 0
+
+
+class TestLazyBaseEmbeddings:
+    """Tests for PYT-18.5: Lazy base embedding computation in SequencePredictor."""
+
+    @pytest.fixture
+    def sample_tokens(self):
+        """Create sample tokens for testing."""
+        return _create_sample_tokens(batch_size=2, num_asvs=10, seq_len=50)
+
+    def test_base_embeddings_not_returned_by_default(self, sample_tokens):
+        """Test that base_embeddings are NOT returned when return_sample_embeddings=False (default)."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+        )
+        result = model(sample_tokens)
+        assert "base_embeddings" not in result
+        assert "target_prediction" in result  # prediction still works
+
+    def test_base_embeddings_returned_when_requested(self, sample_tokens):
+        """Test that base_embeddings ARE returned when return_sample_embeddings=True."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+        )
+        result = model(sample_tokens, return_sample_embeddings=True)
+        assert "base_embeddings" in result
+        assert result["base_embeddings"].shape == (2, 10, 64)
+
+    def test_predictions_same_regardless_of_flag(self, sample_tokens):
+        """Test that forward pass produces same predictions with or without returning embeddings."""
+        torch.manual_seed(42)
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+        )
+        model.eval()
+
+        with torch.no_grad():
+            result_without = model(sample_tokens, return_sample_embeddings=False)
+            result_with = model(sample_tokens, return_sample_embeddings=True)
+
+        assert torch.allclose(result_without["target_prediction"], result_with["target_prediction"])
+        if "count_prediction" in result_without:
+            assert torch.allclose(result_without["count_prediction"], result_with["count_prediction"])
+
+    def test_base_embeddings_with_categoricals(self, sample_tokens):
+        """Test lazy behavior with categorical features."""
+        categorical_cardinalities = {"location": 5, "season": 4}
+        categorical_ids = {"location": torch.tensor([1, 2]), "season": torch.tensor([0, 1])}
+
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+        )
+        # Without base embeddings
+        result = model(sample_tokens, categorical_ids=categorical_ids, return_sample_embeddings=False)
+        assert "base_embeddings" not in result
+        assert "target_prediction" in result
+
+        # With base embeddings
+        result = model(sample_tokens, categorical_ids=categorical_ids, return_sample_embeddings=True)
+        assert "base_embeddings" in result
+
+    def test_base_embeddings_with_nucleotides(self, sample_tokens):
+        """Test lazy behavior with nucleotide predictions enabled."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            predict_nucleotides=True,
+        )
+        # With nucleotides but without base embeddings
+        result = model(sample_tokens, return_nucleotides=True, return_sample_embeddings=False)
+        assert "base_embeddings" not in result
+        assert "nuc_predictions" in result
+
+        # With nucleotides and with base embeddings
+        result = model(sample_tokens, return_nucleotides=True, return_sample_embeddings=True)
+        assert "base_embeddings" in result
+        assert "nuc_predictions" in result
+
+    def test_base_embeddings_classifier(self, sample_tokens):
+        """Test lazy behavior for classifier mode."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=5,
+            is_classifier=True,
+        )
+        result = model(sample_tokens, return_sample_embeddings=False)
+        assert "base_embeddings" not in result
+        assert result["target_prediction"].shape == (2, 5)
+
+    def test_gradients_flow_without_base_embeddings(self, sample_tokens):
+        """Test that gradients flow correctly even when base_embeddings not returned."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+        )
+        model.train()
+
+        result = model(sample_tokens, return_sample_embeddings=False)
+        loss = result["target_prediction"].sum()
+        loss.backward()
+
+        # Check gradients exist for target head and base model
+        assert model.target_head.weight.grad is not None
+        for param in model.base_model.parameters():
+            if param.requires_grad:
+                assert param.grad is not None
+
+    def test_base_embeddings_with_frozen_base(self, sample_tokens):
+        """Test lazy behavior with frozen base model."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            freeze_base=True,
+        )
+        result = model(sample_tokens, return_sample_embeddings=False)
+        assert "base_embeddings" not in result
+        assert "target_prediction" in result
+
+        result = model(sample_tokens, return_sample_embeddings=True)
+        assert "base_embeddings" in result
+
+    def test_base_embeddings_with_count_disabled(self, sample_tokens):
+        """Test lazy behavior when count prediction is disabled."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            count_prediction=False,
+        )
+        result = model(sample_tokens, return_sample_embeddings=False)
+        assert "base_embeddings" not in result
+        assert "count_prediction" not in result
+        assert "target_prediction" in result

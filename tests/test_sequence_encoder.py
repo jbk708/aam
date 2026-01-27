@@ -120,7 +120,7 @@ class TestSequenceEncoder:
 
     def test_forward_shape_basic(self, sequence_encoder, sample_tokens):
         """Test forward pass output shape without nucleotide predictions."""
-        result = sequence_encoder(sample_tokens, return_nucleotides=False)
+        result = sequence_encoder(sample_tokens, return_nucleotides=False, return_sample_embeddings=True)
         assert isinstance(result, dict)
         assert "base_prediction" in result
         assert "sample_embeddings" in result
@@ -129,7 +129,7 @@ class TestSequenceEncoder:
 
     def test_forward_shape_with_nucleotides(self, sequence_encoder_with_nucleotides, sample_tokens):
         """Test forward pass output shape with nucleotide predictions."""
-        result = sequence_encoder_with_nucleotides(sample_tokens, return_nucleotides=True)
+        result = sequence_encoder_with_nucleotides(sample_tokens, return_nucleotides=True, return_sample_embeddings=True)
         assert isinstance(result, dict)
         assert "base_prediction" in result
         assert "sample_embeddings" in result
@@ -147,7 +147,7 @@ class TestSequenceEncoder:
             base_output_dim=None,
             encoder_type="unifrac",
         )
-        result = encoder(sample_tokens)
+        result = encoder(sample_tokens, return_sample_embeddings=True)
         # For UniFrac, should return embeddings, not base_prediction
         assert "embeddings" in result
         assert "base_prediction" not in result
@@ -184,7 +184,7 @@ class TestSequenceEncoder:
     def test_forward_different_batch_sizes(self, sequence_encoder, batch_size):
         """Test forward pass with different batch sizes."""
         tokens = torch.randint(1, 5, (batch_size, 10, 50))
-        result = sequence_encoder(tokens)
+        result = sequence_encoder(tokens, return_sample_embeddings=True)
         assert result["base_prediction"].shape == (batch_size, 32)
         assert result["sample_embeddings"].shape == (batch_size, 10, 64)
 
@@ -192,7 +192,7 @@ class TestSequenceEncoder:
     def test_forward_different_num_asvs(self, sequence_encoder, num_asvs):
         """Test forward pass with different numbers of ASVs."""
         tokens = torch.randint(1, 5, (2, num_asvs, 50))
-        result = sequence_encoder(tokens)
+        result = sequence_encoder(tokens, return_sample_embeddings=True)
         assert result["base_prediction"].shape == (2, 32)
         assert result["sample_embeddings"].shape == (2, num_asvs, 64)
 
@@ -200,13 +200,13 @@ class TestSequenceEncoder:
     def test_forward_different_seq_lengths(self, sequence_encoder, seq_len):
         """Test forward pass with different sequence lengths."""
         tokens = torch.randint(1, 5, (2, 10, seq_len))
-        result = sequence_encoder(tokens)
+        result = sequence_encoder(tokens, return_sample_embeddings=True)
         assert result["base_prediction"].shape == (2, 32)
         assert result["sample_embeddings"].shape == (2, 10, 64)
 
     def test_forward_with_padding(self, sequence_encoder, sample_tokens):
         """Test forward pass with padded sequences."""
-        result = sequence_encoder(sample_tokens)
+        result = sequence_encoder(sample_tokens, return_sample_embeddings=True)
         assert result["base_prediction"].shape == (2, 32)
         assert result["sample_embeddings"].shape == (2, 10, 64)
         assert not torch.isnan(result["base_prediction"]).any()
@@ -215,7 +215,7 @@ class TestSequenceEncoder:
     def test_forward_inference_mode(self, sequence_encoder, sample_tokens):
         """Test forward pass in inference mode (no nucleotide predictions)."""
         sequence_encoder.eval()
-        result = sequence_encoder(sample_tokens, return_nucleotides=False)
+        result = sequence_encoder(sample_tokens, return_nucleotides=False, return_sample_embeddings=True)
         assert isinstance(result, dict)
         assert "nuc_predictions" not in result
         assert result["base_prediction"].shape == (2, 32)
@@ -243,7 +243,7 @@ class TestSequenceEncoder:
 
     def test_gradients_flow(self, sequence_encoder, sample_tokens):
         """Test that gradients flow correctly."""
-        result = sequence_encoder(sample_tokens)
+        result = sequence_encoder(sample_tokens, return_sample_embeddings=True)
         loss = result["base_prediction"].sum() + result["sample_embeddings"].sum()
         loss.backward()
 
@@ -254,7 +254,7 @@ class TestSequenceEncoder:
 
     def test_gradients_with_nucleotides(self, sequence_encoder_with_nucleotides, sample_tokens):
         """Test that gradients flow correctly with nucleotide predictions."""
-        result = sequence_encoder_with_nucleotides(sample_tokens, return_nucleotides=True)
+        result = sequence_encoder_with_nucleotides(sample_tokens, return_nucleotides=True, return_sample_embeddings=True)
         loss = result["base_prediction"].sum() + result["sample_embeddings"].sum() + result["nuc_predictions"].sum()
         loss.backward()
 
@@ -269,7 +269,7 @@ class TestSequenceEncoder:
             device = torch.device("cuda")
             sequence_encoder = sequence_encoder.to(device)
             sample_tokens = sample_tokens.to(device)
-            result = sequence_encoder(sample_tokens)
+            result = sequence_encoder(sample_tokens, return_sample_embeddings=True)
             assert result["base_prediction"].device.type == device.type
             assert result["sample_embeddings"].device.type == device.type
 
@@ -304,7 +304,7 @@ class TestSequenceEncoder:
 
     def test_forward_combined_encoder_type(self, sequence_encoder_combined, sample_tokens):
         """Test forward pass with combined encoder type."""
-        result = sequence_encoder_combined(sample_tokens)
+        result = sequence_encoder_combined(sample_tokens, return_sample_embeddings=True)
         assert isinstance(result, dict)
         assert "unifrac_pred" in result
         assert "faith_pred" in result
@@ -328,9 +328,9 @@ class TestSequenceEncoder:
             result = encoder(sample_tokens)
             assert result["base_prediction"].shape == (2, base_output_dim)
 
-    def test_sample_embeddings_always_returned(self, sequence_encoder, sample_tokens):
-        """Test that sample embeddings are always returned."""
-        result = sequence_encoder(sample_tokens)
+    def test_sample_embeddings_returned_when_requested(self, sequence_encoder, sample_tokens):
+        """Test that sample embeddings are returned when requested."""
+        result = sequence_encoder(sample_tokens, return_sample_embeddings=True)
         assert "sample_embeddings" in result
         assert result["sample_embeddings"].shape == (2, 10, 64)
 
@@ -352,7 +352,7 @@ class TestSequenceEncoder:
 
     def test_nucleotide_predictions_side_output(self, sequence_encoder_with_nucleotides, sample_tokens):
         """Test that nucleotide predictions are side output, not used as input."""
-        result = sequence_encoder_with_nucleotides(sample_tokens, return_nucleotides=True)
+        result = sequence_encoder_with_nucleotides(sample_tokens, return_nucleotides=True, return_sample_embeddings=True)
         assert "nuc_predictions" in result
         assert result["nuc_predictions"].shape == (2, 10, 50, 6)
         assert "base_prediction" in result
@@ -467,3 +467,124 @@ class TestSequenceEncoder:
         result = encoder(sample_tokens)
         assert "base_prediction" in result
         assert result["base_prediction"].shape[0] == sample_tokens.shape[0]
+
+
+class TestLazySampleEmbeddings:
+    """Tests for PYT-18.5: Lazy sample embedding computation."""
+
+    def test_sample_embeddings_not_returned_by_default(self, sample_tokens):
+        """Test that sample_embeddings are NOT returned when return_sample_embeddings=False (default)."""
+        encoder = SequenceEncoder(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            encoder_type="unifrac",
+        )
+        result = encoder(sample_tokens)
+        assert "sample_embeddings" not in result
+        assert "embeddings" in result  # pooled embeddings still returned
+
+    def test_sample_embeddings_returned_when_requested(self, sample_tokens):
+        """Test that sample_embeddings ARE returned when return_sample_embeddings=True."""
+        encoder = SequenceEncoder(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            encoder_type="unifrac",
+        )
+        result = encoder(sample_tokens, return_sample_embeddings=True)
+        assert "sample_embeddings" in result
+        assert result["sample_embeddings"].shape == (2, 10, 64)
+
+    def test_predictions_same_regardless_of_flag(self, sample_tokens):
+        """Test that forward pass produces same predictions with or without returning embeddings."""
+        torch.manual_seed(42)
+        encoder = SequenceEncoder(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            encoder_type="unifrac",
+        )
+        encoder.eval()
+
+        with torch.no_grad():
+            result_without = encoder(sample_tokens, return_sample_embeddings=False)
+            result_with = encoder(sample_tokens, return_sample_embeddings=True)
+
+        assert torch.allclose(result_without["embeddings"], result_with["embeddings"])
+
+    def test_sample_embeddings_not_returned_faith_pd(self, sample_tokens):
+        """Test lazy behavior for faith_pd encoder type."""
+        encoder = SequenceEncoder(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            base_output_dim=32,
+            encoder_type="faith_pd",
+        )
+        result = encoder(sample_tokens)
+        assert "sample_embeddings" not in result
+        assert "base_prediction" in result
+
+    def test_sample_embeddings_returned_faith_pd_when_requested(self, sample_tokens):
+        """Test sample_embeddings returned for faith_pd when requested."""
+        encoder = SequenceEncoder(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            base_output_dim=32,
+            encoder_type="faith_pd",
+        )
+        result = encoder(sample_tokens, return_sample_embeddings=True)
+        assert "sample_embeddings" in result
+        assert result["sample_embeddings"].shape == (2, 10, 64)
+
+    def test_sample_embeddings_not_returned_combined(self, sample_tokens):
+        """Test lazy behavior for combined encoder type."""
+        encoder = SequenceEncoder(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            encoder_type="combined",
+        )
+        result = encoder(sample_tokens)
+        assert "sample_embeddings" not in result
+        assert "unifrac_pred" in result
+
+    def test_sample_embeddings_with_nucleotides(self, sample_tokens):
+        """Test lazy behavior with nucleotide predictions enabled."""
+        encoder = SequenceEncoder(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            encoder_type="unifrac",
+            predict_nucleotides=True,
+        )
+        # With nucleotides but without sample embeddings
+        result = encoder(sample_tokens, return_nucleotides=True, return_sample_embeddings=False)
+        assert "sample_embeddings" not in result
+        assert "nuc_predictions" in result
+
+        # With nucleotides and with sample embeddings
+        result = encoder(sample_tokens, return_nucleotides=True, return_sample_embeddings=True)
+        assert "sample_embeddings" in result
+        assert "nuc_predictions" in result
+
+    def test_gradients_flow_without_sample_embeddings(self, sample_tokens):
+        """Test that gradients flow correctly even when sample_embeddings not returned."""
+        encoder = SequenceEncoder(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            encoder_type="unifrac",
+        )
+        encoder.train()
+
+        result = encoder(sample_tokens, return_sample_embeddings=False)
+        loss = result["embeddings"].sum()
+        loss.backward()
+
+        for param in encoder.parameters():
+            if param.requires_grad:
+                assert param.grad is not None
+                assert not torch.isnan(param.grad).any()
