@@ -179,7 +179,7 @@ def generate_golden_outputs(
 
     model.eval()
     with torch.no_grad():
-        outputs = model(inputs["tokens"])
+        outputs = model(inputs["tokens"], return_sample_embeddings=True)
 
     # Move outputs to CPU for storage
     cpu_outputs: Dict[str, torch.Tensor] = {}
@@ -189,7 +189,7 @@ def generate_golden_outputs(
 
     # Compute gradient norm for a simple loss
     model.train()
-    outputs_train = model(inputs["tokens"])
+    outputs_train = model(inputs["tokens"], return_sample_embeddings=True)
     loss = outputs_train["target_prediction"].mean()
     loss.backward()
 
@@ -264,7 +264,7 @@ def compare_golden_outputs(
 
     model.eval()
     with torch.no_grad():
-        current_outputs = model(inputs["tokens"])
+        current_outputs = model(inputs["tokens"], return_sample_embeddings=True)
 
     # Move to CPU for comparison
     current_cpu: Dict[str, torch.Tensor] = {}
@@ -274,7 +274,7 @@ def compare_golden_outputs(
 
     # Compute gradient norm
     model.train()
-    outputs_train = model(inputs["tokens"])
+    outputs_train = model(inputs["tokens"], return_sample_embeddings=True)
     loss = outputs_train["target_prediction"].mean()
     loss.backward()
 

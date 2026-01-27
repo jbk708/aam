@@ -747,6 +747,54 @@ Reduce test code duplication by extracting shared fixtures and utilities.
 
 ---
 
+### CLN-16: Consolidate Lazy Embedding Tests with Parametrize
+**Priority:** HIGH | **Effort:** 1-2 hours | **Status:** Not Started
+
+Consolidate repetitive tests in `TestLazySampleEmbeddings` and `TestLazyBaseEmbeddings` using `pytest.mark.parametrize` and shared fixtures.
+
+**Context:**
+PYT-18.5 added 17 new tests for lazy embedding computation. Many tests follow similar patterns:
+- Test for different encoder types (unifrac, faith_pd, combined)
+- Test with/without various flags (nucleotides, categoricals, frozen_base)
+- Test that embeddings are/aren't returned based on flag
+
+**Scope:**
+1. Extract common model creation into pytest fixtures in `conftest.py`
+2. Use `@pytest.mark.parametrize` to test multiple encoder types in single test
+3. Consolidate similar assertion patterns
+4. Reduce test file line count while maintaining coverage
+
+**Example Consolidation:**
+```python
+# Before: 3 separate tests
+def test_sample_embeddings_not_returned_unifrac(...)
+def test_sample_embeddings_not_returned_faith_pd(...)
+def test_sample_embeddings_not_returned_combined(...)
+
+# After: 1 parametrized test
+@pytest.mark.parametrize("encoder_type", ["unifrac", "faith_pd", "combined"])
+def test_sample_embeddings_not_returned_by_default(encoder_type, sample_tokens):
+    encoder = SequenceEncoder(encoder_type=encoder_type, ...)
+    result = encoder(sample_tokens)
+    assert "sample_embeddings" not in result
+```
+
+**Target Files:**
+- `tests/test_sequence_encoder.py` - `TestLazySampleEmbeddings` class
+- `tests/test_sequence_predictor.py` - `TestLazyBaseEmbeddings` class
+- `tests/conftest.py` - shared fixtures
+
+**Acceptance Criteria:**
+- [ ] Use `@pytest.mark.parametrize` for encoder type variations
+- [ ] Extract shared model fixtures to `conftest.py`
+- [ ] Reduce total lines in lazy embedding test classes by ~30%
+- [ ] All 17 lazy embedding tests still pass
+- [ ] No loss of test coverage
+
+**Files:** `tests/test_sequence_encoder.py`, `tests/test_sequence_predictor.py`, `tests/conftest.py`
+
+---
+
 ### CLN-13: ASV Sampling Strategy When Exceeding Token Limit
 **Priority:** MEDIUM | **Effort:** 2-3 hours | **Status:** Complete
 
@@ -875,12 +923,13 @@ pred_std = torch.stack(predictions).std(dim=0)  # Optional confidence
 | **CLN-12** | Random Forest baseline script | 2-3h | LOW | Complete |
 | **CLN-13** | ASV sampling strategy (abundance/random) | 2-3h | MEDIUM | Complete |
 | **CLN-14** | Multi-pass prediction aggregation | 3-4h | LOW | Complete |
-| **Total** | | **44-69h** | |
+| **CLN-16** | Consolidate lazy embedding tests | 1-2h | HIGH | Not Started |
+| **Total** | | **45-71h** | |
 
 ## Recommended Order
 
-**Next Up - Low Priority:**
-1. CLN-3 (remove unused params) - IN PROGRESS
+**Next Up - High Priority:**
+1. CLN-16 (consolidate lazy embedding tests) - Use pytest.mark.parametrize, extract fixtures
 
 **Completed:**
 - CLN-BUG-1 to CLN-BUG-8 (bug fixes)
