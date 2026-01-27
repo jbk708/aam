@@ -125,9 +125,9 @@ aam/
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
-## Design Documents
+## Roadmap
 
-Implementation details in `_design_plan/`. See [INDEX.md](_design_plan/INDEX.md).
+See [docs/roadmap.md](docs/roadmap.md) for future enhancements and ideas.
 
 ## License
 

@@ -10,6 +10,7 @@ Deep learning model for microbial sequencing data analysis using transformer-bas
    getting-started
    user-guide
    how-it-works
+   roadmap
 
 .. toctree::
    :maxdepth: 2

@@ -78,10 +78,6 @@ See `.agents/WORKFLOW.md` for detailed ticket development process.
 
 Outstanding tickets are tracked in `.agents/TICKET_OVERVIEW.md`.
 
-## Design Documents
-
-Implementation details are documented in `_design_plan/`. See `_design_plan/INDEX.md` for navigation.
-
 ## Building Documentation
 
 ```bash

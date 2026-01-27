@@ -101,11 +101,12 @@ Build docs with: `cd docs && make html`
 
 ---
 
-## Design Documents
+## Documentation
 
-| Document | Tickets |
-|----------|---------|
-| `_design_plan/17_attention_fusion.md` | FUS-1 to FUS-3 |
-| `_design_plan/16_regressor_optimization.md` | REG-1 to REG-9 |
-| `_design_plan/15_categorical_features.md` | CAT-1 to CAT-7 |
-| `_design_plan/INDEX.md` | Full document listing |
+| Document | Description |
+|----------|-------------|
+| `docs/getting-started.md` | Installation + quickstart |
+| `docs/user-guide.md` | Full CLI reference |
+| `docs/how-it-works.md` | Concepts + implementation |
+| `docs/roadmap.md` | Future enhancements |
+| `ARCHITECTURE.md` | Design decisions + rationale |

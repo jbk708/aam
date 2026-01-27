@@ -392,4 +392,4 @@ aam/
 
 - [How It Works](docs/how-it-works.md) - Concepts and implementation walkthrough
 - [User Guide](docs/user-guide.md) - CLI reference
-- [Design Plans](_design_plan/INDEX.md) - Detailed implementation documents
+- [Roadmap](docs/roadmap.md) - Future enhancements

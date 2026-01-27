@@ -291,5 +291,5 @@ for epoch in range(epochs):
 ## Further Reading
 
 - **Architecture** - See `ARCHITECTURE.md` in repo root for design decisions
-- **Design Plans** - See `_design_plan/` for detailed implementation documents
+- **Roadmap** - See `docs/roadmap.md` for future enhancements
 - **API Reference** - Build with `cd docs && make html`
