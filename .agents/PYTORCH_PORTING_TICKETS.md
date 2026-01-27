@@ -69,9 +69,15 @@ Child categories inherit parent embeddings (e.g., city → state → country).
 ---
 
 ### PYT-MAINT-2: TensorBoard Logging Improvements
-**Priority:** LOW | **Effort:** 2-4 hours | **Status:** Not Started
+**Priority:** LOW | **Effort:** 2-4 hours | **Status:** ✅ Complete (2026-01-27)
 
-FiLM-specific metrics, conditional scaling stats, learning rate visualization.
+TensorBoard logging improvements including:
+- Model summary (param counts) at training start
+- Epoch timing/throughput (samples/sec)
+- GPU memory tracking
+- Best model checkpoint markers
+- Cross-attention entropy
+- Conditional scaling stats (scale/bias mean/std)
 
 ---
 

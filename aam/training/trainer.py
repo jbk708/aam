@@ -2,6 +2,7 @@
 
 import logging
 import math
+import time
 from pathlib import Path
 from typing import Any, Dict, Optional, Union, Tuple, cast, TYPE_CHECKING
 
@@ -189,6 +190,13 @@ class Trainer:
             count_normalization_params=self.count_normalization_params,
         )
 
+    @property
+    def _unwrapped_model(self) -> nn.Module:
+        """Get the underlying model, unwrapping DDP/FSDP if present."""
+        if hasattr(self.model, "module"):
+            return self.model.module  # type: ignore[return-value]
+        return self.model  # type: ignore[return-value]
+
     def _is_rocm(self) -> bool:
         """Check if running on AMD ROCm (HIP) backend."""
         return torch.cuda.is_available() and hasattr(torch.version, "hip") and torch.version.hip is not None
@@ -375,6 +383,10 @@ class Trainer:
         if "cross_attn_weight_mean" in train_losses:
             self.writer.add_scalar("cross_attn/weight_mean", train_losses["cross_attn_weight_mean"], epoch)
 
+        # Log cross-attention entropy (measure of attention focus)
+        if "cross_attn_entropy" in train_losses:
+            self.writer.add_scalar("cross_attn/entropy", train_losses["cross_attn_entropy"], epoch)
+
         if self.log_histograms and epoch % self.histogram_frequency == 0:
             for name, param in self.model.named_parameters():
                 if param.requires_grad and param.grad is not None:
@@ -396,19 +408,17 @@ class Trainer:
         if self.writer is None:
             return
 
-        # Get the underlying model (unwrap DDP if needed)
-        model = self.model.module if hasattr(self.model, "module") else self.model
+        model = self._unwrapped_model
 
-        # Check if model has categorical embedder
         if not hasattr(model, "categorical_embedder") or model.categorical_embedder is None:
             return
 
-        cat_embedder = model.categorical_embedder
+        cat_embedder = model.categorical_embedder  # type: ignore[union-attr]
 
         # Log embedding weight norms per column
         total_norm = 0.0
-        for col_name in cat_embedder.column_names:
-            if col_name in cat_embedder.embeddings:
+        for col_name in cat_embedder.column_names:  # type: ignore[union-attr]
+            if col_name in cat_embedder.embeddings:  # type: ignore[operator]
                 emb_weight = cat_embedder.embeddings[col_name].weight
                 # Exclude padding index (row 0) from norm computation
                 if emb_weight.shape[0] > 1:
@@ -424,14 +434,14 @@ class Trainer:
 
         # Log categorical projection weight norm if it exists
         if hasattr(model, "categorical_projection") and model.categorical_projection is not None:
-            proj_norm = model.categorical_projection.weight.norm().item()
+            proj_norm = model.categorical_projection.weight.norm().item()  # type: ignore[union-attr]
             self.writer.add_scalar("categorical/projection_norm", proj_norm, epoch)
 
         # Log GMU weight norms if present
         if hasattr(model, "gmu") and model.gmu is not None:
             gmu = model.gmu
-            self.writer.add_scalar("gmu/cat_transform_norm", gmu.cat_transform.weight.norm().item(), epoch)
-            self.writer.add_scalar("gmu/gate_norm", gmu.gate.weight.norm().item(), epoch)
+            self.writer.add_scalar("gmu/cat_transform_norm", gmu.cat_transform.weight.norm().item(), epoch)  # type: ignore[union-attr]
+            self.writer.add_scalar("gmu/gate_norm", gmu.gate.weight.norm().item(), epoch)  # type: ignore[union-attr]
 
         # Log gradient norms for categorical parameters (if gradients available)
         for name, param in model.named_parameters():
@@ -449,13 +459,84 @@ class Trainer:
                 short_name = name.replace("gmu.", "")
                 self.writer.add_scalar(f"gmu/{short_name}_grad_norm", grad_norm, epoch)
 
+        # Log conditional scaling stats if present
+        self._log_conditional_scaling_stats(epoch)
+
+    def _log_conditional_scaling_stats(self, epoch: int) -> None:
+        """Log conditional output scaling statistics to TensorBoard.
+
+        Args:
+            epoch: Current epoch number
+        """
+        if self.writer is None:
+            return
+
+        model = self._unwrapped_model
+
+        output_scales = getattr(model, "output_scales", None)
+        output_biases = getattr(model, "output_biases", None)
+        if output_scales is None or output_biases is None:
+            return
+
+        for col_name in output_scales.keys():
+            scale_weights = output_scales[col_name].weight
+            bias_weights = output_biases[col_name].weight
+
+            self.writer.add_scalar(f"conditional_scaling/{col_name}_scale_mean", scale_weights.mean().item(), epoch)
+            self.writer.add_scalar(f"conditional_scaling/{col_name}_scale_std", scale_weights.std().item(), epoch)
+            self.writer.add_scalar(f"conditional_scaling/{col_name}_bias_mean", bias_weights.mean().item(), epoch)
+            self.writer.add_scalar(f"conditional_scaling/{col_name}_bias_std", bias_weights.std().item(), epoch)
+
+    def _log_model_summary(self) -> None:
+        """Log model parameter counts to TensorBoard at training start."""
+        if self.writer is None:
+            return
+
+        model = self._unwrapped_model
+        total_params = sum(p.numel() for p in model.parameters())
+        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        frozen_params = total_params - trainable_params
+
+        self.writer.add_scalar("model/total_params", total_params, 0)
+        self.writer.add_scalar("model/trainable_params", trainable_params, 0)
+        self.writer.add_scalar("model/frozen_params", frozen_params, 0)
+
+        logger.info(f"Model parameters: {total_params:,} total, {trainable_params:,} trainable, {frozen_params:,} frozen")
+
+    def _format_metrics(self, metrics: Dict[str, float], prefix: str, include_eval: bool = False) -> str:
+        """Format metrics dictionary into a display string.
+
+        Args:
+            metrics: Dictionary of metric names to values
+            prefix: Prefix for the loss label (e.g., "train_loss", "val_loss")
+            include_eval: Whether to include evaluation metrics (r2, mae)
+
+        Returns:
+            Formatted string of metrics
+        """
+        parts = [f"{prefix}={metrics.get('total_loss', 0):.4f}"]
+        if "unifrac_loss" in metrics:
+            parts.append(f"unifrac={metrics['unifrac_loss']:.4f}")
+        if "nuc_loss" in metrics:
+            parts.append(f"nuc_loss={metrics['nuc_loss']:.4f}")
+        if "nuc_accuracy" in metrics:
+            parts.append(f"nuc_acc={metrics['nuc_accuracy']:.2%}")
+        if "target_loss" in metrics:
+            parts.append(f"target={metrics['target_loss']:.4f}")
+        if include_eval:
+            if "r2" in metrics:
+                parts.append(f"r2={metrics['r2']:.4f}")
+            if "mae" in metrics:
+                parts.append(f"mae={metrics['mae']:.4f}")
+        return ", ".join(parts)
+
     def _log_epoch_results(
         self,
         epoch: int,
         num_epochs: int,
         train_losses: Dict[str, float],
         val_results: Optional[Dict[str, float]] = None,
-    ):
+    ) -> None:
         """Log epoch results to the logger.
 
         Args:
@@ -464,41 +545,14 @@ class Trainer:
             train_losses: Training losses dictionary
             val_results: Validation results dictionary (optional)
         """
-        # Format training metrics
-        train_parts = [f"train_loss={train_losses.get('total_loss', 0):.4f}"]
-        if "unifrac_loss" in train_losses:
-            train_parts.append(f"unifrac={train_losses['unifrac_loss']:.4f}")
-        if "nuc_loss" in train_losses:
-            train_parts.append(f"nuc_loss={train_losses['nuc_loss']:.4f}")
-        if "nuc_accuracy" in train_losses:
-            train_parts.append(f"nuc_acc={train_losses['nuc_accuracy']:.2%}")
-        if "target_loss" in train_losses:
-            train_parts.append(f"target={train_losses['target_loss']:.4f}")
+        train_str = self._format_metrics(train_losses, "train_loss")
 
-        train_str = ", ".join(train_parts)
-
-        # Format validation metrics if available
         if val_results is not None:
-            val_parts = [f"val_loss={val_results.get('total_loss', 0):.4f}"]
-            if "unifrac_loss" in val_results:
-                val_parts.append(f"unifrac={val_results['unifrac_loss']:.4f}")
-            if "nuc_loss" in val_results:
-                val_parts.append(f"nuc_loss={val_results['nuc_loss']:.4f}")
-            if "nuc_accuracy" in val_results:
-                val_parts.append(f"nuc_acc={val_results['nuc_accuracy']:.2%}")
-            if "target_loss" in val_results:
-                val_parts.append(f"target={val_results['target_loss']:.4f}")
-            if "r2" in val_results:
-                val_parts.append(f"r2={val_results['r2']:.4f}")
-            if "mae" in val_results:
-                val_parts.append(f"mae={val_results['mae']:.4f}")
-
-            val_str = ", ".join(val_parts)
+            val_str = self._format_metrics(val_results, "val_loss", include_eval=True)
             logger.info(f"Epoch {epoch + 1}/{num_epochs}: {train_str} | {val_str}")
         else:
             logger.info(f"Epoch {epoch + 1}/{num_epochs}: {train_str}")
 
-        # Log GPU memory stats if available
         if torch.cuda.is_available():
             bytes_to_mb = 1024 * 1024
             allocated = torch.cuda.memory_allocated() / bytes_to_mb
@@ -539,6 +593,7 @@ class Trainer:
         running_avg_gmu_gate = 0.0
         gmu_gate_batches = 0
         running_avg_cross_attn_weight = 0.0
+        running_avg_cross_attn_entropy = 0.0
         cross_attn_batches = 0
 
         # Determine what metrics to show based on training mode
@@ -601,10 +656,9 @@ class Trainer:
                     autocast_dtype = torch.bfloat16
 
                 # Only pass categorical_ids if the model supports it (SequencePredictor has categorical_embedder)
-                # Need to check underlying model for DDP-wrapped models
-                underlying_model = self.model.module if hasattr(self.model, "module") else self.model
                 supports_categorical = (
-                    hasattr(underlying_model, "categorical_embedder") and underlying_model.categorical_embedder is not None
+                    hasattr(self._unwrapped_model, "categorical_embedder")
+                    and self._unwrapped_model.categorical_embedder is not None
                 )
                 forward_kwargs: Dict[str, Any] = {"return_nucleotides": return_nucleotides}
                 if supports_categorical and categorical_ids is not None:
@@ -752,8 +806,16 @@ class Trainer:
 
                 # Track cross-attention weights for TensorBoard
                 if "cross_attn_weights" in outputs:
-                    attn_mean = outputs["cross_attn_weights"].detach().mean().item()
+                    attn_weights = outputs["cross_attn_weights"].detach()
+                    attn_mean = attn_weights.mean().item()
                     running_avg_cross_attn_weight = (running_avg_cross_attn_weight * cross_attn_batches + attn_mean) / (
+                        cross_attn_batches + 1
+                    )
+                    # Compute entropy: -sum(p * log(p)), averaged over batch and heads
+                    # Clamp to avoid log(0)
+                    attn_clamped = attn_weights.clamp(min=1e-10)
+                    entropy = -(attn_clamped * torch.log(attn_clamped)).sum(dim=-1).mean().item()
+                    running_avg_cross_attn_entropy = (running_avg_cross_attn_entropy * cross_attn_batches + entropy) / (
                         cross_attn_batches + 1
                     )
                     cross_attn_batches += 1
@@ -924,6 +986,7 @@ class Trainer:
             avg_losses["gmu_gate_mean"] = running_avg_gmu_gate
         if cross_attn_batches > 0:
             avg_losses["cross_attn_weight_mean"] = running_avg_cross_attn_weight
+            avg_losses["cross_attn_entropy"] = running_avg_cross_attn_entropy
         return avg_losses
 
     def validate_epoch(
@@ -1086,8 +1149,17 @@ class Trainer:
             except ImportError:
                 pass  # tensorboard custom_scalars plugin not available
 
+            # Log model summary at training start
+            self._log_model_summary()
+
         try:
             for epoch in range(start_epoch, num_epochs):
+                epoch_start_time = time.time()
+
+                # Reset peak memory stats for this epoch (CUDA only)
+                if torch.cuda.is_available():
+                    torch.cuda.reset_peak_memory_stats()
+
                 if self.train_sampler is not None:
                     self.train_sampler.set_epoch(epoch)
 
@@ -1098,6 +1170,14 @@ class Trainer:
                     num_epochs=num_epochs,
                 )
                 history["train_loss"].append(train_losses["total_loss"])
+
+                # Calculate epoch timing
+                epoch_duration = time.time() - epoch_start_time
+                try:
+                    num_samples = len(train_loader.dataset)  # type: ignore[arg-type]
+                except (TypeError, AttributeError):
+                    num_samples = len(train_loader) * 2  # Estimate based on batch count
+                samples_per_sec = num_samples / epoch_duration if epoch_duration > 0 else 0
 
                 val_results: Optional[Dict[str, float]] = None
                 val_predictions_dict: Dict[str, torch.Tensor] = {}
@@ -1169,6 +1249,9 @@ class Trainer:
                                 best_metric_value=best_metric_value,
                                 metrics=val_results,
                             )
+                            # Log best model marker to TensorBoard
+                            if self.writer is not None:
+                                self.writer.add_scalar("checkpoint/best_model_saved", 1, epoch)
 
                         # Save all prediction plots (only on main process)
                         if save_plots and val_predictions_dict and is_main_process():
@@ -1214,6 +1297,9 @@ class Trainer:
                                 best_metric_value=best_metric_value,
                                 metrics=train_losses,
                             )
+                            # Log best model marker to TensorBoard
+                            if self.writer is not None:
+                                self.writer.add_scalar("checkpoint/best_model_saved", 1, epoch)
                     else:
                         patience_counter += 1
                         if patience_counter >= early_stopping_patience:
@@ -1222,6 +1308,15 @@ class Trainer:
 
                 if self.writer is not None:
                     self._log_to_tensorboard(epoch, train_losses, val_results)
+
+                    # Log performance metrics
+                    self.writer.add_scalar("perf/epoch_duration_sec", epoch_duration, epoch)
+                    self.writer.add_scalar("perf/samples_per_sec", samples_per_sec, epoch)
+
+                    # Log GPU memory usage (CUDA only)
+                    if torch.cuda.is_available():
+                        peak_memory_mb = torch.cuda.max_memory_allocated() / (1024 * 1024)
+                        self.writer.add_scalar("perf/gpu_memory_allocated_mb", peak_memory_mb, epoch)
 
                 # Log epoch results to file logger
                 self._log_epoch_results(epoch, num_epochs, train_losses, val_results)

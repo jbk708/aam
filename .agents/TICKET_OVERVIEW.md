@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-27
-**Status:** ~5 outstanding tickets (~20-41 hours)
+**Status:** ~4 outstanding tickets (~18-37 hours)
 
 ---
 
@@ -11,7 +11,7 @@
 |------|--------|---------|
 | `FUSION_CLEANUP_TICKETS.md` | 2 remaining | FUS-3, CLN-17 |
 | `REGRESSOR_OPTIMIZATION_TICKETS.md` | 3 remaining | REG-7 to REG-9 |
-| `PYTORCH_PORTING_TICKETS.md` | 2 remaining | PYT-19.4, PYT-MAINT-2 |
+| `PYTORCH_PORTING_TICKETS.md` | 1 remaining | PYT-19.4 |
 | `COSMOS_ONBOARDING_TICKETS.md` | 4 remaining | COS-9.5 to COS-9.8 |
 | `DOCUMENTATION_TICKETS.md` | Backlog | DOC-2 to DOC-4 |
 | `ARCHIVED_TICKETS.md` | Reference | All completed work |
@@ -29,7 +29,7 @@ None remaining.
 
 None remaining.
 
-### LOW (5 tickets, ~18-32 hours)
+### LOW (4 tickets, ~18-28 hours)
 
 | Ticket | Description | Effort | File |
 |--------|-------------|--------|------|
@@ -39,7 +39,7 @@ None remaining.
 | **REG-8** | Per-output loss | 3-4h | REGRESSOR |
 | **REG-9** | Mixture of Experts | 6-8h | REGRESSOR |
 | **PYT-19.4** | Hierarchical categories | 6-8h | PYTORCH |
-| **PYT-MAINT-2** | TensorBoard logging | 2-4h | PYTORCH |
+| ~~PYT-MAINT-2~~ | ~~TensorBoard logging~~ | ~~2-4h~~ | ~~PYTORCH~~ |
 
 ### Backlog (~13-19 hours)
 
@@ -64,6 +64,7 @@ REG-8 (Per-output loss) - Different loss per target column for multi-output regr
 
 | Ticket | Description |
 |--------|-------------|
+| PYT-MAINT-2 | TensorBoard logging improvements (6 tests) |
 | REG-7 | Residual regression head (15 tests) |
 | CLN-17 | Consolidate test suite (22 tests removed, 521 lines reduced) |
 | CLN-11.3 | Extract shared test utilities to conftest.py (75 lines removed) |
