@@ -75,4 +75,4 @@ See `.agents/TICKET_OVERVIEW.md` for current work:
 
 ## Contributing
 
-Interested in implementing any of these? See [CONTRIBUTING.md](../CONTRIBUTING.md) for how to get started.
+Interested in implementing any of these? See the CONTRIBUTING.md file in the repository root for how to get started.

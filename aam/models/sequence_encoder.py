@@ -153,12 +153,11 @@ class SequenceEncoder(nn.Module):
                 Default False to save memory during training (loss doesn't use them).
 
         Returns:
-            Dictionary with keys:
-                - 'base_prediction': [batch_size, base_output_dim] or [batch_size, embedding_dim]
-                - 'sample_embeddings': [batch_size, num_asvs, embedding_dim] (only if return_sample_embeddings=True)
-                - 'nuc_predictions': [batch_size, num_asvs, seq_len, vocab_size] (if return_nucleotides=True)
-                - 'mask_indices': [batch_size, num_asvs, seq_len] boolean (if masking, else None)
-            Or tuple if encoder_type='combined': (unifrac_pred, faith_pred, tax_pred)
+            Dictionary with keys 'base_prediction' [batch_size, base_output_dim],
+            'sample_embeddings' [batch_size, num_asvs, embedding_dim] (if return_sample_embeddings=True),
+            'nuc_predictions' [batch_size, num_asvs, seq_len, vocab_size] (if return_nucleotides=True),
+            'mask_indices' [batch_size, num_asvs, seq_len] boolean (if masking, else None).
+            Or tuple if encoder_type='combined': (unifrac_pred, faith_pred, tax_pred).
         """
         asv_mask = (tokens.sum(dim=-1) > 0).long()
 

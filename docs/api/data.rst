@@ -3,11 +3,6 @@ Data Module
 
 Data loading, tokenization, and dataset utilities.
 
-.. automodule:: aam.data
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 BIOMLoader
 ----------
 
