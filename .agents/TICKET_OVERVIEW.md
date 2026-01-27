@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-27
-**Status:** ~7 outstanding tickets (~26-47 hours)
+**Status:** ~8 outstanding tickets (~30-53 hours)
 
 ---
 
@@ -9,7 +9,7 @@
 
 | File | Status | Tickets |
 |------|--------|---------|
-| `FUSION_CLEANUP_TICKETS.md` | 3 remaining | FUS-3, CLN-11.3 |
+| `FUSION_CLEANUP_TICKETS.md` | 4 remaining | FUS-3, CLN-11.3, CLN-17 |
 | `REGRESSOR_OPTIMIZATION_TICKETS.md` | 3 remaining | REG-7 to REG-9 |
 | `PYTORCH_PORTING_TICKETS.md` | 2 remaining | PYT-19.4, PYT-MAINT-2 |
 | `COSMOS_ONBOARDING_TICKETS.md` | 4 remaining | COS-9.5 to COS-9.8 |
@@ -29,10 +29,11 @@ None remaining.
 
 None remaining.
 
-### LOW (6 tickets, ~23-40 hours)
+### LOW (7 tickets, ~27-46 hours)
 
 | Ticket | Description | Effort | File |
 |--------|-------------|--------|------|
+| **CLN-17** | Reduce total test count | 4-6h | FUSION_CLEANUP |
 | **FUS-3** | Perceiver fusion | 6-8h | FUSION_CLEANUP |
 | **REG-7** | Residual head | 2-3h | REGRESSOR |
 | **REG-8** | Per-output loss | 3-4h | REGRESSOR |

@@ -849,6 +849,37 @@ Extract shared test classes and utilities to conftest.py for reuse.
 
 ---
 
+### CLN-17: Reduce Total Test Count Through Consolidation
+**Priority:** LOW | **Effort:** 4-6 hours | **Status:** Not Started
+
+Analyze test suite (1301 tests) for opportunities to reduce test count while maintaining coverage.
+
+**Motivation:**
+- Large test counts can slow CI/CD pipelines
+- Many tests may overlap in coverage
+- Some parametrized tests may be over-testing with redundant parameter combinations
+
+**Investigation Areas:**
+1. Identify tests with overlapping coverage (e.g., multiple tests checking same code paths)
+2. Review parametrize combinations - are all parameter values necessary?
+3. Look for integration tests that could replace multiple unit tests
+4. Check for tests that verify implementation details vs behavior
+
+**Potential Consolidation Targets:**
+- Model encoder tests (test_asv_encoder, test_sample_sequence_encoder, test_sequence_encoder, test_sequence_predictor) - lots of similar shape/gradient tests
+- Transformer tests - many parameter variation tests
+- CLI tests - may have redundant integration tests
+
+**Acceptance Criteria:**
+- [ ] Audit report identifying consolidation opportunities
+- [ ] Reduce test count by 10-20% without losing coverage
+- [ ] Maintain or improve test runtime
+- [ ] No reduction in code coverage percentage
+
+**Files:** All test files in `tests/`
+
+---
+
 ### CLN-16: Consolidate Lazy Embedding Tests with Parametrize
 **Priority:** HIGH | **Effort:** 1-2 hours | **Status:** Complete
 
@@ -1029,7 +1060,8 @@ pred_std = torch.stack(predictions).std(dim=0)  # Optional confidence
 | **CLN-13** | ASV sampling strategy (abundance/random) | 2-3h | MEDIUM | Complete |
 | **CLN-14** | Multi-pass prediction aggregation | 3-4h | LOW | Complete |
 | **CLN-16** | Consolidate lazy embedding tests | 1-2h | HIGH | Complete |
-| **Total** | | **45-71h** | |
+| **CLN-17** | Reduce total test count | 4-6h | LOW | Not Started |
+| **Total** | | **49-77h** | |
 
 ## Recommended Order
 
