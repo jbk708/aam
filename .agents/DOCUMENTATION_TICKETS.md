@@ -311,32 +311,27 @@ Set up automated API documentation generation using Sphinx (already in pyproject
 
 ---
 
-### DOC-12: Consolidate _design_plan/ Directory
+### DOC-12: Remove _design_plan/ Directory
 **Priority:** HIGH | **Effort:** 2-3 hours | **Status:** COMPLETE (2026-01-27)
 
-Clean up and consolidate the `_design_plan/` directory for better navigation.
+Remove redundant `_design_plan/` directory - content now in docs/ and ARCHITECTURE.md.
 
-**Current state:** 17+ files, some outdated, INDEX.md exists but incomplete
+**What was done:**
+- Deleted `_design_plan/` folder entirely (2,575 lines removed)
+- Extracted useful content from FUTURE_WORK.md → `docs/roadmap.md`
+- Updated all references to point to docs/ and ARCHITECTURE.md
 
-**Deliverables:**
-- Update INDEX.md with accurate status for all documents
-- Archive completed/outdated documents to `_design_plan/archive/`
-- Update cross-references between documents
-- Add "Status" badges (Complete, In Progress, Planned)
-- Remove or update stale content (test counts, outdated references)
-- Link from ARCHITECTURE.md and how-it-works.md
-
-**Documents to review:**
-- 00-14: Core implementation docs (verify complete)
-- 15-17: Feature docs (verify status)
-- FUTURE_WORK.md: Update with current state
-- archive/: Ensure properly categorized
+**Rationale:**
+- 00-14: Implementation specs → now redundant with code + docs
+- 15-17: Feature docs → features complete, details in ARCHITECTURE.md
+- archive/: Historical analysis → no longer needed
+- FUTURE_WORK.md: → Extracted to docs/roadmap.md
 
 **Acceptance criteria:**
-- [ ] INDEX.md accurately reflects all documents
-- [ ] No broken cross-references
-- [ ] Stale content updated or archived
-- [ ] Clear distinction between complete vs planned features
+- [x] _design_plan/ folder deleted
+- [x] Useful content extracted to docs/roadmap.md
+- [x] All references updated (README, ARCHITECTURE, CLAUDE.md, etc.)
+- [x] No broken links
 
 ---
 
@@ -416,7 +411,12 @@ Short video tutorial for installation and basic usage.
 - `docs/getting-started.md` - Installation and quickstart guide
 - `docs/user-guide.md` - Full CLI reference (400+ lines)
 - `docs/how-it-works.md` - Concepts and implementation guide
+- `docs/roadmap.md` - Future enhancements (extracted from _design_plan/)
 - `docs/api/` - Sphinx API documentation structure
 - `ARCHITECTURE.md` - Expanded with design rationale (~400 lines)
 - `CONTRIBUTING.md` - Developer workflow guide
 - `README.md` - Refactored to concise overview (~130 lines)
+
+### Removed
+
+- `_design_plan/` - Entire folder deleted (2,575 lines), content now in docs/ and ARCHITECTURE.md
