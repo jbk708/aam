@@ -50,19 +50,19 @@ class TestTransformerEncoder:
         assert result.shape == sample_embeddings.shape
         assert result.shape == (2, 10, 64)
 
-    def test_forward_different_batch_sizes(self, transformer_encoder):
+    @pytest.mark.parametrize("batch_size", [1, 4, 8])
+    def test_forward_different_batch_sizes(self, transformer_encoder, batch_size):
         """Test forward pass with different batch sizes."""
-        for batch_size in [1, 4, 8]:
-            embeddings = torch.randn(batch_size, 10, 64)
-            result = transformer_encoder(embeddings)
-            assert result.shape == (batch_size, 10, 64)
+        embeddings = torch.randn(batch_size, 10, 64)
+        result = transformer_encoder(embeddings)
+        assert result.shape == (batch_size, 10, 64)
 
-    def test_forward_different_seq_lengths(self, transformer_encoder):
+    @pytest.mark.parametrize("seq_len", [5, 10, 20, 50])
+    def test_forward_different_seq_lengths(self, transformer_encoder, seq_len):
         """Test forward pass with different sequence lengths."""
-        for seq_len in [5, 10, 20, 50]:
-            embeddings = torch.randn(2, seq_len, 64)
-            result = transformer_encoder(embeddings)
-            assert result.shape == (2, seq_len, 64)
+        embeddings = torch.randn(2, seq_len, 64)
+        result = transformer_encoder(embeddings)
+        assert result.shape == (2, seq_len, 64)
 
     def test_forward_no_mask(self, transformer_encoder, sample_embeddings):
         """Test forward pass without mask (all positions valid)."""
