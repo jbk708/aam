@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-27
-**Status:** ~8 outstanding tickets (~30-48 hours)
+**Status:** ~7 outstanding tickets (~26-42 hours)
 
 ---
 
@@ -11,7 +11,7 @@
 |------|--------|---------|
 | `FUSION_CLEANUP_TICKETS.md` | 2 remaining | FUS-3, CLN-11 |
 | `REGRESSOR_OPTIMIZATION_TICKETS.md` | 3 remaining | REG-7 to REG-9 |
-| `PYTORCH_PORTING_TICKETS.md` | 3 remaining | PYT-18.5, PYT-19.4, PYT-MAINT-2 |
+| `PYTORCH_PORTING_TICKETS.md` | 2 remaining | PYT-19.4, PYT-MAINT-2 |
 | `COSMOS_ONBOARDING_TICKETS.md` | 4 remaining | COS-9.5 to COS-9.8 |
 | `DOCUMENTATION_TICKETS.md` | Backlog | DOC-2 to DOC-4 |
 | `ARCHIVED_TICKETS.md` | Reference | All completed work |
@@ -29,7 +29,7 @@ No high priority tickets remaining.
 
 No medium priority tickets remaining.
 
-### LOW (8 tickets, ~30-48 hours)
+### LOW (7 tickets, ~26-42 hours)
 
 | Ticket | Description | Effort | File |
 |--------|-------------|--------|------|
@@ -37,7 +37,6 @@ No medium priority tickets remaining.
 | **REG-7** | Residual head | 2-3h | REGRESSOR |
 | **REG-8** | Per-output loss | 3-4h | REGRESSOR |
 | **REG-9** | Mixture of Experts | 6-8h | REGRESSOR |
-| **PYT-18.5** | Lazy embeddings | 4-6h | PYTORCH |
 | **PYT-19.4** | Hierarchical categories | 6-8h | PYTORCH |
 | **PYT-MAINT-2** | TensorBoard logging | 2-4h | PYTORCH |
 | **CLN-11** | Consolidate test suite | 4-6h | FUSION_CLEANUP |
@@ -53,15 +52,19 @@ No medium priority tickets remaining.
 
 ## Recommended Next Steps
 
-### 1. Memory Optimization (LOW - ~4-6 hours)
+### 1. Regressor Improvements (LOW - ~2-3 hours)
 
 ```
-PYT-18.5 (lazy embeddings) - Defer embedding materialization for memory efficiency
+REG-7 (Residual head) - Add residual connection to regression head
 ```
 
 ---
 
 ## Recently Completed (2026-01-27)
+
+| Ticket | Description |
+|--------|-------------|
+| PYT-18.5 | Lazy sample embedding computation (17 tests) |
 
 | Ticket | Description |
 |--------|-------------|

@@ -1,18 +1,24 @@
 # Outstanding PyTorch Tickets
 
-**Last Updated:** 2026-01-23
-**Status:** 4 tickets remaining (~14-24 hours)
+**Last Updated:** 2026-01-27
+**Status:** 3 tickets remaining (~10-18 hours)
 
-**Completed:** PYT-BUG-1 to PYT-BUG-4, PYT-10.6-10.7, PYT-12.1a/b/c, PYT-12.2, PYT-18.6 (→PYT-12.2), PYT-19.1, PYT-19.3 (see `ARCHIVED_TICKETS.md`)
+**Completed:** PYT-BUG-1 to PYT-BUG-4, PYT-10.6-10.7, PYT-12.1a/b/c, PYT-12.2, PYT-18.5, PYT-18.6 (→PYT-12.2), PYT-19.1, PYT-19.3 (see `ARCHIVED_TICKETS.md`)
 
 ---
 
 ## Outstanding Tickets
 
 ### PYT-18.5: Lazy Sample Embedding Computation
-**Priority:** LOW | **Effort:** 4-6 hours | **Status:** Not Started
+**Priority:** LOW | **Effort:** 4-6 hours | **Status:** ✅ Complete
 
 Only compute/return sample_embeddings when needed for loss.
+
+**Implementation (2026-01-27):**
+- Added `return_sample_embeddings` parameter to `SequenceEncoder.forward()` and `SequencePredictor.forward()`
+- Default `False` to save memory during training (loss doesn't use sample_embeddings)
+- Sample embeddings still computed internally for count/target pathways
+- Tests: 17 new tests (8 for SequenceEncoder, 9 for SequencePredictor)
 
 ---
 
@@ -84,11 +90,11 @@ Future enhancement phases (~50+ hours):
 
 | Ticket | Description | Effort | Priority | Notes |
 |--------|-------------|--------|----------|-------|
-| **PYT-18.5** | Lazy embeddings | 4-6h | LOW | |
+| ~~PYT-18.5~~ | ~~Lazy embeddings~~ | ~~4-6h~~ | ~~LOW~~ | ✅ Complete |
 | **PYT-18.6** | Memory-aware batching | 4-6h | LOW | → PYT-12.2 |
 | **PYT-19.2** | Cross-attention | 4-6h | MEDIUM | → FUS-2 |
 | ~~PYT-19.3~~ | ~~Category loss weights~~ | ~~3-4h~~ | ~~MEDIUM~~ | ✅ Complete |
 | **PYT-19.4** | Hierarchical categories | 6-8h | LOW | |
 | **PYT-MAINT-1** | CLI cleanup | 2-4h | LOW | → CLN-1/2 |
 | **PYT-MAINT-2** | TensorBoard | 2-4h | LOW | |
-| **Total (unique)** | | **~14-24h** | | |
+| **Total (unique)** | | **~10-18h** | | |
