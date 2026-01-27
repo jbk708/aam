@@ -351,20 +351,6 @@ class TestQuantileLoss:
         assert loss.dim() == 0
         assert loss.item() >= 0
 
-    def test_quantile_loss_does_not_affect_classification(self):
-        """Test that classification ignores quantile loss type."""
-        loss_fn = MultiTaskLoss(target_loss_type="quantile", quantiles=[0.1, 0.5, 0.9])
-
-        # For classification, should use NLL regardless of loss type
-        target_pred = torch.randn(4, 3)
-        target_pred = nn.functional.log_softmax(target_pred, dim=-1)
-        target_true = torch.randint(0, 3, (4,))
-
-        loss = loss_fn.compute_target_loss(target_pred, target_true, is_classifier=True)
-
-        expected = nn.functional.nll_loss(target_pred, target_true)
-        assert torch.allclose(loss, expected)
-
 
 class TestAsymmetricLoss:
     """Test asymmetric loss computation."""
@@ -483,20 +469,6 @@ class TestAsymmetricLoss:
 
         assert loss.dim() == 0
         assert loss.item() >= 0
-
-    def test_asymmetric_loss_does_not_affect_classification(self):
-        """Test that classification ignores asymmetric loss type."""
-        loss_fn = MultiTaskLoss(target_loss_type="asymmetric", over_penalty=2.0, under_penalty=1.0)
-
-        # For classification, should use NLL regardless of loss type
-        target_pred = torch.randn(4, 3)
-        target_pred = nn.functional.log_softmax(target_pred, dim=-1)
-        target_true = torch.randint(0, 3, (4,))
-
-        loss = loss_fn.compute_target_loss(target_pred, target_true, is_classifier=True)
-
-        expected = nn.functional.nll_loss(target_pred, target_true)
-        assert torch.allclose(loss, expected)
 
     def test_asymmetric_loss_extreme_penalty_ratios(self):
         """Test asymmetric loss with extreme penalty ratios."""

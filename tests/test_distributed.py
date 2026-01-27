@@ -47,30 +47,20 @@ class SimpleModel(nn.Module):
 class TestDistributedStateQueries:
     """Test distributed state query functions."""
 
-    def test_is_distributed_false_when_not_initialized(self):
-        """Test is_distributed returns False when not initialized."""
-        # Clean up any existing distributed state
+    @pytest.mark.parametrize(
+        "func,expected",
+        [
+            (is_distributed, False),
+            (get_rank, 0),
+            (get_world_size, 1),
+            (is_main_process, True),
+        ],
+    )
+    def test_distributed_functions_when_not_initialized(self, func, expected):
+        """Test distributed utility functions return expected values when not initialized."""
         if torch.distributed.is_initialized():
             torch.distributed.destroy_process_group()
-        assert is_distributed() is False
-
-    def test_get_rank_returns_zero_when_not_distributed(self):
-        """Test get_rank returns 0 when not in distributed mode."""
-        if torch.distributed.is_initialized():
-            torch.distributed.destroy_process_group()
-        assert get_rank() == 0
-
-    def test_get_world_size_returns_one_when_not_distributed(self):
-        """Test get_world_size returns 1 when not in distributed mode."""
-        if torch.distributed.is_initialized():
-            torch.distributed.destroy_process_group()
-        assert get_world_size() == 1
-
-    def test_is_main_process_true_when_not_distributed(self):
-        """Test is_main_process returns True when not in distributed mode."""
-        if torch.distributed.is_initialized():
-            torch.distributed.destroy_process_group()
-        assert is_main_process() is True
+        assert func() == expected
 
 
 class TestSetupDistributed:
@@ -504,72 +494,39 @@ class TestFSDPCheckpointFunctions:
         with pytest.raises(TypeError, match="Expected FSDP model"):
             set_fsdp_optimizer_state_dict(model, optimizer, {})
 
-    def test_get_fsdp_state_dict_function_signature(self):
-        """Test get_fsdp_state_dict has correct parameters."""
+    @pytest.mark.parametrize(
+        "func,expected_params",
+        [
+            (get_fsdp_state_dict, ["model", "sharded", "cpu_offload", "rank0_only"]),
+            (set_fsdp_state_dict, ["model", "state_dict", "sharded", "strict"]),
+            (get_fsdp_optimizer_state_dict, ["model", "optimizer", "sharded"]),
+            (set_fsdp_optimizer_state_dict, ["model", "optimizer", "optim_state_dict", "sharded"]),
+        ],
+    )
+    def test_fsdp_checkpoint_function_signatures(self, func, expected_params):
+        """Test FSDP checkpoint functions have correct parameters."""
+        import inspect
+
+        sig = inspect.signature(func)
+        params = list(sig.parameters.keys())
+        for param in expected_params:
+            assert param in params, f"Missing parameter '{param}' in {func.__name__}"
+
+    @pytest.mark.parametrize(
+        "param_name,expected_default",
+        [
+            ("sharded", False),
+            ("cpu_offload", True),
+            ("rank0_only", True),
+        ],
+    )
+    def test_get_fsdp_state_dict_default_values(self, param_name, expected_default):
+        """Test get_fsdp_state_dict has correct default parameter values."""
         import inspect
 
         sig = inspect.signature(get_fsdp_state_dict)
-        params = list(sig.parameters.keys())
-        assert "model" in params
-        assert "sharded" in params
-        assert "cpu_offload" in params
-        assert "rank0_only" in params
-
-    def test_set_fsdp_state_dict_function_signature(self):
-        """Test set_fsdp_state_dict has correct parameters."""
-        import inspect
-
-        sig = inspect.signature(set_fsdp_state_dict)
-        params = list(sig.parameters.keys())
-        assert "model" in params
-        assert "state_dict" in params
-        assert "sharded" in params
-        assert "strict" in params
-
-    def test_get_fsdp_optimizer_state_dict_function_signature(self):
-        """Test get_fsdp_optimizer_state_dict has correct parameters."""
-        import inspect
-
-        sig = inspect.signature(get_fsdp_optimizer_state_dict)
-        params = list(sig.parameters.keys())
-        assert "model" in params
-        assert "optimizer" in params
-        assert "sharded" in params
-
-    def test_set_fsdp_optimizer_state_dict_function_signature(self):
-        """Test set_fsdp_optimizer_state_dict has correct parameters."""
-        import inspect
-
-        sig = inspect.signature(set_fsdp_optimizer_state_dict)
-        params = list(sig.parameters.keys())
-        assert "model" in params
-        assert "optimizer" in params
-        assert "optim_state_dict" in params
-        assert "sharded" in params
-
-    def test_get_fsdp_state_dict_defaults_to_full_state_dict(self):
-        """Test get_fsdp_state_dict defaults sharded=False."""
-        import inspect
-
-        sig = inspect.signature(get_fsdp_state_dict)
-        sharded_param = sig.parameters["sharded"]
-        assert sharded_param.default is False
-
-    def test_get_fsdp_state_dict_defaults_to_cpu_offload(self):
-        """Test get_fsdp_state_dict defaults cpu_offload=True."""
-        import inspect
-
-        sig = inspect.signature(get_fsdp_state_dict)
-        cpu_offload_param = sig.parameters["cpu_offload"]
-        assert cpu_offload_param.default is True
-
-    def test_get_fsdp_state_dict_defaults_to_rank0_only(self):
-        """Test get_fsdp_state_dict defaults rank0_only=True."""
-        import inspect
-
-        sig = inspect.signature(get_fsdp_state_dict)
-        rank0_only_param = sig.parameters["rank0_only"]
-        assert rank0_only_param.default is True
+        param = sig.parameters[param_name]
+        assert param.default is expected_default
 
     def test_get_fsdp_state_dict_calls_fsdp_state_dict_type(self):
         """Test get_fsdp_state_dict uses FSDP.state_dict_type context manager."""
@@ -924,51 +881,18 @@ class TestGatherEmbeddingsForUnifrac:
 class TestDistributedValidationMetrics:
     """Tests for distributed validation metric synchronization."""
 
-    def test_streaming_regression_has_sync_method(self):
-        """Test StreamingRegressionMetrics has sync_distributed method."""
-        from aam.training.metrics import StreamingRegressionMetrics
+    @pytest.mark.parametrize(
+        "metric_class_name",
+        ["StreamingRegressionMetrics", "StreamingClassificationMetrics", "StreamingCountMetrics"],
+    )
+    def test_streaming_metrics_have_distributed_methods(self, metric_class_name):
+        """Test streaming metrics classes have sync_distributed and _merge_from methods."""
+        import aam.training.metrics as metrics_module
 
-        streaming = StreamingRegressionMetrics()
+        metric_class = getattr(metrics_module, metric_class_name)
+        streaming = metric_class()
         assert hasattr(streaming, "sync_distributed")
         assert callable(streaming.sync_distributed)
-
-    def test_streaming_classification_has_sync_method(self):
-        """Test StreamingClassificationMetrics has sync_distributed method."""
-        from aam.training.metrics import StreamingClassificationMetrics
-
-        streaming = StreamingClassificationMetrics()
-        assert hasattr(streaming, "sync_distributed")
-        assert callable(streaming.sync_distributed)
-
-    def test_streaming_count_has_sync_method(self):
-        """Test StreamingCountMetrics has sync_distributed method."""
-        from aam.training.metrics import StreamingCountMetrics
-
-        streaming = StreamingCountMetrics()
-        assert hasattr(streaming, "sync_distributed")
-        assert callable(streaming.sync_distributed)
-
-    def test_streaming_regression_has_merge_method(self):
-        """Test StreamingRegressionMetrics has _merge_from method for combining stats."""
-        from aam.training.metrics import StreamingRegressionMetrics
-
-        streaming = StreamingRegressionMetrics()
-        assert hasattr(streaming, "_merge_from")
-        assert callable(streaming._merge_from)
-
-    def test_streaming_classification_has_merge_method(self):
-        """Test StreamingClassificationMetrics has _merge_from method."""
-        from aam.training.metrics import StreamingClassificationMetrics
-
-        streaming = StreamingClassificationMetrics()
-        assert hasattr(streaming, "_merge_from")
-        assert callable(streaming._merge_from)
-
-    def test_streaming_count_has_merge_method(self):
-        """Test StreamingCountMetrics has _merge_from method."""
-        from aam.training.metrics import StreamingCountMetrics
-
-        streaming = StreamingCountMetrics()
         assert hasattr(streaming, "_merge_from")
         assert callable(streaming._merge_from)
 

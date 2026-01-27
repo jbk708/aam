@@ -1511,8 +1511,11 @@ class TestFreezeBase:
 class TestGradientAccumulation:
     """Test gradient accumulation functionality."""
 
-    def test_gradient_accumulation_steps_1(self, small_model, loss_fn, simple_dataloader_encoder, device):
-        """Test gradient accumulation with steps=1 (no accumulation)."""
+    @pytest.mark.parametrize("gradient_accumulation_steps", [1, 2, 4])
+    def test_gradient_accumulation_steps(
+        self, small_model, loss_fn, simple_dataloader_encoder, device, gradient_accumulation_steps
+    ):
+        """Test gradient accumulation with different step values."""
         small_model = small_model.to(device)
         trainer = Trainer(
             model=small_model,
@@ -1521,45 +1524,16 @@ class TestGradientAccumulation:
         )
 
         initial_params = [p.clone() for p in small_model.parameters() if p.requires_grad]
-        losses = trainer.train_epoch(simple_dataloader_encoder, gradient_accumulation_steps=1)
+        losses = trainer.train_epoch(simple_dataloader_encoder, gradient_accumulation_steps=gradient_accumulation_steps)
         updated_params = [p for p in small_model.parameters() if p.requires_grad]
 
         assert "total_loss" in losses
         assert losses["total_loss"] >= 0
-        for init_param, updated_param in zip(initial_params, updated_params):
-            assert not torch.equal(init_param, updated_param)
-
-    def test_gradient_accumulation_steps_2(self, small_model, loss_fn, simple_dataloader_encoder, device):
-        """Test gradient accumulation with steps=2."""
-        small_model = small_model.to(device)
-        trainer = Trainer(
-            model=small_model,
-            loss_fn=loss_fn,
-            device=device,
-        )
-
-        initial_params = [p.clone() for p in small_model.parameters() if p.requires_grad]
-        losses = trainer.train_epoch(simple_dataloader_encoder, gradient_accumulation_steps=2)
-        updated_params = [p for p in small_model.parameters() if p.requires_grad]
-
-        assert "total_loss" in losses
-        assert losses["total_loss"] >= 0
-        for init_param, updated_param in zip(initial_params, updated_params):
-            assert not torch.equal(init_param, updated_param)
-
-    def test_gradient_accumulation_steps_4(self, small_model, loss_fn, simple_dataloader_encoder, device):
-        """Test gradient accumulation with steps=4."""
-        small_model = small_model.to(device)
-        trainer = Trainer(
-            model=small_model,
-            loss_fn=loss_fn,
-            device=device,
-        )
-
-        losses = trainer.train_epoch(simple_dataloader_encoder, gradient_accumulation_steps=4)
-
-        assert "total_loss" in losses
-        assert losses["total_loss"] >= 0
+        # For steps 1 and 2, verify parameters were updated
+        # For steps 4, the dataloader only has 4 samples so only 1 update happens
+        if gradient_accumulation_steps <= 2:
+            for init_param, updated_param in zip(initial_params, updated_params):
+                assert not torch.equal(init_param, updated_param)
 
     def test_gradient_accumulation_equivalent_loss(self, small_model, loss_fn, device):
         """Test that gradient accumulation produces equivalent results."""
@@ -3514,49 +3488,25 @@ class TestBestMetricSelection:
         assert trainer.best_metric == "val_loss"
         assert trainer.best_metric_mode == "min"
 
-    def test_trainer_init_best_metric_r2(self, small_model, loss_fn, device):
-        """Test Trainer with best_metric='r2' (higher is better)."""
+    @pytest.mark.parametrize(
+        "metric,expected_mode",
+        [
+            ("r2", "max"),
+            ("mae", "min"),
+            ("accuracy", "max"),
+            ("f1", "max"),
+        ],
+    )
+    def test_trainer_init_best_metric(self, small_model, loss_fn, device, metric, expected_mode):
+        """Test Trainer with different best_metric options."""
         trainer = Trainer(
             model=small_model,
             loss_fn=loss_fn,
             device=device,
-            best_metric="r2",
+            best_metric=metric,
         )
-        assert trainer.best_metric == "r2"
-        assert trainer.best_metric_mode == "max"
-
-    def test_trainer_init_best_metric_mae(self, small_model, loss_fn, device):
-        """Test Trainer with best_metric='mae' (lower is better)."""
-        trainer = Trainer(
-            model=small_model,
-            loss_fn=loss_fn,
-            device=device,
-            best_metric="mae",
-        )
-        assert trainer.best_metric == "mae"
-        assert trainer.best_metric_mode == "min"
-
-    def test_trainer_init_best_metric_accuracy(self, small_model, loss_fn, device):
-        """Test Trainer with best_metric='accuracy' (higher is better)."""
-        trainer = Trainer(
-            model=small_model,
-            loss_fn=loss_fn,
-            device=device,
-            best_metric="accuracy",
-        )
-        assert trainer.best_metric == "accuracy"
-        assert trainer.best_metric_mode == "max"
-
-    def test_trainer_init_best_metric_f1(self, small_model, loss_fn, device):
-        """Test Trainer with best_metric='f1' (higher is better)."""
-        trainer = Trainer(
-            model=small_model,
-            loss_fn=loss_fn,
-            device=device,
-            best_metric="f1",
-        )
-        assert trainer.best_metric == "f1"
-        assert trainer.best_metric_mode == "max"
+        assert trainer.best_metric == metric
+        assert trainer.best_metric_mode == expected_mode
 
     def test_trainer_init_invalid_best_metric(self, small_model, loss_fn, device):
         """Test Trainer raises ValueError for invalid best_metric."""
@@ -3568,16 +3518,17 @@ class TestBestMetricSelection:
                 best_metric="invalid_metric",
             )
 
-    def test_train_saves_checkpoint_by_val_loss(self, small_predictor, loss_fn, simple_dataloader, device, tmp_path):
-        """Test train saves best model based on val_loss (default)."""
+    @pytest.mark.parametrize("best_metric", ["val_loss", "r2", "mae"])
+    def test_train_saves_checkpoint_by_metric(self, small_predictor, loss_fn, simple_dataloader, device, tmp_path, best_metric):
+        """Test train saves best model based on different metrics."""
         trainer = Trainer(
             model=small_predictor,
             loss_fn=loss_fn,
             device=device,
-            best_metric="val_loss",
+            best_metric=best_metric,
         )
 
-        history = trainer.train(
+        trainer.train(
             train_loader=simple_dataloader,
             val_loader=simple_dataloader,
             num_epochs=3,
@@ -3589,56 +3540,9 @@ class TestBestMetricSelection:
         assert checkpoint_path.exists()
 
         checkpoint = torch.load(checkpoint_path, weights_only=True)
-        assert "best_val_loss" in checkpoint
-        assert checkpoint.get("best_metric") == "val_loss"
-
-    def test_train_saves_checkpoint_by_r2(self, small_predictor, loss_fn, simple_dataloader, device, tmp_path):
-        """Test train saves best model based on r2 metric."""
-        trainer = Trainer(
-            model=small_predictor,
-            loss_fn=loss_fn,
-            device=device,
-            best_metric="r2",
-        )
-
-        history = trainer.train(
-            train_loader=simple_dataloader,
-            val_loader=simple_dataloader,
-            num_epochs=3,
-            checkpoint_dir=str(tmp_path),
-            early_stopping_patience=10,
-        )
-
-        checkpoint_path = tmp_path / "best_model.pt"
-        assert checkpoint_path.exists()
-
-        checkpoint = torch.load(checkpoint_path, weights_only=True)
-        assert checkpoint.get("best_metric") == "r2"
-        # best_metric_value should be stored
+        assert checkpoint.get("best_metric") == best_metric
         assert "best_metric_value" in checkpoint
-
-    def test_train_saves_checkpoint_by_mae(self, small_predictor, loss_fn, simple_dataloader, device, tmp_path):
-        """Test train saves best model based on mae metric."""
-        trainer = Trainer(
-            model=small_predictor,
-            loss_fn=loss_fn,
-            device=device,
-            best_metric="mae",
-        )
-
-        history = trainer.train(
-            train_loader=simple_dataloader,
-            val_loader=simple_dataloader,
-            num_epochs=3,
-            checkpoint_dir=str(tmp_path),
-            early_stopping_patience=10,
-        )
-
-        checkpoint_path = tmp_path / "best_model.pt"
-        assert checkpoint_path.exists()
-
-        checkpoint = torch.load(checkpoint_path, weights_only=True)
-        assert checkpoint.get("best_metric") == "mae"
+        assert "best_val_loss" in checkpoint  # backwards compatibility
 
     def test_checkpoint_stores_best_metric_info(self, small_predictor, loss_fn, simple_dataloader, device, tmp_path):
         """Test checkpoint contains best_metric and best_metric_value."""

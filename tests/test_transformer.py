@@ -502,29 +502,10 @@ class TestSDPAOptimization:
 class TestSDPAKernelContext:
     """Test suite for sdpa_kernel_context context manager."""
 
-    def test_sdpa_context_none(self):
-        """Test that None attn_implementation uses default behavior."""
-        with sdpa_kernel_context(None):
-            assert True
-
-    def test_sdpa_context_sdpa(self):
-        """Test that 'sdpa' attn_implementation uses default behavior."""
-        with sdpa_kernel_context("sdpa"):
-            assert True
-
-    def test_sdpa_context_math(self):
-        """Test that 'math' attn_implementation configures backends correctly."""
-        with sdpa_kernel_context("math"):
-            pass
-
-    def test_sdpa_context_flash(self):
-        """Test that 'flash' attn_implementation configures backends correctly."""
-        with sdpa_kernel_context("flash"):
-            pass
-
-    def test_sdpa_context_mem_efficient(self):
-        """Test that 'mem_efficient' attn_implementation configures backends correctly."""
-        with sdpa_kernel_context("mem_efficient"):
+    @pytest.mark.parametrize("attn_impl", [None, "sdpa", "math", "flash", "mem_efficient"])
+    def test_sdpa_context_does_not_crash(self, attn_impl):
+        """Test that sdpa_kernel_context works with various attention implementations."""
+        with sdpa_kernel_context(attn_impl):
             pass
 
     def test_sdpa_context_restores_state(self):
