@@ -494,6 +494,7 @@ class SequencePredictor(nn.Module):
         tokens: torch.Tensor,
         categorical_ids: Optional[Dict[str, torch.Tensor]] = None,
         return_nucleotides: bool = False,
+        return_sample_embeddings: bool = False,
     ) -> Dict[str, torch.Tensor]:
         """Forward pass.
 
@@ -502,19 +503,22 @@ class SequencePredictor(nn.Module):
             categorical_ids: Optional dict mapping column name to category indices [batch_size].
                 Used for categorical conditioning of target predictions.
             return_nucleotides: Whether to return nucleotide predictions
+            return_sample_embeddings: Whether to return base_embeddings in output dict.
+                Default False to save memory during training (loss doesn't use them).
 
         Returns:
             Dictionary with keys:
                 - 'target_prediction': [batch_size, out_dim]
                 - 'count_prediction': [batch_size, num_asvs, 1] (if count_prediction_enabled)
-                - 'base_embeddings': [batch_size, num_asvs, embedding_dim]
+                - 'base_embeddings': [batch_size, num_asvs, embedding_dim] (only if return_sample_embeddings=True)
                 - 'base_prediction': [batch_size, base_output_dim] (if return_nucleotides=True)
                 - 'nuc_predictions': [batch_size, num_asvs, seq_len, vocab_size] (if return_nucleotides=True)
                 - 'mask_indices': [batch_size, num_asvs, seq_len] boolean (if masking, else None)
         """
         asv_mask = (tokens.sum(dim=-1) > 0).long()
 
-        base_outputs = self.base_model(tokens, return_nucleotides=return_nucleotides)
+        # Always request sample_embeddings from base_model - we need them for count/target pathways
+        base_outputs = self.base_model(tokens, return_nucleotides=return_nucleotides, return_sample_embeddings=True)
 
         base_embeddings = base_outputs["sample_embeddings"]
         # For UniFrac, embeddings are returned directly (no base_prediction)
@@ -580,10 +584,12 @@ class SequencePredictor(nn.Module):
             elif self.output_activation != "none":
                 target_prediction = self._apply_output_activation(target_prediction)
 
-        result = {
+        result: Dict[str, torch.Tensor] = {
             "target_prediction": target_prediction,
-            "base_embeddings": base_embeddings,
         }
+
+        if return_sample_embeddings:
+            result["base_embeddings"] = base_embeddings
 
         if count_prediction is not None:
             result["count_prediction"] = count_prediction

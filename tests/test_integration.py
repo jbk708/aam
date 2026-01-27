@@ -290,7 +290,7 @@ class TestModelPipelineIntegration:
         tokens = tokens.to(device)
 
         with torch.no_grad():
-            output = model(tokens)
+            output = model(tokens, return_sample_embeddings=True)
 
         assert isinstance(output, dict)
         # For UniFrac, embeddings are returned instead of base_prediction
@@ -320,7 +320,7 @@ class TestModelPipelineIntegration:
         counts = torch.rand(batch_size, num_asvs, 1).to(device)
 
         with torch.no_grad():
-            output = model(tokens)
+            output = model(tokens, return_sample_embeddings=True)
 
         assert isinstance(output, dict)
         assert "target_prediction" in output

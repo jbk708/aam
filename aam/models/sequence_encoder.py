@@ -142,17 +142,20 @@ class SequenceEncoder(nn.Module):
         self,
         tokens: torch.Tensor,
         return_nucleotides: bool = False,
-    ) -> Union[Dict[str, torch.Tensor], Tuple]:
+        return_sample_embeddings: bool = False,
+    ) -> Union[Dict[str, Optional[torch.Tensor]], Tuple]:
         """Forward pass.
 
         Args:
             tokens: Input tokens [batch_size, num_asvs, seq_len]
             return_nucleotides: Whether to return nucleotide predictions
+            return_sample_embeddings: Whether to return sample_embeddings in output dict.
+                Default False to save memory during training (loss doesn't use them).
 
         Returns:
             Dictionary with keys:
                 - 'base_prediction': [batch_size, base_output_dim] or [batch_size, embedding_dim]
-                - 'sample_embeddings': [batch_size, num_asvs, embedding_dim]
+                - 'sample_embeddings': [batch_size, num_asvs, embedding_dim] (only if return_sample_embeddings=True)
                 - 'nuc_predictions': [batch_size, num_asvs, seq_len, vocab_size] (if return_nucleotides=True)
                 - 'mask_indices': [batch_size, num_asvs, seq_len] boolean (if masking, else None)
             Or tuple if encoder_type='combined': (unifrac_pred, faith_pred, tax_pred)
@@ -178,12 +181,14 @@ class SequenceEncoder(nn.Module):
             faith_pred = self.faith_ff(pooled_embeddings)
             tax_pred = self.tax_ff(pooled_embeddings)
 
-            result = {
+            result: Dict[str, Optional[torch.Tensor]] = {
                 "unifrac_pred": unifrac_pred,
                 "faith_pred": faith_pred,
                 "tax_pred": tax_pred,
-                "sample_embeddings": sample_embeddings,
             }
+
+            if return_sample_embeddings:
+                result["sample_embeddings"] = sample_embeddings
 
             if return_nucleotides and nuc_predictions is not None:
                 result["nuc_predictions"] = nuc_predictions
@@ -197,7 +202,6 @@ class SequenceEncoder(nn.Module):
                 # Return embeddings directly - distances will be computed from embeddings
                 result = {
                     "embeddings": pooled_embeddings,
-                    "sample_embeddings": sample_embeddings,
                 }
             else:
                 # Non-UniFrac encoders: use output_head
@@ -205,8 +209,10 @@ class SequenceEncoder(nn.Module):
                 base_prediction = self.output_head(pooled_embeddings)
                 result = {
                     "base_prediction": base_prediction,
-                    "sample_embeddings": sample_embeddings,
                 }
+
+            if return_sample_embeddings:
+                result["sample_embeddings"] = sample_embeddings
 
             if return_nucleotides and nuc_predictions is not None:
                 result["nuc_predictions"] = nuc_predictions
