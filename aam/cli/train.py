@@ -409,6 +409,11 @@ def print_categorical_help(ctx: click.Context, param: click.Parameter, value: bo
     help="Dropout rate between MLP regression head layers (default: 0.0, no dropout). Must be in [0.0, 1.0).",
 )
 @click.option(
+    "--residual-regression-head",
+    is_flag=True,
+    help="Add skip connection to regression head: output = Linear(x) + MLP(x). Requires --regressor-hidden-dims.",
+)
+@click.option(
     "--conditional-output-scaling",
     default=None,
     help="Comma-separated categorical column names for conditional output scaling. Learns per-category scale and bias applied after base prediction. Requires --categorical-columns.",
@@ -532,6 +537,7 @@ def train(
     output_activation: str,
     regressor_hidden_dims: Optional[str],
     regressor_dropout: float,
+    residual_regression_head: bool,
     conditional_output_scaling: Optional[str],
     categorical_loss_weights: Optional[str],
     categorical_loss_weight_column: Optional[str],
@@ -1108,7 +1114,10 @@ def train(
                             f"Expected comma-separated positive integers like '64,32'."
                         )
                     regressor_hidden_dims_list.append(dim)
-                logger.info(f"MLP regression head: {regressor_hidden_dims_list}")
+                if residual_regression_head:
+                    logger.info(f"Residual regression head: {regressor_hidden_dims_list}")
+                else:
+                    logger.info(f"MLP regression head: {regressor_hidden_dims_list}")
             except ValueError as e:
                 raise click.ClickException(
                     f"Invalid --regressor-hidden-dims: could not parse '{regressor_hidden_dims}'. "
@@ -1150,6 +1159,7 @@ def train(
             output_activation=output_activation,
             regressor_hidden_dims=regressor_hidden_dims_list,
             regressor_dropout=regressor_dropout,
+            residual_regression_head=residual_regression_head,
             conditional_scaling_columns=conditional_scaling_columns,
             num_quantiles=num_quantiles,
             count_prediction=count_prediction,
@@ -1400,6 +1410,7 @@ def train(
                 "log_transform_targets": log_transform_targets,
                 "regressor_hidden_dims": regressor_hidden_dims_list,
                 "regressor_dropout": regressor_dropout,
+                "residual_regression_head": residual_regression_head,
                 "conditional_scaling_columns": conditional_scaling_columns,
             }
             # Include categorical encoder state if categoricals are used
