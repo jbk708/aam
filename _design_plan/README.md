@@ -1,18 +1,29 @@
-# PyTorch Implementation Plan
+# Design Plan
 
 **Status:** Implementation Complete
 
-## Overview
+Internal design documents for AAM (Attention All Microbes) PyTorch implementation. These documents capture implementation decisions made during development.
 
-Design documents for AAM (Attention All Microbes) PyTorch implementation. All core components are complete.
+## For Users
 
-## Document Structure
+- **User documentation:** [docs/](../docs/)
+- **Architecture:** [ARCHITECTURE.md](../ARCHITECTURE.md)
+- **Contributing:** [CONTRIBUTING.md](../CONTRIBUTING.md)
 
-- **00-14**: Core implementation (all complete)
-- **FUTURE_WORK.md**: Outstanding enhancements
-- **archive/**: Historical analysis documents
+## For Developers
 
-See [INDEX.md](INDEX.md) for navigation.
+See [INDEX.md](INDEX.md) for full document listing.
+
+### Quick Links
+
+- [00_overview.md](00_overview.md) - Architecture overview
+- [FUTURE_WORK.md](FUTURE_WORK.md) - Outstanding enhancements
+
+### Ticket Tracking
+
+See `.agents/` folder for ticket files:
+- `TICKET_OVERVIEW.md` - Summary of outstanding work
+- `WORKFLOW.md` - Development workflow
 
 ## Training Strategy
 
@@ -21,15 +32,3 @@ See [INDEX.md](INDEX.md) for navigation.
 **Stage 2 (Fine-tuning):** Train `SequencePredictor` with pretrained encoder
 - `--freeze-base`: Freeze encoder weights
 - Without flag: Joint fine-tuning
-
-## Quick Start
-
-```bash
-pip install -e ".[dev,training]"
-pytest tests/ -v
-python -m aam.cli train --help
-```
-
-## Outstanding Work
-
-See `.agents/CLEANUP_TICKETS.md` for code cleanup (1 remaining ticket).
