@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-27
-**Status:** ~8 outstanding tickets (~30-50 hours)
+**Status:** ~8 outstanding tickets (~30-53 hours)
 
 ---
 
@@ -9,7 +9,7 @@
 
 | File | Status | Tickets |
 |------|--------|---------|
-| `FUSION_CLEANUP_TICKETS.md` | 4 remaining | FUS-3, CLN-11.2, CLN-11.3 |
+| `FUSION_CLEANUP_TICKETS.md` | 4 remaining | FUS-3, CLN-11.3, CLN-17 |
 | `REGRESSOR_OPTIMIZATION_TICKETS.md` | 3 remaining | REG-7 to REG-9 |
 | `PYTORCH_PORTING_TICKETS.md` | 2 remaining | PYT-19.4, PYT-MAINT-2 |
 | `COSMOS_ONBOARDING_TICKETS.md` | 4 remaining | COS-9.5 to COS-9.8 |
@@ -25,16 +25,15 @@
 
 None remaining.
 
-### MEDIUM (1 ticket, ~3-4 hours)
+### MEDIUM (0 tickets)
+
+None remaining.
+
+### LOW (7 tickets, ~27-46 hours)
 
 | Ticket | Description | Effort | File |
 |--------|-------------|--------|------|
-| **CLN-11.2** | Parametrize batch/sequence variation tests | 3-4h | FUSION_CLEANUP |
-
-### LOW (7 tickets, ~27-44 hours)
-
-| Ticket | Description | Effort | File |
-|--------|-------------|--------|------|
+| **CLN-17** | Reduce total test count | 4-6h | FUSION_CLEANUP |
 | **FUS-3** | Perceiver fusion | 6-8h | FUSION_CLEANUP |
 | **REG-7** | Residual head | 2-3h | REGRESSOR |
 | **REG-8** | Per-output loss | 3-4h | REGRESSOR |
@@ -54,13 +53,7 @@ None remaining.
 
 ## Recommended Next Steps
 
-### 1. Test Parametrization (MEDIUM - ~3-4 hours)
-
-```
-CLN-11.2 (Parametrize variation tests) - Better test output, ~80 lines simplified
-```
-
-### 2. Regressor Improvements (LOW - ~2-3 hours)
+### 1. Regressor Improvements (LOW - ~2-3 hours)
 
 ```
 REG-7 (Residual head) - Add residual connection to regression head
@@ -72,6 +65,7 @@ REG-7 (Residual head) - Add residual connection to regression head
 
 | Ticket | Description |
 |--------|-------------|
+| CLN-11.2 | Parametrize batch/sequence variation tests (improved test output) |
 | CLN-11.1 | Consolidate duplicate fixtures to conftest.py (122 lines removed) |
 | CLN-16 | Consolidate lazy embedding tests with parametrize |
 | PYT-18.5 | Lazy sample embedding computation (17 tests) |

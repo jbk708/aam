@@ -39,19 +39,19 @@ class TestAttentionPooling:
         result = attention_pooling(sample_embeddings, mask=sample_mask)
         assert result.shape == (2, 64)
 
-    def test_forward_different_batch_sizes(self, attention_pooling):
+    @pytest.mark.parametrize("batch_size", [1, 4, 8])
+    def test_forward_different_batch_sizes(self, attention_pooling, batch_size):
         """Test forward pass with different batch sizes."""
-        for batch_size in [1, 4, 8]:
-            embeddings = torch.randn(batch_size, 10, 64)
-            result = attention_pooling(embeddings)
-            assert result.shape == (batch_size, 64)
+        embeddings = torch.randn(batch_size, 10, 64)
+        result = attention_pooling(embeddings)
+        assert result.shape == (batch_size, 64)
 
-    def test_forward_different_seq_lengths(self, attention_pooling):
+    @pytest.mark.parametrize("seq_len", [5, 10, 20, 50])
+    def test_forward_different_seq_lengths(self, attention_pooling, seq_len):
         """Test forward pass with different sequence lengths."""
-        for seq_len in [5, 10, 20, 50]:
-            embeddings = torch.randn(2, seq_len, 64)
-            result = attention_pooling(embeddings)
-            assert result.shape == (2, 64)
+        embeddings = torch.randn(2, seq_len, 64)
+        result = attention_pooling(embeddings)
+        assert result.shape == (2, 64)
 
     def test_forward_attention_weights_sum_to_one(self, attention_pooling, sample_embeddings, sample_mask):
         """Test that attention weights sum to 1 over valid positions."""

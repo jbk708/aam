@@ -151,20 +151,20 @@ class TestSequenceEncoder:
         )
         assert encoder.output_head is None
 
-    def test_forward_non_unifrac_returns_base_prediction(self, sample_tokens):
+    @pytest.mark.parametrize("encoder_type", ["faith_pd", "taxonomy"])
+    def test_forward_non_unifrac_returns_base_prediction(self, sample_tokens, encoder_type):
         """Test that non-UniFrac encoders still return base_prediction."""
-        for encoder_type in ["faith_pd", "taxonomy"]:
-            encoder = SequenceEncoder(
-                embedding_dim=64,
-                max_bp=150,
-                token_limit=1024,
-                base_output_dim=32,
-                encoder_type=encoder_type,
-            )
-            result = encoder(sample_tokens)
-            assert "base_prediction" in result
-            assert "embeddings" not in result
-            assert result["base_prediction"].shape == (2, 32)
+        encoder = SequenceEncoder(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            base_output_dim=32,
+            encoder_type=encoder_type,
+        )
+        result = encoder(sample_tokens)
+        assert "base_prediction" in result
+        assert "embeddings" not in result
+        assert result["base_prediction"].shape == (2, 32)
 
     @pytest.mark.parametrize("batch_size", [1, 4, 8])
     def test_forward_different_batch_sizes(self, sequence_encoder, batch_size):
@@ -259,22 +259,23 @@ class TestSequenceEncoder:
             assert result["base_prediction"].device.type == device.type
             assert result["sample_embeddings"].device.type == device.type
 
-    def test_forward_different_encoder_types(self, sample_tokens):
+    @pytest.mark.parametrize("encoder_type", ["faith_pd", "taxonomy"])
+    def test_forward_different_encoder_types(self, sample_tokens, encoder_type):
         """Test forward pass with different encoder types."""
-        for encoder_type in ["faith_pd", "taxonomy"]:
-            encoder = SequenceEncoder(
-                embedding_dim=64,
-                max_bp=150,
-                token_limit=1024,
-                base_output_dim=32,
-                encoder_type=encoder_type,
-            )
-            result = encoder(sample_tokens)
-            assert isinstance(result, dict)
-            assert "base_prediction" in result
-            assert result["base_prediction"].shape == (2, 32)
+        encoder = SequenceEncoder(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            base_output_dim=32,
+            encoder_type=encoder_type,
+        )
+        result = encoder(sample_tokens)
+        assert isinstance(result, dict)
+        assert "base_prediction" in result
+        assert result["base_prediction"].shape == (2, 32)
 
-        # Test UniFrac separately (new architecture)
+    def test_forward_unifrac_encoder_type(self, sample_tokens):
+        """Test forward pass with UniFrac encoder type (new architecture)."""
         encoder = SequenceEncoder(
             embedding_dim=64,
             max_bp=150,
@@ -320,18 +321,21 @@ class TestSequenceEncoder:
         assert "sample_embeddings" in result
         assert result["sample_embeddings"].shape == (2, 10, 64)
 
-    def test_base_prediction_returned_for_non_unifrac(self, sequence_encoder, sample_tokens):
+    @pytest.mark.parametrize("encoder_type", ["faith_pd", "taxonomy"])
+    def test_base_prediction_returned_for_non_unifrac(self, sample_tokens, encoder_type):
         """Test that base prediction is returned for non-UniFrac encoders."""
-        for encoder_type in ["faith_pd", "taxonomy"]:
-            encoder = SequenceEncoder(
-                embedding_dim=64,
-                max_bp=150,
-                token_limit=1024,
-                base_output_dim=32,
-                encoder_type=encoder_type,
-            )
-            result = encoder(sample_tokens)
-            assert "base_prediction" in result
+        encoder = SequenceEncoder(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            base_output_dim=32,
+            encoder_type=encoder_type,
+        )
+        result = encoder(sample_tokens)
+        assert "base_prediction" in result
+
+    def test_base_prediction_returned_for_sequence_encoder_fixture(self, sequence_encoder, sample_tokens):
+        """Test that base prediction is returned for the sequence_encoder fixture."""
         result = sequence_encoder(sample_tokens)
         assert "base_prediction" in result
         assert result["base_prediction"].shape == (2, 32)
