@@ -2588,9 +2588,7 @@ class TestLazyBaseEmbeddings:
         # Check gradients exist for target head
         assert model.target_head.weight.grad is not None
         # Check that gradients flow to some base model parameters
-        base_params_with_grad = sum(
-            1 for p in model.base_model.parameters() if p.requires_grad and p.grad is not None
-        )
+        base_params_with_grad = sum(1 for p in model.base_model.parameters() if p.requires_grad and p.grad is not None)
         assert base_params_with_grad > 0, "Expected some base model parameters to have gradients"
 
     def test_base_embeddings_with_frozen_base(self, sample_tokens):
