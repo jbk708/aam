@@ -48,6 +48,7 @@ Test data (781 samples) is included in `data/`.
 
 | Document | Description |
 |----------|-------------|
+| [API Reference](https://jbk708.github.io/aam/) | Full API documentation (hosted) |
 | [Getting Started](docs/getting-started.md) | Installation, prerequisites, first run |
 | [User Guide](docs/user-guide.md) | Full CLI reference, all options |
 | [How It Works](docs/how-it-works.md) | Concepts (science/ML) + Implementation (code) |
