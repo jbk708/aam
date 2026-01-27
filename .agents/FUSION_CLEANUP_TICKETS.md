@@ -149,7 +149,7 @@ Remove dead code and unused function parameters.
 ---
 
 ### CLN-4: Extract Shared Training Utilities
-**Priority:** LOW | **Effort:** 2-3 hours | **Status:** In Progress
+**Priority:** LOW | **Effort:** 2-3 hours | **Status:** Complete
 
 Reduce code duplication between `pretrain.py` and `train.py`.
 

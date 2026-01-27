@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-27
-**Status:** ~9 outstanding tickets (~32-50 hours)
+**Status:** ~8 outstanding tickets (~30-48 hours)
 
 ---
 
@@ -9,7 +9,7 @@
 
 | File | Status | Tickets |
 |------|--------|---------|
-| `FUSION_CLEANUP_TICKETS.md` | 3 remaining | FUS-3, CLN-4, CLN-11 |
+| `FUSION_CLEANUP_TICKETS.md` | 2 remaining | FUS-3, CLN-11 |
 | `REGRESSOR_OPTIMIZATION_TICKETS.md` | 3 remaining | REG-7 to REG-9 |
 | `PYTORCH_PORTING_TICKETS.md` | 3 remaining | PYT-18.5, PYT-19.4, PYT-MAINT-2 |
 | `COSMOS_ONBOARDING_TICKETS.md` | 4 remaining | COS-9.5 to COS-9.8 |
@@ -29,7 +29,7 @@ No high priority tickets remaining.
 
 No medium priority tickets remaining.
 
-### LOW (9 tickets, ~32-50 hours)
+### LOW (8 tickets, ~30-48 hours)
 
 | Ticket | Description | Effort | File |
 |--------|-------------|--------|------|
@@ -40,7 +40,6 @@ No medium priority tickets remaining.
 | **PYT-18.5** | Lazy embeddings | 4-6h | PYTORCH |
 | **PYT-19.4** | Hierarchical categories | 6-8h | PYTORCH |
 | **PYT-MAINT-2** | TensorBoard logging | 2-4h | PYTORCH |
-| **CLN-4** | Extract shared utilities | 2-3h | FUSION_CLEANUP |
 | **CLN-11** | Consolidate test suite | 4-6h | FUSION_CLEANUP |
 
 ### Backlog (~13-19 hours)
@@ -67,6 +66,7 @@ PYT-18.5 (lazy embeddings) - Defer embedding materialization for memory efficien
 | Ticket | Description |
 |--------|-------------|
 | CLN-BUG-6 | Model converging to mean fix |
+| CLN-4 | Extract shared training utilities (~110 lines) |
 | CLN-3 | Remove unused parameters (~550 lines) |
 | PYT-19.3 | Per-category loss weights (28 tests) |
 | PYT-12.2 | Auto batch size optimization (12 tests) |
