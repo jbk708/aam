@@ -258,6 +258,8 @@ class MultiTaskLoss(nn.Module):
     quantiles: Optional[torch.Tensor]
     over_penalty: float
     under_penalty: float
+    loss_config: Optional[Dict[str, str]]
+    target_columns: Optional[List[str]]
 
     def __init__(
         self,
@@ -270,6 +272,8 @@ class MultiTaskLoss(nn.Module):
         quantiles: Optional[List[float]] = None,
         over_penalty: float = 1.0,
         under_penalty: float = 1.0,
+        loss_config: Optional[Dict[str, str]] = None,
+        target_columns: Optional[List[str]] = None,
     ):
         """Initialize MultiTaskLoss.
 
@@ -284,6 +288,11 @@ class MultiTaskLoss(nn.Module):
                 Required when target_loss_type='quantile'. Values must be in (0, 1).
             over_penalty: Penalty weight for over-predictions when using asymmetric loss. Default: 1.0.
             under_penalty: Penalty weight for under-predictions when using asymmetric loss. Default: 1.0.
+            loss_config: Per-output loss configuration. Maps output column name or index (as string)
+                to loss type. E.g., {"pH": "mse", "temp": "huber"} or {"0": "mse", "1": "huber"}.
+                Columns not in config use target_loss_type as fallback.
+            target_columns: Ordered list of target column names. Required when loss_config uses
+                column names instead of indices. E.g., ["pH", "temp"].
         """
         super().__init__()
         self.penalty = penalty
@@ -320,6 +329,106 @@ class MultiTaskLoss(nn.Module):
         else:
             self.register_buffer("class_weights", None)
 
+        # Validate and store per-output loss config
+        if loss_config is not None:
+            for col, loss_type in loss_config.items():
+                if loss_type not in self.VALID_LOSS_TYPES:
+                    raise ValueError(
+                        f"Invalid loss type '{loss_type}' for column '{col}' in loss_config. "
+                        f"Must be one of: {self.VALID_LOSS_TYPES}"
+                    )
+                if loss_type == "quantile":
+                    raise ValueError(
+                        f"Quantile loss type in loss_config for column '{col}' is not supported. "
+                        "Use --loss-type quantile for all outputs instead."
+                    )
+                if loss_type == "asymmetric":
+                    raise ValueError(
+                        f"Asymmetric loss type in loss_config for column '{col}' is not supported. "
+                        "Use --loss-type asymmetric for all outputs instead."
+                    )
+        self.loss_config = loss_config
+        self.target_columns = target_columns
+
+    def _get_loss_type_for_column(self, col_idx: int) -> str:
+        """Get loss type for a specific output column.
+
+        Args:
+            col_idx: Column index (0-based)
+
+        Returns:
+            Loss type string ('mse', 'mae', 'huber')
+        """
+        if self.loss_config is None:
+            return self.target_loss_type
+
+        # Try index as string first
+        idx_key = str(col_idx)
+        if idx_key in self.loss_config:
+            return self.loss_config[idx_key]
+
+        # Try column name if target_columns is provided
+        if self.target_columns is not None and col_idx < len(self.target_columns):
+            col_name = self.target_columns[col_idx]
+            if col_name in self.loss_config:
+                return self.loss_config[col_name]
+
+        # Fallback to global loss type
+        return self.target_loss_type
+
+    def _compute_single_column_loss(
+        self,
+        pred: torch.Tensor,
+        true: torch.Tensor,
+        loss_type: str,
+    ) -> torch.Tensor:
+        """Compute loss for a single output column.
+
+        Args:
+            pred: Predictions for single column [batch_size]
+            true: Targets for single column [batch_size]
+            loss_type: Loss type ('mse', 'mae', 'huber')
+
+        Returns:
+            Scalar loss tensor
+        """
+        if loss_type == "mse":
+            return nn.functional.mse_loss(pred, true)
+        elif loss_type == "mae":
+            return nn.functional.l1_loss(pred, true)
+        elif loss_type == "huber":
+            return nn.functional.smooth_l1_loss(pred, true, beta=1.0)
+        else:
+            return nn.functional.mse_loss(pred, true)
+
+    def _compute_per_column_loss(
+        self,
+        target_pred: torch.Tensor,
+        target_true: torch.Tensor,
+    ) -> torch.Tensor:
+        """Compute loss with per-column loss configuration.
+
+        Args:
+            target_pred: Predicted targets [batch_size, out_dim]
+            target_true: True targets [batch_size, out_dim]
+
+        Returns:
+            Scalar loss tensor (average of per-column losses)
+        """
+        out_dim = target_pred.shape[-1]
+        column_losses = []
+
+        for col_idx in range(out_dim):
+            loss_type = self._get_loss_type_for_column(col_idx)
+            col_loss = self._compute_single_column_loss(
+                target_pred[:, col_idx],
+                target_true[:, col_idx],
+                loss_type,
+            )
+            column_losses.append(col_loss)
+
+        return torch.stack(column_losses).mean()
+
     def compute_target_loss(
         self,
         target_pred: torch.Tensor,
@@ -354,6 +463,11 @@ class MultiTaskLoss(nn.Module):
             # Regression losses with optional sample weights
             if sample_weights is not None:
                 return self._compute_weighted_regression_loss(target_pred, target_true, sample_weights)
+
+            # Per-column loss config (only for standard regression, not quantile/asymmetric)
+            if self.loss_config is not None and self.target_loss_type not in ("quantile", "asymmetric"):
+                return self._compute_per_column_loss(target_pred, target_true)
+
             # Standard unweighted losses
             if self.target_loss_type == "mse":
                 return nn.functional.mse_loss(target_pred, target_true)
