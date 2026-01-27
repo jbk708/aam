@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-27
-**Status:** ~4 outstanding tickets (~18-37 hours)
+**Status:** 4 outstanding tickets (~21-28 hours)
 
 ---
 
@@ -9,10 +9,10 @@
 
 | File | Status | Tickets |
 |------|--------|---------|
-| `FUSION_CLEANUP_TICKETS.md` | 2 remaining | FUS-3, CLN-17 |
-| `REGRESSOR_OPTIMIZATION_TICKETS.md` | 3 remaining | REG-7 to REG-9 |
+| `FUSION_CLEANUP_TICKETS.md` | 1 remaining | FUS-3 |
+| `REGRESSOR_OPTIMIZATION_TICKETS.md` | 2 remaining | REG-8, REG-9 |
 | `PYTORCH_PORTING_TICKETS.md` | 1 remaining | PYT-19.4 |
-| `COSMOS_ONBOARDING_TICKETS.md` | 4 remaining | COS-9.5 to COS-9.8 |
+| `COSMOS_ONBOARDING_TICKETS.md` | 2 remaining | COS-9.6, COS-9.7 |
 | `DOCUMENTATION_TICKETS.md` | Backlog | DOC-2 to DOC-4 |
 | `ARCHIVED_TICKETS.md` | Reference | All completed work |
 | `WORKFLOW.md` | Reference | Branch naming, commit style |
@@ -29,23 +29,20 @@ None remaining.
 
 None remaining.
 
-### LOW (4 tickets, ~18-28 hours)
+### LOW (4 tickets, ~21-28 hours)
 
 | Ticket | Description | Effort | File |
 |--------|-------------|--------|------|
-| ~~CLN-17~~ | ~~Reduce total test count~~ | ~~4-6h~~ | ~~FUSION_CLEANUP~~ |
 | **FUS-3** | Perceiver fusion | 6-8h | FUSION_CLEANUP |
-| ~~REG-7~~ | ~~Residual head~~ | ~~2-3h~~ | ~~REGRESSOR~~ |
 | **REG-8** | Per-output loss | 3-4h | REGRESSOR |
 | **REG-9** | Mixture of Experts | 6-8h | REGRESSOR |
 | **PYT-19.4** | Hierarchical categories | 6-8h | PYTORCH |
-| ~~PYT-MAINT-2~~ | ~~TensorBoard logging~~ | ~~2-4h~~ | ~~PYTORCH~~ |
 
-### Backlog (~13-19 hours)
+### Backlog (~7-10 hours)
 
 | Ticket | Description | Effort | File |
 |--------|-------------|--------|------|
-| **COS-9.5-9.8** | ROCm infrastructure | 13-19h | COSMOS |
+| **COS-9.6-9.7** | ROCm infrastructure (SLURM, Singularity) | 7-10h | COSMOS |
 | **DOC-2 to DOC-4** | Documentation backlog | TBD | DOCUMENTATION |
 
 ---
@@ -64,6 +61,9 @@ REG-8 (Per-output loss) - Different loss per target column for multi-output regr
 
 | Ticket | Description |
 |--------|-------------|
+| COS-9.8 | ROCm documentation (already in README) |
+
+**Skipped:** COS-9.5 (kernel profiling - not needed)
 | PYT-MAINT-2 | TensorBoard logging improvements (6 tests) |
 | REG-7 | Residual regression head (15 tests) |
 | CLN-17 | Consolidate test suite (22 tests removed, 521 lines reduced) |
