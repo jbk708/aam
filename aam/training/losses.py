@@ -392,14 +392,11 @@ class MultiTaskLoss(nn.Module):
         Returns:
             Scalar loss tensor
         """
-        if loss_type == "mse":
-            return nn.functional.mse_loss(pred, true)
-        elif loss_type == "mae":
+        if loss_type == "mae":
             return nn.functional.l1_loss(pred, true)
-        elif loss_type == "huber":
+        if loss_type == "huber":
             return nn.functional.smooth_l1_loss(pred, true, beta=1.0)
-        else:
-            return nn.functional.mse_loss(pred, true)
+        return nn.functional.mse_loss(pred, true)
 
     def _compute_per_column_loss(
         self,
