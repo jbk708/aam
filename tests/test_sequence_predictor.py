@@ -6,15 +6,8 @@ import torch.nn as nn
 
 from aam.models.sequence_predictor import SequencePredictor
 from aam.models.sequence_encoder import SequenceEncoder
-from aam.data.tokenizer import SequenceTokenizer
 
-
-def _create_sample_tokens(batch_size: int = 2, num_asvs: int = 10, seq_len: int = 50) -> torch.Tensor:
-    """Create sample tokens for testing [B, S, L]."""
-    tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
-    tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
-    tokens[:, :, 40:] = 0
-    return tokens
+from conftest import create_sample_tokens
 
 
 @pytest.fixture
@@ -119,7 +112,7 @@ def sequence_predictor_no_base():
 @pytest.fixture
 def sample_tokens():
     """Create sample tokens for testing [B, S, L]."""
-    return _create_sample_tokens()
+    return create_sample_tokens()
 
 
 class TestSequencePredictor:
@@ -405,7 +398,7 @@ class TestRegressorHeadOptions:
     @pytest.fixture
     def sample_tokens(self):
         """Create sample tokens for testing."""
-        return _create_sample_tokens()
+        return create_sample_tokens()
 
     def test_default_has_layer_norm(self, sample_tokens):
         """Test that LayerNorm is enabled by default."""
@@ -609,7 +602,7 @@ class TestCategoricalIntegration:
     @pytest.fixture
     def sample_tokens(self):
         """Create sample tokens for testing."""
-        return _create_sample_tokens()
+        return create_sample_tokens()
 
     @pytest.fixture
     def categorical_cardinalities(self):
@@ -1169,7 +1162,7 @@ class TestOutputActivation:
     @pytest.fixture
     def sample_tokens(self):
         """Create sample tokens for testing (batch_size=4 for this suite)."""
-        return _create_sample_tokens(batch_size=4)
+        return create_sample_tokens(batch_size=4)
 
     def test_default_no_activation(self, sample_tokens):
         """Test that default is no output activation."""
@@ -1360,7 +1353,7 @@ class TestMLPRegressionHead:
     @pytest.fixture
     def sample_tokens(self):
         """Create sample tokens for testing."""
-        return _create_sample_tokens()
+        return create_sample_tokens()
 
     def test_default_single_linear_layer(self):
         """Test that default target head is a single linear layer."""
@@ -1783,7 +1776,7 @@ class TestConditionalOutputScaling:
     @pytest.fixture
     def sample_tokens(self):
         """Create sample tokens for testing."""
-        return _create_sample_tokens()
+        return create_sample_tokens()
 
     @pytest.fixture
     def categorical_cardinalities(self):
@@ -2196,7 +2189,7 @@ class TestQuantileRegression:
     @pytest.fixture
     def sample_tokens(self):
         """Create sample tokens for testing."""
-        return _create_sample_tokens(batch_size=2, num_asvs=10, seq_len=50)
+        return create_sample_tokens(batch_size=2, num_asvs=10, seq_len=50)
 
     def test_init_with_num_quantiles(self, sample_tokens):
         """Test SequencePredictor initialization with num_quantiles."""
@@ -2357,7 +2350,7 @@ class TestCountPredictionToggle:
     @pytest.fixture
     def sample_tokens(self):
         """Create sample tokens for testing."""
-        return _create_sample_tokens(batch_size=2, num_asvs=10, seq_len=50)
+        return create_sample_tokens(batch_size=2, num_asvs=10, seq_len=50)
 
     def test_count_prediction_enabled_by_default(self, sample_tokens):
         """Test that count prediction is enabled by default."""
@@ -2469,11 +2462,6 @@ class TestCountPredictionToggle:
 
 class TestLazyBaseEmbeddings:
     """Tests for PYT-18.5: Lazy base embedding computation in SequencePredictor."""
-
-    @pytest.fixture
-    def sample_tokens(self):
-        """Create sample tokens for testing."""
-        return _create_sample_tokens(batch_size=2, num_asvs=10, seq_len=50)
 
     def test_base_embeddings_not_returned_by_default(self, sample_tokens):
         """Test that base_embeddings are NOT returned when return_sample_embeddings=False (default)."""
