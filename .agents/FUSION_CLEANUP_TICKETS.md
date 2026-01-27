@@ -129,7 +129,7 @@ Replace fragmented normalization flags with single interface.
 ---
 
 ### CLN-3: Remove Unused Parameters
-**Priority:** LOW | **Effort:** 1-2 hours | **Status:** Not Started
+**Priority:** LOW | **Effort:** 1-2 hours | **Status:** Complete
 
 Remove dead code and unused function parameters.
 
@@ -149,7 +149,7 @@ Remove dead code and unused function parameters.
 ---
 
 ### CLN-4: Extract Shared Training Utilities
-**Priority:** LOW | **Effort:** 2-3 hours | **Status:** Not Started
+**Priority:** LOW | **Effort:** 2-3 hours | **Status:** Complete
 
 Reduce code duplication between `pretrain.py` and `train.py`.
 
@@ -546,7 +546,7 @@ The denormalization logic in trainer likely only handles `zscore` normalization,
 ---
 
 ### CLN-BUG-6: Model Converging to Mean Prediction with freeze-base + cross-attention + random ASV sampling
-**Priority:** HIGH | **Effort:** 2-4 hours | **Status:** Not Started
+**Priority:** HIGH | **Effort:** 2-4 hours | **Status:** Complete
 
 Training with `--freeze-base --categorical-fusion cross-attention --asv-sampling random` causes model to converge to predicting the mean, with R² decreasing over epochs.
 
@@ -867,7 +867,7 @@ pred_std = torch.stack(predictions).std(dim=0)  # Optional confidence
 | **CLN-BUG-3** | --resume-from ignores new learning rate | 1-2h | HIGH | Complete |
 | **CLN-BUG-4** | LR override undone by double load_checkpoint | 0.5-1h | HIGH | Complete |
 | **CLN-BUG-5** | zscore-cat TensorBoard not denormalized | 1-2h | HIGH | Complete |
-| **CLN-BUG-6** | Model converging to mean with freeze-base+cross-attn | 2-4h | HIGH | Not Started |
+| **CLN-BUG-6** | Model converging to mean with freeze-base+cross-attn | 2-4h | HIGH | Complete |
 | **CLN-BUG-7** | Checkpoints not saved to new output dir on resume | 1-2h | HIGH | Complete |
 | **CLN-BUG-8** | Multi-pass validation fails in distributed training | 1-2h | HIGH | Complete |
 | **CLN-15** | Multi-pass validation during training | 2-3h | MEDIUM | Complete |
@@ -879,11 +879,11 @@ pred_std = torch.stack(predictions).std(dim=0)  # Optional confidence
 
 ## Recommended Order
 
-**Next Up - High Priority:**
-1. CLN-BUG-6 (model converging to mean - CRITICAL training issue)
+**Next Up - Low Priority:**
+1. CLN-3 (remove unused params) - IN PROGRESS
 
 **Completed:**
-- CLN-BUG-1 to CLN-BUG-5, CLN-BUG-7, CLN-BUG-8 (bug fixes)
+- CLN-BUG-1 to CLN-BUG-8 (bug fixes)
 - FUS-1, FUS-2 (fusion MVP)
 - CLN-2, CLN-5, CLN-6, CLN-7, CLN-8, CLN-9, CLN-10, CLN-12, CLN-13, CLN-14, CLN-15
 
