@@ -190,6 +190,13 @@ class Trainer:
             count_normalization_params=self.count_normalization_params,
         )
 
+    @property
+    def _unwrapped_model(self) -> nn.Module:
+        """Get the underlying model, unwrapping DDP/FSDP if present."""
+        if hasattr(self.model, "module"):
+            return self.model.module  # type: ignore[return-value]
+        return self.model  # type: ignore[return-value]
+
     def _is_rocm(self) -> bool:
         """Check if running on AMD ROCm (HIP) backend."""
         return torch.cuda.is_available() and hasattr(torch.version, "hip") and torch.version.hip is not None
@@ -401,19 +408,17 @@ class Trainer:
         if self.writer is None:
             return
 
-        # Get the underlying model (unwrap DDP if needed)
-        model = self.model.module if hasattr(self.model, "module") else self.model
+        model = self._unwrapped_model
 
-        # Check if model has categorical embedder
         if not hasattr(model, "categorical_embedder") or model.categorical_embedder is None:
             return
 
-        cat_embedder = model.categorical_embedder
+        cat_embedder = model.categorical_embedder  # type: ignore[union-attr]
 
         # Log embedding weight norms per column
         total_norm = 0.0
-        for col_name in cat_embedder.column_names:
-            if col_name in cat_embedder.embeddings:
+        for col_name in cat_embedder.column_names:  # type: ignore[union-attr]
+            if col_name in cat_embedder.embeddings:  # type: ignore[operator]
                 emb_weight = cat_embedder.embeddings[col_name].weight
                 # Exclude padding index (row 0) from norm computation
                 if emb_weight.shape[0] > 1:
@@ -429,14 +434,14 @@ class Trainer:
 
         # Log categorical projection weight norm if it exists
         if hasattr(model, "categorical_projection") and model.categorical_projection is not None:
-            proj_norm = model.categorical_projection.weight.norm().item()
+            proj_norm = model.categorical_projection.weight.norm().item()  # type: ignore[union-attr]
             self.writer.add_scalar("categorical/projection_norm", proj_norm, epoch)
 
         # Log GMU weight norms if present
         if hasattr(model, "gmu") and model.gmu is not None:
             gmu = model.gmu
-            self.writer.add_scalar("gmu/cat_transform_norm", gmu.cat_transform.weight.norm().item(), epoch)
-            self.writer.add_scalar("gmu/gate_norm", gmu.gate.weight.norm().item(), epoch)
+            self.writer.add_scalar("gmu/cat_transform_norm", gmu.cat_transform.weight.norm().item(), epoch)  # type: ignore[union-attr]
+            self.writer.add_scalar("gmu/gate_norm", gmu.gate.weight.norm().item(), epoch)  # type: ignore[union-attr]
 
         # Log gradient norms for categorical parameters (if gradients available)
         for name, param in model.named_parameters():
@@ -466,34 +471,28 @@ class Trainer:
         if self.writer is None:
             return
 
-        model = self.model.module if hasattr(self.model, "module") else self.model
+        model = self._unwrapped_model
 
-        if not hasattr(model, "output_scales") or model.output_scales is None:
+        output_scales = getattr(model, "output_scales", None)
+        output_biases = getattr(model, "output_biases", None)
+        if output_scales is None or output_biases is None:
             return
-        if not hasattr(model, "output_biases") or model.output_biases is None:
-            return
 
-        for col_name in model.output_scales.keys():
-            scale_weights = model.output_scales[col_name].weight
-            bias_weights = model.output_biases[col_name].weight
+        for col_name in output_scales.keys():
+            scale_weights = output_scales[col_name].weight
+            bias_weights = output_biases[col_name].weight
 
-            scale_mean = scale_weights.mean().item()
-            scale_std = scale_weights.std().item()
-            bias_mean = bias_weights.mean().item()
-            bias_std = bias_weights.std().item()
-
-            self.writer.add_scalar(f"conditional_scaling/{col_name}_scale_mean", scale_mean, epoch)
-            self.writer.add_scalar(f"conditional_scaling/{col_name}_scale_std", scale_std, epoch)
-            self.writer.add_scalar(f"conditional_scaling/{col_name}_bias_mean", bias_mean, epoch)
-            self.writer.add_scalar(f"conditional_scaling/{col_name}_bias_std", bias_std, epoch)
+            self.writer.add_scalar(f"conditional_scaling/{col_name}_scale_mean", scale_weights.mean().item(), epoch)
+            self.writer.add_scalar(f"conditional_scaling/{col_name}_scale_std", scale_weights.std().item(), epoch)
+            self.writer.add_scalar(f"conditional_scaling/{col_name}_bias_mean", bias_weights.mean().item(), epoch)
+            self.writer.add_scalar(f"conditional_scaling/{col_name}_bias_std", bias_weights.std().item(), epoch)
 
     def _log_model_summary(self) -> None:
         """Log model parameter counts to TensorBoard at training start."""
         if self.writer is None:
             return
 
-        model = self.model.module if hasattr(self.model, "module") else self.model
-
+        model = self._unwrapped_model
         total_params = sum(p.numel() for p in model.parameters())
         trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         frozen_params = total_params - trainable_params
@@ -504,13 +503,40 @@ class Trainer:
 
         logger.info(f"Model parameters: {total_params:,} total, {trainable_params:,} trainable, {frozen_params:,} frozen")
 
+    def _format_metrics(self, metrics: Dict[str, float], prefix: str, include_eval: bool = False) -> str:
+        """Format metrics dictionary into a display string.
+
+        Args:
+            metrics: Dictionary of metric names to values
+            prefix: Prefix for the loss label (e.g., "train_loss", "val_loss")
+            include_eval: Whether to include evaluation metrics (r2, mae)
+
+        Returns:
+            Formatted string of metrics
+        """
+        parts = [f"{prefix}={metrics.get('total_loss', 0):.4f}"]
+        if "unifrac_loss" in metrics:
+            parts.append(f"unifrac={metrics['unifrac_loss']:.4f}")
+        if "nuc_loss" in metrics:
+            parts.append(f"nuc_loss={metrics['nuc_loss']:.4f}")
+        if "nuc_accuracy" in metrics:
+            parts.append(f"nuc_acc={metrics['nuc_accuracy']:.2%}")
+        if "target_loss" in metrics:
+            parts.append(f"target={metrics['target_loss']:.4f}")
+        if include_eval:
+            if "r2" in metrics:
+                parts.append(f"r2={metrics['r2']:.4f}")
+            if "mae" in metrics:
+                parts.append(f"mae={metrics['mae']:.4f}")
+        return ", ".join(parts)
+
     def _log_epoch_results(
         self,
         epoch: int,
         num_epochs: int,
         train_losses: Dict[str, float],
         val_results: Optional[Dict[str, float]] = None,
-    ):
+    ) -> None:
         """Log epoch results to the logger.
 
         Args:
@@ -519,41 +545,14 @@ class Trainer:
             train_losses: Training losses dictionary
             val_results: Validation results dictionary (optional)
         """
-        # Format training metrics
-        train_parts = [f"train_loss={train_losses.get('total_loss', 0):.4f}"]
-        if "unifrac_loss" in train_losses:
-            train_parts.append(f"unifrac={train_losses['unifrac_loss']:.4f}")
-        if "nuc_loss" in train_losses:
-            train_parts.append(f"nuc_loss={train_losses['nuc_loss']:.4f}")
-        if "nuc_accuracy" in train_losses:
-            train_parts.append(f"nuc_acc={train_losses['nuc_accuracy']:.2%}")
-        if "target_loss" in train_losses:
-            train_parts.append(f"target={train_losses['target_loss']:.4f}")
+        train_str = self._format_metrics(train_losses, "train_loss")
 
-        train_str = ", ".join(train_parts)
-
-        # Format validation metrics if available
         if val_results is not None:
-            val_parts = [f"val_loss={val_results.get('total_loss', 0):.4f}"]
-            if "unifrac_loss" in val_results:
-                val_parts.append(f"unifrac={val_results['unifrac_loss']:.4f}")
-            if "nuc_loss" in val_results:
-                val_parts.append(f"nuc_loss={val_results['nuc_loss']:.4f}")
-            if "nuc_accuracy" in val_results:
-                val_parts.append(f"nuc_acc={val_results['nuc_accuracy']:.2%}")
-            if "target_loss" in val_results:
-                val_parts.append(f"target={val_results['target_loss']:.4f}")
-            if "r2" in val_results:
-                val_parts.append(f"r2={val_results['r2']:.4f}")
-            if "mae" in val_results:
-                val_parts.append(f"mae={val_results['mae']:.4f}")
-
-            val_str = ", ".join(val_parts)
+            val_str = self._format_metrics(val_results, "val_loss", include_eval=True)
             logger.info(f"Epoch {epoch + 1}/{num_epochs}: {train_str} | {val_str}")
         else:
             logger.info(f"Epoch {epoch + 1}/{num_epochs}: {train_str}")
 
-        # Log GPU memory stats if available
         if torch.cuda.is_available():
             bytes_to_mb = 1024 * 1024
             allocated = torch.cuda.memory_allocated() / bytes_to_mb
@@ -657,10 +656,9 @@ class Trainer:
                     autocast_dtype = torch.bfloat16
 
                 # Only pass categorical_ids if the model supports it (SequencePredictor has categorical_embedder)
-                # Need to check underlying model for DDP-wrapped models
-                underlying_model = self.model.module if hasattr(self.model, "module") else self.model
                 supports_categorical = (
-                    hasattr(underlying_model, "categorical_embedder") and underlying_model.categorical_embedder is not None
+                    hasattr(self._unwrapped_model, "categorical_embedder")
+                    and self._unwrapped_model.categorical_embedder is not None
                 )
                 forward_kwargs: Dict[str, Any] = {"return_nucleotides": return_nucleotides}
                 if supports_categorical and categorical_ids is not None:
