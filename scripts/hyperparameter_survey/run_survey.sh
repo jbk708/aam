@@ -15,14 +15,19 @@ UNIFRAC=/sdsc/scc/ddp478/jkirkland/all_outdoor/all_outdoor_samples_mito_filtered
 METADATA=/sdsc/scc/ddp478/jkirkland/all_outdoor/metadata/metadata_all_outdoor.tsv
 TARGET=add_0c
 CATEGORICALS="season,facility"
-PRETRAINED=/cosmos/nfs/home/jkirkland/repos/aam/data/all-outdoor-small-model-zscore-5000token/checkpoints/best_model.pt
+PRETRAINED=/cosmos/nfs/home/jkirkland/repos/aam/data/pretrain-all-outdoor-small-5000/pretrained_encoder.pt
 OUTPUT_BASE=/cosmos/nfs/home/jkirkland/repos/aam/data/survey_add_0c
 
-# Fixed hyperparameters
+# Fixed hyperparameters (must match pretrained model)
 EPOCHS=50
 TOKEN_LIMIT=5000
 SEED=42
 NUM_GPUS=4
+
+# Model architecture (must match pretrained encoder)
+EMBEDDING_DIM=768
+ATTENTION_HEADS=8
+ATTENTION_LAYERS=4
 
 # ============================================================================
 # COMMON TRAINING FUNCTION
@@ -62,6 +67,9 @@ run_training() {
         --epochs $EPOCHS \
         --token-limit $TOKEN_LIMIT \
         --seed $SEED \
+        --embedding-dim $EMBEDDING_DIM \
+        --attention-heads $ATTENTION_HEADS \
+        --attention-layers $ATTENTION_LAYERS \
         --best-metric mae \
         --output-dir "$output_dir" \
         $extra_args \
