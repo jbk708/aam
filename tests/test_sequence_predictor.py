@@ -4,7 +4,7 @@ import pytest
 import torch
 import torch.nn as nn
 
-from aam.models.sequence_predictor import SequencePredictor
+from aam.models.sequence_predictor import SequencePredictor, ResidualRegressionHead
 from aam.models.sequence_encoder import SequenceEncoder
 
 from conftest import create_sample_tokens
@@ -1618,6 +1618,266 @@ class TestMLPRegressionHead:
             max_bp=hp["max_bp"],
             token_limit=hp["token_limit"],
             out_dim=hp["out_dim"],
+            regressor_hidden_dims=hp["regressor_hidden_dims"],
+            regressor_dropout=hp["regressor_dropout"],
+        )
+        new_model.load_state_dict(loaded["model_state_dict"])
+        new_model.eval()
+
+        # Verify outputs match
+        with torch.no_grad():
+            loaded_output = new_model(sample_tokens)["target_prediction"]
+
+        assert torch.allclose(orig_output, loaded_output, atol=1e-6)
+
+
+class TestResidualRegressionHead:
+    """Test suite for residual regression head: output = Linear(x) + MLP(x)."""
+
+    @pytest.fixture
+    def sample_tokens(self):
+        """Create sample tokens for testing."""
+        return create_sample_tokens(batch_size=2, num_asvs=8, seq_len=150)
+
+    def test_requires_hidden_dims(self):
+        """Test that residual_regression_head requires regressor_hidden_dims."""
+        with pytest.raises(ValueError, match="residual_regression_head requires regressor_hidden_dims"):
+            SequencePredictor(
+                embedding_dim=64,
+                max_bp=150,
+                token_limit=1024,
+                out_dim=1,
+                residual_regression_head=True,
+            )
+
+    def test_requires_nonempty_hidden_dims(self):
+        """Test that residual_regression_head requires non-empty hidden dims."""
+        with pytest.raises(ValueError, match="residual_regression_head requires regressor_hidden_dims"):
+            SequencePredictor(
+                embedding_dim=64,
+                max_bp=150,
+                token_limit=1024,
+                out_dim=1,
+                residual_regression_head=True,
+                regressor_hidden_dims=[],
+            )
+
+    def test_creates_residual_head(self):
+        """Test that residual_regression_head=True creates ResidualRegressionHead."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            residual_regression_head=True,
+            regressor_hidden_dims=[32],
+        )
+        assert model.residual_regression_head is True
+        assert isinstance(model.target_head, ResidualRegressionHead)
+
+    def test_residual_head_has_skip_and_mlp(self):
+        """Test that ResidualRegressionHead has skip and mlp branches."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            residual_regression_head=True,
+            regressor_hidden_dims=[32],
+        )
+        head = model.target_head
+        assert hasattr(head, "skip")
+        assert hasattr(head, "mlp")
+        assert isinstance(head.skip, nn.Linear)
+        assert isinstance(head.mlp, nn.Sequential)
+
+    def test_skip_dimensions(self):
+        """Test that skip projection has correct dimensions."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=3,
+            residual_regression_head=True,
+            regressor_hidden_dims=[32],
+        )
+        assert model.target_head.skip.in_features == 64
+        assert model.target_head.skip.out_features == 3
+
+    def test_mlp_structure_single_hidden(self):
+        """Test MLP branch structure with single hidden layer."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            residual_regression_head=True,
+            regressor_hidden_dims=[32],
+        )
+        mlp = model.target_head.mlp
+        # Structure: Linear(64, 32), ReLU, Linear(32, 1)
+        assert len(mlp) == 3
+        assert isinstance(mlp[0], nn.Linear)
+        assert mlp[0].in_features == 64
+        assert mlp[0].out_features == 32
+        assert isinstance(mlp[1], nn.ReLU)
+        assert isinstance(mlp[2], nn.Linear)
+        assert mlp[2].in_features == 32
+        assert mlp[2].out_features == 1
+
+    def test_mlp_structure_multi_hidden(self):
+        """Test MLP branch structure with multiple hidden layers."""
+        model = SequencePredictor(
+            embedding_dim=128,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            residual_regression_head=True,
+            regressor_hidden_dims=[64, 32],
+        )
+        mlp = model.target_head.mlp
+        # Structure: Linear(128, 64), ReLU, Linear(64, 32), ReLU, Linear(32, 1)
+        assert len(mlp) == 5
+        assert mlp[0].in_features == 128
+        assert mlp[0].out_features == 64
+        assert mlp[2].in_features == 64
+        assert mlp[2].out_features == 32
+        assert mlp[4].in_features == 32
+        assert mlp[4].out_features == 1
+
+    def test_dropout_in_mlp(self):
+        """Test dropout is applied in MLP branch."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            residual_regression_head=True,
+            regressor_hidden_dims=[32],
+            regressor_dropout=0.2,
+        )
+        mlp = model.target_head.mlp
+        dropout_count = sum(1 for m in mlp if isinstance(m, nn.Dropout))
+        assert dropout_count == 1
+
+    def test_forward_output_shape(self, sample_tokens):
+        """Test forward pass produces correct output shape."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            residual_regression_head=True,
+            regressor_hidden_dims=[32],
+        )
+        model.eval()
+        result = model(sample_tokens)
+        assert result["target_prediction"].shape == (2, 1)
+
+    @pytest.mark.parametrize("out_dim", [1, 3, 5])
+    def test_forward_various_out_dims(self, sample_tokens, out_dim):
+        """Test forward pass with various output dimensions."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=out_dim,
+            residual_regression_head=True,
+            regressor_hidden_dims=[32],
+        )
+        model.eval()
+        result = model(sample_tokens)
+        assert result["target_prediction"].shape == (2, out_dim)
+
+    def test_gradients_flow_through_both_branches(self, sample_tokens):
+        """Test that gradients flow through both skip and mlp branches."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            residual_regression_head=True,
+            regressor_hidden_dims=[32],
+        )
+        model.train()
+        result = model(sample_tokens)
+        loss = result["target_prediction"].sum()
+        loss.backward()
+
+        # Check skip branch has gradients
+        assert model.target_head.skip.weight.grad is not None
+        assert not torch.all(model.target_head.skip.weight.grad == 0)
+
+        # Check mlp branch has gradients
+        for module in model.target_head.mlp.modules():
+            if isinstance(module, nn.Linear):
+                assert module.weight.grad is not None
+                assert not torch.all(module.weight.grad == 0)
+
+    def test_residual_effect(self):
+        """Test that skip and mlp outputs are summed correctly."""
+        head = ResidualRegressionHead(
+            in_dim=64,
+            out_dim=1,
+            hidden_dims=[32],
+            dropout=0.0,
+        )
+        head.eval()
+
+        x = torch.randn(2, 64)
+        with torch.no_grad():
+            skip_out = head.skip(x)
+            mlp_out = head.mlp(x)
+            combined = head(x)
+
+        assert torch.allclose(combined, skip_out + mlp_out)
+
+    def test_save_load_roundtrip(self, sample_tokens, tmp_path):
+        """Test that model with residual head can be saved and loaded correctly."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            residual_regression_head=True,
+            regressor_hidden_dims=[32, 16],
+            regressor_dropout=0.1,
+        )
+        model.eval()
+
+        # Get original output
+        with torch.no_grad():
+            orig_output = model(sample_tokens)["target_prediction"]
+
+        # Save checkpoint
+        checkpoint_path = tmp_path / "residual_model.pt"
+        torch.save(
+            {
+                "model_state_dict": model.state_dict(),
+                "config": {
+                    "hyperparameters": {
+                        "embedding_dim": 64,
+                        "max_bp": 150,
+                        "token_limit": 1024,
+                        "out_dim": 1,
+                        "residual_regression_head": True,
+                        "regressor_hidden_dims": [32, 16],
+                        "regressor_dropout": 0.1,
+                    },
+                },
+            },
+            checkpoint_path,
+        )
+
+        # Load and verify
+        loaded = torch.load(checkpoint_path, weights_only=False)
+        hp = loaded["config"]["hyperparameters"]
+        new_model = SequencePredictor(
+            embedding_dim=hp["embedding_dim"],
+            max_bp=hp["max_bp"],
+            token_limit=hp["token_limit"],
+            out_dim=hp["out_dim"],
+            residual_regression_head=hp["residual_regression_head"],
             regressor_hidden_dims=hp["regressor_hidden_dims"],
             regressor_dropout=hp["regressor_dropout"],
         )
