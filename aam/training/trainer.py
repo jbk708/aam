@@ -2,6 +2,7 @@
 
 import logging
 import math
+import time
 from pathlib import Path
 from typing import Any, Dict, Optional, Union, Tuple, cast, TYPE_CHECKING
 
@@ -375,6 +376,10 @@ class Trainer:
         if "cross_attn_weight_mean" in train_losses:
             self.writer.add_scalar("cross_attn/weight_mean", train_losses["cross_attn_weight_mean"], epoch)
 
+        # Log cross-attention entropy (measure of attention focus)
+        if "cross_attn_entropy" in train_losses:
+            self.writer.add_scalar("cross_attn/entropy", train_losses["cross_attn_entropy"], epoch)
+
         if self.log_histograms and epoch % self.histogram_frequency == 0:
             for name, param in self.model.named_parameters():
                 if param.requires_grad and param.grad is not None:
@@ -448,6 +453,56 @@ class Trainer:
                 grad_norm = param.grad.norm().item()
                 short_name = name.replace("gmu.", "")
                 self.writer.add_scalar(f"gmu/{short_name}_grad_norm", grad_norm, epoch)
+
+        # Log conditional scaling stats if present
+        self._log_conditional_scaling_stats(epoch)
+
+    def _log_conditional_scaling_stats(self, epoch: int) -> None:
+        """Log conditional output scaling statistics to TensorBoard.
+
+        Args:
+            epoch: Current epoch number
+        """
+        if self.writer is None:
+            return
+
+        model = self.model.module if hasattr(self.model, "module") else self.model
+
+        if not hasattr(model, "output_scales") or model.output_scales is None:
+            return
+        if not hasattr(model, "output_biases") or model.output_biases is None:
+            return
+
+        for col_name in model.output_scales.keys():
+            scale_weights = model.output_scales[col_name].weight
+            bias_weights = model.output_biases[col_name].weight
+
+            scale_mean = scale_weights.mean().item()
+            scale_std = scale_weights.std().item()
+            bias_mean = bias_weights.mean().item()
+            bias_std = bias_weights.std().item()
+
+            self.writer.add_scalar(f"conditional_scaling/{col_name}_scale_mean", scale_mean, epoch)
+            self.writer.add_scalar(f"conditional_scaling/{col_name}_scale_std", scale_std, epoch)
+            self.writer.add_scalar(f"conditional_scaling/{col_name}_bias_mean", bias_mean, epoch)
+            self.writer.add_scalar(f"conditional_scaling/{col_name}_bias_std", bias_std, epoch)
+
+    def _log_model_summary(self) -> None:
+        """Log model parameter counts to TensorBoard at training start."""
+        if self.writer is None:
+            return
+
+        model = self.model.module if hasattr(self.model, "module") else self.model
+
+        total_params = sum(p.numel() for p in model.parameters())
+        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        frozen_params = total_params - trainable_params
+
+        self.writer.add_scalar("model/total_params", total_params, 0)
+        self.writer.add_scalar("model/trainable_params", trainable_params, 0)
+        self.writer.add_scalar("model/frozen_params", frozen_params, 0)
+
+        logger.info(f"Model parameters: {total_params:,} total, {trainable_params:,} trainable, {frozen_params:,} frozen")
 
     def _log_epoch_results(
         self,
@@ -539,6 +594,7 @@ class Trainer:
         running_avg_gmu_gate = 0.0
         gmu_gate_batches = 0
         running_avg_cross_attn_weight = 0.0
+        running_avg_cross_attn_entropy = 0.0
         cross_attn_batches = 0
 
         # Determine what metrics to show based on training mode
@@ -752,8 +808,16 @@ class Trainer:
 
                 # Track cross-attention weights for TensorBoard
                 if "cross_attn_weights" in outputs:
-                    attn_mean = outputs["cross_attn_weights"].detach().mean().item()
+                    attn_weights = outputs["cross_attn_weights"].detach()
+                    attn_mean = attn_weights.mean().item()
                     running_avg_cross_attn_weight = (running_avg_cross_attn_weight * cross_attn_batches + attn_mean) / (
+                        cross_attn_batches + 1
+                    )
+                    # Compute entropy: -sum(p * log(p)), averaged over batch and heads
+                    # Clamp to avoid log(0)
+                    attn_clamped = attn_weights.clamp(min=1e-10)
+                    entropy = -(attn_clamped * torch.log(attn_clamped)).sum(dim=-1).mean().item()
+                    running_avg_cross_attn_entropy = (running_avg_cross_attn_entropy * cross_attn_batches + entropy) / (
                         cross_attn_batches + 1
                     )
                     cross_attn_batches += 1
@@ -924,6 +988,7 @@ class Trainer:
             avg_losses["gmu_gate_mean"] = running_avg_gmu_gate
         if cross_attn_batches > 0:
             avg_losses["cross_attn_weight_mean"] = running_avg_cross_attn_weight
+            avg_losses["cross_attn_entropy"] = running_avg_cross_attn_entropy
         return avg_losses
 
     def validate_epoch(
@@ -1086,8 +1151,17 @@ class Trainer:
             except ImportError:
                 pass  # tensorboard custom_scalars plugin not available
 
+            # Log model summary at training start
+            self._log_model_summary()
+
         try:
             for epoch in range(start_epoch, num_epochs):
+                epoch_start_time = time.time()
+
+                # Reset peak memory stats for this epoch (CUDA only)
+                if torch.cuda.is_available():
+                    torch.cuda.reset_peak_memory_stats()
+
                 if self.train_sampler is not None:
                     self.train_sampler.set_epoch(epoch)
 
@@ -1098,6 +1172,14 @@ class Trainer:
                     num_epochs=num_epochs,
                 )
                 history["train_loss"].append(train_losses["total_loss"])
+
+                # Calculate epoch timing
+                epoch_duration = time.time() - epoch_start_time
+                try:
+                    num_samples = len(train_loader.dataset)  # type: ignore[arg-type]
+                except (TypeError, AttributeError):
+                    num_samples = len(train_loader) * 2  # Estimate based on batch count
+                samples_per_sec = num_samples / epoch_duration if epoch_duration > 0 else 0
 
                 val_results: Optional[Dict[str, float]] = None
                 val_predictions_dict: Dict[str, torch.Tensor] = {}
@@ -1169,6 +1251,9 @@ class Trainer:
                                 best_metric_value=best_metric_value,
                                 metrics=val_results,
                             )
+                            # Log best model marker to TensorBoard
+                            if self.writer is not None:
+                                self.writer.add_scalar("checkpoint/best_model_saved", 1, epoch)
 
                         # Save all prediction plots (only on main process)
                         if save_plots and val_predictions_dict and is_main_process():
@@ -1214,6 +1299,9 @@ class Trainer:
                                 best_metric_value=best_metric_value,
                                 metrics=train_losses,
                             )
+                            # Log best model marker to TensorBoard
+                            if self.writer is not None:
+                                self.writer.add_scalar("checkpoint/best_model_saved", 1, epoch)
                     else:
                         patience_counter += 1
                         if patience_counter >= early_stopping_patience:
@@ -1222,6 +1310,15 @@ class Trainer:
 
                 if self.writer is not None:
                     self._log_to_tensorboard(epoch, train_losses, val_results)
+
+                    # Log performance metrics
+                    self.writer.add_scalar("perf/epoch_duration_sec", epoch_duration, epoch)
+                    self.writer.add_scalar("perf/samples_per_sec", samples_per_sec, epoch)
+
+                    # Log GPU memory usage (CUDA only)
+                    if torch.cuda.is_available():
+                        peak_memory_mb = torch.cuda.max_memory_allocated() / (1024 * 1024)
+                        self.writer.add_scalar("perf/gpu_memory_allocated_mb", peak_memory_mb, epoch)
 
                 # Log epoch results to file logger
                 self._log_epoch_results(epoch, num_epochs, train_losses, val_results)

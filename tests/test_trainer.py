@@ -1733,6 +1733,7 @@ class TestTensorBoardLogging:
 
         # Read TensorBoard event files to verify timing metrics were logged
         from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+
         tensorboard_path = tensorboard_dir / "tensorboard"
         event_acc = EventAccumulator(str(tensorboard_path))
         event_acc.Reload()
@@ -1759,6 +1760,7 @@ class TestTensorBoardLogging:
         )
 
         from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+
         tensorboard_path = tensorboard_dir / "tensorboard"
         event_acc = EventAccumulator(str(tensorboard_path))
         event_acc.Reload()
@@ -1785,6 +1787,7 @@ class TestTensorBoardLogging:
         )
 
         from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+
         tensorboard_path = tensorboard_dir / "tensorboard"
         event_acc = EventAccumulator(str(tensorboard_path))
         event_acc.Reload()
@@ -1808,7 +1811,7 @@ class TestTensorBoardLogging:
             encoder_type="unifrac",
             out_dim=1,
             categorical_cardinalities={"test_col": 5},
-            categorical_embedding_dim=8,
+            categorical_embed_dim=8,
             categorical_fusion="cross-attention",
             cross_attn_heads=2,
         )
@@ -1831,6 +1834,7 @@ class TestTensorBoardLogging:
 
             def __iter__(self):
                 from aam.data.tokenizer import SequenceTokenizer
+
                 batch_size = 2
                 for i in range(0, self.num_samples, batch_size):
                     tokens = torch.randint(1, 5, (batch_size, 10, 50))
@@ -1850,6 +1854,7 @@ class TestTensorBoardLogging:
         )
 
         from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+
         tensorboard_path = tensorboard_dir / "tensorboard"
         event_acc = EventAccumulator(str(tensorboard_path))
         event_acc.Reload()
@@ -1873,7 +1878,7 @@ class TestTensorBoardLogging:
             encoder_type="unifrac",
             out_dim=1,
             categorical_cardinalities={"season": 4},
-            categorical_embedding_dim=8,
+            categorical_embed_dim=8,
             conditional_scaling_columns=["season"],
         )
         tensorboard_dir = tmp_path / "output"
@@ -1895,6 +1900,7 @@ class TestTensorBoardLogging:
 
             def __iter__(self):
                 from aam.data.tokenizer import SequenceTokenizer
+
                 batch_size = 2
                 for i in range(0, self.num_samples, batch_size):
                     tokens = torch.randint(1, 5, (batch_size, 10, 50))
@@ -1914,6 +1920,7 @@ class TestTensorBoardLogging:
         )
 
         from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+
         tensorboard_path = tensorboard_dir / "tensorboard"
         event_acc = EventAccumulator(str(tensorboard_path))
         event_acc.Reload()
