@@ -3,7 +3,7 @@
 **Last Updated:** 2026-01-27
 **Status:** 2 tickets remaining (~9-12 hours)
 
-**Completed:** REG-1 to REG-6, REG-BUG-1 (see `ARCHIVED_TICKETS.md`)
+**Completed:** REG-1 to REG-7, REG-BUG-1 (see `ARCHIVED_TICKETS.md`)
 
 ---
 
