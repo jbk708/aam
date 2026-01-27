@@ -414,31 +414,22 @@ class TestCLICommands:
         )
         assert result.exit_code != 0
 
-    def test_train_command_default_patience(self):
-        """Test that train command has default patience of 10."""
-        train_cmd = cli.commands["train"]
+    @pytest.mark.parametrize("command", ["train", "pretrain"])
+    def test_command_default_patience(self, command):
+        """Test that train/pretrain commands have default patience of 10."""
+        cmd = cli.commands[command]
         patience_option = None
-        for param in train_cmd.params:
+        for param in cmd.params:
             if param.name == "patience":
                 patience_option = param
                 break
         assert patience_option is not None, "patience parameter not found"
         assert patience_option.default == 10, f"Expected default to be 10, got {patience_option.default}"
 
-    def test_pretrain_command_default_patience(self):
-        """Test that pretrain command has default patience of 10."""
-        pretrain_cmd = cli.commands["pretrain"]
-        patience_option = None
-        for param in pretrain_cmd.params:
-            if param.name == "patience":
-                patience_option = param
-                break
-        assert patience_option is not None, "patience parameter not found"
-        assert patience_option.default == 10, f"Expected default to be 10, got {patience_option.default}"
-
-    def test_pretrain_command_data_parallel_option_exists(self, runner):
-        """Test that --data-parallel option appears in pretrain help."""
-        result = runner.invoke(cli, ["pretrain", "--help"])
+    @pytest.mark.parametrize("command", ["train", "pretrain"])
+    def test_command_data_parallel_option_exists(self, runner, command):
+        """Test that --data-parallel option appears in train/pretrain help."""
+        result = runner.invoke(cli, [command, "--help"])
         assert result.exit_code == 0
         assert "--data-parallel" in result.output
         assert "DataParallel" in result.output
@@ -465,9 +456,10 @@ class TestCLICommands:
         assert result.exit_code != 0
         assert "Cannot use multiple distributed training options together" in result.output
 
-    def test_pretrain_command_fsdp_option_exists(self, runner):
-        """Test that --fsdp option appears in pretrain help."""
-        result = runner.invoke(cli, ["pretrain", "--help"])
+    @pytest.mark.parametrize("command", ["train", "pretrain"])
+    def test_command_fsdp_option_exists(self, runner, command):
+        """Test that --fsdp option appears in train/pretrain help."""
+        result = runner.invoke(cli, [command, "--help"])
         assert result.exit_code == 0
         assert "--fsdp" in result.output
         assert "FSDP" in result.output
@@ -514,9 +506,10 @@ class TestCLICommands:
         assert result.exit_code != 0
         assert "Cannot use multiple distributed training options together" in result.output
 
-    def test_pretrain_command_fsdp_sharded_checkpoint_option_exists(self, runner):
-        """Test that --fsdp-sharded-checkpoint option appears in pretrain help."""
-        result = runner.invoke(cli, ["pretrain", "--help"])
+    @pytest.mark.parametrize("command", ["train", "pretrain"])
+    def test_command_fsdp_sharded_checkpoint_option_exists(self, runner, command):
+        """Test that --fsdp-sharded-checkpoint option appears in train/pretrain help."""
+        result = runner.invoke(cli, [command, "--help"])
         assert result.exit_code == 0
         assert "--fsdp-sharded-checkpoint" in result.output
 
@@ -539,13 +532,6 @@ class TestCLICommands:
         )
         assert result.exit_code != 0
         assert "--fsdp-sharded-checkpoint requires --fsdp" in result.output
-
-    def test_train_command_fsdp_option_exists(self, runner):
-        """Test that --fsdp option appears in train help."""
-        result = runner.invoke(cli, ["train", "--help"])
-        assert result.exit_code == 0
-        assert "--fsdp" in result.output
-        assert "FSDP" in result.output
 
     def test_train_command_fsdp_distributed_mutual_exclusion(
         self, runner, sample_biom_file, sample_unifrac_matrix_file, sample_metadata_file, sample_output_dir
@@ -572,12 +558,6 @@ class TestCLICommands:
         assert result.exit_code != 0
         assert "Cannot use multiple distributed training options together" in result.output
 
-    def test_train_command_fsdp_sharded_checkpoint_option_exists(self, runner):
-        """Test that --fsdp-sharded-checkpoint option appears in train help."""
-        result = runner.invoke(cli, ["train", "--help"])
-        assert result.exit_code == 0
-        assert "--fsdp-sharded-checkpoint" in result.output
-
     def test_train_command_fsdp_sharded_checkpoint_requires_fsdp(
         self, runner, sample_biom_file, sample_unifrac_matrix_file, sample_metadata_file, sample_output_dir
     ):
@@ -601,14 +581,6 @@ class TestCLICommands:
         )
         assert result.exit_code != 0
         assert "--fsdp-sharded-checkpoint requires --fsdp" in result.output
-
-    def test_train_command_data_parallel_option_exists(self, runner):
-        """Test that --data-parallel option appears in train help."""
-        result = runner.invoke(cli, ["train", "--help"])
-        assert result.exit_code == 0
-        assert "--data-parallel" in result.output
-        assert "DataParallel" in result.output
-        assert "UniFrac" in result.output
 
     def test_train_command_data_parallel_distributed_mutual_exclusion(
         self, runner, sample_biom_file, sample_unifrac_matrix_file, sample_metadata_file, sample_output_dir
