@@ -3,7 +3,7 @@
 import pytest
 import torch
 
-from aam.models.fusion import CrossAttentionFusion, GMU
+from aam.models.fusion import CrossAttentionFusion, GMU, PerceiverFusion
 
 
 class TestGMU:
@@ -467,3 +467,271 @@ class TestCrossAttentionFusion:
         output2 = fusion(seq_repr, cat_emb)
         # Outputs should differ due to dropout
         assert not torch.allclose(output1, output2)
+
+
+class TestPerceiverFusion:
+    """Tests for Perceiver-style latent fusion module."""
+
+    # Initialization tests
+    def test_init_basic(self):
+        """Test PerceiverFusion initializes with valid dimensions."""
+        fusion = PerceiverFusion(seq_dim=128, cat_dim=32)
+        assert fusion.seq_dim == 128
+        assert fusion.cat_dim == 32
+        assert fusion.num_latents == 64  # default
+        assert fusion.num_layers == 2  # default
+        assert fusion.num_heads == 8  # default
+
+    def test_init_custom_latents(self):
+        """Test PerceiverFusion with custom number of latents."""
+        fusion = PerceiverFusion(seq_dim=128, cat_dim=32, num_latents=32)
+        assert fusion.num_latents == 32
+
+    def test_init_custom_layers(self):
+        """Test PerceiverFusion with custom number of layers."""
+        fusion = PerceiverFusion(seq_dim=128, cat_dim=32, num_layers=4)
+        assert fusion.num_layers == 4
+
+    def test_init_custom_heads(self):
+        """Test PerceiverFusion with custom number of heads."""
+        fusion = PerceiverFusion(seq_dim=128, cat_dim=32, num_heads=4)
+        assert fusion.num_heads == 4
+
+    def test_init_custom_latent_dim(self):
+        """Test PerceiverFusion with custom latent dimension."""
+        fusion = PerceiverFusion(seq_dim=128, cat_dim=32, latent_dim=256)
+        assert fusion.latent_dim == 256
+
+    def test_init_latent_dim_defaults_to_seq_dim(self):
+        """Test latent_dim defaults to seq_dim when not specified."""
+        fusion = PerceiverFusion(seq_dim=128, cat_dim=32)
+        assert fusion.latent_dim == 128
+
+    def test_init_has_expected_layers(self):
+        """Test PerceiverFusion has expected layers."""
+        fusion = PerceiverFusion(seq_dim=128, cat_dim=32, num_layers=2)
+        assert hasattr(fusion, "latents")
+        assert hasattr(fusion, "seq_projection")
+        assert hasattr(fusion, "cat_projection")
+        assert hasattr(fusion, "cross_attn")
+        assert hasattr(fusion, "cross_norm")
+        assert hasattr(fusion, "self_attn_layers")
+        assert hasattr(fusion, "output_projection")
+        assert isinstance(fusion.latents, torch.nn.Parameter)
+        assert isinstance(fusion.seq_projection, torch.nn.Linear)
+        assert isinstance(fusion.cat_projection, torch.nn.Linear)
+        assert isinstance(fusion.cross_attn, torch.nn.MultiheadAttention)
+        assert isinstance(fusion.cross_norm, torch.nn.LayerNorm)
+        assert len(fusion.self_attn_layers) == 2
+
+    def test_init_latent_shape(self):
+        """Test learned latents have correct shape."""
+        fusion = PerceiverFusion(seq_dim=128, cat_dim=32, num_latents=64, latent_dim=256)
+        assert fusion.latents.shape == (64, 256)
+
+    # Forward pass shape tests
+    def test_forward_output_shape(self):
+        """Test PerceiverFusion output has correct shape [B, seq_dim]."""
+        fusion = PerceiverFusion(seq_dim=128, cat_dim=32)
+        seq_repr = torch.randn(8, 16, 128)  # [B, S, D]
+        cat_emb = torch.randn(8, 32)  # [B, cat_dim]
+        output = fusion(seq_repr, cat_emb)
+        assert output.shape == (8, 128)
+
+    def test_forward_batch_sizes(self):
+        """Test PerceiverFusion works with various batch sizes."""
+        fusion = PerceiverFusion(seq_dim=64, cat_dim=16)
+        for batch_size in [1, 4, 16, 32]:
+            seq_repr = torch.randn(batch_size, 10, 64)
+            cat_emb = torch.randn(batch_size, 16)
+            output = fusion(seq_repr, cat_emb)
+            assert output.shape == (batch_size, 64)
+
+    def test_forward_sequence_lengths(self):
+        """Test PerceiverFusion works with various sequence lengths."""
+        fusion = PerceiverFusion(seq_dim=64, cat_dim=16)
+        for seq_len in [1, 5, 20, 100]:
+            seq_repr = torch.randn(4, seq_len, 64)
+            cat_emb = torch.randn(4, 16)
+            output = fusion(seq_repr, cat_emb)
+            assert output.shape == (4, 64)
+
+    def test_forward_single_sample(self):
+        """Test PerceiverFusion works with batch_size=1."""
+        fusion = PerceiverFusion(seq_dim=128, cat_dim=32)
+        seq_repr = torch.randn(1, 8, 128)
+        cat_emb = torch.randn(1, 32)
+        output = fusion(seq_repr, cat_emb)
+        assert output.shape == (1, 128)
+
+    def test_forward_with_custom_latent_dim(self):
+        """Test PerceiverFusion output projects back to seq_dim."""
+        fusion = PerceiverFusion(seq_dim=128, cat_dim=32, latent_dim=256)
+        seq_repr = torch.randn(4, 10, 128)
+        cat_emb = torch.randn(4, 32)
+        output = fusion(seq_repr, cat_emb)
+        # Output should be seq_dim, not latent_dim
+        assert output.shape == (4, 128)
+
+    # Attention weight behavior tests
+    def test_forward_return_weights(self):
+        """Test return_weights=True returns attention weights."""
+        fusion = PerceiverFusion(seq_dim=128, cat_dim=32, num_latents=64, num_heads=8)
+        seq_repr = torch.randn(4, 16, 128)
+        cat_emb = torch.randn(4, 32)
+        output, weights = fusion(seq_repr, cat_emb, return_weights=True)
+        assert weights is not None
+        # Weights shape: [B, num_heads, num_latents, seq_len+1]
+        assert weights.shape == (4, 8, 64, 17)
+
+    def test_forward_no_weights(self):
+        """Test return_weights=False returns tensor (not tuple)."""
+        fusion = PerceiverFusion(seq_dim=128, cat_dim=32)
+        seq_repr = torch.randn(4, 8, 128)
+        cat_emb = torch.randn(4, 32)
+        output = fusion(seq_repr, cat_emb, return_weights=False)
+        assert isinstance(output, torch.Tensor)
+        assert output.shape == (4, 128)
+
+    def test_attention_weights_shape(self):
+        """Test attention weights have correct shape."""
+        fusion = PerceiverFusion(seq_dim=64, cat_dim=16, num_latents=32, num_heads=4)
+        seq_repr = torch.randn(8, 20, 64)
+        cat_emb = torch.randn(8, 16)
+        _, weights = fusion(seq_repr, cat_emb, return_weights=True)
+        # [B, num_heads, num_latents, seq_len+1]
+        assert weights.shape == (8, 4, 32, 21)
+
+    # Gradient tests
+    def test_backward_pass(self):
+        """Test PerceiverFusion supports backpropagation."""
+        fusion = PerceiverFusion(seq_dim=64, cat_dim=16)
+        seq_repr = torch.randn(4, 8, 64, requires_grad=True)
+        cat_emb = torch.randn(4, 16, requires_grad=True)
+        output = fusion(seq_repr, cat_emb)
+        loss = output.sum()
+        loss.backward()
+        # Check gradients exist for module parameters
+        assert fusion.seq_projection.weight.grad is not None
+        assert fusion.cat_projection.weight.grad is not None
+        assert fusion.latents.grad is not None
+
+    def test_gradients_flow_to_inputs(self):
+        """Test gradients flow to both sequence and categorical inputs."""
+        fusion = PerceiverFusion(seq_dim=64, cat_dim=16)
+        seq_repr = torch.randn(4, 8, 64, requires_grad=True)
+        cat_emb = torch.randn(4, 16, requires_grad=True)
+        output = fusion(seq_repr, cat_emb)
+        loss = output.sum()
+        loss.backward()
+        assert seq_repr.grad is not None
+        assert cat_emb.grad is not None
+        assert seq_repr.grad.shape == seq_repr.shape
+        assert cat_emb.grad.shape == cat_emb.shape
+
+    # Device tests
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+    def test_cuda_if_available(self):
+        """Test PerceiverFusion works on CUDA if available."""
+        fusion = PerceiverFusion(seq_dim=128, cat_dim=32).cuda()
+        seq_repr = torch.randn(4, 8, 128).cuda()
+        cat_emb = torch.randn(4, 32).cuda()
+        output, weights = fusion(seq_repr, cat_emb, return_weights=True)
+        assert output.device.type == "cuda"
+        assert weights.device.type == "cuda"
+
+    def test_device_consistency(self):
+        """Test output is on same device as inputs."""
+        fusion = PerceiverFusion(seq_dim=64, cat_dim=16)
+        seq_repr = torch.randn(4, 8, 64)
+        cat_emb = torch.randn(4, 16)
+        output = fusion(seq_repr, cat_emb)
+        assert output.device == seq_repr.device
+
+    # Edge cases
+    def test_zero_categorical_input(self):
+        """Test PerceiverFusion handles zero categorical embeddings."""
+        fusion = PerceiverFusion(seq_dim=128, cat_dim=32)
+        seq_repr = torch.randn(4, 8, 128)
+        cat_emb = torch.zeros(4, 32)
+        output = fusion(seq_repr, cat_emb)
+        assert output.shape == (4, 128)
+        assert not torch.isnan(output).any()
+
+    def test_zero_sequence_input(self):
+        """Test PerceiverFusion handles zero sequence embeddings."""
+        fusion = PerceiverFusion(seq_dim=128, cat_dim=32)
+        seq_repr = torch.zeros(4, 8, 128)
+        cat_emb = torch.randn(4, 32)
+        output = fusion(seq_repr, cat_emb)
+        assert output.shape == (4, 128)
+        assert not torch.isnan(output).any()
+
+    def test_single_position(self):
+        """Test PerceiverFusion with single sequence position."""
+        fusion = PerceiverFusion(seq_dim=64, cat_dim=16, num_latents=32)
+        seq_repr = torch.randn(4, 1, 64)
+        cat_emb = torch.randn(4, 16)
+        output, weights = fusion(seq_repr, cat_emb, return_weights=True)
+        assert output.shape == (4, 64)
+        # [B, heads, latents, seq_len+1] = [4, 8, 32, 2]
+        assert weights.shape == (4, 8, 32, 2)
+
+    # Determinism tests
+    def test_deterministic_output(self):
+        """Test same inputs produce same outputs in eval mode."""
+        fusion = PerceiverFusion(seq_dim=64, cat_dim=16, dropout=0.0)
+        fusion.eval()
+        seq_repr = torch.randn(4, 8, 64)
+        cat_emb = torch.randn(4, 16)
+        output1, weights1 = fusion(seq_repr, cat_emb, return_weights=True)
+        output2, weights2 = fusion(seq_repr, cat_emb, return_weights=True)
+        assert torch.allclose(output1, output2)
+        assert torch.allclose(weights1, weights2)
+
+    # Weight initialization tests
+    def test_weights_initialized(self):
+        """Test that weights are properly initialized (not all zeros)."""
+        fusion = PerceiverFusion(seq_dim=128, cat_dim=32)
+        assert fusion.seq_projection.weight.abs().sum() > 0
+        assert fusion.cat_projection.weight.abs().sum() > 0
+        assert fusion.latents.abs().sum() > 0
+
+    def test_latent_initialization_scale(self):
+        """Test latents are initialized with small values (0.02 scale)."""
+        fusion = PerceiverFusion(seq_dim=128, cat_dim=32, num_latents=64)
+        # Should be initialized with std ~0.02
+        assert fusion.latents.std() < 0.1
+
+    # Dropout test
+    def test_dropout_effect(self):
+        """Test that dropout has effect in training mode."""
+        fusion = PerceiverFusion(seq_dim=64, cat_dim=16, dropout=0.5)
+        fusion.train()
+        seq_repr = torch.randn(4, 8, 64)
+        cat_emb = torch.randn(4, 16)
+        torch.manual_seed(42)
+        output1 = fusion(seq_repr, cat_emb)
+        torch.manual_seed(43)
+        output2 = fusion(seq_repr, cat_emb)
+        # Outputs should differ due to dropout
+        assert not torch.allclose(output1, output2)
+
+    # Self-attention layers test
+    def test_zero_layers(self):
+        """Test PerceiverFusion with zero self-attention layers."""
+        fusion = PerceiverFusion(seq_dim=64, cat_dim=16, num_layers=0)
+        assert len(fusion.self_attn_layers) == 0
+        seq_repr = torch.randn(4, 8, 64)
+        cat_emb = torch.randn(4, 16)
+        output = fusion(seq_repr, cat_emb)
+        assert output.shape == (4, 64)
+
+    def test_many_layers(self):
+        """Test PerceiverFusion with many self-attention layers."""
+        fusion = PerceiverFusion(seq_dim=64, cat_dim=16, num_layers=8)
+        assert len(fusion.self_attn_layers) == 8
+        seq_repr = torch.randn(4, 8, 64)
+        cat_emb = torch.randn(4, 16)
+        output = fusion(seq_repr, cat_emb)
+        assert output.shape == (4, 64)

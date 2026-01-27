@@ -389,14 +389,26 @@ def print_categorical_help(ctx: click.Context, param: click.Parameter, value: bo
 @click.option(
     "--categorical-fusion",
     default="concat",
-    type=click.Choice(["concat", "add", "gmu", "cross-attention"]),
-    help="Fusion strategy for categorical embeddings: concat (concatenate + project), add (project + add), gmu (gated multimodal unit after pooling), or cross-attention (position-specific via cross-attention). Default: concat",
+    type=click.Choice(["concat", "add", "gmu", "cross-attention", "perceiver"]),
+    help="Fusion strategy for categorical embeddings: concat (concatenate + project), add (project + add), gmu (gated multimodal unit after pooling), cross-attention (position-specific via cross-attention), or perceiver (learned latent bottleneck). Default: concat",
 )
 @click.option(
     "--cross-attn-heads",
     default=8,
     type=click.IntRange(1, 64),
-    help="Number of attention heads for cross-attention fusion (default: 8). Only used with --categorical-fusion cross-attention.",
+    help="Number of attention heads for cross-attention/perceiver fusion (default: 8). Only used with --categorical-fusion cross-attention or perceiver.",
+)
+@click.option(
+    "--perceiver-num-latents",
+    default=64,
+    type=click.IntRange(1, 1024),
+    help="Number of learned latent vectors for perceiver fusion (default: 64). Only used with --categorical-fusion perceiver.",
+)
+@click.option(
+    "--perceiver-num-layers",
+    default=2,
+    type=click.IntRange(1, 16),
+    help="Number of self-attention refinement layers for perceiver fusion (default: 2). Only used with --categorical-fusion perceiver.",
 )
 @click.option(
     "--output-activation",
@@ -542,6 +554,8 @@ def train(
     categorical_embed_dim: int,
     categorical_fusion: str,
     cross_attn_heads: int,
+    perceiver_num_latents: int,
+    perceiver_num_layers: int,
     output_activation: str,
     regressor_hidden_dims: Optional[str],
     regressor_dropout: float,
@@ -1193,6 +1207,8 @@ def train(
             categorical_embed_dim=categorical_embed_dim,
             categorical_fusion=categorical_fusion,
             cross_attn_heads=cross_attn_heads,
+            perceiver_num_latents=perceiver_num_latents,
+            perceiver_num_layers=perceiver_num_layers,
             output_activation=output_activation,
             regressor_hidden_dims=regressor_hidden_dims_list,
             regressor_dropout=regressor_dropout,
@@ -1444,6 +1460,8 @@ def train(
                 "categorical_embed_dim": categorical_embed_dim,
                 "categorical_fusion": categorical_fusion,
                 "cross_attn_heads": cross_attn_heads,
+                "perceiver_num_latents": perceiver_num_latents,
+                "perceiver_num_layers": perceiver_num_layers,
                 "output_activation": output_activation,
                 "log_transform_targets": log_transform_targets,
                 "regressor_hidden_dims": regressor_hidden_dims_list,

@@ -1124,6 +1124,141 @@ class TestCategoricalIntegration:
         # With 2 heads, weights shape should be [B, 2, seq_len, 1]
         assert result["cross_attn_weights"].shape == (2, 2, 10, 1)
 
+    # Perceiver fusion tests
+    def test_init_with_categoricals_perceiver(self, categorical_cardinalities):
+        """Test initialization with categorical conditioning (perceiver fusion)."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_embed_dim=16,
+            categorical_fusion="perceiver",
+            perceiver_num_latents=32,
+            perceiver_num_layers=2,
+        )
+        assert model.categorical_embedder is not None
+        assert model.categorical_projection is None
+        assert model.gmu is None
+        assert model.cross_attn_fusion is None
+        assert model.perceiver_fusion is not None
+        assert model.categorical_fusion == "perceiver"
+        assert model.perceiver_num_latents == 32
+        assert model.perceiver_num_layers == 2
+        # Perceiver dimensions
+        total_cat_dim = 16 * 2  # 2 columns * 16 embed_dim
+        assert model.perceiver_fusion.seq_dim == 64
+        assert model.perceiver_fusion.cat_dim == total_cat_dim
+        assert model.perceiver_fusion.num_latents == 32
+        assert model.perceiver_fusion.num_layers == 2
+
+    def test_forward_with_categoricals_perceiver(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test forward pass with categorical conditioning (perceiver fusion)."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_fusion="perceiver",
+            perceiver_num_latents=32,
+        )
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        assert "target_prediction" in result
+        assert "count_prediction" in result
+        assert "perceiver_attn_weights" in result
+        assert result["target_prediction"].shape == (2, 1)
+        assert result["count_prediction"].shape == (2, 10, 1)
+        # Attention weights: [B, num_heads, num_latents, seq_len+1]
+        assert result["perceiver_attn_weights"].shape == (2, 8, 32, 11)
+
+    def test_perceiver_no_weights_without_categorical_ids(self, sample_tokens, categorical_cardinalities):
+        """Test that perceiver doesn't output weights when no categorical_ids provided."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_fusion="perceiver",
+        )
+        result = model(sample_tokens, categorical_ids=None)
+        assert "perceiver_attn_weights" not in result
+
+    def test_perceiver_gradients_flow(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test that gradients flow through perceiver."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_fusion="perceiver",
+        )
+        model.train()
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        loss = result["target_prediction"].sum()
+        loss.backward()
+
+        # Check perceiver gradients
+        assert model.perceiver_fusion.seq_projection.weight.grad is not None
+        assert model.perceiver_fusion.cat_projection.weight.grad is not None
+        assert model.perceiver_fusion.latents.grad is not None
+
+    def test_perceiver_categorical_affects_prediction(self, sample_tokens, categorical_cardinalities):
+        """Test that different categorical values produce different predictions with perceiver."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_fusion="perceiver",
+        )
+        cat_ids_1 = {"location": torch.tensor([1, 1]), "season": torch.tensor([1, 1])}
+        cat_ids_2 = {"location": torch.tensor([2, 2]), "season": torch.tensor([2, 2])}
+
+        result_1 = model(sample_tokens, categorical_ids=cat_ids_1)
+        result_2 = model(sample_tokens, categorical_ids=cat_ids_2)
+
+        # Different categorical values should produce different predictions
+        assert not torch.allclose(
+            result_1["target_prediction"],
+            result_2["target_prediction"],
+        )
+
+    def test_perceiver_no_nan_outputs(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test that perceiver forward pass produces no NaN outputs."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_fusion="perceiver",
+        )
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        assert not torch.isnan(result["target_prediction"]).any()
+        assert not torch.isnan(result["count_prediction"]).any()
+        assert not torch.isnan(result["perceiver_attn_weights"]).any()
+
+    def test_perceiver_custom_latents_and_layers(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test perceiver with custom number of latents and layers."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_fusion="perceiver",
+            perceiver_num_latents=16,
+            perceiver_num_layers=4,
+        )
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        # With 16 latents, weights shape should be [B, heads, 16, seq_len+1]
+        assert result["perceiver_attn_weights"].shape == (2, 8, 16, 11)
+
 
 class TestOutputActivation:
     """Test suite for output activation constraints in SequencePredictor."""

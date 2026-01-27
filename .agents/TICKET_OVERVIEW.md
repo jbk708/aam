@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-27
-**Status:** 3 outstanding tickets (~18-24 hours)
+**Status:** 2 outstanding tickets (~12-16 hours)
 
 ---
 
@@ -9,7 +9,7 @@
 
 | File | Status | Tickets |
 |------|--------|---------|
-| `FUSION_CLEANUP_TICKETS.md` | 1 remaining | FUS-3 |
+| `FUSION_CLEANUP_TICKETS.md` | Complete | All done |
 | `REGRESSOR_OPTIMIZATION_TICKETS.md` | 1 remaining | REG-9 |
 | `PYTORCH_PORTING_TICKETS.md` | 1 remaining | PYT-19.4 |
 | `COSMOS_ONBOARDING_TICKETS.md` | 2 remaining | COS-9.6, COS-9.7 |
@@ -29,11 +29,10 @@ None remaining.
 
 None remaining.
 
-### LOW (3 tickets, ~18-24 hours)
+### LOW (2 tickets, ~12-16 hours)
 
 | Ticket | Description | Effort | File |
 |--------|-------------|--------|------|
-| **FUS-3** | Perceiver fusion | 6-8h | FUSION_CLEANUP |
 | **REG-9** | Mixture of Experts | 6-8h | REGRESSOR |
 | **PYT-19.4** | Hierarchical categories | 6-8h | PYTORCH |
 
@@ -60,6 +59,7 @@ REG-9 (Mixture of Experts) - Separate expert heads per category with learned rou
 
 | Ticket | Description |
 |--------|-------------|
+| FUS-3 | Perceiver-style latent fusion (36 tests) |
 | REG-8 | Per-output loss config (19 tests) |
 | COS-9.8 | ROCm documentation (already in README) |
 

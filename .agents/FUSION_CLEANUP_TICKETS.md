@@ -1,7 +1,7 @@
 # Attention Fusion & Code Cleanup Tickets
 
 **Last Updated:** 2026-01-27
-**Status:** 1 ticket remaining (~6-8 hours)
+**Status:** All tickets complete
 **Design Doc:** `_design_plan/17_attention_fusion.md`
 
 ---
@@ -79,7 +79,7 @@ Position-specific metadata modulation via cross-attention.
 ---
 
 ### FUS-3: Perceiver-Style Latent Fusion
-**Priority:** LOW | **Effort:** 6-8 hours | **Status:** Not Started
+**Priority:** LOW | **Effort:** 6-8 hours | **Status:** ✅ Complete
 
 Learned latent bottleneck for linear complexity fusion.
 
@@ -90,11 +90,11 @@ Learned latent bottleneck for linear complexity fusion.
 - Add `--categorical-fusion perceiver`
 
 **Acceptance Criteria:**
-- [ ] `--categorical-fusion perceiver` works
-- [ ] `--perceiver-num-latents`, `--perceiver-num-layers` configurable
-- [ ] 15+ unit tests
+- [x] `--categorical-fusion perceiver` works
+- [x] `--perceiver-num-latents`, `--perceiver-num-layers` configurable
+- [x] 36 unit tests (29 PerceiverFusion + 7 integration tests)
 
-**Files:** `aam/models/fusion.py`, `aam/models/sequence_predictor.py`, `aam/cli/train.py`, `tests/test_fusion.py`
+**Files:** `aam/models/fusion.py`, `aam/models/sequence_predictor.py`, `aam/cli/train.py`, `tests/test_fusion.py`, `tests/test_sequence_predictor.py`
 
 ---
 
@@ -1046,7 +1046,7 @@ pred_std = torch.stack(predictions).std(dim=0)  # Optional confidence
 |--------|-------------|--------|----------|--------|
 | **FUS-1** | GMU baseline | 3-4h | HIGH | Complete |
 | **FUS-2** | Cross-attention fusion | 5-6h | HIGH | Complete |
-| **FUS-3** | Perceiver fusion | 6-8h | LOW | Not Started |
+| **FUS-3** | Perceiver fusion | 6-8h | LOW | Complete |
 | **CLN-2** | Normalization unification | 3-4h | MEDIUM | Complete |
 | **CLN-3** | Remove unused params | 1-2h | LOW | Complete |
 | **CLN-4** | Extract shared utilities | 2-3h | LOW | Complete |
@@ -1080,11 +1080,10 @@ pred_std = torch.stack(predictions).std(dim=0)  # Optional confidence
 
 **Completed:**
 - CLN-BUG-1 to CLN-BUG-8 (bug fixes)
-- FUS-1, FUS-2 (fusion MVP)
+- FUS-1, FUS-2, FUS-3 (all fusion tickets complete)
 - CLN-2, CLN-5, CLN-6, CLN-7, CLN-8, CLN-9, CLN-10, CLN-11.1, CLN-11.2, CLN-12, CLN-13, CLN-14, CLN-15, CLN-16
 
-**Remaining - Low Priority:**
-- FUS-3 (perceiver fusion, optional)
+**All tickets complete.**
 
 ---
 
