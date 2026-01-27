@@ -343,6 +343,22 @@ aam train \
 
 When both penalties equal 1.0, asymmetric loss is equivalent to MAE.
 
+**Per-output loss configuration (`--loss-config`):**
+
+For multi-output regression, different loss functions can be applied per target column:
+
+```bash
+aam train \
+  --loss-config '{"0": "mse", "1": "huber"}' \
+  ...
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--loss-config` | JSON mapping column index/name to loss type | None |
+
+Only `mse`, `mae`, and `huber` are supported per-column. Columns not in the config use `--loss-type` as fallback.
+
 **Choosing an output constraint:**
 - **`--target-transform log-minmax`** (recommended for wide ranges): Use for non-negative targets with wide range (e.g., 0-600). Compresses range via log(y+1) to ~[0, 6.4], model predicts directly in log space, exp(x)-1 gives original scale.
 - **`--bounded-targets`**: Use when targets are in [0, 1] range (e.g., normalized values, proportions)
