@@ -67,20 +67,6 @@ def sequence_encoder_combined():
     )
 
 
-@pytest.fixture
-def sample_tokens():
-    """Create sample tokens for testing [B, S, L]."""
-    from aam.data.tokenizer import SequenceTokenizer
-
-    batch_size = 2
-    num_asvs = 10
-    seq_len = 50
-    tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
-    tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
-    tokens[:, :, 40:] = 0
-    return tokens
-
-
 class TestSequenceEncoder:
     """Test suite for SequenceEncoder class."""
 
@@ -472,25 +458,43 @@ class TestSequenceEncoder:
 class TestLazySampleEmbeddings:
     """Tests for PYT-18.5: Lazy sample embedding computation."""
 
-    def test_sample_embeddings_not_returned_by_default(self, sample_tokens):
+    @pytest.mark.parametrize(
+        "encoder_type,base_output_dim,expected_key",
+        [
+            ("unifrac", None, "embeddings"),
+            ("faith_pd", 32, "base_prediction"),
+            ("combined", None, "unifrac_pred"),
+        ],
+    )
+    def test_sample_embeddings_not_returned_by_default(self, sample_tokens, encoder_type, base_output_dim, expected_key):
         """Test that sample_embeddings are NOT returned when return_sample_embeddings=False (default)."""
         encoder = SequenceEncoder(
             embedding_dim=64,
             max_bp=150,
             token_limit=1024,
-            encoder_type="unifrac",
+            base_output_dim=base_output_dim,
+            encoder_type=encoder_type,
         )
         result = encoder(sample_tokens)
         assert "sample_embeddings" not in result
-        assert "embeddings" in result  # pooled embeddings still returned
+        assert expected_key in result
 
-    def test_sample_embeddings_returned_when_requested(self, sample_tokens):
+    @pytest.mark.parametrize(
+        "encoder_type,base_output_dim",
+        [
+            ("unifrac", None),
+            ("faith_pd", 32),
+            ("combined", None),
+        ],
+    )
+    def test_sample_embeddings_returned_when_requested(self, sample_tokens, encoder_type, base_output_dim):
         """Test that sample_embeddings ARE returned when return_sample_embeddings=True."""
         encoder = SequenceEncoder(
             embedding_dim=64,
             max_bp=150,
             token_limit=1024,
-            encoder_type="unifrac",
+            base_output_dim=base_output_dim,
+            encoder_type=encoder_type,
         )
         result = encoder(sample_tokens, return_sample_embeddings=True)
         assert "sample_embeddings" in result
@@ -512,44 +516,6 @@ class TestLazySampleEmbeddings:
             result_with = encoder(sample_tokens, return_sample_embeddings=True)
 
         assert torch.allclose(result_without["embeddings"], result_with["embeddings"])
-
-    def test_sample_embeddings_not_returned_faith_pd(self, sample_tokens):
-        """Test lazy behavior for faith_pd encoder type."""
-        encoder = SequenceEncoder(
-            embedding_dim=64,
-            max_bp=150,
-            token_limit=1024,
-            base_output_dim=32,
-            encoder_type="faith_pd",
-        )
-        result = encoder(sample_tokens)
-        assert "sample_embeddings" not in result
-        assert "base_prediction" in result
-
-    def test_sample_embeddings_returned_faith_pd_when_requested(self, sample_tokens):
-        """Test sample_embeddings returned for faith_pd when requested."""
-        encoder = SequenceEncoder(
-            embedding_dim=64,
-            max_bp=150,
-            token_limit=1024,
-            base_output_dim=32,
-            encoder_type="faith_pd",
-        )
-        result = encoder(sample_tokens, return_sample_embeddings=True)
-        assert "sample_embeddings" in result
-        assert result["sample_embeddings"].shape == (2, 10, 64)
-
-    def test_sample_embeddings_not_returned_combined(self, sample_tokens):
-        """Test lazy behavior for combined encoder type."""
-        encoder = SequenceEncoder(
-            embedding_dim=64,
-            max_bp=150,
-            token_limit=1024,
-            encoder_type="combined",
-        )
-        result = encoder(sample_tokens)
-        assert "sample_embeddings" not in result
-        assert "unifrac_pred" in result
 
     def test_sample_embeddings_with_nucleotides(self, sample_tokens):
         """Test lazy behavior with nucleotide predictions enabled."""
