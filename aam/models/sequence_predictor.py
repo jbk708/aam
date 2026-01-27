@@ -354,7 +354,7 @@ class SequencePredictor(nn.Module):
                 self.categorical_projection = None
                 self.gmu = GMU(seq_dim=self.embedding_dim, cat_dim=total_cat_dim)
                 self.cross_attn_fusion = None
-                self.perceiver_fusion: Optional[PerceiverFusion] = None
+                self.perceiver_fusion = None
             elif categorical_fusion == "cross-attention":
                 self.categorical_projection = None
                 self.gmu = None
