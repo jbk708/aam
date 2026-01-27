@@ -27,6 +27,7 @@ from aam.models.sequence_encoder import SequenceEncoder
 from aam.models.sequence_predictor import SequencePredictor
 from aam.training.losses import MultiTaskLoss
 from aam.training.metrics import compute_regression_metrics, compute_count_metrics
+from conftest import MockBatchDataset
 
 
 def is_rocm() -> bool:
@@ -40,57 +41,6 @@ def is_rocm() -> bool:
         return hasattr(torch.version, "hip") and torch.version.hip is not None
     except Exception:
         return False
-
-
-class MockBatchDataset:
-    """Mock dataset that yields dict batches with sample_ids for testing."""
-
-    def __init__(self, num_samples: int, device: torch.device):
-        self.num_samples = num_samples
-        self.device = device
-
-    def __len__(self) -> int:
-        return self.num_samples // 2
-
-    def __iter__(self):
-        from aam.data.tokenizer import SequenceTokenizer
-
-        batch_size = 2
-        for i in range(0, self.num_samples, batch_size):
-            tokens = torch.randint(1, 5, (batch_size, 10, 50))
-            tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
-            yield {
-                "tokens": tokens.to(self.device),
-                "counts": torch.rand(batch_size, 10, 1).to(self.device),
-                "y_target": torch.rand(batch_size, 1).to(self.device),
-                "sample_ids": [f"sample_{i + j}" for j in range(batch_size)],
-            }
-
-
-@pytest.fixture
-def device():
-    """Get device for testing."""
-    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
-@pytest.fixture
-def small_model():
-    """Create a small SequenceEncoder for testing."""
-    return SequenceEncoder(
-        vocab_size=6,
-        embedding_dim=32,
-        max_bp=50,
-        token_limit=64,
-        asv_num_layers=1,
-        asv_num_heads=2,
-        sample_num_layers=1,
-        sample_num_heads=2,
-        encoder_num_layers=1,
-        encoder_num_heads=2,
-        base_output_dim=None,  # UniFrac: no output_head, returns embeddings
-        encoder_type="unifrac",
-        predict_nucleotides=False,
-    )
 
 
 @pytest.fixture

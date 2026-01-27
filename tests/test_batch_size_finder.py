@@ -8,45 +8,8 @@ from unittest.mock import patch, MagicMock
 from typing import Dict, List, Union
 
 from aam.training.batch_size_finder import BatchSizeFinder, BatchSizeFinderResult
-from aam.models.sequence_encoder import SequenceEncoder
-from aam.training.losses import MultiTaskLoss
 from aam.data.dataset import collate_fn
 from aam.data.tokenizer import SequenceTokenizer
-
-
-@pytest.fixture
-def device():
-    """Get device for testing."""
-    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
-@pytest.fixture
-def small_model():
-    """Create a small SequenceEncoder for testing."""
-    return SequenceEncoder(
-        vocab_size=6,
-        embedding_dim=32,
-        max_bp=50,
-        token_limit=64,
-        asv_num_layers=1,
-        asv_num_heads=2,
-        sample_num_layers=1,
-        sample_num_heads=2,
-        encoder_num_layers=1,
-        encoder_num_heads=2,
-        base_output_dim=None,
-        encoder_type="unifrac",
-        predict_nucleotides=False,
-    )
-
-
-@pytest.fixture
-def loss_fn():
-    """Create a loss function for testing."""
-    return MultiTaskLoss(
-        penalty=1.0,
-        nuc_penalty=0.0,
-    )
 
 
 class SimpleASVDataset(Dataset):
