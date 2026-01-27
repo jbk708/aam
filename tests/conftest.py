@@ -10,24 +10,11 @@ from biom import Table
 from aam.data.tokenizer import SequenceTokenizer
 
 
-# =============================================================================
-# Helper Functions
-# =============================================================================
-
-
 def generate_150bp_sequence(seed=None):
-    """Generate a random 150bp DNA sequence.
-
-    Args:
-        seed: Optional random seed for reproducibility.
-
-    Returns:
-        A string of 150 nucleotides (A, C, G, T).
-    """
+    """Generate a random 150bp DNA sequence."""
     if seed is not None:
         random.seed(seed)
-    bases = "ACGT"
-    return "".join(random.choice(bases) for _ in range(150))
+    return "".join(random.choice("ACGT") for _ in range(150))
 
 
 def create_sample_tokens(batch_size: int = 2, num_asvs: int = 10, seq_len: int = 50) -> torch.Tensor:
@@ -47,40 +34,22 @@ def create_sample_tokens(batch_size: int = 2, num_asvs: int = 10, seq_len: int =
     return tokens
 
 
-# =============================================================================
-# Token Fixtures
-# =============================================================================
-
-
 @pytest.fixture
 def sample_tokens():
     """Create sample tokens for testing [B, S, L]."""
     return create_sample_tokens(batch_size=2, num_asvs=10, seq_len=50)
 
 
-# =============================================================================
-# Embedding Fixtures
-# =============================================================================
-
-
 @pytest.fixture
 def sample_embeddings():
     """Create sample embeddings for testing [B, S, D]."""
-    batch_size = 2
-    seq_len = 10
-    hidden_dim = 64
-    return torch.randn(batch_size, seq_len, hidden_dim)
+    return torch.randn(2, 10, 64)
 
 
 @pytest.fixture
 def sample_mask():
     """Create sample mask for testing [B, S]."""
     return torch.tensor([[1, 1, 1, 1, 1, 0, 0, 0, 0, 0], [1, 1, 1, 0, 0, 0, 0, 0, 0, 0]])
-
-
-# =============================================================================
-# BIOM Table Fixtures
-# =============================================================================
 
 
 @pytest.fixture

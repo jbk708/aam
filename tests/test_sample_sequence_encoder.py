@@ -46,21 +46,15 @@ def sample_encoder_with_nucleotides():
 @pytest.fixture
 def sample_tokens_with_partial_asvs():
     """Create sample tokens with some ASVs fully padded."""
-    batch_size = 2
-    num_asvs = 10
-    seq_len = 50
-    tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
+    tokens = torch.randint(1, 5, (2, 10, 50))
     tokens[:, 5:, :] = 0
     return tokens
 
 
 @pytest.fixture
 def sample_tokens_full_length():
-    """Create sample tokens with full length sequences."""
-    batch_size = 2
-    num_asvs = 5
-    seq_len = 50
-    return torch.randint(1, 5, (batch_size, num_asvs, seq_len))
+    """Create sample tokens with full length sequences (no padding)."""
+    return torch.randint(1, 5, (2, 5, 50))
 
 
 class TestSampleSequenceEncoder:
