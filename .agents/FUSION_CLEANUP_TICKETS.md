@@ -724,26 +724,129 @@ Add `--val-prediction-passes N` option to `train` command:
 
 ---
 
-### CLN-11: Consolidate Test Suite
-**Priority:** LOW | **Effort:** 4-6 hours | **Status:** Not Started
+### CLN-11: Consolidate Test Suite (Parent Ticket)
+**Priority:** LOW | **Effort:** 8-12 hours | **Status:** In Progress (sub-tickets below)
 
 Reduce test code duplication by extracting shared fixtures and utilities.
 
+**Sub-tickets:**
+- CLN-11.1: Consolidate duplicate fixtures to conftest.py
+- CLN-11.2: Parametrize batch/sequence variation tests
+- CLN-11.3: Extract shared test utilities
+
+**Estimated Reduction:** 300-400 lines of duplicated code (~10-15% improvement)
+
+---
+
+### CLN-11.1: Consolidate Duplicate Fixtures to conftest.py
+**Priority:** HIGH | **Effort:** 2-3 hours | **Status:** Not Started
+
+Move duplicate fixtures from individual test files to shared `tests/conftest.py`.
+
+**Duplications Found:**
+
+| Fixture | Files | Lines |
+|---------|-------|-------|
+| `sample_tokens` | test_sequence_encoder.py:71, test_sample_sequence_encoder.py:47, test_asv_encoder.py:39 | ~30 |
+| `generate_150bp_sequence()` | test_biom_loader.py:13, test_dataset.py:20, test_tokenizer.py:9 | ~20 |
+| `sample_embeddings` | test_transformer.py:23, test_attention_pooling.py:21 | ~15 |
+| `sample_mask` | test_transformer.py:32, test_attention_pooling.py:30 | ~10 |
+| `simple_table` | test_biom_loader.py:28, test_dataset.py:46 | ~30 |
+
 **Scope:**
-1. Extract shared mock classes (e.g., `MockBatchDataset`) to `tests/conftest.py` or `tests/fixtures.py`
-2. Consolidate similar test fixtures across test files
-3. Extract repeated test setup patterns into shared utilities
-4. Reduce inline class definitions in test methods
-5. Review test organization and consider grouping related tests
+1. Add `generate_150bp_sequence()` helper to conftest.py
+2. Add `sample_embeddings` fixture to conftest.py (batch=2, seq=10, dim=64)
+3. Add `sample_mask` fixture to conftest.py
+4. Add `simple_table` fixture to conftest.py
+5. Remove duplicate definitions from individual test files
 
 **Acceptance Criteria:**
-- [ ] Shared mock classes extracted to central location
-- [ ] Duplicate fixtures consolidated
-- [ ] No functionality changes to tests
-- [ ] All tests pass
-- [ ] Reduced lines of test code
+- [ ] All fixtures moved to conftest.py
+- [ ] Duplicate definitions removed from test files
+- [ ] All 1276 tests pass
+- [ ] ~100 lines removed
 
-**Files:** `tests/conftest.py`, `tests/test_trainer.py`, `tests/test_cli.py`
+**Files:**
+- `tests/conftest.py` (expand)
+- `tests/test_sequence_encoder.py` (remove fixture)
+- `tests/test_sample_sequence_encoder.py` (remove fixture)
+- `tests/test_asv_encoder.py` (remove fixture)
+- `tests/test_biom_loader.py` (remove helper + fixture)
+- `tests/test_dataset.py` (remove helper + fixture)
+- `tests/test_tokenizer.py` (remove helper)
+- `tests/test_transformer.py` (remove fixtures)
+- `tests/test_attention_pooling.py` (remove fixtures)
+
+---
+
+### CLN-11.2: Parametrize Batch/Sequence Variation Tests
+**Priority:** MEDIUM | **Effort:** 3-4 hours | **Status:** Not Started
+
+Replace loop-based variation tests with `@pytest.mark.parametrize` for cleaner test output.
+
+**Patterns Found:**
+
+| Pattern | Files | Example |
+|---------|-------|---------|
+| Batch size loops | 5+ files | `for batch_size in [1, 4, 8]: ...` |
+| Sequence length loops | 4+ files | `for seq_len in [10, 50, 100, 150]: ...` |
+| Encoder type loops | 3+ files | `for encoder_type in ["faith_pd", "taxonomy"]: ...` |
+
+**Scope:**
+1. Convert batch size loops to `@pytest.mark.parametrize("batch_size", [1, 4, 8])`
+2. Convert sequence length loops to `@pytest.mark.parametrize("seq_len", [10, 50, 100, 150])`
+3. Convert encoder type loops to `@pytest.mark.parametrize("encoder_type", [...])`
+
+**Benefits:**
+- Better test output (each parameter combination shown separately)
+- Easier to identify which specific parameter fails
+- pytest parallelization works better with parametrized tests
+
+**Acceptance Criteria:**
+- [ ] Batch size tests parametrized in test_sequence_encoder.py, test_sample_sequence_encoder.py, test_transformer.py
+- [ ] Sequence length tests parametrized
+- [ ] Encoder type tests parametrized (where not already done)
+- [ ] All tests pass
+- [ ] ~80 lines simplified
+
+**Files:**
+- `tests/test_sequence_encoder.py`
+- `tests/test_sample_sequence_encoder.py`
+- `tests/test_transformer.py`
+- `tests/test_asv_encoder.py`
+- `tests/test_attention_pooling.py`
+
+---
+
+### CLN-11.3: Extract Shared Test Utilities
+**Priority:** LOW | **Effort:** 2-3 hours | **Status:** Not Started
+
+Extract shared test classes and utilities to conftest.py for reuse.
+
+**Items to Extract:**
+
+| Item | Location | Description |
+|------|----------|-------------|
+| `MockBatchDataset` | test_trainer.py:45-67 | Mock dataset for trainer tests |
+| Device fixture | Multiple files | `torch.device("cuda" if torch.cuda.is_available() else "cpu")` |
+| Loss function fixtures | test_losses.py, test_trainer.py | `MultiTaskLoss(...)` variations |
+
+**Scope:**
+1. Move `MockBatchDataset` to conftest.py
+2. Create shared `device` fixture with CUDA/MPS/CPU detection
+3. Create parameterized loss function fixture
+4. Standardize tensor assertion helpers
+
+**Acceptance Criteria:**
+- [ ] MockBatchDataset in conftest.py
+- [ ] Shared device fixture created
+- [ ] Loss function fixture consolidated
+- [ ] All tests pass
+
+**Files:**
+- `tests/conftest.py` (expand)
+- `tests/test_trainer.py` (use shared utilities)
+- `tests/test_losses.py` (use shared fixture)
 
 ---
 
@@ -919,27 +1022,33 @@ pred_std = torch.stack(predictions).std(dim=0)  # Optional confidence
 | **CLN-BUG-7** | Checkpoints not saved to new output dir on resume | 1-2h | HIGH | Complete |
 | **CLN-BUG-8** | Multi-pass validation fails in distributed training | 1-2h | HIGH | Complete |
 | **CLN-15** | Multi-pass validation during training | 2-3h | MEDIUM | Complete |
-| **CLN-11** | Consolidate test suite | 4-6h | LOW | Not Started |
+| **CLN-11** | Consolidate test suite (parent) | 8-12h | LOW | In Progress |
+| **CLN-11.1** | Consolidate duplicate fixtures | 2-3h | HIGH | Not Started |
+| **CLN-11.2** | Parametrize variation tests | 3-4h | MEDIUM | Not Started |
+| **CLN-11.3** | Extract shared utilities | 2-3h | LOW | Not Started |
 | **CLN-12** | Random Forest baseline script | 2-3h | LOW | Complete |
 | **CLN-13** | ASV sampling strategy (abundance/random) | 2-3h | MEDIUM | Complete |
 | **CLN-14** | Multi-pass prediction aggregation | 3-4h | LOW | Complete |
-| **CLN-16** | Consolidate lazy embedding tests | 1-2h | HIGH | Not Started |
+| **CLN-16** | Consolidate lazy embedding tests | 1-2h | HIGH | Complete |
 | **Total** | | **45-71h** | |
 
 ## Recommended Order
 
 **Next Up - High Priority:**
-1. CLN-16 (consolidate lazy embedding tests) - Use pytest.mark.parametrize, extract fixtures
+1. CLN-11.1 (consolidate duplicate fixtures) - Move 5 duplicate fixtures to conftest.py
+
+**Medium Priority:**
+- CLN-11.2 (parametrize variation tests) - Better test output and parallelization
 
 **Completed:**
 - CLN-BUG-1 to CLN-BUG-8 (bug fixes)
 - FUS-1, FUS-2 (fusion MVP)
-- CLN-2, CLN-5, CLN-6, CLN-7, CLN-8, CLN-9, CLN-10, CLN-12, CLN-13, CLN-14, CLN-15
+- CLN-2, CLN-5, CLN-6, CLN-7, CLN-8, CLN-9, CLN-10, CLN-12, CLN-13, CLN-14, CLN-15, CLN-16
 
 **Remaining - Low Priority:**
 - CLN-3 (remove unused params)
 - CLN-4 (shared utilities)
-- CLN-11 (consolidate test suite)
+- CLN-11.3 (extract shared test utilities)
 - FUS-3 (perceiver fusion, optional)
 
 ---

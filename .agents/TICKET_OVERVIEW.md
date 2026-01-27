@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-27
-**Status:** ~7 outstanding tickets (~25-42 hours)
+**Status:** ~9 outstanding tickets (~32-52 hours)
 
 ---
 
@@ -9,7 +9,7 @@
 
 | File | Status | Tickets |
 |------|--------|---------|
-| `FUSION_CLEANUP_TICKETS.md` | 2 remaining | FUS-3, CLN-11 |
+| `FUSION_CLEANUP_TICKETS.md` | 5 remaining | FUS-3, CLN-11.1, CLN-11.2, CLN-11.3 |
 | `REGRESSOR_OPTIMIZATION_TICKETS.md` | 3 remaining | REG-7 to REG-9 |
 | `PYTORCH_PORTING_TICKETS.md` | 2 remaining | PYT-19.4, PYT-MAINT-2 |
 | `COSMOS_ONBOARDING_TICKETS.md` | 4 remaining | COS-9.5 to COS-9.8 |
@@ -21,15 +21,19 @@
 
 ## Priority Summary
 
-### HIGH (0 tickets)
+### HIGH (1 ticket, ~2-3 hours)
 
-No high priority tickets remaining.
+| Ticket | Description | Effort | File |
+|--------|-------------|--------|------|
+| **CLN-11.1** | Consolidate duplicate fixtures to conftest.py | 2-3h | FUSION_CLEANUP |
 
-### MEDIUM (0 tickets)
+### MEDIUM (1 ticket, ~3-4 hours)
 
-No medium priority tickets remaining.
+| Ticket | Description | Effort | File |
+|--------|-------------|--------|------|
+| **CLN-11.2** | Parametrize batch/sequence variation tests | 3-4h | FUSION_CLEANUP |
 
-### LOW (7 tickets, ~26-42 hours)
+### LOW (7 tickets, ~27-44 hours)
 
 | Ticket | Description | Effort | File |
 |--------|-------------|--------|------|
@@ -39,7 +43,7 @@ No medium priority tickets remaining.
 | **REG-9** | Mixture of Experts | 6-8h | REGRESSOR |
 | **PYT-19.4** | Hierarchical categories | 6-8h | PYTORCH |
 | **PYT-MAINT-2** | TensorBoard logging | 2-4h | PYTORCH |
-| **CLN-11** | Consolidate test suite | 4-6h | FUSION_CLEANUP |
+| **CLN-11.3** | Extract shared test utilities | 2-3h | FUSION_CLEANUP |
 
 ### Backlog (~13-19 hours)
 
@@ -52,16 +56,22 @@ No medium priority tickets remaining.
 
 ## Recommended Next Steps
 
-### 1. Regressor Improvements (LOW - ~2-3 hours)
+### 1. Test Consolidation (HIGH - ~2-3 hours)
+
+```
+CLN-11.1 (Consolidate duplicate fixtures) - Move 5 fixtures to conftest.py, remove ~100 lines
+```
+
+### 2. Test Parametrization (MEDIUM - ~3-4 hours)
+
+```
+CLN-11.2 (Parametrize variation tests) - Better test output, ~80 lines simplified
+```
+
+### 3. Regressor Improvements (LOW - ~2-3 hours)
 
 ```
 REG-7 (Residual head) - Add residual connection to regression head
-```
-
-### 2. Perceiver Fusion (LOW - ~6-8 hours)
-
-```
-FUS-3 (Perceiver fusion) - Learned latent bottleneck for linear complexity fusion
 ```
 
 ---
