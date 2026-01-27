@@ -1,36 +1,20 @@
 """Unit tests for BIOMLoader class."""
 
-import pytest
-import numpy as np
-import biom
-from biom import Table
 from pathlib import Path
-import random
+
+import biom
+import numpy as np
+import pytest
+from biom import Table
 
 from aam.data.biom_loader import BIOMLoader
-
-
-def generate_150bp_sequence(seed=None):
-    """Generate a random 150bp DNA sequence."""
-    if seed is not None:
-        random.seed(seed)
-    bases = "ACGT"
-    return "".join(random.choice(bases) for _ in range(150))
+from conftest import generate_150bp_sequence
 
 
 @pytest.fixture
 def loader():
     """Create a BIOMLoader instance."""
     return BIOMLoader()
-
-
-@pytest.fixture
-def simple_table():
-    """Create a simple BIOM table for testing."""
-    data = np.array([[10, 20, 5], [15, 10, 25], [5, 30, 10]])
-    observation_ids = [generate_150bp_sequence(seed=1), generate_150bp_sequence(seed=2), generate_150bp_sequence(seed=3)]
-    sample_ids = ["sample1", "sample2", "sample3"]
-    return Table(data, observation_ids=observation_ids, sample_ids=sample_ids)
 
 
 @pytest.fixture

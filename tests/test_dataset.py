@@ -1,30 +1,22 @@
 """Unit tests for ASVDataset class."""
 
-import pytest
-import numpy as np
-import torch
-from torch.utils.data import DataLoader
 from functools import partial
-import biom
-from biom import Table
-import pandas as pd
-from skbio import DistanceMatrix
 
+import biom
+import numpy as np
+import pandas as pd
+import pytest
+import torch
+from biom import Table
+from skbio import DistanceMatrix
+from torch.utils.data import DataLoader
+
+from aam.data.biom_loader import BIOMLoader
+from aam.data.categorical import CategoricalEncoder
 from aam.data.dataset import ASVDataset, collate_fn
 from aam.data.tokenizer import SequenceTokenizer
-from aam.data.biom_loader import BIOMLoader
 from aam.data.unifrac_loader import UniFracLoader
-from aam.data.categorical import CategoricalEncoder
-
-
-def generate_150bp_sequence(seed=None):
-    """Generate a random 150bp DNA sequence."""
-    import random
-
-    if seed is not None:
-        random.seed(seed)
-    bases = "ACGT"
-    return "".join(random.choice(bases) for _ in range(150))
+from conftest import generate_150bp_sequence
 
 
 def create_simple_tree_file(tmp_path, observation_ids):
@@ -41,19 +33,6 @@ def create_simple_tree_file(tmp_path, observation_ids):
 
     tree_path.write_text(tree_str)
     return str(tree_path)
-
-
-@pytest.fixture
-def simple_table():
-    """Create a simple BIOM table for testing."""
-    data = np.array([[10, 20, 5], [15, 10, 25], [5, 30, 10]])
-    observation_ids = [
-        generate_150bp_sequence(seed=1),
-        generate_150bp_sequence(seed=2),
-        generate_150bp_sequence(seed=3),
-    ]
-    sample_ids = ["sample1", "sample2", "sample3"]
-    return Table(data, observation_ids=observation_ids, sample_ids=sample_ids)
 
 
 @pytest.fixture
@@ -431,9 +410,6 @@ class TestDatasetEdgeCases:
 
     def test_dataset_empty_sample(self, tokenizer, tmp_path):
         """Test dataset with empty sample (no ASVs)."""
-        from biom import Table
-        import numpy as np
-
         data = np.array([[10, 20], [0, 0]])
         observation_ids = ["ACGT" * 37 + "A", "ACGT" * 37 + "C"]
         sample_ids = ["sample1", "empty_sample"]

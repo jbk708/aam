@@ -18,21 +18,6 @@ def attention_pooling():
     return AttentionPooling(hidden_dim=64)
 
 
-@pytest.fixture
-def sample_embeddings():
-    """Create sample embeddings for testing."""
-    batch_size = 2
-    seq_len = 10
-    hidden_dim = 64
-    return torch.randn(batch_size, seq_len, hidden_dim)
-
-
-@pytest.fixture
-def sample_mask():
-    """Create sample mask for testing."""
-    return torch.tensor([[1, 1, 1, 1, 1, 0, 0, 0, 0, 0], [1, 1, 1, 0, 0, 0, 0, 0, 0, 0]])
-
-
 class TestAttentionPooling:
     """Test suite for AttentionPooling class."""
 

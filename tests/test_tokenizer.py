@@ -4,16 +4,7 @@ import pytest
 import torch
 
 from aam.data.tokenizer import SequenceTokenizer
-
-
-def generate_150bp_sequence(seed=None):
-    """Generate a random 150bp DNA sequence."""
-    import random
-
-    if seed is not None:
-        random.seed(seed)
-    bases = "ACGT"
-    return "".join(random.choice(bases) for _ in range(150))
+from conftest import generate_150bp_sequence
 
 
 @pytest.fixture
