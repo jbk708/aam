@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-27
-**Status:** 4 outstanding tickets (~21-28 hours)
+**Status:** 3 outstanding tickets (~18-24 hours)
 
 ---
 
@@ -10,7 +10,7 @@
 | File | Status | Tickets |
 |------|--------|---------|
 | `FUSION_CLEANUP_TICKETS.md` | 1 remaining | FUS-3 |
-| `REGRESSOR_OPTIMIZATION_TICKETS.md` | 2 remaining | REG-8, REG-9 |
+| `REGRESSOR_OPTIMIZATION_TICKETS.md` | 1 remaining | REG-9 |
 | `PYTORCH_PORTING_TICKETS.md` | 1 remaining | PYT-19.4 |
 | `COSMOS_ONBOARDING_TICKETS.md` | 2 remaining | COS-9.6, COS-9.7 |
 | `DOCUMENTATION_TICKETS.md` | Backlog | DOC-2 to DOC-4 |
@@ -29,12 +29,11 @@ None remaining.
 
 None remaining.
 
-### LOW (4 tickets, ~21-28 hours)
+### LOW (3 tickets, ~18-24 hours)
 
 | Ticket | Description | Effort | File |
 |--------|-------------|--------|------|
 | **FUS-3** | Perceiver fusion | 6-8h | FUSION_CLEANUP |
-| **REG-8** | Per-output loss | 3-4h | REGRESSOR |
 | **REG-9** | Mixture of Experts | 6-8h | REGRESSOR |
 | **PYT-19.4** | Hierarchical categories | 6-8h | PYTORCH |
 
@@ -49,10 +48,10 @@ None remaining.
 
 ## Recommended Next Steps
 
-### 1. Regressor Improvements (LOW - ~3-4 hours)
+### 1. Regressor Improvements (LOW - ~6-8 hours)
 
 ```
-REG-8 (Per-output loss) - Different loss per target column for multi-output regression
+REG-9 (Mixture of Experts) - Separate expert heads per category with learned routing
 ```
 
 ---
@@ -61,6 +60,7 @@ REG-8 (Per-output loss) - Different loss per target column for multi-output regr
 
 | Ticket | Description |
 |--------|-------------|
+| REG-8 | Per-output loss config (19 tests) |
 | COS-9.8 | ROCm documentation (already in README) |
 
 **Skipped:** COS-9.5 (kernel profiling - not needed)

@@ -62,12 +62,19 @@ Skip connection: `output = Linear(x) + MLP(x)`
 ---
 
 ### REG-8: Per-Output Loss Config
-**Priority:** LOW | **Effort:** 3-4 hours | **Status:** Not Started
+**Priority:** LOW | **Effort:** 3-4 hours | **Status:** ✅ Complete
 
 Different loss per target column for multi-output regression.
 
 **Scope:**
 - `--loss-config '{"pH": "mse", "temp": "huber"}'`
+
+**Acceptance Criteria:**
+- [x] `--loss-config` CLI flag with JSON parsing
+- [x] `loss_config` parameter in MultiTaskLoss
+- [x] Per-column loss computation (mse, mae, huber)
+- [x] Fallback to default loss type for unconfigured columns
+- [x] 19 unit tests
 
 **Files:** `aam/training/losses.py`, `aam/cli/train.py`
 

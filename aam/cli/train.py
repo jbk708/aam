@@ -6,7 +6,7 @@ import logging
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from typing import List, Optional, cast
+from typing import Dict, List, Optional, cast
 from functools import partial
 from torch.utils.data import DataLoader
 from sklearn.model_selection import train_test_split
@@ -324,6 +324,13 @@ def print_categorical_help(ctx: click.Context, param: click.Parameter, value: bo
     help="Penalty weight for under-predictions (pred < actual) when using --loss-type=asymmetric. Default: 1.0",
 )
 @click.option(
+    "--loss-config",
+    default=None,
+    help="Per-output loss configuration as JSON. Maps column names or indices to loss types. "
+    'E.g., \'{"pH": "mse", "temp": "huber"}\' or \'{"0": "mse", "1": "mae"}\'. '
+    "Columns not in config use --loss-type as fallback. Only mse, mae, huber supported per-column.",
+)
+@click.option(
     "--no-sequence-cache",
     is_flag=True,
     help="Disable sequence tokenization cache (enabled by default for faster training)",
@@ -521,6 +528,7 @@ def train(
     quantiles: Optional[str],
     over_penalty: float,
     under_penalty: float,
+    loss_config: Optional[str],
     no_sequence_cache: bool,
     distributed: bool,
     data_parallel: bool,
@@ -655,6 +663,35 @@ def train(
                 )
         if quantiles is not None and loss_type != "quantile":
             raise click.ClickException("--quantiles requires --loss-type quantile")
+
+        # Parse per-output loss config
+        loss_config_dict: Optional[Dict[str, str]] = None
+        if loss_config is not None:
+            import json
+
+            try:
+                loss_config_dict = json.loads(loss_config)
+            except json.JSONDecodeError as e:
+                raise click.ClickException(
+                    f"Invalid --loss-config: could not parse JSON. "
+                    f'Expected format: \'{{"0": "mse", "1": "huber"}}\'. Error: {e}'
+                )
+            if not isinstance(loss_config_dict, dict):
+                raise click.ClickException(
+                    f"Invalid --loss-config: expected JSON object, got {type(loss_config_dict).__name__}"
+                )
+            valid_loss_types = ("mse", "mae", "huber")
+            for col, col_loss_type in loss_config_dict.items():
+                if col_loss_type not in valid_loss_types:
+                    raise click.ClickException(
+                        f"Invalid loss type '{col_loss_type}' for column '{col}' in --loss-config. "
+                        f"Per-column loss must be one of: {valid_loss_types}"
+                    )
+            if loss_type in ("quantile", "asymmetric"):
+                raise click.ClickException(
+                    f"--loss-config cannot be used with --loss-type {loss_type}. Per-column loss only supports mse, mae, huber."
+                )
+            logger.info(f"Using per-column loss config: {loss_config_dict}")
 
         if not count_prediction and count_penalty != 0.0:
             logger.warning(
@@ -1208,6 +1245,7 @@ def train(
             quantiles=quantiles_list,
             over_penalty=over_penalty,
             under_penalty=under_penalty,
+            loss_config=loss_config_dict,
         )
         if loss_type == "quantile":
             logger.info(f"Using quantile loss with quantiles: {quantiles_list}")
