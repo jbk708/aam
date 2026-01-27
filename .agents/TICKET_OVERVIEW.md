@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-27
-**Status:** ~8 outstanding tickets (~30-53 hours)
+**Status:** ~7 outstanding tickets (~27-50 hours)
 
 ---
 
@@ -9,7 +9,7 @@
 
 | File | Status | Tickets |
 |------|--------|---------|
-| `FUSION_CLEANUP_TICKETS.md` | 4 remaining | FUS-3, CLN-11.3, CLN-17 |
+| `FUSION_CLEANUP_TICKETS.md` | 2 remaining | FUS-3, CLN-17 |
 | `REGRESSOR_OPTIMIZATION_TICKETS.md` | 3 remaining | REG-7 to REG-9 |
 | `PYTORCH_PORTING_TICKETS.md` | 2 remaining | PYT-19.4, PYT-MAINT-2 |
 | `COSMOS_ONBOARDING_TICKETS.md` | 4 remaining | COS-9.5 to COS-9.8 |
@@ -29,7 +29,7 @@ None remaining.
 
 None remaining.
 
-### LOW (7 tickets, ~27-46 hours)
+### LOW (7 tickets, ~25-43 hours)
 
 | Ticket | Description | Effort | File |
 |--------|-------------|--------|------|
@@ -40,7 +40,6 @@ None remaining.
 | **REG-9** | Mixture of Experts | 6-8h | REGRESSOR |
 | **PYT-19.4** | Hierarchical categories | 6-8h | PYTORCH |
 | **PYT-MAINT-2** | TensorBoard logging | 2-4h | PYTORCH |
-| **CLN-11.3** | Extract shared test utilities | 2-3h | FUSION_CLEANUP |
 
 ### Backlog (~13-19 hours)
 
@@ -65,6 +64,7 @@ REG-7 (Residual head) - Add residual connection to regression head
 
 | Ticket | Description |
 |--------|-------------|
+| CLN-11.3 | Extract shared test utilities to conftest.py (75 lines removed) |
 | CLN-11.2 | Parametrize batch/sequence variation tests (improved test output) |
 | CLN-11.1 | Consolidate duplicate fixtures to conftest.py (122 lines removed) |
 | CLN-16 | Consolidate lazy embedding tests with parametrize |

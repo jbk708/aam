@@ -70,10 +70,11 @@ def simple_table():
 @pytest.fixture
 def device():
     """Get device for testing with CUDA cleanup."""
-    if torch.cuda.is_available():
+    cuda_available = torch.cuda.is_available()
+    if cuda_available:
         torch.cuda.empty_cache()
         torch.cuda.synchronize()
-    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    return torch.device("cuda" if cuda_available else "cpu")
 
 
 class MockBatchDataset:

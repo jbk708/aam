@@ -725,7 +725,7 @@ Add `--val-prediction-passes N` option to `train` command:
 ---
 
 ### CLN-11: Consolidate Test Suite (Parent Ticket)
-**Priority:** LOW | **Effort:** 8-12 hours | **Status:** In Progress (sub-tickets below)
+**Priority:** LOW | **Effort:** 8-12 hours | **Status:** Complete
 
 Reduce test code duplication by extracting shared fixtures and utilities.
 
@@ -818,7 +818,7 @@ Replace loop-based variation tests with `@pytest.mark.parametrize` for cleaner t
 ---
 
 ### CLN-11.3: Extract Shared Test Utilities
-**Priority:** LOW | **Effort:** 2-3 hours | **Status:** Not Started
+**Priority:** LOW | **Effort:** 2-3 hours | **Status:** Complete
 
 Extract shared test classes and utilities to conftest.py for reuse.
 
@@ -837,15 +837,19 @@ Extract shared test classes and utilities to conftest.py for reuse.
 4. Standardize tensor assertion helpers
 
 **Acceptance Criteria:**
-- [ ] MockBatchDataset in conftest.py
-- [ ] Shared device fixture created
-- [ ] Loss function fixture consolidated
-- [ ] All tests pass
+- [x] MockBatchDataset in conftest.py
+- [x] Shared device fixture created (with CUDA cleanup)
+- [x] Loss function fixture consolidated
+- [x] small_model fixture consolidated
+- [x] All tests pass (1301 tests)
+- [x] Net 75 lines removed (-136, +61)
 
 **Files:**
-- `tests/conftest.py` (expand)
-- `tests/test_trainer.py` (use shared utilities)
-- `tests/test_losses.py` (use shared fixture)
+- `tests/conftest.py` (expanded with MockBatchDataset, device, small_model, loss_fn)
+- `tests/test_trainer.py` (removed MockBatchDataset, device, small_model)
+- `tests/test_lr_finder.py` (removed device, small_model, loss_fn)
+- `tests/test_batch_size_finder.py` (removed device, small_model, loss_fn)
+- `tests/test_integration.py` (removed device)
 
 ---
 
@@ -1052,10 +1056,10 @@ pred_std = torch.stack(predictions).std(dim=0)  # Optional confidence
 | **CLN-BUG-7** | Checkpoints not saved to new output dir on resume | 1-2h | HIGH | Complete |
 | **CLN-BUG-8** | Multi-pass validation fails in distributed training | 1-2h | HIGH | Complete |
 | **CLN-15** | Multi-pass validation during training | 2-3h | MEDIUM | Complete |
-| **CLN-11** | Consolidate test suite (parent) | 8-12h | LOW | In Progress |
+| **CLN-11** | Consolidate test suite (parent) | 8-12h | LOW | Complete |
 | **CLN-11.1** | Consolidate duplicate fixtures | 2-3h | HIGH | Complete |
 | **CLN-11.2** | Parametrize variation tests | 3-4h | MEDIUM | Complete |
-| **CLN-11.3** | Extract shared utilities | 2-3h | LOW | Not Started |
+| **CLN-11.3** | Extract shared utilities | 2-3h | LOW | Complete |
 | **CLN-12** | Random Forest baseline script | 2-3h | LOW | Complete |
 | **CLN-13** | ASV sampling strategy (abundance/random) | 2-3h | MEDIUM | Complete |
 | **CLN-14** | Multi-pass prediction aggregation | 3-4h | LOW | Complete |
