@@ -8,7 +8,7 @@ from aam.models.sequence_encoder import SequenceEncoder
 from aam.models.attention_pooling import AttentionPooling
 from aam.models.transformer import AttnImplementation, TransformerEncoder
 from aam.models.categorical_embedder import CategoricalEmbedder
-from aam.models.fusion import CrossAttentionFusion, GMU
+from aam.models.fusion import CrossAttentionFusion, GMU, PerceiverFusion
 
 
 class ResidualRegressionHead(nn.Module):
@@ -112,6 +112,8 @@ class SequencePredictor(nn.Module):
         residual_regression_head: bool = False,
         conditional_scaling_columns: Optional[List[str]] = None,
         cross_attn_heads: int = 8,
+        perceiver_num_latents: int = 64,
+        perceiver_num_layers: int = 2,
         num_quantiles: Optional[int] = None,
         count_prediction: bool = True,
     ):
@@ -180,6 +182,10 @@ class SequencePredictor(nn.Module):
                 base prediction: output = prediction * scale[cat] + bias[cat]. Requires categorical_cardinalities.
             cross_attn_heads: Number of attention heads for cross-attention fusion (default: 8).
                 Only used when categorical_fusion='cross-attention'.
+            perceiver_num_latents: Number of learned latent vectors for perceiver fusion (default: 64).
+                Only used when categorical_fusion='perceiver'.
+            perceiver_num_layers: Number of self-attention refinement layers for perceiver fusion (default: 2).
+                Only used when categorical_fusion='perceiver'.
             num_quantiles: Number of quantiles for quantile regression. If set, output dimension
                 becomes out_dim * num_quantiles and output is reshaped to [batch, out_dim, num_quantiles].
                 Set to None for standard regression (default: None).
@@ -316,8 +322,10 @@ class SequencePredictor(nn.Module):
 
         self.categorical_fusion = categorical_fusion
         self.cross_attn_heads = cross_attn_heads
+        self.perceiver_num_latents = perceiver_num_latents
+        self.perceiver_num_layers = perceiver_num_layers
         if categorical_cardinalities:
-            valid_fusions = ("concat", "add", "gmu", "cross-attention")
+            valid_fusions = ("concat", "add", "gmu", "cross-attention", "perceiver")
             if categorical_fusion not in valid_fusions:
                 raise ValueError(f"categorical_fusion must be one of {valid_fusions}, got '{categorical_fusion}'")
             self.categorical_embedder: Optional[CategoricalEmbedder] = CategoricalEmbedder(
@@ -333,6 +341,7 @@ class SequencePredictor(nn.Module):
                 )
                 self.gmu: Optional[GMU] = None
                 self.cross_attn_fusion: Optional[CrossAttentionFusion] = None
+                self.perceiver_fusion: Optional[PerceiverFusion] = None
             elif categorical_fusion == "add":
                 self.categorical_projection = nn.Linear(
                     total_cat_dim,
@@ -340,11 +349,13 @@ class SequencePredictor(nn.Module):
                 )
                 self.gmu = None
                 self.cross_attn_fusion = None
+                self.perceiver_fusion = None
             elif categorical_fusion == "gmu":
                 self.categorical_projection = None
                 self.gmu = GMU(seq_dim=self.embedding_dim, cat_dim=total_cat_dim)
                 self.cross_attn_fusion = None
-            else:  # cross-attention
+                self.perceiver_fusion: Optional[PerceiverFusion] = None
+            elif categorical_fusion == "cross-attention":
                 self.categorical_projection = None
                 self.gmu = None
                 self.cross_attn_fusion = CrossAttentionFusion(
@@ -353,11 +364,25 @@ class SequencePredictor(nn.Module):
                     num_heads=cross_attn_heads,
                     dropout=categorical_dropout,
                 )
+                self.perceiver_fusion = None
+            else:  # perceiver
+                self.categorical_projection = None
+                self.gmu = None
+                self.cross_attn_fusion = None
+                self.perceiver_fusion = PerceiverFusion(
+                    seq_dim=self.embedding_dim,
+                    cat_dim=total_cat_dim,
+                    num_latents=perceiver_num_latents,
+                    num_layers=perceiver_num_layers,
+                    num_heads=cross_attn_heads,
+                    dropout=categorical_dropout,
+                )
         else:
             self.categorical_embedder = None
             self.categorical_projection = None
             self.gmu = None
             self.cross_attn_fusion = None
+            self.perceiver_fusion = None
 
         self.conditional_scaling_columns = conditional_scaling_columns
         self._init_conditional_scaling(categorical_cardinalities)
@@ -593,10 +618,14 @@ class SequencePredictor(nn.Module):
         # Fusion strategy determines how categorical embeddings are combined:
         # - gmu: fuses after pooling (handled below)
         # - cross-attention: fuses before target encoder via attention
+        # - perceiver: replaces target encoder + pooling with latent bottleneck
         # - concat/add: fuses via _fuse_categorical
         cross_attn_weights = None
+        perceiver_attn_weights = None
         if self.categorical_fusion == "gmu":
             target_input = base_embeddings
+            target_embeddings = self.target_encoder(target_input, mask=asv_mask)
+            pooled_target = self.target_pooling(target_embeddings, mask=asv_mask)
         elif (
             self.categorical_fusion == "cross-attention"
             and self.cross_attn_fusion is not None
@@ -605,11 +634,21 @@ class SequencePredictor(nn.Module):
         ):
             cat_emb = self.categorical_embedder(categorical_ids)
             target_input, cross_attn_weights = self.cross_attn_fusion(base_embeddings, cat_emb, return_weights=True)
+            target_embeddings = self.target_encoder(target_input, mask=asv_mask)
+            pooled_target = self.target_pooling(target_embeddings, mask=asv_mask)
+        elif (
+            self.categorical_fusion == "perceiver"
+            and self.perceiver_fusion is not None
+            and self.categorical_embedder is not None
+            and categorical_ids is not None
+        ):
+            # Perceiver replaces target encoder + pooling with latent bottleneck
+            cat_emb = self.categorical_embedder(categorical_ids)
+            pooled_target, perceiver_attn_weights = self.perceiver_fusion(base_embeddings, cat_emb, return_weights=True)
         else:
             target_input = self._fuse_categorical(base_embeddings, categorical_ids)
-
-        target_embeddings = self.target_encoder(target_input, mask=asv_mask)
-        pooled_target = self.target_pooling(target_embeddings, mask=asv_mask)
+            target_embeddings = self.target_encoder(target_input, mask=asv_mask)
+            pooled_target = self.target_pooling(target_embeddings, mask=asv_mask)
 
         if self.target_norm is not None:
             pooled_target = self.target_norm(pooled_target)
@@ -655,6 +694,9 @@ class SequencePredictor(nn.Module):
 
         if cross_attn_weights is not None:
             result["cross_attn_weights"] = cross_attn_weights
+
+        if perceiver_attn_weights is not None:
+            result["perceiver_attn_weights"] = perceiver_attn_weights
 
         # For UniFrac, pass embeddings through for distance computation
         if embeddings is not None:
