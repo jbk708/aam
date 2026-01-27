@@ -30,11 +30,23 @@ class ResidualRegressionHead(nn.Module):
             dropout: Dropout rate between MLP layers
         """
         super().__init__()
-        raise NotImplementedError("REG-7: ResidualRegressionHead stub")
+
+        self.skip = nn.Linear(in_dim, out_dim)
+
+        layers: List[nn.Module] = []
+        current_dim = in_dim
+        for hidden_dim in hidden_dims:
+            layers.append(nn.Linear(current_dim, hidden_dim))
+            layers.append(nn.ReLU())
+            if dropout > 0:
+                layers.append(nn.Dropout(dropout))
+            current_dim = hidden_dim
+        layers.append(nn.Linear(current_dim, out_dim))
+        self.mlp = nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass with residual connection."""
-        raise NotImplementedError("REG-7: ResidualRegressionHead.forward stub")
+        return self.skip(x) + self.mlp(x)
 
 
 class SequencePredictor(nn.Module):
