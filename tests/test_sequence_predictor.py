@@ -109,12 +109,6 @@ def sequence_predictor_no_base():
     )
 
 
-@pytest.fixture
-def sample_tokens():
-    """Create sample tokens for testing [B, S, L]."""
-    return create_sample_tokens()
-
-
 class TestSequencePredictor:
     """Test suite for SequencePredictor class."""
 
@@ -395,11 +389,6 @@ class TestSequencePredictor:
 class TestRegressorHeadOptions:
     """Test suite for regressor head configuration options."""
 
-    @pytest.fixture
-    def sample_tokens(self):
-        """Create sample tokens for testing."""
-        return create_sample_tokens()
-
     def test_default_has_layer_norm(self, sample_tokens):
         """Test that LayerNorm is enabled by default."""
         model = SequencePredictor(
@@ -598,11 +587,6 @@ class TestRegressorHeadOptions:
 
 class TestCategoricalIntegration:
     """Test suite for categorical conditioning in SequencePredictor."""
-
-    @pytest.fixture
-    def sample_tokens(self):
-        """Create sample tokens for testing."""
-        return create_sample_tokens()
 
     @pytest.fixture
     def categorical_cardinalities(self):
@@ -1350,11 +1334,6 @@ class TestOutputActivation:
 class TestMLPRegressionHead:
     """Test suite for MLP regression head configuration."""
 
-    @pytest.fixture
-    def sample_tokens(self):
-        """Create sample tokens for testing."""
-        return create_sample_tokens()
-
     def test_default_single_linear_layer(self):
         """Test that default target head is a single linear layer."""
         model = SequencePredictor(
@@ -1774,11 +1753,6 @@ class TestConditionalOutputScaling:
     """Test suite for conditional output scaling in SequencePredictor."""
 
     @pytest.fixture
-    def sample_tokens(self):
-        """Create sample tokens for testing."""
-        return create_sample_tokens()
-
-    @pytest.fixture
     def categorical_cardinalities(self):
         """Create categorical cardinalities for testing."""
         return {"location": 5, "season": 4}
@@ -2186,11 +2160,6 @@ class TestConditionalOutputScaling:
 class TestQuantileRegression:
     """Test quantile regression support in SequencePredictor."""
 
-    @pytest.fixture
-    def sample_tokens(self):
-        """Create sample tokens for testing."""
-        return create_sample_tokens(batch_size=2, num_asvs=10, seq_len=50)
-
     def test_init_with_num_quantiles(self, sample_tokens):
         """Test SequencePredictor initialization with num_quantiles."""
         model = SequencePredictor(
@@ -2346,11 +2315,6 @@ class TestQuantileRegression:
 
 class TestCountPredictionToggle:
     """Tests for count_prediction toggle feature."""
-
-    @pytest.fixture
-    def sample_tokens(self):
-        """Create sample tokens for testing."""
-        return create_sample_tokens(batch_size=2, num_asvs=10, seq_len=50)
 
     def test_count_prediction_enabled_by_default(self, sample_tokens):
         """Test that count prediction is enabled by default."""
