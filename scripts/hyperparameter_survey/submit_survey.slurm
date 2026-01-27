@@ -2,25 +2,34 @@
 #SBATCH --job-name=aam_survey
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=4
-#SBATCH --gres=gpu:4
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=64G
+#SBATCH --exclusive
 #SBATCH --time=06:00:00
 #SBATCH --array=1-11
 #SBATCH --output=logs/survey_%A_%a.out
 #SBATCH --error=logs/survey_%A_%a.err
 
 # ============================================================================
-# SLURM Array Job for Hyperparameter Survey
+# SLURM Array Job for Hyperparameter Survey (SDSC COSMOS)
 # Submit with: sbatch submit_survey.slurm
+#
+# COSMOS uses AMD MI300A APUs (4 per node, 90 TFLOPS fp64 each)
+# Max walltime: 24 hours, Max nodes: 4
 # ============================================================================
 
 # Create logs directory
 mkdir -p logs
 
-# Load environment
+# Load COSMOS modules for AMD ROCm
+module load PrgEnv-amd
+module load rocm
+
+# Activate conda environment
 source ~/.bashrc
 conda activate aam
+
+# Set ROCm/HIP environment for PyTorch
+export HIP_VISIBLE_DEVICES=0,1,2,3
+export ROCR_VISIBLE_DEVICES=0,1,2,3
 
 # Map array task ID to phase and run
 # Array task 1-3:  Phase 1 (loss)
@@ -48,10 +57,10 @@ esac
 
 echo "Running Phase $PHASE, Run $RUN (Array Task $SLURM_ARRAY_TASK_ID)"
 echo "Node: $(hostname)"
-echo "GPUs: $(nvidia-smi --query-gpu=name --format=csv,noheader | tr '\n' ', ')"
+echo "APUs: $(rocm-smi --showproductname 2>/dev/null | grep -E 'GPU|APU' || echo 'rocm-smi not available')"
 
 # Run the training
 cd /cosmos/nfs/home/jkirkland/repos/aam
-./data/hyperparameter_survey/run_survey.sh $PHASE $RUN
+./scripts/hyperparameter_survey/run_survey.sh $PHASE $RUN
 
 echo "Completed Phase $PHASE, Run $RUN"
