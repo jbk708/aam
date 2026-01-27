@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-27
-**Status:** ~7 outstanding tickets (~26-42 hours)
+**Status:** ~8 outstanding tickets (~27-44 hours)
 
 ---
 
@@ -9,7 +9,7 @@
 
 | File | Status | Tickets |
 |------|--------|---------|
-| `FUSION_CLEANUP_TICKETS.md` | 2 remaining | FUS-3, CLN-11 |
+| `FUSION_CLEANUP_TICKETS.md` | 3 remaining | FUS-3, CLN-11, CLN-16 |
 | `REGRESSOR_OPTIMIZATION_TICKETS.md` | 3 remaining | REG-7 to REG-9 |
 | `PYTORCH_PORTING_TICKETS.md` | 2 remaining | PYT-19.4, PYT-MAINT-2 |
 | `COSMOS_ONBOARDING_TICKETS.md` | 4 remaining | COS-9.5 to COS-9.8 |
@@ -21,9 +21,11 @@
 
 ## Priority Summary
 
-### HIGH (0 tickets)
+### HIGH (1 ticket, ~1-2 hours)
 
-No high priority tickets remaining.
+| Ticket | Description | Effort | File |
+|--------|-------------|--------|------|
+| **CLN-16** | Consolidate lazy embedding tests | 1-2h | FUSION_CLEANUP |
 
 ### MEDIUM (0 tickets)
 
@@ -52,7 +54,13 @@ No medium priority tickets remaining.
 
 ## Recommended Next Steps
 
-### 1. Regressor Improvements (LOW - ~2-3 hours)
+### 1. Test Cleanup (HIGH - ~1-2 hours)
+
+```
+CLN-16 (Consolidate lazy embedding tests) - Use pytest.mark.parametrize, extract fixtures
+```
+
+### 2. Regressor Improvements (LOW - ~2-3 hours)
 
 ```
 REG-7 (Residual head) - Add residual connection to regression head
