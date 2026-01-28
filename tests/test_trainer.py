@@ -4186,3 +4186,135 @@ class TestMultiPassValidation:
         # Default should be 1
         assert hasattr(trainer, "val_prediction_passes")
         assert trainer.val_prediction_passes == 1
+
+
+class TestSampleWeightsValidation:
+    """Test sample weights validation in _prepare_batch (TRN-9)."""
+
+    def test_sample_weights_shape_mismatch_raises_error(self, small_predictor, loss_fn, device):
+        """Test that sample_weights with wrong shape raises ValueError."""
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+            validate_sample_weights=True,
+        )
+
+        batch_size = 4
+        wrong_size = 6
+        batch = {
+            "tokens": torch.randint(1, 5, (batch_size, 10, 50)),
+            "y_target": torch.rand(batch_size, 1),
+            "sample_weights": torch.ones(wrong_size),  # Wrong shape
+        }
+
+        with pytest.raises(ValueError, match="sample_weights shape"):
+            trainer._prepare_batch(batch)
+
+    def test_sample_weights_negative_values_raises_error(self, small_predictor, loss_fn, device):
+        """Test that sample_weights with negative values raises ValueError."""
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+            validate_sample_weights=True,
+        )
+
+        batch_size = 4
+        batch = {
+            "tokens": torch.randint(1, 5, (batch_size, 10, 50)),
+            "y_target": torch.rand(batch_size, 1),
+            "sample_weights": torch.tensor([1.0, -0.5, 1.0, 1.0]),  # Negative value
+        }
+
+        with pytest.raises(ValueError, match="non-positive"):
+            trainer._prepare_batch(batch)
+
+    def test_sample_weights_zero_values_raises_error(self, small_predictor, loss_fn, device):
+        """Test that sample_weights with zero values raises ValueError."""
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+            validate_sample_weights=True,
+        )
+
+        batch_size = 4
+        batch = {
+            "tokens": torch.randint(1, 5, (batch_size, 10, 50)),
+            "y_target": torch.rand(batch_size, 1),
+            "sample_weights": torch.tensor([1.0, 0.0, 1.0, 1.0]),  # Zero value
+        }
+
+        with pytest.raises(ValueError, match="non-positive"):
+            trainer._prepare_batch(batch)
+
+    def test_sample_weights_valid_passes(self, small_predictor, loss_fn, device):
+        """Test that valid sample_weights passes without error."""
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+            validate_sample_weights=True,
+        )
+
+        batch_size = 4
+        batch = {
+            "tokens": torch.randint(1, 5, (batch_size, 10, 50)),
+            "y_target": torch.rand(batch_size, 1),
+            "sample_weights": torch.tensor([1.0, 2.0, 0.5, 1.5]),  # All positive
+        }
+
+        tokens, targets, categorical_ids, sample_weights = trainer._prepare_batch(batch)
+        assert sample_weights is not None
+        assert sample_weights.shape[0] == batch_size
+
+    def test_validation_disabled_skips_checks(self, small_predictor, loss_fn, device):
+        """Test that validation can be disabled via validate_sample_weights=False."""
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+            validate_sample_weights=False,
+        )
+
+        batch_size = 4
+        batch = {
+            "tokens": torch.randint(1, 5, (batch_size, 10, 50)),
+            "y_target": torch.rand(batch_size, 1),
+            "sample_weights": torch.tensor([1.0, -0.5, 0.0, 1.0]),  # Invalid values
+        }
+
+        # Should not raise even with invalid values
+        tokens, targets, categorical_ids, sample_weights = trainer._prepare_batch(batch)
+        assert sample_weights is not None
+
+    def test_validation_enabled_by_default(self, small_predictor, loss_fn, device):
+        """Test that sample weights validation is enabled by default."""
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+        )
+
+        assert hasattr(trainer, "validate_sample_weights")
+        assert trainer.validate_sample_weights is True
+
+    def test_no_sample_weights_in_batch_skips_validation(self, small_predictor, loss_fn, device):
+        """Test that batches without sample_weights work normally."""
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+            validate_sample_weights=True,
+        )
+
+        batch_size = 4
+        batch = {
+            "tokens": torch.randint(1, 5, (batch_size, 10, 50)),
+            "y_target": torch.rand(batch_size, 1),
+            # No sample_weights key
+        }
+
+        tokens, targets, categorical_ids, sample_weights = trainer._prepare_batch(batch)
+        assert sample_weights is None
