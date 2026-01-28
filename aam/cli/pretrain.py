@@ -326,7 +326,6 @@ def pretrain(
 
         # Setup distributed training if enabled
         train_sampler = None
-        val_sampler = None
         if use_distributed:
             rank, world_size, device_obj = setup_distributed(backend="nccl")
             mode = "FSDP" if fsdp else "Distributed"
@@ -474,7 +473,7 @@ def pretrain(
                 drop_last=True,
                 collate_fn=train_collate,
             )
-            val_loader, val_sampler = create_distributed_dataloader(
+            val_loader, _ = create_distributed_dataloader(
                 val_dataset,
                 batch_size=batch_size,
                 shuffle=False,
