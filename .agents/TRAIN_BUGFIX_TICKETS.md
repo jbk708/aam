@@ -1,7 +1,7 @@
 # Train CLI Bugfix Tickets
 
 **Last Updated:** 2026-01-28
-**Status:** 13 remaining (2 complete) | ~5.5 hours estimated
+**Status:** 12 remaining (3 complete) | ~5 hours estimated
 **Dev Branch:** `dev/train-bugfix`
 
 All TRN ticket work should branch from and PR into `dev/train-bugfix`.
@@ -50,23 +50,18 @@ gh pr create --base dev/train-bugfix
 ---
 
 ### TRN-3: Add Target Column Type Validation
-**Priority:** HIGH | **Effort:** 0.5 hours | **Status:** Not Started
+**Priority:** HIGH | **Effort:** 0.5 hours | **Status:** Complete
 
-**Location:** `aam/cli/train.py:945`
+**Location:** `aam/cli/train.py:104`
 
 **Problem:** Target values are cast to float without checking if the column contains valid numeric data. Non-numeric values (e.g., "N/A", empty strings) will cause confusing NumPy errors.
 
-**Current Code:**
-```python
-train_targets = train_metadata.set_index("sample_id")[metadata_column].values.astype(float)
-```
-
-**Fix:** Validate that target column values can be converted to float before the `.astype(float)` call. Provide clear error message listing problematic values.
+**Solution:** Added `validate_target_column_numeric()` function that uses vectorized pandas operations to check all target values can be converted to float before the `.astype(float)` call.
 
 **Acceptance Criteria:**
-- [ ] Clear error when target column contains non-numeric values
-- [ ] Error message lists first few invalid values and their sample IDs
-- [ ] Skip validation when `--classifier` flag is set (categorical targets are expected)
+- [x] Clear error when target column contains non-numeric values
+- [x] Error message lists first few invalid values and their sample IDs
+- [x] Skip validation when `--classifier` flag is set (categorical targets are expected)
 
 ---
 
@@ -372,7 +367,7 @@ logger.info("Filtering tables for train/val splits...")  # All ranks log this
 |--------|-------------|--------|----------|--------|
 | **TRN-1** | Validate metadata contains BIOM samples | 1h | HIGH | Complete |
 | **TRN-2** | Empty dataset validation after filtering | 0.5h | HIGH | Complete |
-| **TRN-3** | Target column type validation | 0.5h | HIGH | Not Started |
+| **TRN-3** | Target column type validation | 0.5h | HIGH | Complete |
 | **TRN-4** | Checkpoint resume field validation | 0.5h | HIGH | Not Started |
 | **TRN-5** | Fix drop_last=True for validation DataLoader | 0.5h | HIGH | Not Started |
 | **TRN-6** | Fix distributed cleanup race condition | 0.5h | MEDIUM | Not Started |

@@ -21,7 +21,12 @@ from aam.cli.utils import (
     validate_file_path,
     validate_arguments,
 )
-from aam.cli.train import train, validate_metadata_contains_samples, validate_filtered_metadata_non_empty
+from aam.cli.train import (
+    train,
+    validate_metadata_contains_samples,
+    validate_filtered_metadata_non_empty,
+    validate_target_column_numeric,
+)
 from aam.cli.pretrain import pretrain
 from aam.cli.predict import predict
 
@@ -2965,6 +2970,97 @@ class TestFilteredMetadataValidation:
         error_msg = str(exc_info.value)
         # Should raise for train first since it's checked first
         assert "Training metadata is empty" in error_msg
+
+
+class TestTargetColumnNumericValidation:
+    """Tests for TRN-3: Target column type validation."""
+
+    def test_validate_target_column_numeric_passes_with_numeric_values(self):
+        """Test validation passes when all target values are numeric."""
+        metadata_df = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3"],
+                "target": [1.0, 2.5, 3.7],
+            }
+        )
+
+        # Should not raise
+        validate_target_column_numeric(metadata_df, "target")
+
+    def test_validate_target_column_numeric_passes_with_string_numbers(self):
+        """Test validation passes when target values are string representations of numbers."""
+        metadata_df = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3"],
+                "target": ["1.0", "2.5", "3.7"],
+            }
+        )
+
+        # Should not raise - string numbers are valid
+        validate_target_column_numeric(metadata_df, "target")
+
+    def test_validate_target_column_numeric_raises_with_non_numeric(self):
+        """Test validation raises ValueError when target contains non-numeric values."""
+        metadata_df = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3"],
+                "target": [1.0, "N/A", 3.7],
+            }
+        )
+
+        with pytest.raises(ValueError) as exc_info:
+            validate_target_column_numeric(metadata_df, "target")
+
+        error_msg = str(exc_info.value)
+        assert "non-numeric" in error_msg.lower()
+        assert "sample2" in error_msg
+        assert "N/A" in error_msg
+
+    def test_validate_target_column_numeric_raises_with_empty_string(self):
+        """Test validation raises ValueError when target contains empty strings."""
+        metadata_df = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3"],
+                "target": [1.0, "", 3.7],
+            }
+        )
+
+        with pytest.raises(ValueError) as exc_info:
+            validate_target_column_numeric(metadata_df, "target")
+
+        error_msg = str(exc_info.value)
+        assert "sample2" in error_msg
+
+    def test_validate_target_column_numeric_limits_invalid_shown(self):
+        """Test that error message limits the number of invalid values shown."""
+        metadata_df = pd.DataFrame(
+            {
+                "sample_id": [f"sample{i}" for i in range(10)],
+                "target": ["bad"] * 10,
+            }
+        )
+
+        with pytest.raises(ValueError) as exc_info:
+            validate_target_column_numeric(metadata_df, "target", max_invalid_to_show=3)
+
+        error_msg = str(exc_info.value)
+        assert "10 non-numeric" in error_msg
+        assert "and 7 more" in error_msg
+
+    def test_validate_target_column_numeric_shows_hint_for_classifier(self):
+        """Test that error message includes hint about --classifier flag."""
+        metadata_df = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2"],
+                "target": ["category_a", "category_b"],
+            }
+        )
+
+        with pytest.raises(ValueError) as exc_info:
+            validate_target_column_numeric(metadata_df, "target")
+
+        error_msg = str(exc_info.value)
+        assert "--classifier" in error_msg
 
 
 class TestBestMetricCLI:
