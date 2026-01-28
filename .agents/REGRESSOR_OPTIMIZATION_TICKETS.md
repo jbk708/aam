@@ -94,7 +94,7 @@ Separate expert heads per category with learned routing.
 ---
 
 ### REG-10a: Weighted UniFrac Support
-**Priority:** HIGH (prerequisite) | **Effort:** 1-2 hours | **Status:** In Progress
+**Priority:** HIGH (prerequisite) | **Effort:** 1-2 hours | **Status:** ✅ Complete
 
 Add weighted UniFrac as a valid metric option for both pretraining and fine-tuning.
 
@@ -114,10 +114,10 @@ presence/absence, so count embeddings would have no gradient signal during pretr
 ```
 
 **Acceptance Criteria:**
-- [ ] `--unifrac-metric weighted` accepted in pretrain and train CLIs
-- [ ] Weighted UniFrac matrices load and extract correctly
-- [ ] Metric properly logged as "weighted" in TensorBoard/checkpoints
-- [ ] 5+ unit tests
+- [x] `--unifrac-metric weighted` accepted in pretrain and train CLIs
+- [x] Weighted UniFrac matrices load and extract correctly
+- [x] Metric properly logged as "weighted" in TensorBoard/checkpoints
+- [x] 6 unit tests
 
 **Files:**
 - `aam/cli/pretrain.py` - add weighted choice, update metric name logic
@@ -205,6 +205,6 @@ asv_embedding = sequence_embedding * scale + shift
 | **REG-7** | Residual head | 2-3h | LOW | Complete |
 | **REG-8** | Per-output loss | 3-4h | LOW | Complete |
 | **REG-9** | Mixture of Experts | 6-8h | LOW | Not Started |
-| **REG-10a** | Weighted UniFrac support | 1-2h | **HIGH** | In Progress |
+| **REG-10a** | Weighted UniFrac support | 1-2h | **HIGH** | ✅ Complete |
 | **REG-10b** | Count magnitude embeddings | 4-6h | **HIGH** | Not Started |
 | **Total** | | **14-20h** | |

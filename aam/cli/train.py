@@ -821,15 +821,12 @@ def train(
             table_obj = table_obj.filter(matrix_sample_ids, axis="sample", inplace=False)
             sample_ids = matrix_sample_ids
 
-        if unifrac_metric == "unifrac":
-            unifrac_metric_name = "unweighted"
-            encoder_type = "unifrac"
-        elif unifrac_metric == "weighted":
-            unifrac_metric_name = "weighted"
-            encoder_type = "unifrac"
-        else:
+        if unifrac_metric == "faith_pd":
             unifrac_metric_name = "faith_pd"
             encoder_type = "faith_pd"
+        else:
+            unifrac_metric_name = "unweighted" if unifrac_metric == "unifrac" else "weighted"
+            encoder_type = "unifrac"
 
         logger.info(
             f"Loaded UniFrac matrix: {type(unifrac_distances).__name__}, shape: {getattr(unifrac_distances, 'shape', 'N/A')}"

@@ -359,18 +359,14 @@ def pretrain(
             matrix_format=matrix_format,
         )
 
-        if unifrac_metric == "unifrac":
-            unifrac_metric_name = "unweighted"
-            encoder_type = "unifrac"
-            base_output_dim = None
-        elif unifrac_metric == "weighted":
-            unifrac_metric_name = "weighted"
-            encoder_type = "unifrac"
-            base_output_dim = None
-        else:
+        if unifrac_metric == "faith_pd":
             unifrac_metric_name = "faith_pd"
             encoder_type = "faith_pd"
             base_output_dim = 1
+        else:
+            unifrac_metric_name = "unweighted" if unifrac_metric == "unifrac" else "weighted"
+            encoder_type = "unifrac"
+            base_output_dim = None
 
         logger.info(
             f"Loaded UniFrac matrix: {type(unifrac_distances).__name__}, shape: {getattr(unifrac_distances, 'shape', 'N/A')}"
