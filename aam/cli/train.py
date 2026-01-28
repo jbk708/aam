@@ -667,6 +667,9 @@ def train(
     val_prediction_passes: int,
 ):
     """Train AAM model on microbial sequencing data."""
+    # Track whether distributed training was initialized for proper cleanup
+    distributed_initialized = False
+
     try:
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
@@ -824,6 +827,7 @@ def train(
         val_sampler = None
         if fsdp or distributed:
             rank, world_size, device_obj = setup_distributed(backend="nccl")
+            distributed_initialized = True
             mode = "FSDP" if fsdp else "Distributed"
             if is_main_process():
                 logger.info(f"{mode} training enabled: rank {rank}/{world_size}")
@@ -1600,12 +1604,12 @@ def train(
             logger.info(f"Final model saved to {final_model_path}")
 
         # Cleanup distributed training
-        if distributed or fsdp:
+        if distributed_initialized:
             cleanup_distributed()
 
     except Exception as e:
         logger.error(f"Training failed: {e}", exc_info=True)
         # Cleanup distributed training on error
-        if distributed or fsdp:
+        if distributed_initialized:
             cleanup_distributed()
         raise click.ClickException(str(e))

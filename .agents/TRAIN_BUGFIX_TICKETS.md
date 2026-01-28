@@ -1,7 +1,7 @@
 # Train CLI Bugfix Tickets
 
 **Last Updated:** 2026-01-28
-**Status:** 10 remaining (5 complete) | ~4 hours estimated
+**Status:** 9 remaining (6 complete) | ~3.5 hours estimated
 **Dev Branch:** `dev/train-bugfix`
 
 All TRN ticket work should branch from and PR into `dev/train-bugfix`.
@@ -103,27 +103,18 @@ gh pr create --base dev/train-bugfix
 ## MEDIUM Priority Tickets
 
 ### TRN-6: Fix Distributed Cleanup Race Condition
-**Priority:** MEDIUM | **Effort:** 0.5 hours | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** 0.5 hours | **Status:** Complete
 
 **Location:** `aam/cli/train.py:1509`
 
 **Problem:** In the exception handler, `distributed` and `fsdp` variables may not be defined if the error occurs before they are set. This causes NameError during cleanup.
 
-**Current Code:**
-```python
-except Exception as e:
-    logger.error(f"Training failed: {e}", exc_info=True)
-    if distributed or fsdp:  # May be undefined
-        cleanup_distributed()
-    raise click.ClickException(str(e))
-```
-
-**Fix:** Use `locals().get()` or initialize `distributed`/`fsdp` to False at function start.
+**Solution:** Added `distributed_initialized` flag that tracks whether `setup_distributed()` was actually called. The exception handler now checks this flag instead of the CLI flags, ensuring cleanup only happens when distributed training was actually initialized.
 
 **Acceptance Criteria:**
-- [ ] No NameError if exception occurs before distributed setup
-- [ ] Distributed cleanup still works when variables are defined
-- [ ] Test for early exception handling
+- [x] No NameError if exception occurs before distributed setup
+- [x] Distributed cleanup still works when variables are defined
+- [x] Test for early exception handling
 
 ---
 
@@ -350,7 +341,7 @@ logger.info("Filtering tables for train/val splits...")  # All ranks log this
 | **TRN-3** | Target column type validation | 0.5h | HIGH | Complete |
 | **TRN-4** | Checkpoint resume field validation | 0.5h | HIGH | Complete |
 | **TRN-5** | Fix drop_last=True for validation DataLoader | 0.5h | HIGH | Complete |
-| **TRN-6** | Fix distributed cleanup race condition | 0.5h | MEDIUM | Not Started |
+| **TRN-6** | Fix distributed cleanup race condition | 0.5h | MEDIUM | Complete |
 | **TRN-7** | Validate quantiles sorted and unique | 0.25h | MEDIUM | Not Started |
 | **TRN-8** | Strip whitespace from metadata_column | 0.25h | MEDIUM | Not Started |
 | **TRN-9** | Validate sample weights shape/positivity | 0.5h | MEDIUM | Not Started |
