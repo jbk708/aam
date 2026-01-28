@@ -1,8 +1,17 @@
 # Agent Workflow
 
+## Dev Branches
+
+Some ticket groups have dedicated dev branches. Check `TICKET_OVERVIEW.md` for the correct base branch.
+
+| Tickets | Dev Branch | PR Target |
+|---------|------------|-----------|
+| TRN-* | `dev/train-bugfix` | `dev/train-bugfix` |
+| Others | `main` | `main` |
+
 ## Ticket Development
 
-1. **Branch**: `git checkout -b {prefix}-{ticket}-{name}` (prefixes: `pyt`, `cos`, `cat`, `cln`, `fus`, `trn`, `reg`)
+1. **Branch**: Check dev branch in `TICKET_OVERVIEW.md`, then `git checkout -b {prefix}-{ticket}-{name}` (prefixes: `pyt`, `cos`, `cat`, `cln`, `fus`, `trn`, `reg`)
 2. **Stub**: Create file structure, commit: `"{PREFIX}-{ticket}: Stub out {component}"`
 3. **Test**: Write tests, commit: `"{PREFIX}-{ticket}: Add tests for {component}"`
 4. **Implement**: Fill in stubs, commit: `"{PREFIX}-{ticket}: Implement {component}"`

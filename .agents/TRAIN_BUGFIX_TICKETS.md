@@ -2,6 +2,16 @@
 
 **Last Updated:** 2026-01-28
 **Status:** 15 tickets | ~7 hours estimated
+**Dev Branch:** `dev/train-bugfix`
+
+All TRN ticket work should branch from and PR into `dev/train-bugfix`.
+
+```bash
+git checkout dev/train-bugfix
+git checkout -b trn-{ticket}-{name}
+# ... work ...
+gh pr create --base dev/train-bugfix
+```
 
 ---
 

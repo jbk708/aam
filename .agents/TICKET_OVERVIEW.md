@@ -7,14 +7,14 @@
 
 ## Quick Links
 
-| File | Status | Tickets |
-|------|--------|---------|
-| `TRAIN_BUGFIX_TICKETS.md` | 15 remaining | **TRN-1 to TRN-5 (HIGH)**, TRN-6 to TRN-15 |
-| `REGRESSOR_OPTIMIZATION_TICKETS.md` | 1 remaining | REG-9 |
-| `PYTORCH_PORTING_TICKETS.md` | 1 remaining | PYT-19.4 |
-| `COSMOS_ONBOARDING_TICKETS.md` | 2 remaining | COS-9.6, COS-9.7 |
-| `ARCHIVED_TICKETS.md` | Reference | Completed work history |
-| `WORKFLOW.md` | Reference | Branch naming, commit style, testing |
+| File | Status | Tickets | Dev Branch |
+|------|--------|---------|------------|
+| `TRAIN_BUGFIX_TICKETS.md` | 15 remaining | **TRN-1 to TRN-5 (HIGH)**, TRN-6 to TRN-15 | `dev/train-bugfix` |
+| `REGRESSOR_OPTIMIZATION_TICKETS.md` | 1 remaining | REG-9 | `main` |
+| `PYTORCH_PORTING_TICKETS.md` | 1 remaining | PYT-19.4 | `main` |
+| `COSMOS_ONBOARDING_TICKETS.md` | 2 remaining | COS-9.6, COS-9.7 | `main` |
+| `ARCHIVED_TICKETS.md` | Reference | Completed work history | - |
+| `WORKFLOW.md` | Reference | Branch naming, commit style, testing | - |
 
 ---
 
