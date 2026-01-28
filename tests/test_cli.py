@@ -21,7 +21,7 @@ from aam.cli.utils import (
     validate_file_path,
     validate_arguments,
 )
-from aam.cli.train import train
+from aam.cli.train import train, validate_metadata_contains_samples
 from aam.cli.pretrain import pretrain
 from aam.cli.predict import predict
 
@@ -2837,8 +2837,6 @@ class TestMetadataSampleValidation:
 
     def test_validate_metadata_contains_samples_passes_when_all_present(self):
         """Test validation passes when all sample IDs are in metadata."""
-        from aam.cli.train import validate_metadata_contains_samples
-
         metadata_df = pd.DataFrame(
             {
                 "sample_id": ["sample1", "sample2", "sample3"],
@@ -2852,8 +2850,6 @@ class TestMetadataSampleValidation:
 
     def test_validate_metadata_contains_samples_raises_when_missing(self):
         """Test validation raises ValueError when samples are missing from metadata."""
-        from aam.cli.train import validate_metadata_contains_samples
-
         metadata_df = pd.DataFrame(
             {
                 "sample_id": ["sample1", "sample2"],
@@ -2872,8 +2868,6 @@ class TestMetadataSampleValidation:
 
     def test_validate_metadata_contains_samples_limits_missing_ids_shown(self):
         """Test that error message limits the number of missing IDs shown."""
-        from aam.cli.train import validate_metadata_contains_samples
-
         metadata_df = pd.DataFrame(
             {
                 "sample_id": ["sample1"],
@@ -2893,8 +2887,6 @@ class TestMetadataSampleValidation:
 
     def test_validate_metadata_contains_samples_works_with_subset(self):
         """Test validation passes when metadata has extra samples (superset)."""
-        from aam.cli.train import validate_metadata_contains_samples
-
         metadata_df = pd.DataFrame(
             {
                 "sample_id": ["sample1", "sample2", "sample3", "sample4", "sample5"],
