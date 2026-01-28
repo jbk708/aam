@@ -21,7 +21,7 @@ from aam.cli.utils import (
     validate_file_path,
     validate_arguments,
 )
-from aam.cli.train import train
+from aam.cli.train import train, validate_metadata_contains_samples
 from aam.cli.pretrain import pretrain
 from aam.cli.predict import predict
 
@@ -115,7 +115,8 @@ def sample_unifrac_matrix_file(temp_dir):
 def sample_metadata_file(temp_dir):
     """Create a sample metadata file."""
     metadata_file = temp_dir / "metadata.tsv"
-    metadata_file.write_text("sample_id\ttarget\nsample1\t1.0\nsample2\t2.0\n")
+    # Include all 4 samples to match mock BIOM table (sample1-4)
+    metadata_file.write_text("sample_id\ttarget\nsample1\t1.0\nsample2\t2.0\nsample3\t3.0\nsample4\t4.0\n")
     return str(metadata_file)
 
 
@@ -1801,8 +1802,12 @@ class TestCLIIntegration:
         """Test train command with full flow including data loading and model setup."""
         mock_setup_device.return_value = torch.device("cpu")
 
-        mock_metadata_df = MagicMock()
-        mock_metadata_df.columns = pd.Index(["sample_id", "target"])
+        mock_metadata_df = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3", "sample4"],
+                "target": [1.0, 2.0, 3.0, 4.0],
+            }
+        )
         mock_read_csv.return_value = mock_metadata_df
 
         mock_biom_loader_instance = MagicMock()
@@ -2298,8 +2303,12 @@ class TestPretrainedEncoderLoading:
         """Test train command loads pretrained encoder when provided."""
         mock_setup_device.return_value = torch.device("cpu")
 
-        mock_metadata_df = MagicMock()
-        mock_metadata_df.columns = pd.Index(["sample_id", "target"])
+        mock_metadata_df = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3", "sample4"],
+                "target": [1.0, 2.0, 3.0, 4.0],
+            }
+        )
         mock_read_csv.return_value = mock_metadata_df
 
         mock_biom_loader_instance = MagicMock()
@@ -2443,57 +2452,25 @@ class TestPretrainedEncoderLoading:
         """Test train command with pretrained encoder and freeze_base option."""
         mock_setup_device.return_value = torch.device("cpu")
 
-        mock_metadata_df = MagicMock()
-        mock_metadata_df.columns = pd.Index(["sample_id", "target"])
+        mock_metadata_df = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3", "sample4"],
+                "target": [1.0, 2.0, 3.0, 4.0],
+            }
+        )
         mock_read_csv.return_value = mock_metadata_df
 
-        mock_biom_loader_instance = MagicMock()
-        mock_biom_loader_class.return_value = mock_biom_loader_instance
-        mock_table = MagicMock()
-
-        # Mock ids() to return list when called with axis="sample" or axis="observation"
-        def mock_ids(axis=None):
-            if axis == "sample":
-                return ["sample1", "sample2", "sample3", "sample4"]
-            elif axis == "observation":
-                return ["obs1", "obs2", "obs3"]
-            return ["sample1", "sample2", "sample3", "sample4"]
-
-        mock_table.ids = mock_ids
-        mock_biom_loader_instance.load_table.return_value = mock_table
-        mock_biom_loader_instance.rarefy.return_value = mock_table
-
-        # Mock UniFracLoader
-        mock_unifrac_loader_instance = MagicMock()
-        mock_unifrac_loader_class.return_value = mock_unifrac_loader_instance
-        from skbio import DistanceMatrix
-        import numpy as np
-
-        dist_data = np.random.rand(4, 4)
-        dist_data = (dist_data + dist_data.T) / 2
-        np.fill_diagonal(dist_data, 0)
-        mock_distance_matrix = DistanceMatrix(dist_data, ids=["sample1", "sample2", "sample3", "sample4"])
-        mock_unifrac_loader_instance.load_matrix.return_value = mock_distance_matrix
+        mocks = _setup_train_data_parallel_mocks(
+            mock_biom_loader_class,
+            mock_unifrac_loader_class,
+            mock_dataset_class,
+            mock_dataloader_class,
+            mock_model_class,
+        )
 
         mock_train_ids = ["sample1", "sample2", "sample3"]
         mock_val_ids = ["sample4"]
         mock_train_test_split.return_value = (mock_train_ids, mock_val_ids)
-
-        mock_train_table = MagicMock()
-        mock_val_table = MagicMock()
-        mock_table.filter.side_effect = lambda ids, **kwargs: mock_train_table if ids == mock_train_ids else mock_val_table
-
-        mock_dataset_instance = MagicMock()
-        mock_dataset_instance.get_normalization_params.return_value = None
-        mock_dataset_instance.get_count_normalization_params.return_value = None
-        mock_dataset_class.return_value = mock_dataset_instance
-
-        mock_dataloader_instance = MagicMock()
-        mock_dataloader_instance.__len__ = MagicMock(return_value=1)
-        mock_dataloader_class.return_value = mock_dataloader_instance
-
-        mock_model_instance = MagicMock()
-        mock_model_class.return_value = mock_model_instance
 
         mock_optimizer = MagicMock()
         mock_create_optimizer.return_value = mock_optimizer
@@ -2588,57 +2565,25 @@ class TestPretrainedEncoderLoading:
         """Test train command handles errors when loading pretrained encoder."""
         mock_setup_device.return_value = torch.device("cpu")
 
-        mock_metadata_df = MagicMock()
-        mock_metadata_df.columns = pd.Index(["sample_id", "target"])
+        mock_metadata_df = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3", "sample4"],
+                "target": [1.0, 2.0, 3.0, 4.0],
+            }
+        )
         mock_read_csv.return_value = mock_metadata_df
 
-        mock_biom_loader_instance = MagicMock()
-        mock_biom_loader_class.return_value = mock_biom_loader_instance
-        mock_table = MagicMock()
-
-        # Mock ids() to return list when called with axis="sample" or axis="observation"
-        def mock_ids(axis=None):
-            if axis == "sample":
-                return ["sample1", "sample2", "sample3", "sample4"]
-            elif axis == "observation":
-                return ["obs1", "obs2", "obs3"]
-            return ["sample1", "sample2", "sample3", "sample4"]
-
-        mock_table.ids = mock_ids
-        mock_biom_loader_instance.load_table.return_value = mock_table
-        mock_biom_loader_instance.rarefy.return_value = mock_table
-
-        # Mock UniFracLoader
-        mock_unifrac_loader_instance = MagicMock()
-        mock_unifrac_loader_class.return_value = mock_unifrac_loader_instance
-        from skbio import DistanceMatrix
-        import numpy as np
-
-        dist_data = np.random.rand(4, 4)
-        dist_data = (dist_data + dist_data.T) / 2
-        np.fill_diagonal(dist_data, 0)
-        mock_distance_matrix = DistanceMatrix(dist_data, ids=["sample1", "sample2", "sample3", "sample4"])
-        mock_unifrac_loader_instance.load_matrix.return_value = mock_distance_matrix
+        mocks = _setup_train_data_parallel_mocks(
+            mock_biom_loader_class,
+            mock_unifrac_loader_class,
+            mock_dataset_class,
+            mock_dataloader_class,
+            mock_model_class,
+        )
 
         mock_train_ids = ["sample1", "sample2", "sample3"]
         mock_val_ids = ["sample4"]
         mock_train_test_split.return_value = (mock_train_ids, mock_val_ids)
-
-        mock_train_table = MagicMock()
-        mock_val_table = MagicMock()
-        mock_table.filter.side_effect = lambda ids, **kwargs: mock_train_table if ids == mock_train_ids else mock_val_table
-
-        mock_dataset_instance = MagicMock()
-        mock_dataset_instance.get_normalization_params.return_value = None
-        mock_dataset_instance.get_count_normalization_params.return_value = None
-        mock_dataset_class.return_value = mock_dataset_instance
-
-        mock_dataloader_instance = MagicMock()
-        mock_dataloader_instance.__len__ = MagicMock(return_value=1)
-        mock_dataloader_class.return_value = mock_dataloader_instance
-
-        mock_model_instance = MagicMock()
-        mock_model_class.return_value = mock_model_instance
 
         mock_load_pretrained_encoder.side_effect = Exception("Failed to load checkpoint")
 
@@ -2887,6 +2832,73 @@ class TestMetadataLoading:
         assert len(metadata_df) == 2
 
 
+class TestMetadataSampleValidation:
+    """Tests for TRN-1: Validate metadata contains all BIOM samples."""
+
+    def test_validate_metadata_contains_samples_passes_when_all_present(self):
+        """Test validation passes when all sample IDs are in metadata."""
+        metadata_df = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3"],
+                "target": [1.0, 2.0, 3.0],
+            }
+        )
+        sample_ids = ["sample1", "sample2", "sample3"]
+
+        # Should not raise
+        validate_metadata_contains_samples(sample_ids, metadata_df)
+
+    def test_validate_metadata_contains_samples_raises_when_missing(self):
+        """Test validation raises ValueError when samples are missing from metadata."""
+        metadata_df = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2"],
+                "target": [1.0, 2.0],
+            }
+        )
+        sample_ids = ["sample1", "sample2", "sample3", "sample4"]
+
+        with pytest.raises(ValueError) as exc_info:
+            validate_metadata_contains_samples(sample_ids, metadata_df)
+
+        error_msg = str(exc_info.value)
+        assert "sample3" in error_msg
+        assert "sample4" in error_msg
+        assert "missing" in error_msg.lower()
+
+    def test_validate_metadata_contains_samples_limits_missing_ids_shown(self):
+        """Test that error message limits the number of missing IDs shown."""
+        metadata_df = pd.DataFrame(
+            {
+                "sample_id": ["sample1"],
+                "target": [1.0],
+            }
+        )
+        # Create 15 missing samples
+        sample_ids = [f"sample{i}" for i in range(1, 16)]
+
+        with pytest.raises(ValueError) as exc_info:
+            validate_metadata_contains_samples(sample_ids, metadata_df, max_missing_to_show=10)
+
+        error_msg = str(exc_info.value)
+        # Should show first 10 and indicate more
+        assert "14" in error_msg  # 14 missing samples total
+        # Should not list all 14 individually
+
+    def test_validate_metadata_contains_samples_works_with_subset(self):
+        """Test validation passes when metadata has extra samples (superset)."""
+        metadata_df = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3", "sample4", "sample5"],
+                "target": [1.0, 2.0, 3.0, 4.0, 5.0],
+            }
+        )
+        sample_ids = ["sample1", "sample3"]  # Subset of metadata samples
+
+        # Should not raise - metadata having extra samples is fine
+        validate_metadata_contains_samples(sample_ids, metadata_df)
+
+
 class TestBestMetricCLI:
     """Tests for --best-metric CLI flag."""
 
@@ -3086,8 +3098,12 @@ class TestOutputArtifacts:
         """Test that train command creates train_samples.txt and val_samples.txt files."""
         mock_setup_device.return_value = torch.device("cpu")
 
-        mock_metadata_df = MagicMock()
-        mock_metadata_df.columns = pd.Index(["sample_id", "target"])
+        mock_metadata_df = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2", "sample3", "sample4"],
+                "target": [1.0, 2.0, 3.0, 4.0],
+            }
+        )
         mock_read_csv.return_value = mock_metadata_df
 
         mock_biom_loader_instance = MagicMock()
@@ -3229,16 +3245,20 @@ class TestOutputArtifacts:
         """Test that sample files contain the correct number of samples."""
         mock_setup_device.return_value = torch.device("cpu")
 
-        mock_metadata_df = MagicMock()
-        mock_metadata_df.columns = pd.Index(["sample_id", "target"])
+        # Create a larger sample set to test 80/20 split
+        all_samples = [f"sample{i}" for i in range(10)]
+
+        mock_metadata_df = pd.DataFrame(
+            {
+                "sample_id": all_samples,
+                "target": [float(i) for i in range(10)],
+            }
+        )
         mock_read_csv.return_value = mock_metadata_df
 
         mock_biom_loader_instance = MagicMock()
         mock_biom_loader_class.return_value = mock_biom_loader_instance
         mock_table = MagicMock()
-
-        # Create a larger sample set to test 80/20 split
-        all_samples = [f"sample{i}" for i in range(10)]
 
         def mock_ids(axis=None):
             if axis == "sample":

@@ -46,6 +46,32 @@ from aam.cli.training_utils import (
 )
 
 
+def validate_metadata_contains_samples(
+    sample_ids: List[str],
+    metadata_df: pd.DataFrame,
+    max_missing_to_show: int = 10,
+) -> None:
+    """Validate that all sample IDs exist in the metadata DataFrame.
+
+    Args:
+        sample_ids: List of sample IDs that must be present in metadata.
+        metadata_df: DataFrame containing a 'sample_id' column.
+        max_missing_to_show: Maximum number of missing IDs to include in error message.
+
+    Raises:
+        ValueError: If any sample IDs are missing from metadata.
+    """
+    metadata_sample_ids = set(metadata_df["sample_id"])
+    missing_samples = [sid for sid in sample_ids if sid not in metadata_sample_ids]
+
+    if missing_samples:
+        shown_ids = missing_samples[:max_missing_to_show]
+        msg = f"Metadata is missing {len(missing_samples)} sample(s) from BIOM table.\nMissing samples: {shown_ids}"
+        if len(missing_samples) > max_missing_to_show:
+            msg += f"\n... and {len(missing_samples) - max_missing_to_show} more"
+        raise ValueError(msg)
+
+
 CATEGORICAL_HELP_TEXT = """
 Categorical Conditioning Decision Tree
 ======================================
@@ -833,6 +859,9 @@ def train(
             # Filter table to only include samples in matrix
             table_obj = table_obj.filter(matrix_sample_ids, axis="sample", inplace=False)
             sample_ids = matrix_sample_ids
+
+        # Validate all sample IDs exist in metadata before train/val split
+        validate_metadata_contains_samples(sample_ids, metadata_df)
 
         if unifrac_metric == "faith_pd":
             unifrac_metric_name = "faith_pd"

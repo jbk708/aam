@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-28
-**Status:** 19 outstanding tickets (~27-33 hours) | **5 HIGH priority**
+**Status:** 18 outstanding tickets (~26-32 hours) | **4 HIGH priority**
 
 ---
 
@@ -9,7 +9,7 @@
 
 | File | Status | Tickets | Dev Branch |
 |------|--------|---------|------------|
-| `TRAIN_BUGFIX_TICKETS.md` | 15 remaining | **TRN-1 to TRN-5 (HIGH)**, TRN-6 to TRN-15 | `dev/train-bugfix` |
+| `TRAIN_BUGFIX_TICKETS.md` | 14 remaining | **TRN-2 to TRN-5 (HIGH)**, TRN-6 to TRN-15 | `dev/train-bugfix` |
 | `REGRESSOR_OPTIMIZATION_TICKETS.md` | 1 remaining | REG-9 | `main` |
 | `PYTORCH_PORTING_TICKETS.md` | 1 remaining | PYT-19.4 | `main` |
 | `COSMOS_ONBOARDING_TICKETS.md` | 2 remaining | COS-9.6, COS-9.7 | `main` |
@@ -20,11 +20,10 @@
 
 ## Priority Summary
 
-### HIGH (5 tickets, ~3 hours)
+### HIGH (4 tickets, ~2 hours)
 
 | Ticket | Description | Effort | File |
 |--------|-------------|--------|------|
-| **TRN-1** | Validate metadata contains BIOM samples | 1h | TRAIN_BUGFIX |
 | **TRN-2** | Empty dataset validation after filtering | 0.5h | TRAIN_BUGFIX |
 | **TRN-3** | Target column type validation | 0.5h | TRAIN_BUGFIX |
 | **TRN-4** | Checkpoint resume field validation | 0.5h | TRAIN_BUGFIX |

@@ -1,7 +1,7 @@
 # Train CLI Bugfix Tickets
 
 **Last Updated:** 2026-01-28
-**Status:** 15 tickets | ~7 hours estimated
+**Status:** 14 remaining (1 complete) | ~6 hours estimated
 **Dev Branch:** `dev/train-bugfix`
 
 All TRN ticket work should branch from and PR into `dev/train-bugfix`.
@@ -18,26 +18,18 @@ gh pr create --base dev/train-bugfix
 ## HIGH Priority Tickets
 
 ### TRN-1: Validate Metadata Contains All BIOM Samples
-**Priority:** HIGH | **Effort:** 1 hour | **Status:** Not Started
+**Priority:** HIGH | **Effort:** 1 hour | **Status:** Complete
 
-**Location:** `aam/cli/train.py:835`
+**Location:** `aam/cli/train.py:868`
 
 **Problem:** After filtering BIOM table to match matrix samples, there's no validation that the remaining samples exist in the metadata file. Missing samples will cause silent KeyError or unexpected behavior during metadata extraction.
 
-**Current Code:**
-```python
-# Filter table to only include samples in matrix
-table_obj = table_obj.filter(matrix_sample_ids, axis="sample", inplace=False)
-sample_ids = matrix_sample_ids
-# No validation that sample_ids exist in metadata_df
-```
-
-**Fix:** Add validation that all `sample_ids` are present in `metadata_df["sample_id"]`.
+**Solution:** Added `validate_metadata_contains_samples()` function that checks all sample IDs exist in metadata DataFrame before train/val split.
 
 **Acceptance Criteria:**
-- [ ] Clear error message when metadata is missing samples from BIOM table
-- [ ] Error includes list of missing sample IDs (up to first 10)
-- [ ] Validation happens before train/val split
+- [x] Clear error message when metadata is missing samples from BIOM table
+- [x] Error includes list of missing sample IDs (up to first 10)
+- [x] Validation happens before train/val split
 
 ---
 
@@ -385,7 +377,7 @@ logger.info("Filtering tables for train/val splits...")  # All ranks log this
 
 | Ticket | Description | Effort | Priority | Status |
 |--------|-------------|--------|----------|--------|
-| **TRN-1** | Validate metadata contains BIOM samples | 1h | HIGH | Not Started |
+| **TRN-1** | Validate metadata contains BIOM samples | 1h | HIGH | Complete |
 | **TRN-2** | Empty dataset validation after filtering | 0.5h | HIGH | Not Started |
 | **TRN-3** | Target column type validation | 0.5h | HIGH | Not Started |
 | **TRN-4** | Checkpoint resume field validation | 0.5h | HIGH | Not Started |
