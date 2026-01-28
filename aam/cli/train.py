@@ -1225,7 +1225,7 @@ def train(
                 shuffle=False,
                 num_workers=num_workers,
                 pin_memory=True,
-                drop_last=True,
+                drop_last=False,
                 collate_fn=val_collate,
             )
         else:
@@ -1246,7 +1246,7 @@ def train(
                 shuffle=False,
                 num_workers=num_workers,
                 collate_fn=val_collate,
-                drop_last=True,
+                drop_last=False,
                 prefetch_factor=2 if num_workers > 0 else None,
                 pin_memory=device == "cuda",
             )
