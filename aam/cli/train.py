@@ -793,7 +793,7 @@ def train(
         logger.info(f"Total samples: {len(sample_ids)}")
 
         # Determine matrix format based on metric
-        matrix_format = "pairwise" if unifrac_metric == "unifrac" else "faith_pd"
+        matrix_format = "pairwise" if unifrac_metric in ("unifrac", "weighted") else "faith_pd"
 
         # Load the matrix
         unifrac_distances = unifrac_loader.load_matrix(
