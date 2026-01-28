@@ -4484,8 +4484,8 @@ class TestBroadcastConsistencyValidation:
         train_ids = ["sample1", "sample2", "sample3"]
         val_ids = ["sample4", "sample5"]
 
-        with patch("aam.cli.train.dist.is_initialized", return_value=True):
-            with patch("aam.cli.train.dist.barrier") as mock_barrier:
+        with patch("torch.distributed.is_initialized", return_value=True):
+            with patch("torch.distributed.barrier") as mock_barrier:
                 validate_broadcast_consistency(train_ids, val_ids)
                 mock_barrier.assert_called_once()
 
@@ -4502,10 +4502,10 @@ class TestBroadcastConsistencyValidation:
             for i in range(len(output_list)):
                 output_list[i].copy_(tensor)
 
-        with patch("aam.cli.train.dist.is_initialized", return_value=True):
-            with patch("aam.cli.train.dist.barrier"):
-                with patch("aam.cli.train.dist.get_world_size", return_value=4):
-                    with patch("aam.cli.train.dist.all_gather", side_effect=mock_all_gather):
+        with patch("torch.distributed.is_initialized", return_value=True):
+            with patch("torch.distributed.barrier"):
+                with patch("torch.distributed.get_world_size", return_value=4):
+                    with patch("torch.distributed.all_gather", side_effect=mock_all_gather):
                         # Should not raise
                         validate_broadcast_consistency(train_ids, val_ids, verify_hash=True)
 
@@ -4522,10 +4522,10 @@ class TestBroadcastConsistencyValidation:
                 # Each rank gets a different hash value
                 output_list[i].fill_(i * 100)
 
-        with patch("aam.cli.train.dist.is_initialized", return_value=True):
-            with patch("aam.cli.train.dist.barrier"):
-                with patch("aam.cli.train.dist.get_world_size", return_value=4):
-                    with patch("aam.cli.train.dist.all_gather", side_effect=mock_all_gather_inconsistent):
+        with patch("torch.distributed.is_initialized", return_value=True):
+            with patch("torch.distributed.barrier"):
+                with patch("torch.distributed.get_world_size", return_value=4):
+                    with patch("torch.distributed.all_gather", side_effect=mock_all_gather_inconsistent):
                         with pytest.raises(RuntimeError) as exc_info:
                             validate_broadcast_consistency(train_ids, val_ids, verify_hash=True)
                         assert "inconsistent" in str(exc_info.value).lower()
@@ -4539,8 +4539,8 @@ class TestBroadcastConsistencyValidation:
         val_ids = ["sample3"]
 
         with caplog.at_level(logging.DEBUG):
-            with patch("aam.cli.train.dist.is_initialized", return_value=True):
-                with patch("aam.cli.train.dist.barrier"):
+            with patch("torch.distributed.is_initialized", return_value=True):
+                with patch("torch.distributed.barrier"):
                     validate_broadcast_consistency(train_ids, val_ids)
 
         # Should log debug message about barrier sync
@@ -4557,14 +4557,14 @@ class TestBroadcastConsistencyValidation:
         """Test hash verification handles empty ID lists gracefully."""
         from aam.cli.train import validate_broadcast_consistency
 
-        with patch("aam.cli.train.dist.is_initialized", return_value=True):
-            with patch("aam.cli.train.dist.barrier"):
-                with patch("aam.cli.train.dist.get_world_size", return_value=2):
+        with patch("torch.distributed.is_initialized", return_value=True):
+            with patch("torch.distributed.barrier"):
+                with patch("torch.distributed.get_world_size", return_value=2):
                     # Mock consistent hashes for empty lists
                     def mock_all_gather(output_list, tensor):
                         for i in range(len(output_list)):
                             output_list[i].copy_(tensor)
 
-                    with patch("aam.cli.train.dist.all_gather", side_effect=mock_all_gather):
+                    with patch("torch.distributed.all_gather", side_effect=mock_all_gather):
                         # Should not raise
                         validate_broadcast_consistency([], [], verify_hash=True)
