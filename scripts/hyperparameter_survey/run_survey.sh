@@ -264,6 +264,40 @@ run_phase7() {
             --output-dir "$OUTPUT_BASE/phase7_simplified/no_norm_with_cat" \
             2>&1 | tee "$OUTPUT_BASE/phase7_simplified/no_norm_with_cat/training.log"
     fi
+
+    # 7.4 High count penalty (for weighted UniFrac pretrained models)
+    if [[ "$1" == "" || "$1" == "4" ]]; then
+        echo "Running with high count penalty..."
+        mkdir -p "$OUTPUT_BASE/phase7_simplified/high_count_penalty"
+
+        torchrun --nproc_per_node=$NUM_GPUS -m aam.cli train \
+            --distributed \
+            --table "$TABLE" \
+            --unifrac-matrix "$UNIFRAC" \
+            --metadata "$METADATA" \
+            --metadata-column "$TARGET" \
+            --categorical-columns "$CATEGORICALS" \
+            --categorical-fusion gmu \
+            --pretrained-encoder "$PRETRAINED" \
+            --freeze-base \
+            --target-transform none \
+            --asv-sampling abundance \
+            --loss-type mae \
+            --regressor-hidden-dims "256,64" \
+            --residual-regression-head \
+            --count-penalty 5.0 \
+            --lr 5e-5 \
+            --scheduler warmup_cosine \
+            --epochs $EPOCHS \
+            --token-limit $TOKEN_LIMIT \
+            --seed $SEED \
+            --embedding-dim $EMBEDDING_DIM \
+            --attention-heads $ATTENTION_HEADS \
+            --attention-layers $ATTENTION_LAYERS \
+            --best-metric mae \
+            --output-dir "$OUTPUT_BASE/phase7_simplified/high_count_penalty" \
+            2>&1 | tee "$OUTPUT_BASE/phase7_simplified/high_count_penalty/training.log"
+    fi
 }
 
 run_phase6() {
@@ -417,7 +451,7 @@ case $PHASE in
         echo "Phases 5-7 (Optimization - Based on Survey Results):"
         echo "  5 [1|2|3|4|5]  - Combinations (best_combo, perceiver, category_weights, categorical_lr, onecycle)"
         echo "  6 [1|2|3]      - Unfreeze base (lr_1e5, lr_5e6, lr_1e5_100ep)"
-        echo "  7 [1|2|3]      - Simplified baseline (minimal, minimal_unfreeze, no_norm_with_cat)"
+        echo "  7 [1|2|3|4]    - Simplified baseline (minimal, minimal_unfreeze, no_norm_with_cat, high_count_penalty)"
         echo ""
         echo "Batch Commands:"
         echo "  all            - Run phases 1-4 (initial survey)"
