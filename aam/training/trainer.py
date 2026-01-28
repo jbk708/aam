@@ -109,6 +109,7 @@ class Trainer:
         gather_for_distributed: bool = False,
         best_metric: str = "val_loss",
         val_prediction_passes: int = 1,
+        validate_sample_weights: bool = True,
     ):
         """Initialize Trainer.
 
@@ -140,6 +141,8 @@ class Trainer:
             val_prediction_passes: Number of forward passes during validation. Predictions are
                 averaged across passes for more stable metrics. Only effective with random ASV
                 sampling. Default 1 (single pass).
+            validate_sample_weights: If True (default), validate sample_weights shape and
+                positivity in _prepare_batch. Set to False to disable for performance.
         """
         if best_metric not in METRIC_MODES:
             raise ValueError(f"Invalid best_metric '{best_metric}'. Must be one of: {list(METRIC_MODES.keys())}")
@@ -166,6 +169,7 @@ class Trainer:
         self.use_sharded_checkpoint = use_sharded_checkpoint
         self.gather_for_distributed = gather_for_distributed
         self.val_prediction_passes = val_prediction_passes
+        self.validate_sample_weights = validate_sample_weights
         self.writer: Optional[SummaryWriter] = None
         self.log_histograms: bool = True
         self.histogram_frequency: int = 50
@@ -275,6 +279,8 @@ class Trainer:
                 categorical_ids = {col: ids.to(self.device) for col, ids in batch["categorical_ids"].items()}
             if "sample_weights" in batch:
                 sample_weights = batch["sample_weights"].to(self.device)
+                if self.validate_sample_weights:
+                    self._validate_sample_weights(sample_weights, tokens.shape[0])
 
             return tokens, targets, categorical_ids, sample_weights
         else:
@@ -291,6 +297,21 @@ class Trainer:
                         targets["base_target"] = batch[3].to(self.device)
 
             return tokens, targets, categorical_ids, sample_weights
+
+    def _validate_sample_weights(self, sample_weights: torch.Tensor, batch_size: int) -> None:
+        """Validate sample_weights shape and values.
+
+        Args:
+            sample_weights: Sample weights tensor
+            batch_size: Expected batch size
+
+        Raises:
+            ValueError: If sample_weights shape doesn't match batch size or contains non-positive values
+        """
+        if sample_weights.shape[0] != batch_size:
+            raise ValueError(f"sample_weights shape mismatch: expected {batch_size}, got {sample_weights.shape[0]}")
+        if (sample_weights <= 0).any():
+            raise ValueError(f"sample_weights contains non-positive values: min={sample_weights.min().item():.4f}")
 
     def _get_encoder_type(self) -> str:
         """Get encoder type from model."""
