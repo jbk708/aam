@@ -1,7 +1,7 @@
 # Train CLI Bugfix Tickets
 
 **Last Updated:** 2026-01-28
-**Status:** 5 remaining (10 complete) | ~2 hours estimated
+**Status:** 4 remaining (11 complete) | ~1.5 hours estimated
 **Dev Branch:** `dev/train-bugfix`
 
 All TRN ticket work should branch from and PR into `dev/train-bugfix`.
@@ -183,25 +183,18 @@ gh pr create --base dev/train-bugfix
 ---
 
 ### TRN-11: Validate Pretrained Encoder Weight Loading
-**Priority:** MEDIUM | **Effort:** 0.5 hours | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** 0.5 hours | **Status:** Complete
 
-**Location:** `aam/cli/train.py:1238`
+**Location:** `aam/cli/train.py:1443`
 
 **Problem:** When loading pretrained encoder, only the count of loaded keys is checked. There's no validation that the loaded keys are actually encoder-related (could load unrelated weights).
 
-**Current Code:**
-```python
-load_result = load_pretrained_encoder(pretrained_encoder, model, strict=False, logger=logger)
-if load_result["loaded_keys"] == 0:
-    raise click.ClickException("No keys were loaded from pretrained encoder.")
-```
-
-**Fix:** Add validation that loaded keys include expected encoder prefixes (e.g., `base_model.`, `encoder.`, `asv_encoder.`).
+**Solution:** Added `validate_encoder_keys_loaded()` function that extracts key prefixes from loaded keys and validates they include expected encoder components (`sample_encoder`, `encoder_transformer`, `attention_pooling`, etc.). Also modified `load_pretrained_encoder` to return `matching_keys` list for validation.
 
 **Acceptance Criteria:**
-- [ ] Warning if loaded keys don't match expected encoder patterns
-- [ ] Log which key prefixes were loaded
-- [ ] Error if no encoder-related keys found despite loaded_keys > 0
+- [x] Warning if loaded keys don't match expected encoder patterns
+- [x] Log which key prefixes were loaded
+- [x] Error if no encoder-related keys found despite loaded_keys > 0
 
 ---
 
@@ -311,7 +304,7 @@ logger.info("Filtering tables for train/val splits...")  # All ranks log this
 | **TRN-8** | Strip whitespace from metadata_column | 0.25h | MEDIUM | Complete |
 | **TRN-9** | Validate sample weights shape/positivity | 0.5h | MEDIUM | Complete |
 | **TRN-10** | Add finally block to auto batch size finder | 0.5h | MEDIUM | Complete |
-| **TRN-11** | Validate pretrained encoder weight loading | 0.5h | MEDIUM | Not Started |
+| **TRN-11** | Validate pretrained encoder weight loading | 0.5h | MEDIUM | Complete |
 | **TRN-12** | Validate distributed broadcast success | 0.5h | MEDIUM | Not Started |
 | **TRN-13** | Validate categorical encoder handles empty data | 0.25h | MEDIUM | Not Started |
 | **TRN-14** | Suppress duplicate logging in distributed mode | 0.25h | LOW | Not Started |
