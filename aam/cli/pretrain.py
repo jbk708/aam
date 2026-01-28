@@ -108,6 +108,17 @@ from aam.cli.training_utils import (
 @click.option("--nuc-penalty", default=1.0, type=float, help="Weight for nucleotide loss")
 @click.option("--count-penalty", default=1.0, type=float, help="Weight for count loss (default: 1.0)")
 @click.option(
+    "--count-embedding/--no-count-embedding",
+    default=False,
+    help="Enable count magnitude embeddings. Incorporates ASV abundance as input features (default: disabled).",
+)
+@click.option(
+    "--count-embedding-method",
+    default="add",
+    type=click.Choice(["add", "concat", "film"]),
+    help="How to combine count embeddings with sequence embeddings: add (default), concat, or film.",
+)
+@click.option(
     "--nuc-mask-ratio",
     default=0.15,
     type=float,
@@ -245,6 +256,8 @@ def pretrain(
     penalty: float,
     nuc_penalty: float,
     count_penalty: float,
+    count_embedding: bool,
+    count_embedding_method: str,
     nuc_mask_ratio: float,
     nuc_mask_strategy: str,
     device: str,
@@ -516,6 +529,8 @@ def pretrain(
             mask_ratio=nuc_mask_ratio,
             mask_strategy=nuc_mask_strategy,
             attn_implementation=cast(AttnImplementation, attn_implementation),
+            count_embedding=count_embedding,
+            count_embedding_method=count_embedding_method,
         )
 
         log_model_summary(model, logger)

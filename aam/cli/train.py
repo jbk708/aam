@@ -183,6 +183,17 @@ def print_categorical_help(ctx: click.Context, param: click.Parameter, value: bo
     help="Enable/disable count prediction head (default: enabled). Use --no-count-prediction to save memory.",
 )
 @click.option(
+    "--count-embedding/--no-count-embedding",
+    default=False,
+    help="Enable count magnitude embeddings. Incorporates ASV abundance as input features (default: disabled).",
+)
+@click.option(
+    "--count-embedding-method",
+    default="add",
+    type=click.Choice(["add", "concat", "film"]),
+    help="How to combine count embeddings with sequence embeddings: add (default), concat, or film.",
+)
+@click.option(
     "--nuc-mask-ratio",
     default=0.15,
     type=float,
@@ -505,6 +516,8 @@ def train(
     target_penalty: float,
     count_penalty: float,
     count_prediction: bool,
+    count_embedding: bool,
+    count_embedding_method: str,
     nuc_mask_ratio: float,
     nuc_mask_strategy: str,
     class_weights: Optional[str],
@@ -1216,6 +1229,8 @@ def train(
             conditional_scaling_columns=conditional_scaling_columns,
             num_quantiles=num_quantiles,
             count_prediction=count_prediction,
+            count_embedding=count_embedding,
+            count_embedding_method=count_embedding_method,
         )
 
         log_model_summary(model, logger)
