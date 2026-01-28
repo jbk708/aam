@@ -28,6 +28,7 @@ from aam.cli.train import (
     validate_filtered_metadata_non_empty,
     validate_target_column_numeric,
     validate_quantiles,
+    strip_column_whitespace,
 )
 from aam.cli.pretrain import pretrain
 from aam.cli.predict import predict
@@ -4366,3 +4367,68 @@ class TestValidationDataLoaderDropLast:
         assert val_call_kwargs.get("drop_last") is False, (
             f"Validation DataLoader should have drop_last=False, got {val_call_kwargs.get('drop_last')}"
         )
+
+
+class TestStripColumnWhitespace:
+    """Tests for TRN-8: Strip whitespace from metadata_column and categorical columns."""
+
+    def test_strip_column_whitespace_no_change_when_clean(self):
+        """Test that clean column names are returned unchanged."""
+        result = strip_column_whitespace("target")
+        assert result == "target"
+
+    def test_strip_column_whitespace_strips_leading_space(self):
+        """Test that leading whitespace is stripped."""
+        result = strip_column_whitespace(" target")
+        assert result == "target"
+
+    def test_strip_column_whitespace_strips_trailing_space(self):
+        """Test that trailing whitespace is stripped."""
+        result = strip_column_whitespace("target ")
+        assert result == "target"
+
+    def test_strip_column_whitespace_strips_both_sides(self):
+        """Test that whitespace on both sides is stripped."""
+        result = strip_column_whitespace("  target  ")
+        assert result == "target"
+
+    def test_strip_column_whitespace_strips_tabs(self):
+        """Test that tabs are stripped."""
+        result = strip_column_whitespace("\ttarget\t")
+        assert result == "target"
+
+    def test_strip_column_whitespace_logs_warning_when_stripped(self, caplog):
+        """Test that a warning is logged when whitespace is stripped."""
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            result = strip_column_whitespace("  target  ", warn=True)
+
+        assert result == "target"
+        assert "whitespace" in caplog.text.lower()
+        assert "target" in caplog.text
+
+    def test_strip_column_whitespace_no_warning_when_clean(self, caplog):
+        """Test that no warning is logged when column name is clean."""
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            result = strip_column_whitespace("target", warn=True)
+
+        assert result == "target"
+        assert "whitespace" not in caplog.text.lower()
+
+    def test_strip_column_whitespace_no_warning_when_disabled(self, caplog):
+        """Test that no warning is logged when warn=False (default)."""
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            result = strip_column_whitespace("  target  ", warn=False)
+
+        assert result == "target"
+        assert "whitespace" not in caplog.text.lower()
+
+    def test_strip_column_whitespace_preserves_internal_spaces(self):
+        """Test that internal spaces in column names are preserved."""
+        result = strip_column_whitespace("  my column name  ")
+        assert result == "my column name"
