@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-27
-**Status:** 2 outstanding tickets (~12-16 hours) + backlog
+**Status:** 3 outstanding tickets (~16-22 hours) + backlog | **1 HIGH priority**
 
 ---
 
@@ -11,7 +11,7 @@
 |------|--------|---------|
 | `DOCUMENTATION_TICKETS.md` | **COMPLETE** | DOC-5 to DOC-13 done |
 | `FUSION_CLEANUP_TICKETS.md` | Complete | All done |
-| `REGRESSOR_OPTIMIZATION_TICKETS.md` | 1 remaining | REG-9 |
+| `REGRESSOR_OPTIMIZATION_TICKETS.md` | 2 remaining | REG-9, **REG-10 (HIGH)** |
 | `PYTORCH_PORTING_TICKETS.md` | 1 remaining | PYT-19.4 |
 | `COSMOS_ONBOARDING_TICKETS.md` | 2 remaining | COS-9.6, COS-9.7 |
 | `ARCHIVED_TICKETS.md` | Reference | All completed work |
@@ -21,9 +21,15 @@
 
 ## Priority Summary
 
-### HIGH (0 tickets)
+### HIGH (1 ticket, ~4-6 hours)
 
-Documentation overhaul complete.
+| Ticket | Description | Effort | File |
+|--------|-------------|--------|------|
+| **REG-10** | Count magnitude embeddings | 4-6h | REGRESSOR |
+
+**Context:** RF baseline achieves MAE=50, R²=0.7 vs AAM's MAE=70, R²=0.42.
+Key difference: AAM ignores count magnitudes as input (only uses for masking).
+REG-10 adds count embeddings to close this gap.
 
 ### LOW (2 tickets, ~12-16 hours)
 
