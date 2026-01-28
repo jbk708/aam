@@ -1,7 +1,7 @@
 # Pretrain CLI Bugfix Tickets
 
 **Last Updated:** 2026-01-28
-**Status:** 2 tickets (~0.5 hours total) | **0 HIGH priority**
+**Status:** 1 ticket (~0.25 hours total) | **0 HIGH priority**
 
 ---
 
@@ -110,21 +110,17 @@ This object is created but never used. Memory profiling is done via separate `lo
 ---
 
 ### PRE-7: Add Warning When auto_batch_size Skipped for CPU
-**Priority:** LOW | **Effort:** 0.25 hours | **Status:** Not Started
+**Priority:** LOW | **Effort:** 0.25 hours | **Status:** ✅ Complete
 
-**Location:** `aam/cli/pretrain.py:551`
+**Location:** `aam/cli/pretrain.py:617`
 
-```python
-if auto_batch_size and device == "cuda" and not use_distributed and not data_parallel:
-```
-
-When `--device cpu` is used with `--auto-batch-size` (default), auto_batch_size is silently disabled. Line 616-617 logs a message for distributed training, but no message for CPU mode.
-
-**Fix:** Add warning when auto_batch_size is skipped due to CPU mode.
+**Implementation (2026-01-28):**
+- Added `elif auto_batch_size and device != "cuda":` branch after distributed check
+- Logs warning: "Auto batch size disabled for CPU training. Using --batch-size directly."
 
 **Acceptance Criteria:**
-- [ ] Warning logged when `--auto-batch-size` is enabled but `--device cpu` is used
-- [ ] Message clearly explains why auto_batch_size was skipped
+- [x] Warning logged when `--auto-batch-size` is enabled but `--device cpu` is used
+- [x] Message clearly explains why auto_batch_size was skipped
 
 ---
 
@@ -157,7 +153,7 @@ This pattern is fragile. If code is refactored and logger moves to a different s
 | **PRE-4** | Remove unused profiler | 0.25h | LOW | ✅ Complete |
 | **PRE-5** | Remove unused val_sampler | 0.25h | LOW | ✅ Complete |
 | **PRE-6** | Track actual last epoch | 0.5h | LOW | ✅ Complete |
-| **PRE-7** | CPU auto_batch_size warning | 0.25h | LOW | Not Started |
+| **PRE-7** | CPU auto_batch_size warning | 0.25h | LOW | ✅ Complete |
 | **PRE-8** | Logger existence check | 0.25h | LOW | Not Started |
 | **Total** | | **~2.5h** | | |
 
