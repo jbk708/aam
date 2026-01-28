@@ -128,8 +128,8 @@ presence/absence, so count embeddings would have no gradient signal during pretr
 ---
 
 ### REG-10b: Count Magnitude Embeddings
-**Priority:** HIGH | **Effort:** 4-6 hours | **Status:** Not Started
-**Depends on:** REG-10a
+**Priority:** HIGH | **Effort:** 4-6 hours | **Status:** In Progress
+**Depends on:** REG-10a ✅
 
 Incorporate ASV count magnitudes as input features, not just for masking.
 

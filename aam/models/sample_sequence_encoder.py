@@ -2,11 +2,13 @@
 
 import torch
 import torch.nn as nn
-from typing import Optional, Tuple, Union
+from typing import Literal, Optional, Tuple, Union
 
 from aam.models.asv_encoder import ASVEncoder
 from aam.models.position_embedding import PositionEmbedding
 from aam.models.transformer import AttnImplementation, TransformerEncoder
+
+CountEmbeddingMethod = Literal["add", "concat", "film"]
 
 
 class SampleSequenceEncoder(nn.Module):
@@ -34,6 +36,8 @@ class SampleSequenceEncoder(nn.Module):
         attn_implementation: Optional[AttnImplementation] = "sdpa",
         mask_ratio: float = 0.0,
         mask_strategy: str = "random",
+        count_embedding: bool = False,
+        count_embedding_method: CountEmbeddingMethod = "add",
     ):
         """Initialize SampleSequenceEncoder.
 
@@ -58,12 +62,22 @@ class SampleSequenceEncoder(nn.Module):
             attn_implementation: Which SDPA backend to use ('sdpa', 'flash', 'mem_efficient', 'math')
             mask_ratio: Fraction of nucleotide positions to mask for MAE training (0.0 = no masking)
             mask_strategy: Masking strategy ('random' or 'span')
+            count_embedding: Whether to incorporate ASV count magnitudes as input features
+            count_embedding_method: How to combine count embeddings with sequence embeddings:
+                - 'add': asv_emb = seq_emb + count_emb
+                - 'concat': asv_emb = proj(cat(seq_emb, count_emb))
+                - 'film': asv_emb = seq_emb * scale + shift (FiLM-style modulation)
         """
         super().__init__()
 
         self.embedding_dim = embedding_dim
         self.token_limit = token_limit
         self.predict_nucleotides = predict_nucleotides
+        self.count_embedding = count_embedding
+        self.count_embedding_method = count_embedding_method
+
+        if count_embedding_method not in ("add", "concat", "film"):
+            raise ValueError(f"Invalid count_embedding_method: {count_embedding_method}. Must be 'add', 'concat', or 'film'")
 
         self.asv_encoder = ASVEncoder(
             vocab_size=vocab_size,
@@ -101,13 +115,63 @@ class SampleSequenceEncoder(nn.Module):
             attn_implementation=attn_implementation,
         )
 
+        # Count embedding layers (only created if count_embedding=True)
+        if count_embedding:
+            if count_embedding_method == "add":
+                # Simple linear projection from scalar log-count to embedding_dim
+                self.count_embed = nn.Linear(1, embedding_dim)
+            elif count_embedding_method == "concat":
+                # Project count to embedding_dim, then project concatenated [seq_emb, count_emb] back
+                self.count_embed = nn.Linear(1, embedding_dim)
+                self.count_proj = nn.Linear(embedding_dim * 2, embedding_dim)
+            elif count_embedding_method == "film":
+                # FiLM: predict scale and shift from count
+                self.count_film = nn.Linear(1, embedding_dim * 2)
+
+    def _apply_count_embedding(self, asv_embeddings: torch.Tensor, counts: torch.Tensor) -> torch.Tensor:
+        """Apply count embedding to ASV embeddings.
+
+        Args:
+            asv_embeddings: ASV embeddings [batch_size, num_asvs, embedding_dim]
+            counts: ASV counts [batch_size, num_asvs, 1] or [batch_size, num_asvs]
+
+        Returns:
+            Modified ASV embeddings [batch_size, num_asvs, embedding_dim]
+        """
+        # Ensure counts have shape [batch_size, num_asvs, 1]
+        if counts.dim() == 2:
+            counts = counts.unsqueeze(-1)
+
+        # Log-transform counts: log(count + 1) to handle zeros and compress range
+        log_counts = torch.log(counts + 1)
+
+        if self.count_embedding_method == "add":
+            count_emb = self.count_embed(log_counts)  # [batch, num_asvs, embedding_dim]
+            return asv_embeddings + count_emb
+        elif self.count_embedding_method == "concat":
+            count_emb = self.count_embed(log_counts)  # [batch, num_asvs, embedding_dim]
+            combined = torch.cat([asv_embeddings, count_emb], dim=-1)  # [batch, num_asvs, 2*embedding_dim]
+            return self.count_proj(combined)  # [batch, num_asvs, embedding_dim]
+        elif self.count_embedding_method == "film":
+            film_params = self.count_film(log_counts)  # [batch, num_asvs, 2*embedding_dim]
+            scale, shift = film_params.chunk(2, dim=-1)  # Each [batch, num_asvs, embedding_dim]
+            # FiLM modulation: scale centered around 1, shift around 0
+            return asv_embeddings * (1 + scale) + shift
+        else:
+            return asv_embeddings
+
     def forward(
-        self, tokens: torch.Tensor, return_nucleotides: bool = False
+        self,
+        tokens: torch.Tensor,
+        counts: Optional[torch.Tensor] = None,
+        return_nucleotides: bool = False,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]]:
         """Forward pass.
 
         Args:
             tokens: Input tokens [batch_size, num_asvs, seq_len]
+            counts: Optional ASV counts [batch_size, num_asvs, 1] or [batch_size, num_asvs].
+                Required if count_embedding=True.
             return_nucleotides: Whether to return nucleotide predictions
 
         Returns:
@@ -116,6 +180,9 @@ class SampleSequenceEncoder(nn.Module):
             where nucleotide_predictions is [batch_size, num_asvs, seq_len, vocab_size]
             and mask_indices is [batch_size, num_asvs, seq_len] boolean tensor (None if not masking).
         """
+        if self.count_embedding and counts is None:
+            raise ValueError("counts must be provided when count_embedding=True")
+
         asv_mask = (tokens.sum(dim=-1) > 0).long()
 
         if self.predict_nucleotides and return_nucleotides:
@@ -128,6 +195,11 @@ class SampleSequenceEncoder(nn.Module):
         asv_mask_expanded = asv_mask.unsqueeze(-1).float()
         asv_embeddings = torch.where(torch.isnan(asv_embeddings), torch.zeros_like(asv_embeddings), asv_embeddings)
         asv_embeddings = asv_embeddings * asv_mask_expanded
+
+        # Apply count embedding if enabled
+        if self.count_embedding and counts is not None:
+            asv_embeddings = self._apply_count_embedding(asv_embeddings, counts)
+            asv_embeddings = asv_embeddings * asv_mask_expanded  # Re-apply mask after count embedding
 
         asv_embeddings = self.sample_position_embedding(asv_embeddings)
         sample_embeddings = self.sample_transformer(asv_embeddings, mask=asv_mask)

@@ -5,6 +5,7 @@ import torch.nn as nn
 from typing import Dict, List, Optional
 
 from aam.models.sequence_encoder import SequenceEncoder
+from aam.models.sample_sequence_encoder import CountEmbeddingMethod
 from aam.models.attention_pooling import AttentionPooling
 from aam.models.transformer import AttnImplementation, TransformerEncoder
 from aam.models.categorical_embedder import CategoricalEmbedder
@@ -116,6 +117,8 @@ class SequencePredictor(nn.Module):
         perceiver_num_layers: int = 2,
         num_quantiles: Optional[int] = None,
         count_prediction: bool = True,
+        count_embedding: bool = False,
+        count_embedding_method: CountEmbeddingMethod = "add",
     ):
         """Initialize SequencePredictor.
 
@@ -191,8 +194,16 @@ class SequencePredictor(nn.Module):
                 Set to None for standard regression (default: None).
             count_prediction: Whether to include count prediction head (default: True).
                 When False, count_encoder and count_head are not created, saving memory and compute.
+            count_embedding: Whether to incorporate ASV count magnitudes as input features
+            count_embedding_method: How to combine count embeddings with sequence embeddings:
+                - 'add': asv_emb = seq_emb + count_emb
+                - 'concat': asv_emb = proj(cat(seq_emb, count_emb))
+                - 'film': asv_emb = seq_emb * scale + shift (FiLM-style modulation)
         """
         super().__init__()
+
+        self.count_embedding = count_embedding
+        self.count_embedding_method = count_embedding_method
 
         if base_model is None:
             self.base_model = SequenceEncoder(
@@ -223,11 +234,24 @@ class SequencePredictor(nn.Module):
                 asv_chunk_size=asv_chunk_size,
                 mask_ratio=mask_ratio,
                 mask_strategy=mask_strategy,
+                count_embedding=count_embedding,
+                count_embedding_method=count_embedding_method,
             )
             self.embedding_dim = embedding_dim
         else:
             self.base_model = base_model
             self.embedding_dim = base_model.embedding_dim
+            # Check if base_model has different count_embedding settings
+            if hasattr(base_model, "count_embedding") and base_model.count_embedding != count_embedding:
+                import warnings
+
+                warnings.warn(
+                    f"base_model has count_embedding={base_model.count_embedding} "
+                    f"but SequencePredictor was initialized with count_embedding={count_embedding}. "
+                    f"Using base_model's setting."
+                )
+                self.count_embedding = base_model.count_embedding
+                self.count_embedding_method = base_model.count_embedding_method
 
         self.out_dim = out_dim
         self.is_classifier = is_classifier
@@ -573,6 +597,7 @@ class SequencePredictor(nn.Module):
     def forward(
         self,
         tokens: torch.Tensor,
+        counts: Optional[torch.Tensor] = None,
         categorical_ids: Optional[Dict[str, torch.Tensor]] = None,
         return_nucleotides: bool = False,
         return_sample_embeddings: bool = False,
@@ -581,6 +606,8 @@ class SequencePredictor(nn.Module):
 
         Args:
             tokens: Input tokens [batch_size, num_asvs, seq_len]
+            counts: Optional ASV counts [batch_size, num_asvs] or [batch_size, num_asvs, 1].
+                Required if count_embedding=True.
             categorical_ids: Optional dict mapping column name to category indices [batch_size].
                 Used for categorical conditioning of target predictions.
             return_nucleotides: Whether to return nucleotide predictions
@@ -599,7 +626,9 @@ class SequencePredictor(nn.Module):
         asv_mask = (tokens.sum(dim=-1) > 0).long()
 
         # Always request sample_embeddings from base_model - we need them for count/target pathways
-        base_outputs = self.base_model(tokens, return_nucleotides=return_nucleotides, return_sample_embeddings=True)
+        base_outputs = self.base_model(
+            tokens, counts=counts, return_nucleotides=return_nucleotides, return_sample_embeddings=True
+        )
 
         base_embeddings = base_outputs["sample_embeddings"]
         # For UniFrac, embeddings are returned directly (no base_prediction)

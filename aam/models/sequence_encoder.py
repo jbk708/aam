@@ -2,9 +2,9 @@
 
 import torch
 import torch.nn as nn
-from typing import Dict, Optional, Tuple, Union
+from typing import Dict, Literal, Optional, Tuple, Union
 
-from aam.models.sample_sequence_encoder import SampleSequenceEncoder
+from aam.models.sample_sequence_encoder import CountEmbeddingMethod, SampleSequenceEncoder
 from aam.models.attention_pooling import AttentionPooling
 from aam.models.transformer import AttnImplementation, TransformerEncoder
 
@@ -41,6 +41,8 @@ class SequenceEncoder(nn.Module):
         attn_implementation: Optional[AttnImplementation] = "sdpa",
         mask_ratio: float = 0.0,
         mask_strategy: str = "random",
+        count_embedding: bool = False,
+        count_embedding_method: CountEmbeddingMethod = "add",
     ):
         """Initialize SequenceEncoder.
 
@@ -72,6 +74,8 @@ class SequenceEncoder(nn.Module):
             attn_implementation: Which SDPA backend to use ('sdpa', 'flash', 'mem_efficient', 'math')
             mask_ratio: Fraction of nucleotide positions to mask for MAE training (0.0 = no masking)
             mask_strategy: Masking strategy ('random' or 'span')
+            count_embedding: Whether to incorporate ASV count magnitudes as input features
+            count_embedding_method: How to combine count embeddings with sequence embeddings
         """
         super().__init__()
 
@@ -79,6 +83,8 @@ class SequenceEncoder(nn.Module):
         self.base_output_dim = base_output_dim if base_output_dim is not None else embedding_dim
         self.encoder_type = encoder_type
         self.predict_nucleotides = predict_nucleotides
+        self.count_embedding = count_embedding
+        self.count_embedding_method = count_embedding_method
 
         self.sample_encoder = SampleSequenceEncoder(
             vocab_size=vocab_size,
@@ -101,6 +107,8 @@ class SequenceEncoder(nn.Module):
             attn_implementation=attn_implementation,
             mask_ratio=mask_ratio,
             mask_strategy=mask_strategy,
+            count_embedding=count_embedding,
+            count_embedding_method=count_embedding_method,
         )
 
         if encoder_intermediate_size is None:
@@ -141,6 +149,7 @@ class SequenceEncoder(nn.Module):
     def forward(
         self,
         tokens: torch.Tensor,
+        counts: Optional[torch.Tensor] = None,
         return_nucleotides: bool = False,
         return_sample_embeddings: bool = False,
     ) -> Union[Dict[str, Optional[torch.Tensor]], Tuple]:
@@ -148,6 +157,8 @@ class SequenceEncoder(nn.Module):
 
         Args:
             tokens: Input tokens [batch_size, num_asvs, seq_len]
+            counts: Optional ASV counts [batch_size, num_asvs, 1] or [batch_size, num_asvs].
+                Required if count_embedding=True.
             return_nucleotides: Whether to return nucleotide predictions
             return_sample_embeddings: Whether to return sample_embeddings in output dict.
                 Default False to save memory during training (loss doesn't use them).
@@ -162,9 +173,11 @@ class SequenceEncoder(nn.Module):
         asv_mask = (tokens.sum(dim=-1) > 0).long()
 
         if self.predict_nucleotides and return_nucleotides:
-            sample_embeddings, nuc_predictions, mask_indices = self.sample_encoder(tokens, return_nucleotides=True)
+            sample_embeddings, nuc_predictions, mask_indices = self.sample_encoder(
+                tokens, counts=counts, return_nucleotides=True
+            )
         else:
-            sample_embeddings = self.sample_encoder(tokens, return_nucleotides=False)
+            sample_embeddings = self.sample_encoder(tokens, counts=counts, return_nucleotides=False)
             nuc_predictions = None
             mask_indices = None
 
