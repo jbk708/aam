@@ -1,7 +1,7 @@
 # Pretrain CLI Bugfix Tickets
 
 **Last Updated:** 2026-01-28
-**Status:** 4 tickets (~1.25 hours total) | **0 HIGH priority**
+**Status:** 1 ticket (~0.25 hours total) | **0 HIGH priority**
 
 ---
 
@@ -77,60 +77,50 @@ This object is created but never used. Memory profiling is done via separate `lo
 ---
 
 ### PRE-5: Remove Unused val_sampler Variable
-**Priority:** LOW | **Effort:** 0.25 hours | **Status:** Not Started
+**Priority:** LOW | **Effort:** 0.25 hours | **Status:** ✅ Complete
 
 **Location:** `aam/cli/pretrain.py:478-486`
 
-```python
-val_loader, val_sampler = create_distributed_dataloader(...)
-```
-
-`val_sampler` is returned but never used. The `train_sampler` is correctly passed to Trainer, but `val_sampler` is unused.
-
-**Fix:** Either:
-1. Pass `val_sampler` to Trainer for proper `set_epoch()` calls, OR
-2. Use `_` to indicate intentionally unused: `val_loader, _ = ...`
+**Implementation (2026-01-28):**
+- Changed to `val_loader, _ = create_distributed_dataloader(...)` to indicate intentional non-use
+- Removed unused `val_sampler = None` initialization
+- val_sampler with `shuffle=False` doesn't need `set_epoch()` since validation data order doesn't matter
 
 **Acceptance Criteria:**
-- [ ] `val_sampler` is either used or explicitly ignored with `_`
+- [x] `val_sampler` is either used or explicitly ignored with `_`
 
 ---
 
 ### PRE-6: Track Actual Last Epoch in Final Checkpoint
-**Priority:** LOW | **Effort:** 0.5 hours | **Status:** Not Started
+**Priority:** LOW | **Effort:** 0.5 hours | **Status:** ✅ Complete
 
-**Location:** `aam/cli/pretrain.py:738`
-
-```python
-trainer.save_checkpoint(str(final_model_path), epoch=epochs - 1, ...)
-```
+**Location:** `aam/cli/pretrain.py:741`
 
 **Problem:** If early stopping triggers at epoch 50 out of 100, checkpoint is saved with `epoch=99` instead of `epoch=50`.
 
-**Fix:** Track actual last completed epoch from training history and use that value.
+**Implementation (2026-01-28):**
+- Compute `actual_last_epoch = start_epoch + len(history["train_loss"]) - 1`
+- Handles both fresh training and resume scenarios
+- Added tests for early stopping with and without resume
 
 **Acceptance Criteria:**
-- [ ] Final checkpoint metadata reflects actual last trained epoch
-- [ ] Works correctly with and without early stopping
+- [x] Final checkpoint metadata reflects actual last trained epoch
+- [x] Works correctly with and without early stopping
 
 ---
 
 ### PRE-7: Add Warning When auto_batch_size Skipped for CPU
-**Priority:** LOW | **Effort:** 0.25 hours | **Status:** Not Started
+**Priority:** LOW | **Effort:** 0.25 hours | **Status:** ✅ Complete
 
-**Location:** `aam/cli/pretrain.py:551`
+**Location:** `aam/cli/pretrain.py:617`
 
-```python
-if auto_batch_size and device == "cuda" and not use_distributed and not data_parallel:
-```
-
-When `--device cpu` is used with `--auto-batch-size` (default), auto_batch_size is silently disabled. Line 616-617 logs a message for distributed training, but no message for CPU mode.
-
-**Fix:** Add warning when auto_batch_size is skipped due to CPU mode.
+**Implementation (2026-01-28):**
+- Added `elif auto_batch_size and device != "cuda":` branch after distributed check
+- Logs warning: "Auto batch size disabled for CPU training. Using --batch-size directly."
 
 **Acceptance Criteria:**
-- [ ] Warning logged when `--auto-batch-size` is enabled but `--device cpu` is used
-- [ ] Message clearly explains why auto_batch_size was skipped
+- [x] Warning logged when `--auto-batch-size` is enabled but `--device cpu` is used
+- [x] Message clearly explains why auto_batch_size was skipped
 
 ---
 
@@ -161,9 +151,9 @@ This pattern is fragile. If code is refactored and logger moves to a different s
 | **PRE-2** | Double checkpoint loading | 0.5h | HIGH | ✅ Complete |
 | **PRE-3** | Batch size semantics | 1h | MEDIUM | ✅ Complete |
 | **PRE-4** | Remove unused profiler | 0.25h | LOW | ✅ Complete |
-| **PRE-5** | Remove unused val_sampler | 0.25h | LOW | Not Started |
-| **PRE-6** | Track actual last epoch | 0.5h | LOW | Not Started |
-| **PRE-7** | CPU auto_batch_size warning | 0.25h | LOW | Not Started |
+| **PRE-5** | Remove unused val_sampler | 0.25h | LOW | ✅ Complete |
+| **PRE-6** | Track actual last epoch | 0.5h | LOW | ✅ Complete |
+| **PRE-7** | CPU auto_batch_size warning | 0.25h | LOW | ✅ Complete |
 | **PRE-8** | Logger existence check | 0.25h | LOW | Not Started |
 | **Total** | | **~2.5h** | | |
 
