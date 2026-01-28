@@ -955,6 +955,148 @@ class TestCLICommands:
         assert "1.5" in result.output or "range" in result.output.lower()
 
 
+class TestDistributedCleanupOnError:
+    """Tests for distributed cleanup race condition fix (TRN-6)."""
+
+    @pytest.fixture
+    def runner(self):
+        """Create CLI runner."""
+        return CliRunner()
+
+    @patch("aam.cli.train.cleanup_distributed")
+    @patch("aam.cli.train.setup_logging")
+    @patch("aam.cli.train.validate_file_path")
+    def test_cleanup_not_called_on_early_exception_with_distributed_flag(
+        self,
+        mock_validate_file,
+        mock_setup_logging,
+        mock_cleanup_distributed,
+        runner,
+        sample_biom_file,
+        sample_unifrac_matrix_file,
+        sample_metadata_file,
+        sample_output_dir,
+    ):
+        """Test cleanup_distributed is NOT called when exception occurs before setup_distributed."""
+        # Force an early exception by making validate_file_path fail
+        mock_validate_file.side_effect = ValueError("Early validation error")
+
+        result = runner.invoke(
+            cli,
+            [
+                "train",
+                "--table",
+                sample_biom_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
+                "--metadata",
+                sample_metadata_file,
+                "--metadata-column",
+                "target",
+                "--output-dir",
+                sample_output_dir,
+                "--distributed",  # Flag is set but setup_distributed never called
+            ],
+        )
+
+        assert result.exit_code != 0
+        # cleanup_distributed should NOT be called since distributed was never initialized
+        mock_cleanup_distributed.assert_not_called()
+
+    @patch("aam.cli.train.cleanup_distributed")
+    @patch("aam.cli.train.setup_distributed")
+    @patch("aam.cli.train.setup_logging")
+    @patch("aam.cli.train.setup_random_seed")
+    @patch("aam.cli.train.validate_file_path")
+    @patch("aam.cli.train.validate_arguments")
+    @patch("aam.cli.train.BIOMLoader")
+    def test_cleanup_called_on_exception_after_distributed_setup(
+        self,
+        mock_biom_loader_class,
+        mock_validate_args,
+        mock_validate_file,
+        mock_setup_seed,
+        mock_setup_logging,
+        mock_setup_distributed,
+        mock_cleanup_distributed,
+        runner,
+        sample_biom_file,
+        sample_unifrac_matrix_file,
+        sample_metadata_file,
+        sample_output_dir,
+    ):
+        """Test cleanup_distributed IS called when exception occurs after setup_distributed."""
+        # setup_distributed succeeds
+        mock_setup_distributed.return_value = (0, 1, torch.device("cuda:0"))
+
+        # But then BIOMLoader fails later
+        mock_biom_loader_instance = MagicMock()
+        mock_biom_loader_class.return_value = mock_biom_loader_instance
+        mock_biom_loader_instance.load_table.side_effect = Exception("BIOM load error")
+
+        result = runner.invoke(
+            cli,
+            [
+                "train",
+                "--table",
+                sample_biom_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
+                "--metadata",
+                sample_metadata_file,
+                "--metadata-column",
+                "target",
+                "--output-dir",
+                sample_output_dir,
+                "--distributed",
+            ],
+        )
+
+        assert result.exit_code != 0
+        # cleanup_distributed SHOULD be called since distributed was initialized
+        mock_cleanup_distributed.assert_called_once()
+
+    @patch("aam.cli.train.cleanup_distributed")
+    @patch("aam.cli.train.setup_logging")
+    @patch("aam.cli.train.validate_file_path")
+    def test_cleanup_not_called_on_early_exception_with_fsdp_flag(
+        self,
+        mock_validate_file,
+        mock_setup_logging,
+        mock_cleanup_distributed,
+        runner,
+        sample_biom_file,
+        sample_unifrac_matrix_file,
+        sample_metadata_file,
+        sample_output_dir,
+    ):
+        """Test cleanup_distributed is NOT called when exception occurs before setup_distributed (FSDP)."""
+        # Force an early exception
+        mock_validate_file.side_effect = ValueError("Early validation error")
+
+        result = runner.invoke(
+            cli,
+            [
+                "train",
+                "--table",
+                sample_biom_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
+                "--metadata",
+                sample_metadata_file,
+                "--metadata-column",
+                "target",
+                "--output-dir",
+                sample_output_dir,
+                "--fsdp",  # FSDP flag is set but setup_distributed never called
+            ],
+        )
+
+        assert result.exit_code != 0
+        # cleanup_distributed should NOT be called since distributed was never initialized
+        mock_cleanup_distributed.assert_not_called()
+
+
 class TestCLIIntegration:
     """Integration tests for CLI with mocked components."""
 

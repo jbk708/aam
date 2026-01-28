@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-28
-**Status:** 17 outstanding tickets (~26-32 hours) | **3 HIGH priority**
+**Status:** 13 outstanding tickets (~22-28 hours) | **0 HIGH priority**
 
 ---
 
@@ -9,7 +9,7 @@
 
 | File | Status | Tickets | Dev Branch |
 |------|--------|---------|------------|
-| `TRAIN_BUGFIX_TICKETS.md` | 13 remaining | **TRN-3 to TRN-5 (HIGH)**, TRN-6 to TRN-15 | `dev/train-bugfix` |
+| `TRAIN_BUGFIX_TICKETS.md` | 9 remaining | TRN-7 to TRN-15 | `dev/train-bugfix` |
 | `REGRESSOR_OPTIMIZATION_TICKETS.md` | 1 remaining | REG-9 | `main` |
 | `PYTORCH_PORTING_TICKETS.md` | 1 remaining | PYT-19.4 | `main` |
 | `COSMOS_ONBOARDING_TICKETS.md` | 2 remaining | COS-9.6, COS-9.7 | `main` |
@@ -20,19 +20,14 @@
 
 ## Priority Summary
 
-### HIGH (3 tickets, ~1.5 hours)
+### HIGH (0 tickets)
+
+All HIGH priority tickets complete.
+
+### MEDIUM (7 tickets, ~2.75 hours)
 
 | Ticket | Description | Effort | File |
 |--------|-------------|--------|------|
-| **TRN-3** | Target column type validation | 0.5h | TRAIN_BUGFIX |
-| **TRN-4** | Checkpoint resume field validation | 0.5h | TRAIN_BUGFIX |
-| **TRN-5** | Fix drop_last=True for validation DataLoader | 0.5h | TRAIN_BUGFIX |
-
-### MEDIUM (8 tickets, ~3.25 hours)
-
-| Ticket | Description | Effort | File |
-|--------|-------------|--------|------|
-| **TRN-6** | Fix distributed cleanup race condition | 0.5h | TRAIN_BUGFIX |
 | **TRN-7** | Validate quantiles sorted and unique | 0.25h | TRAIN_BUGFIX |
 | **TRN-8** | Strip whitespace from metadata_column | 0.25h | TRAIN_BUGFIX |
 | **TRN-9** | Validate sample weights shape/positivity | 0.5h | TRAIN_BUGFIX |
