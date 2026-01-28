@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-28
-**Status:** 11 outstanding tickets (~22-28 hours) | **0 HIGH priority**
+**Status:** 10 outstanding tickets (~21-27 hours) | **0 HIGH priority**
 
 ---
 
@@ -9,7 +9,7 @@
 
 | File | Status | Tickets | Dev Branch |
 |------|--------|---------|------------|
-| `TRAIN_BUGFIX_TICKETS.md` | 7 remaining | TRN-9 to TRN-15 | `dev/train-bugfix` |
+| `TRAIN_BUGFIX_TICKETS.md` | 6 remaining | TRN-10 to TRN-15 | `dev/train-bugfix` |
 | `REGRESSOR_OPTIMIZATION_TICKETS.md` | 1 remaining | REG-9 | `main` |
 | `PYTORCH_PORTING_TICKETS.md` | 1 remaining | PYT-19.4 | `main` |
 | `COSMOS_ONBOARDING_TICKETS.md` | 2 remaining | COS-9.6, COS-9.7 | `main` |
@@ -24,11 +24,10 @@
 
 All HIGH priority tickets complete.
 
-### MEDIUM (5 tickets, ~2.25 hours)
+### MEDIUM (4 tickets, ~1.75 hours)
 
 | Ticket | Description | Effort | File |
 |--------|-------------|--------|------|
-| **TRN-9** | Validate sample weights shape/positivity | 0.5h | TRAIN_BUGFIX |
 | **TRN-10** | Add finally block to auto batch size finder | 0.5h | TRAIN_BUGFIX |
 | **TRN-11** | Validate pretrained encoder weight loading | 0.5h | TRAIN_BUGFIX |
 | **TRN-12** | Validate distributed broadcast success | 0.5h | TRAIN_BUGFIX |
