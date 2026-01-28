@@ -260,3 +260,55 @@ class TestUniFracLoader:
         # Should raise if wrong number of rows
         with pytest.raises(ValueError, match="(doesn't match|but expected)"):
             loader.validate_matrix_dimensions(stripe_matrix, sample_ids + ["extra"], metric="stripe")
+
+    # REG-10a: Weighted UniFrac tests
+    def test_extract_batch_distances_weighted_pairwise(self, loader, sample_ids, pairwise_matrix):
+        """Test extracting batch distances from pairwise matrix with weighted metric."""
+        distance_matrix = DistanceMatrix(pairwise_matrix, ids=sample_ids)
+
+        batch_ids = ["sample1", "sample2"]
+        batch_distances = loader.extract_batch_distances(distance_matrix, batch_ids, metric="weighted")
+
+        assert batch_distances.shape == (2, 2)
+        assert batch_distances[0, 0] == 0.0  # Diagonal
+        assert batch_distances[1, 1] == 0.0  # Diagonal
+
+    def test_extract_batch_distances_weighted_numpy_array(self, loader, sample_ids, pairwise_matrix):
+        """Test extracting weighted distances from numpy array."""
+        batch_ids = ["sample1", "sample2"]
+
+        batch_distances = loader.extract_batch_distances(pairwise_matrix, batch_ids, metric="weighted")
+
+        assert isinstance(batch_distances, np.ndarray)
+        assert batch_distances.shape == pairwise_matrix.shape
+
+    def test_extract_batch_distances_weighted_empty_batch(self, loader, sample_ids, pairwise_matrix):
+        """Test extracting weighted batch distances for empty batch."""
+        distance_matrix = DistanceMatrix(pairwise_matrix, ids=sample_ids)
+
+        batch_distances = loader.extract_batch_distances(distance_matrix, [], metric="weighted")
+
+        assert batch_distances.shape == (0, 0)
+
+    def test_extract_batch_distances_weighted_missing_ids(self, loader, sample_ids, pairwise_matrix):
+        """Test that weighted extraction fails when sample IDs are missing."""
+        distance_matrix = DistanceMatrix(pairwise_matrix, ids=sample_ids)
+
+        batch_ids = ["sample1", "nonexistent"]
+
+        with pytest.raises(ValueError, match="not found in distance matrix"):
+            loader.extract_batch_distances(distance_matrix, batch_ids, metric="weighted")
+
+    def test_extract_batch_distances_invalid_metric(self, loader, sample_ids, pairwise_matrix):
+        """Test that extraction fails for invalid metric."""
+        distance_matrix = DistanceMatrix(pairwise_matrix, ids=sample_ids)
+
+        with pytest.raises(ValueError, match="Invalid metric"):
+            loader.extract_batch_distances(distance_matrix, ["sample1"], metric="invalid")
+
+    def test_extract_batch_distances_weighted_wrong_shape(self, loader):
+        """Test that weighted extraction fails for non-square matrix."""
+        wrong_matrix = np.random.rand(4, 3)  # Non-square
+
+        with pytest.raises(ValueError, match="Expected square matrix"):
+            loader.extract_batch_distances(wrong_matrix, ["s1"], metric="weighted")

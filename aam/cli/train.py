@@ -170,8 +170,8 @@ def print_categorical_help(ctx: click.Context, param: click.Parameter, value: bo
 @click.option(
     "--unifrac-metric",
     default="unifrac",
-    type=click.Choice(["unifrac", "faith_pd"]),
-    help="UniFrac metric type (unifrac for pairwise, faith_pd for per-sample values)",
+    type=click.Choice(["unifrac", "weighted", "faith_pd"]),
+    help="UniFrac metric type (unifrac for unweighted pairwise, weighted for weighted pairwise, faith_pd for per-sample values)",
 )
 @click.option("--penalty", default=1.0, type=float, help="Weight for base/UniFrac loss")
 @click.option("--nuc-penalty", default=1.0, type=float, help="Weight for nucleotide loss")
@@ -821,12 +821,12 @@ def train(
             table_obj = table_obj.filter(matrix_sample_ids, axis="sample", inplace=False)
             sample_ids = matrix_sample_ids
 
-        if unifrac_metric == "unifrac":
-            unifrac_metric_name = "unweighted"
-            encoder_type = "unifrac"
-        else:
+        if unifrac_metric == "faith_pd":
             unifrac_metric_name = "faith_pd"
             encoder_type = "faith_pd"
+        else:
+            unifrac_metric_name = "unweighted" if unifrac_metric == "unifrac" else "weighted"
+            encoder_type = "unifrac"
 
         logger.info(
             f"Loaded UniFrac matrix: {type(unifrac_distances).__name__}, shape: {getattr(unifrac_distances, 'shape', 'N/A')}"
@@ -896,7 +896,7 @@ def train(
         # Extract train/val distance matrices
         train_distance_matrix = None
         val_distance_matrix = None
-        if unifrac_metric_name == "unweighted":
+        if unifrac_metric_name in ("unweighted", "weighted"):
             if isinstance(unifrac_distances, DistanceMatrix):
                 train_distance_matrix = unifrac_distances.filter(train_ids)
                 val_distance_matrix = unifrac_distances.filter(val_ids)

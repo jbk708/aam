@@ -101,8 +101,8 @@ from aam.cli.training_utils import (
 @click.option(
     "--unifrac-metric",
     default="unifrac",
-    type=click.Choice(["unifrac", "faith_pd"]),
-    help="UniFrac metric type (unifrac for pairwise, faith_pd for per-sample values)",
+    type=click.Choice(["unifrac", "weighted", "faith_pd"]),
+    help="UniFrac metric type (unifrac for unweighted pairwise, weighted for weighted pairwise, faith_pd for per-sample values)",
 )
 @click.option("--penalty", default=1.0, type=float, help="Weight for base/UniFrac loss")
 @click.option("--nuc-penalty", default=1.0, type=float, help="Weight for nucleotide loss")
@@ -359,14 +359,14 @@ def pretrain(
             matrix_format=matrix_format,
         )
 
-        if unifrac_metric == "unifrac":
-            unifrac_metric_name = "unweighted"
-            encoder_type = "unifrac"
-            base_output_dim = None
-        else:
+        if unifrac_metric == "faith_pd":
             unifrac_metric_name = "faith_pd"
             encoder_type = "faith_pd"
             base_output_dim = 1
+        else:
+            unifrac_metric_name = "unweighted" if unifrac_metric == "unifrac" else "weighted"
+            encoder_type = "unifrac"
+            base_output_dim = None
 
         logger.info(
             f"Loaded UniFrac matrix: {type(unifrac_distances).__name__}, shape: {getattr(unifrac_distances, 'shape', 'N/A')}"
@@ -392,7 +392,7 @@ def pretrain(
         # Extract train/val distance matrices
         train_distance_matrix = None
         val_distance_matrix = None
-        if unifrac_metric_name == "unweighted":
+        if unifrac_metric_name in ("unweighted", "weighted"):
             if isinstance(unifrac_distances, DistanceMatrix):
                 train_distance_matrix = unifrac_distances.filter(train_ids)
                 val_distance_matrix = unifrac_distances.filter(val_ids)
