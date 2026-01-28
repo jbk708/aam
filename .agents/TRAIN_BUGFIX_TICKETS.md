@@ -1,7 +1,7 @@
 # Train CLI Bugfix Tickets
 
 **Last Updated:** 2026-01-28
-**Status:** 6 remaining (9 complete) | ~2.5 hours estimated
+**Status:** 5 remaining (10 complete) | ~2 hours estimated
 **Dev Branch:** `dev/train-bugfix`
 
 All TRN ticket work should branch from and PR into `dev/train-bugfix`.
@@ -167,29 +167,18 @@ gh pr create --base dev/train-bugfix
 ---
 
 ### TRN-10: Add Finally Block to Auto Batch Size Finder
-**Priority:** MEDIUM | **Effort:** 0.5 hours | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** 0.5 hours | **Status:** Complete
 
-**Location:** `aam/cli/train.py:1309`
+**Location:** `aam/cli/train.py:1450`
 
 **Problem:** The auto batch size finder moves the model to GPU but only handles `RuntimeError`. Other exceptions (e.g., KeyboardInterrupt, CUDA OOM) will leave the model on GPU and CUDA cache dirty.
 
-**Current Code:**
-```python
-try:
-    result = finder.find_batch_size(...)
-    ...
-except RuntimeError as e:
-    logger.warning(f"Auto batch size failed: {e}")
-    model = model.cpu()
-    torch.cuda.empty_cache()
-```
-
-**Fix:** Use `finally` block to ensure cleanup happens for any exception type.
+**Solution:** Added `batch_size_found` flag and `finally` block that ensures cleanup (model.cpu() and torch.cuda.empty_cache()) happens for any exception type, not just RuntimeError.
 
 **Acceptance Criteria:**
-- [ ] Cleanup happens for all exception types (finally block)
-- [ ] CUDA cache cleared regardless of exception type
-- [ ] Model returned to CPU on any failure
+- [x] Cleanup happens for all exception types (finally block)
+- [x] CUDA cache cleared regardless of exception type
+- [x] Model returned to CPU on any failure
 
 ---
 
@@ -321,7 +310,7 @@ logger.info("Filtering tables for train/val splits...")  # All ranks log this
 | **TRN-7** | Validate quantiles sorted and unique | 0.25h | MEDIUM | Complete |
 | **TRN-8** | Strip whitespace from metadata_column | 0.25h | MEDIUM | Complete |
 | **TRN-9** | Validate sample weights shape/positivity | 0.5h | MEDIUM | Complete |
-| **TRN-10** | Add finally block to auto batch size finder | 0.5h | MEDIUM | Not Started |
+| **TRN-10** | Add finally block to auto batch size finder | 0.5h | MEDIUM | Complete |
 | **TRN-11** | Validate pretrained encoder weight loading | 0.5h | MEDIUM | Not Started |
 | **TRN-12** | Validate distributed broadcast success | 0.5h | MEDIUM | Not Started |
 | **TRN-13** | Validate categorical encoder handles empty data | 0.25h | MEDIUM | Not Started |

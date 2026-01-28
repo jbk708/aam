@@ -1454,6 +1454,7 @@ def train(
                     collate_fn=train_collate,
                 )
 
+                batch_size_found = False
                 try:
                     result = finder.find_batch_size(
                         dataset=train_dataset,
@@ -1462,6 +1463,7 @@ def train(
                         target_effective_batch_size=target_effective_batch_size,
                         max_memory_fraction=max_memory_fraction,
                     )
+                    batch_size_found = True
 
                     old_batch_size = batch_size
                     batch_size = result.batch_size
@@ -1500,9 +1502,10 @@ def train(
 
                 except RuntimeError as e:
                     logger.warning(f"Auto batch size failed: {e}. Using --batch-size={batch_size}")
-                    # Move model back to CPU to avoid issues
-                    model = model.cpu()
-                    torch.cuda.empty_cache()
+                finally:
+                    if not batch_size_found:
+                        model = model.cpu()
+                        torch.cuda.empty_cache()
 
         elif auto_batch_size and (distributed or fsdp or data_parallel):
             logger.info("Auto batch size disabled for distributed training. Using --batch-size directly.")
