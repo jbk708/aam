@@ -17,6 +17,7 @@ from aam.data.dataset import ASVDataset, collate_fn
 from aam.data.categorical import CategoricalEncoder
 from aam.data.normalization import CategoryNormalizer, CategoryWeighter, GlobalNormalizer, parse_target_transform
 from skbio import DistanceMatrix
+from aam.models.sample_sequence_encoder import CountEmbeddingMethod
 from aam.models.sequence_predictor import SequencePredictor
 from aam.models.transformer import AttnImplementation
 from aam.training.losses import MultiTaskLoss
@@ -70,6 +71,34 @@ def validate_metadata_contains_samples(
         if len(missing_samples) > max_missing_to_show:
             msg += f"\n... and {len(missing_samples) - max_missing_to_show} more"
         raise ValueError(msg)
+
+
+def validate_filtered_metadata_non_empty(
+    train_metadata: pd.DataFrame,
+    val_metadata: pd.DataFrame,
+) -> None:
+    """Validate that train and validation metadata are non-empty after filtering.
+
+    Args:
+        train_metadata: DataFrame containing training samples after filtering.
+        val_metadata: DataFrame containing validation samples after filtering.
+
+    Raises:
+        ValueError: If either DataFrame is empty.
+    """
+    if len(train_metadata) == 0:
+        raise ValueError(
+            "Training metadata is empty after filtering by sample IDs. "
+            "This may indicate a mismatch between sample IDs in BIOM table and metadata file. "
+            "Check that sample IDs match exactly (including case sensitivity)."
+        )
+
+    if len(val_metadata) == 0:
+        raise ValueError(
+            "Validation metadata is empty after filtering by sample IDs. "
+            "This may indicate a mismatch between sample IDs in BIOM table and metadata file. "
+            "Check that sample IDs match exactly (including case sensitivity)."
+        )
 
 
 CATEGORICAL_HELP_TEXT = """
@@ -543,7 +572,7 @@ def train(
     count_penalty: float,
     count_prediction: bool,
     count_embedding: bool,
-    count_embedding_method: str,
+    count_embedding_method: CountEmbeddingMethod,
     nuc_mask_ratio: float,
     nuc_mask_strategy: str,
     class_weights: Optional[str],
@@ -906,6 +935,9 @@ def train(
 
         train_metadata = metadata_df[metadata_df["sample_id"].isin(train_ids)]
         val_metadata = metadata_df[metadata_df["sample_id"].isin(val_ids)]
+
+        # Validate filtered metadata is non-empty
+        validate_filtered_metadata_non_empty(train_metadata, val_metadata)
 
         # Fit categorical encoder on training data only
         # Note: train_metadata is consistent across DDP processes due to broadcast above

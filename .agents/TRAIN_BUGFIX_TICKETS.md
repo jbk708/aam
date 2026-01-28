@@ -1,7 +1,7 @@
 # Train CLI Bugfix Tickets
 
 **Last Updated:** 2026-01-28
-**Status:** 14 remaining (1 complete) | ~6 hours estimated
+**Status:** 13 remaining (2 complete) | ~5.5 hours estimated
 **Dev Branch:** `dev/train-bugfix`
 
 All TRN ticket work should branch from and PR into `dev/train-bugfix`.
@@ -34,25 +34,18 @@ gh pr create --base dev/train-bugfix
 ---
 
 ### TRN-2: Add Empty Dataset Validation After Filtering
-**Priority:** HIGH | **Effort:** 0.5 hours | **Status:** Not Started
+**Priority:** HIGH | **Effort:** 0.5 hours | **Status:** Complete
 
-**Location:** `aam/cli/train.py:879`
+**Location:** `aam/cli/train.py:939`
 
 **Problem:** After filtering train/val metadata by sample IDs, there's no check for empty DataFrames. If all samples are filtered out (e.g., due to sample ID mismatches), training will fail with cryptic errors later.
 
-**Current Code:**
-```python
-train_metadata = metadata_df[metadata_df["sample_id"].isin(train_ids)]
-val_metadata = metadata_df[metadata_df["sample_id"].isin(val_ids)]
-# No validation that train_metadata/val_metadata are non-empty
-```
-
-**Fix:** Add validation that both DataFrames have at least 1 row after filtering.
+**Solution:** Added `validate_filtered_metadata_non_empty()` function that checks both train and validation metadata DataFrames are non-empty after filtering.
 
 **Acceptance Criteria:**
-- [ ] Clear error when train or val metadata is empty after filtering
-- [ ] Error message explains possible causes (sample ID mismatch)
-- [ ] Add test for this validation
+- [x] Clear error when train or val metadata is empty after filtering
+- [x] Error message explains possible causes (sample ID mismatch)
+- [x] Add test for this validation
 
 ---
 
@@ -378,7 +371,7 @@ logger.info("Filtering tables for train/val splits...")  # All ranks log this
 | Ticket | Description | Effort | Priority | Status |
 |--------|-------------|--------|----------|--------|
 | **TRN-1** | Validate metadata contains BIOM samples | 1h | HIGH | Complete |
-| **TRN-2** | Empty dataset validation after filtering | 0.5h | HIGH | Not Started |
+| **TRN-2** | Empty dataset validation after filtering | 0.5h | HIGH | Complete |
 | **TRN-3** | Target column type validation | 0.5h | HIGH | Not Started |
 | **TRN-4** | Checkpoint resume field validation | 0.5h | HIGH | Not Started |
 | **TRN-5** | Fix drop_last=True for validation DataLoader | 0.5h | HIGH | Not Started |

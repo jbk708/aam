@@ -21,7 +21,7 @@ from aam.cli.utils import (
     validate_file_path,
     validate_arguments,
 )
-from aam.cli.train import train, validate_metadata_contains_samples
+from aam.cli.train import train, validate_metadata_contains_samples, validate_filtered_metadata_non_empty
 from aam.cli.pretrain import pretrain
 from aam.cli.predict import predict
 
@@ -2897,6 +2897,74 @@ class TestMetadataSampleValidation:
 
         # Should not raise - metadata having extra samples is fine
         validate_metadata_contains_samples(sample_ids, metadata_df)
+
+
+class TestFilteredMetadataValidation:
+    """Tests for TRN-2: Empty dataset validation after filtering."""
+
+    def test_validate_filtered_metadata_passes_when_both_non_empty(self):
+        """Test validation passes when both train and val metadata have samples."""
+        train_metadata = pd.DataFrame(
+            {
+                "sample_id": ["sample1", "sample2"],
+                "target": [1.0, 2.0],
+            }
+        )
+        val_metadata = pd.DataFrame(
+            {
+                "sample_id": ["sample3"],
+                "target": [3.0],
+            }
+        )
+
+        # Should not raise
+        validate_filtered_metadata_non_empty(train_metadata, val_metadata)
+
+    def test_validate_filtered_metadata_raises_when_train_empty(self):
+        """Test validation raises ValueError when train metadata is empty."""
+        train_metadata = pd.DataFrame(columns=["sample_id", "target"])
+        val_metadata = pd.DataFrame(
+            {
+                "sample_id": ["sample1"],
+                "target": [1.0],
+            }
+        )
+
+        with pytest.raises(ValueError) as exc_info:
+            validate_filtered_metadata_non_empty(train_metadata, val_metadata)
+
+        error_msg = str(exc_info.value)
+        assert "Training metadata is empty" in error_msg
+        assert "sample id" in error_msg.lower()
+
+    def test_validate_filtered_metadata_raises_when_val_empty(self):
+        """Test validation raises ValueError when validation metadata is empty."""
+        train_metadata = pd.DataFrame(
+            {
+                "sample_id": ["sample1"],
+                "target": [1.0],
+            }
+        )
+        val_metadata = pd.DataFrame(columns=["sample_id", "target"])
+
+        with pytest.raises(ValueError) as exc_info:
+            validate_filtered_metadata_non_empty(train_metadata, val_metadata)
+
+        error_msg = str(exc_info.value)
+        assert "Validation metadata is empty" in error_msg
+        assert "sample id" in error_msg.lower()
+
+    def test_validate_filtered_metadata_raises_train_first_when_both_empty(self):
+        """Test validation raises for train first when both are empty."""
+        train_metadata = pd.DataFrame(columns=["sample_id", "target"])
+        val_metadata = pd.DataFrame(columns=["sample_id", "target"])
+
+        with pytest.raises(ValueError) as exc_info:
+            validate_filtered_metadata_non_empty(train_metadata, val_metadata)
+
+        error_msg = str(exc_info.value)
+        # Should raise for train first since it's checked first
+        assert "Training metadata is empty" in error_msg
 
 
 class TestBestMetricCLI:
