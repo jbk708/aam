@@ -46,6 +46,8 @@ from aam.cli.training_utils import (
     wrap_data_parallel,
 )
 
+logger = logging.getLogger(__name__)
+
 
 @click.command()
 @click.option("--table", required=True, type=click.Path(exists=True), help="Path to BIOM table file")
@@ -296,7 +298,6 @@ def pretrain(
         output_path.mkdir(parents=True, exist_ok=True)
 
         setup_logging(output_path)
-        logger = logging.getLogger(__name__)
 
         if tf32:
             torch.set_float32_matmul_precision("high")
@@ -752,10 +753,7 @@ def pretrain(
             cleanup_distributed()
 
     except Exception as e:
-        if "logger" in locals():
-            logger.error(f"Pre-training failed: {e}", exc_info=True)
-        else:
-            logging.error(f"Pre-training failed: {e}", exc_info=True)
+        logger.error(f"Pre-training failed: {e}", exc_info=True)
         # Cleanup distributed training on error
         if "use_distributed" in locals() and use_distributed:
             cleanup_distributed()
