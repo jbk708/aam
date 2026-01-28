@@ -1444,6 +1444,114 @@ class TestCLIIntegration:
         assert train_call.kwargs.get("initial_best_metric_value") == 0.5
         assert "resume_from" not in train_call.kwargs or train_call.kwargs.get("resume_from") is None
 
+    @patch("aam.cli.pretrain.DataLoader")
+    @patch("aam.cli.pretrain.create_scheduler")
+    @patch("aam.cli.pretrain.create_optimizer")
+    @patch("aam.cli.pretrain.setup_logging")
+    @patch("aam.cli.pretrain.setup_device")
+    @patch("aam.cli.pretrain.setup_random_seed")
+    @patch("aam.cli.pretrain.validate_file_path")
+    @patch("aam.cli.pretrain.validate_arguments")
+    @patch("aam.cli.pretrain.BIOMLoader")
+    @patch("aam.cli.pretrain.UniFracLoader")
+    @patch("aam.cli.pretrain.ASVDataset")
+    @patch("aam.cli.pretrain.SequenceEncoder")
+    @patch("aam.cli.pretrain.Trainer")
+    def test_pretrain_final_checkpoint_uses_actual_epoch(
+        self,
+        mock_trainer,
+        mock_model,
+        mock_dataset,
+        mock_unifrac_loader,
+        mock_biom_loader,
+        mock_validate_args,
+        mock_validate_file,
+        mock_setup_seed,
+        mock_setup_device,
+        mock_setup_logging,
+        mock_create_optimizer,
+        mock_create_scheduler,
+        mock_dataloader,
+        runner,
+        sample_biom_file,
+        sample_unifrac_matrix_file,
+        sample_output_dir,
+    ):
+        """Test that final checkpoint uses actual last epoch, not requested epochs."""
+        mock_setup_device.return_value = torch.device("cpu")
+        mock_biom_loader_instance = MagicMock()
+        mock_biom_loader.return_value = mock_biom_loader_instance
+        mock_table = MagicMock()
+
+        def mock_ids(axis=None):
+            if axis == "sample":
+                return ["sample1", "sample2", "sample3", "sample4"]
+            elif axis == "observation":
+                return ["obs1", "obs2", "obs3"]
+            return ["sample1", "sample2", "sample3", "sample4"]
+
+        mock_table.ids = mock_ids
+        mock_biom_loader_instance.load_table.return_value = mock_table
+        mock_biom_loader_instance.rarefy.return_value = mock_table
+
+        mock_unifrac_loader_instance = MagicMock()
+        mock_unifrac_loader.return_value = mock_unifrac_loader_instance
+        from skbio import DistanceMatrix
+        import numpy as np
+
+        dist_data = np.random.rand(4, 4)
+        dist_data = (dist_data + dist_data.T) / 2
+        np.fill_diagonal(dist_data, 0)
+        mock_distance_matrix = DistanceMatrix(dist_data, ids=["sample1", "sample2", "sample3", "sample4"])
+        mock_unifrac_loader_instance.load_matrix.return_value = mock_distance_matrix
+
+        mock_dataset_instance = MagicMock()
+        mock_dataset.return_value = mock_dataset_instance
+
+        mock_dataloader_instance = MagicMock()
+        mock_dataloader_instance.__len__ = MagicMock(return_value=10)
+        mock_dataloader.return_value = mock_dataloader_instance
+
+        mock_model_instance = MagicMock()
+        mock_model.return_value = mock_model_instance
+
+        mock_optimizer = MagicMock()
+        mock_create_optimizer.return_value = mock_optimizer
+
+        mock_scheduler = MagicMock()
+        mock_create_scheduler.return_value = mock_scheduler
+
+        mock_trainer_instance = MagicMock()
+        # Simulate early stopping: requested 10 epochs but only trained 3
+        mock_trainer_instance.train.return_value = {
+            "train_loss": [1.0, 0.8, 0.7],  # 3 epochs
+            "val_loss": [0.9, 0.75, 0.72],
+        }
+        mock_trainer.return_value = mock_trainer_instance
+
+        result = runner.invoke(
+            cli,
+            [
+                "pretrain",
+                "--table",
+                sample_biom_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
+                "--output-dir",
+                sample_output_dir,
+                "--epochs",
+                "10",  # Request 10 epochs
+            ],
+        )
+
+        assert result.exit_code == 0, f"Command failed: {result.output}"
+
+        # Verify save_checkpoint was called with actual last epoch (2), not requested epochs - 1 (9)
+        save_checkpoint_call = mock_trainer_instance.save_checkpoint.call_args
+        assert save_checkpoint_call is not None, "save_checkpoint was not called"
+        actual_epoch = save_checkpoint_call.kwargs.get("epoch")
+        assert actual_epoch == 2, f"Expected epoch=2 (actual last epoch), got epoch={actual_epoch}"
+
     @patch("aam.cli.predict.setup_device")
     @patch("aam.cli.predict.validate_file_path")
     @patch("aam.cli.predict.torch.load")
