@@ -93,7 +93,8 @@ class CrossAttentionFusion(nn.Module):
     metadata, allowing position-specific modulation. This contrasts with
     broadcast-based fusion where all positions receive identical conditioning.
 
-    Architecture:
+    Architecture::
+
         Sequence [B, S, D] --query--> MultiHeadAttention <--key/value-- Metadata [B, K, E]
                                               |
                                     Position-specific update [B, S, D]
@@ -157,12 +158,9 @@ class CrossAttentionFusion(nn.Module):
             return_weights: If True, return attention weights for logging.
 
         Returns:
-            If return_weights=False:
-                Fused representations [batch_size, seq_len, seq_dim]
-            If return_weights=True:
-                Tuple of:
-                    - Fused representations [batch_size, seq_len, seq_dim]
-                    - Attention weights [batch_size, num_heads, seq_len, num_cat_tokens]
+            If return_weights=False: Fused representations [batch_size, seq_len, seq_dim].
+            If return_weights=True: Tuple of (fused representations, attention weights)
+            where attention weights is [batch_size, num_heads, seq_len, num_cat_tokens].
         """
         metadata = self.cat_projection(cat_emb).unsqueeze(1)  # [B, 1, seq_dim]
 
@@ -287,12 +285,9 @@ class PerceiverFusion(nn.Module):
             return_weights: If True, return cross-attention weights for logging.
 
         Returns:
-            If return_weights=False:
-                Pooled output [batch_size, seq_dim]
-            If return_weights=True:
-                Tuple of:
-                    - Pooled output [batch_size, seq_dim]
-                    - Cross-attention weights [batch_size, num_heads, num_latents, seq_len+1]
+            If return_weights=False: Pooled output [batch_size, seq_dim].
+            If return_weights=True: Tuple of (pooled output, cross-attention weights)
+            where cross-attention weights is [batch_size, num_heads, num_latents, seq_len+1].
         """
         batch_size = seq_repr.size(0)
 

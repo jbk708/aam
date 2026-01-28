@@ -13,4 +13,4 @@
 ## Principles
 - Test-driven: tests before implementation
 - Self-documenting: minimize inline comments
-- Follow `_design_plan/` documents as guides
+- See `docs/` for guides and `ARCHITECTURE.md` for design decisions

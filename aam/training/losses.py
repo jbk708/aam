@@ -208,11 +208,8 @@ def compute_pinball_loss(
     """Compute pinball (quantile) loss for quantile regression.
 
     The pinball loss penalizes under-predictions and over-predictions asymmetrically
-    based on the quantile level τ:
-        L(y, ŷ, τ) = τ * max(y - ŷ, 0) + (1 - τ) * max(ŷ - y, 0)
-
-    This can be rewritten as:
-        L(y, ŷ, τ) = max(τ * (y - ŷ), (τ - 1) * (y - ŷ))
+    based on the quantile level τ. Formula: L(y, ŷ, τ) = τ * max(y - ŷ, 0) + (1 - τ) * max(ŷ - y, 0).
+    This can be rewritten as: L(y, ŷ, τ) = max(τ * (y - ŷ), (τ - 1) * (y - ŷ)).
 
     Args:
         pred: Predicted quantiles [batch_size, out_dim, num_quantiles]

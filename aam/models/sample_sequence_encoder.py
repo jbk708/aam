@@ -111,10 +111,10 @@ class SampleSequenceEncoder(nn.Module):
             return_nucleotides: Whether to return nucleotide predictions
 
         Returns:
-            If return_nucleotides=False: Sample embeddings [batch_size, num_asvs, embedding_dim]
+            If return_nucleotides=False: Sample embeddings [batch_size, num_asvs, embedding_dim].
             If return_nucleotides=True: Tuple of (sample_embeddings, nucleotide_predictions, mask_indices)
-                where nucleotide_predictions is [batch_size, num_asvs, seq_len, vocab_size]
-                and mask_indices is [batch_size, num_asvs, seq_len] boolean tensor (None if not masking)
+            where nucleotide_predictions is [batch_size, num_asvs, seq_len, vocab_size]
+            and mask_indices is [batch_size, num_asvs, seq_len] boolean tensor (None if not masking).
         """
         asv_mask = (tokens.sum(dim=-1) > 0).long()
 

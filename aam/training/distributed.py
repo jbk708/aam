@@ -2,7 +2,8 @@
 
 Supports both NCCL (NVIDIA) and RCCL (AMD ROCm) backends.
 
-Usage:
+Usage::
+
     # Single-node multi-GPU with torchrun (DDP):
     torchrun --nproc_per_node=4 train.py --distributed
 
@@ -812,7 +813,8 @@ class DistributedTrainer:
     This class wraps the existing Trainer to add DDP support without
     modifying the core Trainer implementation.
 
-    Example:
+    Example::
+
         # Launch with: torchrun --nproc_per_node=4 train.py
         trainer = DistributedTrainer(
             model=model,

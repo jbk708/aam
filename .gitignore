@@ -100,3 +100,6 @@ data/
 *.temp
 *.log
 *.out
+
+# Sphinx documentation
+docs/_build/
