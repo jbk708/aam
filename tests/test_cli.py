@@ -1317,13 +1317,13 @@ class TestCLIIntegration:
         )
 
         assert result.exit_code == 0, f"Command failed: {result.output}"
+
         mock_create_scheduler.assert_called_once()
-        call_kwargs = mock_create_scheduler.call_args
-        actual_num_training_steps = call_kwargs.kwargs["num_training_steps"]
-        expected_num_training_steps = (batches_per_epoch // gradient_accumulation_steps) * epochs
-        assert actual_num_training_steps == expected_num_training_steps, (
-            f"num_training_steps should account for gradient accumulation: "
-            f"expected {expected_num_training_steps}, got {actual_num_training_steps}"
+        scheduler_call = mock_create_scheduler.call_args
+        actual_steps = scheduler_call.kwargs["num_training_steps"]
+        expected_steps = (batches_per_epoch // gradient_accumulation_steps) * epochs
+        assert actual_steps == expected_steps, (
+            f"Expected {expected_steps} training steps (accounting for gradient accumulation), got {actual_steps}"
         )
 
     @patch("aam.cli.predict.setup_device")
