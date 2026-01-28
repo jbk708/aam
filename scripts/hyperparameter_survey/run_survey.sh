@@ -173,9 +173,10 @@ run_phase5() {
 run_phase7() {
     echo "========== PHASE 7: SIMPLIFIED BASELINE =========="
 
-    # 7.1 Minimal: no categoricals, no target normalization, abundance sampling
+    # 7.1 Minimal: no categoricals, minmax normalization, abundance sampling
+    # NOTE: Using minmax instead of none - raw targets cause model to predict zeros
     if [[ "$1" == "" || "$1" == "1" ]]; then
-        echo "Running simplified baseline (no categoricals, no normalization)..."
+        echo "Running simplified baseline (no categoricals, minmax norm)..."
         mkdir -p "$OUTPUT_BASE/phase7_simplified/minimal"
 
         torchrun --nproc_per_node=$NUM_GPUS -m aam.cli train \
@@ -186,7 +187,7 @@ run_phase7() {
             --metadata-column "$TARGET" \
             --pretrained-encoder "$PRETRAINED" \
             --freeze-base \
-            --target-transform none \
+            --target-transform minmax \
             --asv-sampling abundance \
             --loss-type mae \
             --regressor-hidden-dims "64" \
@@ -215,7 +216,7 @@ run_phase7() {
             --metadata "$METADATA" \
             --metadata-column "$TARGET" \
             --pretrained-encoder "$PRETRAINED" \
-            --target-transform none \
+            --target-transform minmax \
             --asv-sampling abundance \
             --loss-type mae \
             --regressor-hidden-dims "64" \
@@ -232,10 +233,10 @@ run_phase7() {
             2>&1 | tee "$OUTPUT_BASE/phase7_simplified/minimal_unfreeze/training.log"
     fi
 
-    # 7.3 With categoricals but no normalization (isolate normalization effect)
+    # 7.3 With categoricals, minmax normalization (isolate categorical effect)
     if [[ "$1" == "" || "$1" == "3" ]]; then
-        echo "Running with categoricals, no normalization..."
-        mkdir -p "$OUTPUT_BASE/phase7_simplified/no_norm_with_cat"
+        echo "Running with categoricals, minmax normalization..."
+        mkdir -p "$OUTPUT_BASE/phase7_simplified/minmax_with_cat"
 
         torchrun --nproc_per_node=$NUM_GPUS -m aam.cli train \
             --distributed \
@@ -247,7 +248,7 @@ run_phase7() {
             --categorical-fusion gmu \
             --pretrained-encoder "$PRETRAINED" \
             --freeze-base \
-            --target-transform none \
+            --target-transform minmax \
             --asv-sampling abundance \
             --loss-type mae \
             --regressor-hidden-dims "256,64" \
@@ -261,8 +262,8 @@ run_phase7() {
             --attention-heads $ATTENTION_HEADS \
             --attention-layers $ATTENTION_LAYERS \
             --best-metric mae \
-            --output-dir "$OUTPUT_BASE/phase7_simplified/no_norm_with_cat" \
-            2>&1 | tee "$OUTPUT_BASE/phase7_simplified/no_norm_with_cat/training.log"
+            --output-dir "$OUTPUT_BASE/phase7_simplified/minmax_with_cat" \
+            2>&1 | tee "$OUTPUT_BASE/phase7_simplified/minmax_with_cat/training.log"
     fi
 
     # 7.4 High count penalty (for weighted UniFrac pretrained models)
@@ -280,7 +281,7 @@ run_phase7() {
             --categorical-fusion gmu \
             --pretrained-encoder "$PRETRAINED" \
             --freeze-base \
-            --target-transform none \
+            --target-transform minmax \
             --asv-sampling abundance \
             --loss-type mae \
             --regressor-hidden-dims "256,64" \
@@ -297,6 +298,40 @@ run_phase7() {
             --best-metric mae \
             --output-dir "$OUTPUT_BASE/phase7_simplified/high_count_penalty" \
             2>&1 | tee "$OUTPUT_BASE/phase7_simplified/high_count_penalty/training.log"
+    fi
+
+    # 7.5 Learnable output scale (alternative to normalization)
+    if [[ "$1" == "" || "$1" == "5" ]]; then
+        echo "Running with learnable output scale (no normalization)..."
+        mkdir -p "$OUTPUT_BASE/phase7_simplified/learnable_scale"
+
+        torchrun --nproc_per_node=$NUM_GPUS -m aam.cli train \
+            --distributed \
+            --table "$TABLE" \
+            --unifrac-matrix "$UNIFRAC" \
+            --metadata "$METADATA" \
+            --metadata-column "$TARGET" \
+            --categorical-columns "$CATEGORICALS" \
+            --categorical-fusion gmu \
+            --pretrained-encoder "$PRETRAINED" \
+            --freeze-base \
+            --target-transform none \
+            --learnable-output-scale \
+            --asv-sampling abundance \
+            --loss-type mae \
+            --regressor-hidden-dims "256,64" \
+            --residual-regression-head \
+            --lr 5e-5 \
+            --scheduler warmup_cosine \
+            --epochs $EPOCHS \
+            --token-limit $TOKEN_LIMIT \
+            --seed $SEED \
+            --embedding-dim $EMBEDDING_DIM \
+            --attention-heads $ATTENTION_HEADS \
+            --attention-layers $ATTENTION_LAYERS \
+            --best-metric mae \
+            --output-dir "$OUTPUT_BASE/phase7_simplified/learnable_scale" \
+            2>&1 | tee "$OUTPUT_BASE/phase7_simplified/learnable_scale/training.log"
     fi
 }
 
@@ -451,7 +486,7 @@ case $PHASE in
         echo "Phases 5-7 (Optimization - Based on Survey Results):"
         echo "  5 [1|2|3|4|5]  - Combinations (best_combo, perceiver, category_weights, categorical_lr, onecycle)"
         echo "  6 [1|2|3]      - Unfreeze base (lr_1e5, lr_5e6, lr_1e5_100ep)"
-        echo "  7 [1|2|3|4]    - Simplified baseline (minimal, minimal_unfreeze, no_norm_with_cat, high_count_penalty)"
+        echo "  7 [1|2|3|4|5]  - Simplified baseline (minimal, minimal_unfreeze, minmax_with_cat, high_count_penalty, learnable_scale)"
         echo ""
         echo "Batch Commands:"
         echo "  all            - Run phases 1-4 (initial survey)"
