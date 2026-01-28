@@ -664,6 +664,13 @@ class Trainer:
                 if supports_categorical and categorical_ids is not None:
                     forward_kwargs["categorical_ids"] = categorical_ids
 
+                # Pass counts if model has count_embedding enabled
+                has_count_embedding = (
+                    hasattr(self._unwrapped_model, "count_embedding") and self._unwrapped_model.count_embedding
+                )
+                if has_count_embedding and "counts" in targets:
+                    forward_kwargs["counts"] = targets["counts"]
+
                 if autocast_dtype is not None and self.device.type == "cuda":
                     with torch.amp.autocast(device_type="cuda", dtype=autocast_dtype):
                         outputs = self.model(tokens, **forward_kwargs)

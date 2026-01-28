@@ -128,8 +128,8 @@ presence/absence, so count embeddings would have no gradient signal during pretr
 ---
 
 ### REG-10b: Count Magnitude Embeddings
-**Priority:** HIGH | **Effort:** 4-6 hours | **Status:** Not Started
-**Depends on:** REG-10a
+**Priority:** HIGH | **Effort:** 4-6 hours | **Status:** ✅ Complete
+**Depends on:** REG-10a ✅
 
 Incorporate ASV count magnitudes as input features, not just for masking.
 
@@ -175,13 +175,13 @@ asv_embedding = sequence_embedding * scale + shift
 ```
 
 **Acceptance Criteria:**
-- [ ] `--count-embedding` flag enables count input to embeddings
-- [ ] `--count-embedding-method` supports add, concat, film
-- [ ] Counts are log-transformed before embedding
-- [ ] Works with pretrained encoders (graceful handling if not present)
-- [ ] Backward compatible (default behavior unchanged)
-- [ ] 15+ unit tests
-- [ ] Integration test showing improvement over baseline
+- [x] `--count-embedding` flag enables count input to embeddings
+- [x] `--count-embedding-method` supports add, concat, film
+- [x] Counts are log-transformed before embedding
+- [x] Works with pretrained encoders (graceful handling if not present)
+- [x] Backward compatible (default behavior unchanged)
+- [x] 20 unit tests
+- [ ] Integration test showing improvement over baseline (deferred to hyperparameter survey)
 
 **Files:**
 - `aam/models/asv_encoder.py` - add count embedding layer
@@ -206,5 +206,5 @@ asv_embedding = sequence_embedding * scale + shift
 | **REG-8** | Per-output loss | 3-4h | LOW | Complete |
 | **REG-9** | Mixture of Experts | 6-8h | LOW | Not Started |
 | **REG-10a** | Weighted UniFrac support | 1-2h | **HIGH** | ✅ Complete |
-| **REG-10b** | Count magnitude embeddings | 4-6h | **HIGH** | Not Started |
+| **REG-10b** | Count magnitude embeddings | 4-6h | **HIGH** | ✅ Complete |
 | **Total** | | **14-20h** | |
