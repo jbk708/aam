@@ -1,7 +1,7 @@
 # Regressor Optimization Tickets
 
 **Last Updated:** 2026-01-27
-**Status:** 2 tickets remaining (~10-14 hours) | 1 HIGH priority
+**Status:** 3 tickets remaining (~11-16 hours) | 2 HIGH priority
 
 **Completed:** REG-1 to REG-8, REG-BUG-1 (see `ARCHIVED_TICKETS.md`)
 
@@ -93,8 +93,43 @@ Separate expert heads per category with learned routing.
 
 ---
 
-### REG-10: Count Magnitude Embeddings
+### REG-10a: Weighted UniFrac Support
+**Priority:** HIGH (prerequisite) | **Effort:** 1-2 hours | **Status:** In Progress
+
+Add weighted UniFrac as a valid metric option for both pretraining and fine-tuning.
+
+**Motivation:**
+Weighted UniFrac uses abundance information, making it the appropriate pretraining
+target when using count embeddings (REG-10b). Unweighted UniFrac only considers
+presence/absence, so count embeddings would have no gradient signal during pretraining.
+
+**Scope:**
+- Add `weighted` choice to `--unifrac-metric` CLI option in pretrain.py and train.py
+- Update `extract_batch_distances()` to accept `"weighted"` (same pairwise logic as unweighted)
+- Update metric name assignment in pretrain.py/train.py
+
+**CLI:**
+```bash
+--unifrac-metric weighted  # New option (in addition to unifrac, faith_pd)
+```
+
+**Acceptance Criteria:**
+- [ ] `--unifrac-metric weighted` accepted in pretrain and train CLIs
+- [ ] Weighted UniFrac matrices load and extract correctly
+- [ ] Metric properly logged as "weighted" in TensorBoard/checkpoints
+- [ ] 5+ unit tests
+
+**Files:**
+- `aam/cli/pretrain.py` - add weighted choice, update metric name logic
+- `aam/cli/train.py` - add weighted choice, update metric name logic
+- `aam/data/unifrac_loader.py` - accept "weighted" in `extract_batch_distances()`
+- `tests/test_unifrac_loader.py` - test new metric option
+
+---
+
+### REG-10b: Count Magnitude Embeddings
 **Priority:** HIGH | **Effort:** 4-6 hours | **Status:** Not Started
+**Depends on:** REG-10a
 
 Incorporate ASV count magnitudes as input features, not just for masking.
 
@@ -170,5 +205,6 @@ asv_embedding = sequence_embedding * scale + shift
 | **REG-7** | Residual head | 2-3h | LOW | Complete |
 | **REG-8** | Per-output loss | 3-4h | LOW | Complete |
 | **REG-9** | Mixture of Experts | 6-8h | LOW | Not Started |
-| **REG-10** | Count magnitude embeddings | 4-6h | **HIGH** | Not Started |
-| **Total** | | **13-18h** | |
+| **REG-10a** | Weighted UniFrac support | 1-2h | **HIGH** | In Progress |
+| **REG-10b** | Count magnitude embeddings | 4-6h | **HIGH** | Not Started |
+| **Total** | | **14-20h** | |

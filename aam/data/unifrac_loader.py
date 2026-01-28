@@ -296,36 +296,36 @@ class UniFracLoader:
         metric: str = "unweighted",
     ) -> np.ndarray:
         """Extract distances for a batch of samples from pre-computed distance matrix.
-        
+
         Args:
-            distances: Pre-computed DistanceMatrix (for unweighted) or Series (for faith_pd) or numpy array
+            distances: Pre-computed DistanceMatrix (for unweighted/weighted) or Series (for faith_pd) or numpy array
             sample_ids: List of sample IDs for the batch
-            metric: Type of metric ("unweighted" or "faith_pd")
-        
+            metric: Type of metric ("unweighted", "weighted", or "faith_pd")
+
         Returns:
             numpy array containing batch-level distances
-            - For "unweighted": Shape [batch_size, batch_size]
+            - For "unweighted"/"weighted": Shape [batch_size, batch_size]
             - For "faith_pd": Shape [batch_size, 1]
-        
+
         Raises:
             ValueError: If sample_ids not found in distance matrix/series
             ValueError: If metric is invalid
         """
         if not sample_ids:
-            if metric == "unweighted":
+            if metric in ("unweighted", "weighted"):
                 return np.array([]).reshape(0, 0)
             else:
                 return np.array([]).reshape(0, 1)
-        
-        if metric not in ("unweighted", "faith_pd"):
-            raise ValueError(f"Invalid metric: {metric}. Must be 'unweighted' or 'faith_pd'")
-        
-        if metric == "unweighted":
+
+        if metric not in ("unweighted", "weighted", "faith_pd"):
+            raise ValueError(f"Invalid metric: {metric}. Must be 'unweighted', 'weighted', or 'faith_pd'")
+
+        if metric in ("unweighted", "weighted"):
             if isinstance(distances, DistanceMatrix):
                 missing_ids = set(sample_ids) - set(distances.ids)
                 if missing_ids:
                     raise ValueError(f"Sample IDs not found in distance matrix: {sorted(missing_ids)}")
-                
+
                 filtered_distances = distances.filter(sample_ids)
                 id_to_idx = {id_: idx for idx, id_ in enumerate(filtered_distances.ids)}
                 reorder_indices = [id_to_idx[id_] for id_ in sample_ids]
@@ -333,10 +333,10 @@ class UniFracLoader:
                 return reordered_data
             elif isinstance(distances, np.ndarray):
                 if distances.ndim != 2 or distances.shape[0] != distances.shape[1]:
-                    raise ValueError(f"Expected square matrix for unweighted metric, got shape {distances.shape}")
+                    raise ValueError(f"Expected square matrix for {metric} metric, got shape {distances.shape}")
                 return distances
             else:
-                raise TypeError(f"Expected DistanceMatrix or numpy array for unweighted metric, got {type(distances)}")
+                raise TypeError(f"Expected DistanceMatrix or numpy array for {metric} metric, got {type(distances)}")
         else:
             if isinstance(distances, pd.Series):
                 missing_ids = set(sample_ids) - set(distances.index)
