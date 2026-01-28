@@ -614,6 +614,9 @@ def pretrain(
         elif auto_batch_size and (use_distributed or data_parallel):
             logger.info("Auto batch size disabled for distributed training. Using --batch-size directly.")
 
+        elif auto_batch_size and device != "cuda":
+            logger.warning("Auto batch size disabled for CPU training. Using --batch-size directly.")
+
         # Handle distributed training setup
         if fsdp:
             model = setup_fsdp(model, sync_batchnorm=sync_batchnorm, logger=logger)
