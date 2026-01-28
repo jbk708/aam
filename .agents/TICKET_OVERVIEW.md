@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-28
-**Status:** 5 outstanding tickets (~17-22 hours) + backlog | **1 HIGH priority**
+**Status:** 4 outstanding tickets (~17-22 hours) + backlog | **1 HIGH priority**
 
 ---
 
@@ -9,7 +9,7 @@
 
 | File | Status | Tickets |
 |------|--------|---------|
-| `PRETRAIN_BUGFIX_TICKETS.md` | **1 remaining** | PRE-8 |
+| `PRETRAIN_BUGFIX_TICKETS.md` | **COMPLETE** | All done |
 | `DOCUMENTATION_TICKETS.md` | **COMPLETE** | DOC-5 to DOC-13 done |
 | `FUSION_CLEANUP_TICKETS.md` | Complete | All done |
 | `REGRESSOR_OPTIMIZATION_TICKETS.md` | 2 remaining | REG-9, **REG-10 (HIGH)** |
@@ -32,7 +32,7 @@
 Key difference: AAM ignores count magnitudes as input (only uses for masking).
 REG-10 adds count embeddings to close this gap.
 
-### LOW (4 tickets, ~12.5-16.5 hours)
+### LOW (3 tickets, ~12-16 hours)
 
 | Ticket | Description | Effort | File |
 |--------|-------------|--------|------|
@@ -40,7 +40,7 @@ REG-10 adds count embeddings to close this gap.
 | ~~PRE-5~~ | ~~Remove unused val_sampler~~ | ~~0.25h~~ | ~~PRETRAIN_BUGFIX~~ |
 | ~~PRE-6~~ | ~~Track actual last epoch~~ | ~~0.5h~~ | ~~PRETRAIN_BUGFIX~~ |
 | ~~PRE-7~~ | ~~CPU auto_batch_size warning~~ | ~~0.25h~~ | ~~PRETRAIN_BUGFIX~~ |
-| **PRE-8** | Logger existence check | 0.25h | PRETRAIN_BUGFIX |
+| ~~PRE-8~~ | ~~Logger existence check~~ | ~~0.25h~~ | ~~PRETRAIN_BUGFIX~~ |
 | **REG-9** | Mixture of Experts | 6-8h | REGRESSOR |
 | **PYT-19.4** | Hierarchical categories | 6-8h | PYTORCH |
 
@@ -58,6 +58,7 @@ REG-10 adds count embeddings to close this gap.
 
 | Ticket | Description |
 |--------|-------------|
+| **PRE-8** | Improve logger existence check robustness |
 | **PRE-7** | Add warning when auto_batch_size skipped for CPU |
 | **PRE-6** | Track actual last epoch in final checkpoint |
 | **PRE-5** | Remove unused val_sampler variable |

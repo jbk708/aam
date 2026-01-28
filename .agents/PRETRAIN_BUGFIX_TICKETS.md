@@ -1,7 +1,7 @@
 # Pretrain CLI Bugfix Tickets
 
 **Last Updated:** 2026-01-28
-**Status:** 1 ticket (~0.25 hours total) | **0 HIGH priority**
+**Status:** COMPLETE | All tickets done
 
 ---
 
@@ -51,7 +51,7 @@ CLI validation incorrectly treated `--batch-size` as total (dividing by world_si
 
 ---
 
-## Outstanding Tickets
+## Low Priority Tickets (Complete)
 
 ### PRE-4: Remove Unused MemoryProfiler Instance
 **Priority:** LOW | **Effort:** 0.25 hours | **Status:** ✅ Complete
@@ -125,21 +125,20 @@ This object is created but never used. Memory profiling is done via separate `lo
 ---
 
 ### PRE-8: Improve Logger Existence Check Robustness
-**Priority:** LOW | **Effort:** 0.25 hours | **Status:** Not Started
+**Priority:** LOW | **Effort:** 0.25 hours | **Status:** ✅ Complete
 
 **Location:** `aam/cli/pretrain.py:746`
 
-```python
-if "logger" in locals():
-```
+**Problem:** The pattern `if "logger" in locals():` was fragile. If code was refactored and logger moved to a different scope, this check could fail silently.
 
-This pattern is fragile. If code is refactored and logger moves to a different scope, this check could fail silently.
-
-**Fix:** Initialize logger at module level or use a more robust pattern.
+**Implementation (2026-01-28):**
+- Moved `logger = logging.getLogger(__name__)` to module level
+- Removed redundant logger assignment inside `pretrain()` function
+- Simplified exception handler to use logger directly (always available)
 
 **Acceptance Criteria:**
-- [ ] Logger availability check is robust to refactoring
-- [ ] Error logging works in all failure scenarios
+- [x] Logger availability check is robust to refactoring
+- [x] Error logging works in all failure scenarios
 
 ---
 
@@ -154,8 +153,8 @@ This pattern is fragile. If code is refactored and logger moves to a different s
 | **PRE-5** | Remove unused val_sampler | 0.25h | LOW | ✅ Complete |
 | **PRE-6** | Track actual last epoch | 0.5h | LOW | ✅ Complete |
 | **PRE-7** | CPU auto_batch_size warning | 0.25h | LOW | ✅ Complete |
-| **PRE-8** | Logger existence check | 0.25h | LOW | Not Started |
-| **Total** | | **~2.5h** | | |
+| **PRE-8** | Logger existence check | 0.25h | LOW | ✅ Complete |
+| **Total** | | **~2.5h** | | **COMPLETE** |
 
 ---
 
