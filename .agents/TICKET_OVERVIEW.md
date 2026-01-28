@@ -1,7 +1,7 @@
 # Ticket Overview
 
-**Last Updated:** 2026-01-27
-**Status:** 3 outstanding tickets (~16-22 hours) + backlog | **1 HIGH priority**
+**Last Updated:** 2026-01-28
+**Status:** 10 outstanding tickets (~19-25 hours) + backlog | **2 HIGH priority**
 
 ---
 
@@ -9,6 +9,7 @@
 
 | File | Status | Tickets |
 |------|--------|---------|
+| `PRETRAIN_BUGFIX_TICKETS.md` | **7 remaining** | **PRE-2 (HIGH)**, PRE-3 to PRE-8 |
 | `DOCUMENTATION_TICKETS.md` | **COMPLETE** | DOC-5 to DOC-13 done |
 | `FUSION_CLEANUP_TICKETS.md` | Complete | All done |
 | `REGRESSOR_OPTIMIZATION_TICKETS.md` | 2 remaining | REG-9, **REG-10 (HIGH)** |
@@ -21,20 +22,34 @@
 
 ## Priority Summary
 
-### HIGH (1 ticket, ~4-6 hours)
+### HIGH (2 tickets, ~4.5-6.5 hours)
 
 | Ticket | Description | Effort | File |
 |--------|-------------|--------|------|
+| **PRE-2** | Double checkpoint loading | 0.5h | PRETRAIN_BUGFIX |
 | **REG-10** | Count magnitude embeddings | 4-6h | REGRESSOR |
 
-**Context:** RF baseline achieves MAE=50, R²=0.7 vs AAM's MAE=70, R²=0.42.
+**PRE-2 Context:** Bug in pretrain.py causing wasteful double checkpoint loading on resume.
+
+**REG-10 Context:** RF baseline achieves MAE=50, R²=0.7 vs AAM's MAE=70, R²=0.42.
 Key difference: AAM ignores count magnitudes as input (only uses for masking).
 REG-10 adds count embeddings to close this gap.
 
-### LOW (2 tickets, ~12-16 hours)
+### MEDIUM (1 ticket, ~1 hour)
 
 | Ticket | Description | Effort | File |
 |--------|-------------|--------|------|
+| **PRE-3** | Batch size semantics inconsistency | 1h | PRETRAIN_BUGFIX |
+
+### LOW (7 tickets, ~13-18 hours)
+
+| Ticket | Description | Effort | File |
+|--------|-------------|--------|------|
+| **PRE-4** | Remove unused profiler | 0.25h | PRETRAIN_BUGFIX |
+| **PRE-5** | Remove unused val_sampler | 0.25h | PRETRAIN_BUGFIX |
+| **PRE-6** | Track actual last epoch | 0.5h | PRETRAIN_BUGFIX |
+| **PRE-7** | CPU auto_batch_size warning | 0.25h | PRETRAIN_BUGFIX |
+| **PRE-8** | Logger existence check | 0.25h | PRETRAIN_BUGFIX |
 | **REG-9** | Mixture of Experts | 6-8h | REGRESSOR |
 | **PYT-19.4** | Hierarchical categories | 6-8h | PYTORCH |
 
@@ -48,7 +63,13 @@ REG-10 adds count embeddings to close this gap.
 
 ---
 
-## Recently Completed (2026-01-27)
+## Recently Completed (2026-01-28)
+
+| Ticket | Description |
+|--------|-------------|
+| **PRE-1** | Fix scheduler num_training_steps ignoring gradient accumulation |
+
+## Completed (2026-01-27)
 
 ### Documentation Overhaul
 

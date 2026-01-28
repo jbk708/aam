@@ -1212,6 +1212,120 @@ class TestCLIIntegration:
         assert result.exit_code != 0
         assert "--data-parallel requires CUDA" in result.output
 
+    @patch("aam.cli.pretrain.DataLoader")
+    @patch("aam.cli.pretrain.create_scheduler")
+    @patch("aam.cli.pretrain.create_optimizer")
+    @patch("aam.cli.pretrain.setup_logging")
+    @patch("aam.cli.pretrain.setup_device")
+    @patch("aam.cli.pretrain.setup_random_seed")
+    @patch("aam.cli.pretrain.validate_file_path")
+    @patch("aam.cli.pretrain.validate_arguments")
+    @patch("aam.cli.pretrain.BIOMLoader")
+    @patch("aam.cli.pretrain.UniFracLoader")
+    @patch("aam.cli.pretrain.ASVDataset")
+    @patch("aam.cli.pretrain.SequenceEncoder")
+    @patch("aam.cli.pretrain.Trainer")
+    def test_pretrain_scheduler_accounts_for_gradient_accumulation(
+        self,
+        mock_trainer,
+        mock_model,
+        mock_dataset,
+        mock_unifrac_loader,
+        mock_biom_loader,
+        mock_validate_args,
+        mock_validate_file,
+        mock_setup_seed,
+        mock_setup_device,
+        mock_setup_logging,
+        mock_create_optimizer,
+        mock_create_scheduler,
+        mock_dataloader,
+        runner,
+        sample_biom_file,
+        sample_unifrac_matrix_file,
+        sample_output_dir,
+    ):
+        """Test that num_training_steps accounts for gradient_accumulation_steps."""
+        mock_setup_device.return_value = torch.device("cpu")
+        mock_biom_loader_instance = MagicMock()
+        mock_biom_loader.return_value = mock_biom_loader_instance
+        mock_table = MagicMock()
+
+        def mock_ids(axis=None):
+            if axis == "sample":
+                return ["sample1", "sample2", "sample3", "sample4"]
+            elif axis == "observation":
+                return ["obs1", "obs2", "obs3"]
+            return ["sample1", "sample2", "sample3", "sample4"]
+
+        mock_table.ids = mock_ids
+        mock_biom_loader_instance.load_table.return_value = mock_table
+        mock_biom_loader_instance.rarefy.return_value = mock_table
+
+        mock_unifrac_loader_instance = MagicMock()
+        mock_unifrac_loader.return_value = mock_unifrac_loader_instance
+        from skbio import DistanceMatrix
+        import numpy as np
+
+        dist_data = np.random.rand(4, 4)
+        dist_data = (dist_data + dist_data.T) / 2
+        np.fill_diagonal(dist_data, 0)
+        mock_distance_matrix = DistanceMatrix(dist_data, ids=["sample1", "sample2", "sample3", "sample4"])
+        mock_unifrac_loader_instance.load_matrix.return_value = mock_distance_matrix
+
+        mock_dataset_instance = MagicMock()
+        mock_dataset.return_value = mock_dataset_instance
+
+        batches_per_epoch = 100
+        mock_dataloader_instance = MagicMock()
+        mock_dataloader_instance.__len__ = MagicMock(return_value=batches_per_epoch)
+        mock_dataloader.return_value = mock_dataloader_instance
+
+        mock_model_instance = MagicMock()
+        mock_model.return_value = mock_model_instance
+
+        mock_optimizer = MagicMock()
+        mock_create_optimizer.return_value = mock_optimizer
+
+        mock_scheduler = MagicMock()
+        mock_create_scheduler.return_value = mock_scheduler
+
+        mock_trainer_instance = MagicMock()
+        mock_trainer_instance.train.return_value = {"train_loss": [1.0], "val_loss": [0.9]}
+        mock_trainer.return_value = mock_trainer_instance
+
+        epochs = 10
+        gradient_accumulation_steps = 4
+
+        result = runner.invoke(
+            cli,
+            [
+                "pretrain",
+                "--table",
+                sample_biom_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
+                "--output-dir",
+                sample_output_dir,
+                "--batch-size",
+                "8",
+                "--epochs",
+                str(epochs),
+                "--gradient-accumulation-steps",
+                str(gradient_accumulation_steps),
+            ],
+        )
+
+        assert result.exit_code == 0, f"Command failed: {result.output}"
+
+        mock_create_scheduler.assert_called_once()
+        scheduler_call = mock_create_scheduler.call_args
+        actual_steps = scheduler_call.kwargs["num_training_steps"]
+        expected_steps = (batches_per_epoch // gradient_accumulation_steps) * epochs
+        assert actual_steps == expected_steps, (
+            f"Expected {expected_steps} training steps (accounting for gradient accumulation), got {actual_steps}"
+        )
+
     @patch("aam.cli.predict.setup_device")
     @patch("aam.cli.predict.validate_file_path")
     @patch("aam.cli.predict.torch.load")
