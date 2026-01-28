@@ -1,7 +1,7 @@
 # Train CLI Bugfix Tickets
 
 **Last Updated:** 2026-01-28
-**Status:** 8 remaining (7 complete) | ~3.25 hours estimated
+**Status:** 7 remaining (8 complete) | ~3 hours estimated
 **Dev Branch:** `dev/train-bugfix`
 
 All TRN ticket work should branch from and PR into `dev/train-bugfix`.
@@ -135,24 +135,18 @@ gh pr create --base dev/train-bugfix
 ---
 
 ### TRN-8: Strip Whitespace from metadata_column Argument
-**Priority:** MEDIUM | **Effort:** 0.25 hours | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** 0.25 hours | **Status:** Complete
 
-**Location:** `aam/cli/train.py:776`
+**Location:** `aam/cli/train.py:910`
 
 **Problem:** The `metadata_column` argument is not stripped of whitespace. Users may accidentally include leading/trailing spaces (e.g., copying from spreadsheet), causing column not found errors.
 
-**Current Code:**
-```python
-if metadata_column not in metadata_df.columns:
-    raise ValueError(f"Metadata column '{metadata_column}' not found...")
-```
-
-**Fix:** Strip whitespace from `metadata_column` early in validation.
+**Solution:** Added `strip_column_whitespace()` function that strips leading/trailing whitespace and logs a warning when whitespace was removed. Applied to both `metadata_column` and `categorical_columns` arguments before column validation.
 
 **Acceptance Criteria:**
-- [ ] `metadata_column.strip()` called before column lookup
-- [ ] Warning logged if whitespace was stripped
-- [ ] Same treatment for `--categorical-columns` argument
+- [x] `metadata_column.strip()` called before column lookup
+- [x] Warning logged if whitespace was stripped
+- [x] Same treatment for `--categorical-columns` argument
 
 ---
 
@@ -335,7 +329,7 @@ logger.info("Filtering tables for train/val splits...")  # All ranks log this
 | **TRN-5** | Fix drop_last=True for validation DataLoader | 0.5h | HIGH | Complete |
 | **TRN-6** | Fix distributed cleanup race condition | 0.5h | MEDIUM | Complete |
 | **TRN-7** | Validate quantiles sorted and unique | 0.25h | MEDIUM | Complete |
-| **TRN-8** | Strip whitespace from metadata_column | 0.25h | MEDIUM | Not Started |
+| **TRN-8** | Strip whitespace from metadata_column | 0.25h | MEDIUM | Complete |
 | **TRN-9** | Validate sample weights shape/positivity | 0.5h | MEDIUM | Not Started |
 | **TRN-10** | Add finally block to auto batch size finder | 0.5h | MEDIUM | Not Started |
 | **TRN-11** | Validate pretrained encoder weight loading | 0.5h | MEDIUM | Not Started |
