@@ -9,6 +9,7 @@ from unittest.mock import patch, MagicMock, mock_open
 import click
 from click.testing import CliRunner
 import inspect
+import numpy as np
 import pandas as pd
 
 from aam.cli import (
@@ -84,6 +85,119 @@ def _setup_train_data_parallel_mocks(mock_biom_loader, mock_unifrac_loader, mock
         "dataset": mock_dataset_instance,
         "dataloader": mock_dataloader_instance,
         "model": mock_model_instance,
+    }
+
+
+def _setup_train_full_flow_mocks(
+    mock_biom_loader,
+    mock_unifrac_loader,
+    mock_dataset,
+    mock_dataloader,
+    mock_model,
+    mock_read_csv,
+    mock_train_test_split,
+    mock_create_optimizer,
+    mock_create_scheduler,
+    mock_loss_class,
+    mock_trainer_class,
+):
+    """Set up common mocks for full train command flow tests.
+
+    Returns the configured mock instances for further customization if needed.
+    """
+    from skbio import DistanceMatrix
+
+    # Metadata mock
+    mock_metadata_df = pd.DataFrame(
+        {
+            "sample_id": ["sample1", "sample2", "sample3", "sample4"],
+            "target": [1.0, 2.0, 3.0, 4.0],
+        }
+    )
+    mock_read_csv.return_value = mock_metadata_df
+
+    # BIOM loader mock
+    mock_biom_loader_instance = MagicMock()
+    mock_biom_loader.return_value = mock_biom_loader_instance
+    mock_table = MagicMock()
+
+    def mock_ids(axis=None):
+        if axis == "sample":
+            return ["sample1", "sample2", "sample3", "sample4"]
+        elif axis == "observation":
+            return ["obs1", "obs2", "obs3"]
+        return ["sample1", "sample2", "sample3", "sample4"]
+
+    mock_table.ids = mock_ids
+    mock_biom_loader_instance.load_table.return_value = mock_table
+    mock_biom_loader_instance.rarefy.return_value = mock_table
+
+    # UniFrac loader mock
+    mock_unifrac_loader_instance = MagicMock()
+    mock_unifrac_loader.return_value = mock_unifrac_loader_instance
+    dist_data = np.random.rand(4, 4)
+    dist_data = (dist_data + dist_data.T) / 2
+    np.fill_diagonal(dist_data, 0)
+    mock_distance_matrix = DistanceMatrix(dist_data, ids=["sample1", "sample2", "sample3", "sample4"])
+    mock_unifrac_loader_instance.load_matrix.return_value = mock_distance_matrix
+
+    # Train/test split mock
+    mock_train_ids = ["sample1", "sample2", "sample3"]
+    mock_val_ids = ["sample4"]
+    mock_train_test_split.return_value = (mock_train_ids, mock_val_ids)
+
+    # Table filter mock
+    mock_train_table = MagicMock()
+    mock_val_table = MagicMock()
+    mock_table.filter.side_effect = lambda ids, **kwargs: mock_train_table if ids == mock_train_ids else mock_val_table
+
+    # Dataset mock
+    mock_dataset_instance = MagicMock()
+    mock_dataset_instance.get_normalization_params.return_value = None
+    mock_dataset_instance.get_count_normalization_params.return_value = None
+    mock_dataset.return_value = mock_dataset_instance
+
+    # DataLoader mock
+    mock_dataloader_instance = MagicMock()
+    mock_dataloader_instance.__len__ = MagicMock(return_value=1)
+    mock_dataloader.return_value = mock_dataloader_instance
+
+    # Model mock
+    mock_model_instance = MagicMock()
+    mock_model.return_value = mock_model_instance
+
+    # Optimizer mock
+    mock_optimizer = MagicMock()
+    mock_create_optimizer.return_value = mock_optimizer
+
+    # Scheduler mock
+    mock_scheduler = MagicMock()
+    mock_create_scheduler.return_value = mock_scheduler
+
+    # Loss mock
+    mock_loss_instance = MagicMock()
+    mock_loss_class.return_value = mock_loss_instance
+
+    # Trainer mock
+    mock_trainer_instance = MagicMock()
+    mock_trainer_instance.train.return_value = {"train_loss": [1.0], "val_loss": [0.9]}
+    mock_trainer_class.return_value = mock_trainer_instance
+
+    return {
+        "metadata_df": mock_metadata_df,
+        "biom_loader": mock_biom_loader_instance,
+        "table": mock_table,
+        "unifrac_loader": mock_unifrac_loader_instance,
+        "distance_matrix": mock_distance_matrix,
+        "train_ids": mock_train_ids,
+        "val_ids": mock_val_ids,
+        "dataset": mock_dataset_instance,
+        "dataloader": mock_dataloader_instance,
+        "model": mock_model_instance,
+        "optimizer": mock_optimizer,
+        "scheduler": mock_scheduler,
+        "loss": mock_loss_instance,
+        "trainer": mock_trainer_instance,
     }
 
 
@@ -3965,3 +4079,109 @@ class TestValPredictionPassesOption:
         result = runner.invoke(cli, ["train", "--help"])
         assert "--val-prediction-passes" in result.output
         assert "--asv-sampling" in result.output
+
+
+class TestValidationDataLoaderDropLast:
+    """Tests for TRN-5: Validation DataLoader should use drop_last=False."""
+
+    @pytest.fixture
+    def runner(self):
+        return CliRunner()
+
+    @patch("aam.cli.train.pd.read_csv")
+    @patch("aam.cli.train.setup_logging")
+    @patch("aam.cli.train.setup_device")
+    @patch("aam.cli.train.setup_random_seed")
+    @patch("aam.cli.train.validate_file_path")
+    @patch("aam.cli.train.validate_arguments")
+    @patch("aam.cli.train.BIOMLoader")
+    @patch("aam.cli.train.UniFracLoader")
+    @patch("aam.cli.train.train_test_split")
+    @patch("aam.cli.train.ASVDataset")
+    @patch("aam.cli.train.DataLoader")
+    @patch("aam.cli.train.SequencePredictor")
+    @patch("aam.cli.train.create_optimizer")
+    @patch("aam.cli.train.create_scheduler")
+    @patch("aam.cli.train.MultiTaskLoss")
+    @patch("aam.cli.train.Trainer")
+    def test_validation_dataloader_uses_drop_last_false(
+        self,
+        mock_trainer_class,
+        mock_loss_class,
+        mock_create_scheduler,
+        mock_create_optimizer,
+        mock_model_class,
+        mock_dataloader_class,
+        mock_dataset_class,
+        mock_train_test_split,
+        mock_unifrac_loader_class,
+        mock_biom_loader_class,
+        mock_validate_args,
+        mock_validate_file,
+        mock_setup_seed,
+        mock_setup_device,
+        mock_setup_logging,
+        mock_read_csv,
+        runner,
+        sample_biom_file,
+        sample_unifrac_matrix_file,
+        sample_metadata_file,
+        sample_output_dir,
+    ):
+        """Test that validation DataLoader uses drop_last=False while train uses drop_last=True."""
+        mock_setup_device.return_value = torch.device("cpu")
+
+        _setup_train_full_flow_mocks(
+            mock_biom_loader=mock_biom_loader_class,
+            mock_unifrac_loader=mock_unifrac_loader_class,
+            mock_dataset=mock_dataset_class,
+            mock_dataloader=mock_dataloader_class,
+            mock_model=mock_model_class,
+            mock_read_csv=mock_read_csv,
+            mock_train_test_split=mock_train_test_split,
+            mock_create_optimizer=mock_create_optimizer,
+            mock_create_scheduler=mock_create_scheduler,
+            mock_loss_class=mock_loss_class,
+            mock_trainer_class=mock_trainer_class,
+        )
+
+        result = runner.invoke(
+            cli,
+            [
+                "train",
+                "--table",
+                sample_biom_file,
+                "--unifrac-matrix",
+                sample_unifrac_matrix_file,
+                "--metadata",
+                sample_metadata_file,
+                "--metadata-column",
+                "target",
+                "--output-dir",
+                str(sample_output_dir),
+                "--epochs",
+                "1",
+                "--batch-size",
+                "2",
+            ],
+        )
+
+        assert result.exit_code == 0, f"Command failed: {result.output}"
+
+        # Verify DataLoader was called twice (train and val)
+        assert mock_dataloader_class.call_count == 2, f"Expected 2 DataLoader calls, got {mock_dataloader_class.call_count}"
+
+        # Get the calls to DataLoader
+        calls = mock_dataloader_class.call_args_list
+
+        # First call should be train loader with drop_last=True
+        train_call_kwargs = calls[0].kwargs
+        assert train_call_kwargs.get("drop_last") is True, (
+            f"Train DataLoader should have drop_last=True, got {train_call_kwargs.get('drop_last')}"
+        )
+
+        # Second call should be val loader with drop_last=False
+        val_call_kwargs = calls[1].kwargs
+        assert val_call_kwargs.get("drop_last") is False, (
+            f"Validation DataLoader should have drop_last=False, got {val_call_kwargs.get('drop_last')}"
+        )
