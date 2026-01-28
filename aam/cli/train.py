@@ -101,6 +101,38 @@ def validate_filtered_metadata_non_empty(
         )
 
 
+def validate_target_column_numeric(
+    metadata: pd.DataFrame,
+    target_column: str,
+    max_invalid_to_show: int = 5,
+) -> None:
+    """Validate that target column values can be converted to float.
+
+    Args:
+        metadata: DataFrame containing the target column.
+        target_column: Name of the column containing target values.
+        max_invalid_to_show: Maximum number of invalid values to include in error message.
+
+    Raises:
+        ValueError: If any target values cannot be converted to float.
+    """
+    target_series = metadata.set_index("sample_id")[target_column]
+    numeric_values = pd.to_numeric(target_series, errors="coerce")
+    invalid_mask = numeric_values.isna() & target_series.notna()
+    invalid_series = target_series[invalid_mask]
+
+    if len(invalid_series) == 0:
+        return
+
+    shown = list(invalid_series.items())[:max_invalid_to_show]
+    examples = ", ".join(f"{sid}: '{val}'" for sid, val in shown)
+    msg = f"Target column '{target_column}' contains {len(invalid_series)} non-numeric value(s).\nInvalid entries: {examples}"
+    if len(invalid_series) > max_invalid_to_show:
+        msg += f"\n... and {len(invalid_series) - max_invalid_to_show} more"
+    msg += "\nHint: Ensure target column contains only numeric values, or use --classifier for categorical targets."
+    raise ValueError(msg)
+
+
 CATEGORICAL_HELP_TEXT = """
 Categorical Conditioning Decision Tree
 ======================================
@@ -938,6 +970,10 @@ def train(
 
         # Validate filtered metadata is non-empty
         validate_filtered_metadata_non_empty(train_metadata, val_metadata)
+
+        # Validate target column is numeric (skip for classification tasks)
+        if not classifier:
+            validate_target_column_numeric(train_metadata, metadata_column)
 
         # Fit categorical encoder on training data only
         # Note: train_metadata is consistent across DDP processes due to broadcast above
