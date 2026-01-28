@@ -638,7 +638,8 @@ def pretrain(
             if memory_profile:
                 log_gpu_memory_stats(label="after_model_to_device", logger=logger)
 
-        num_training_steps = len(train_loader) * epochs
+        effective_batches_per_epoch = len(train_loader) // gradient_accumulation_steps
+        num_training_steps = effective_batches_per_epoch * epochs
         optimizer_obj = create_optimizer(model, optimizer_type=optimizer, lr=lr, weight_decay=weight_decay, freeze_base=False)
         scheduler_kwargs = build_scheduler_kwargs(
             scheduler=scheduler,
