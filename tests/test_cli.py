@@ -2887,6 +2887,73 @@ class TestMetadataLoading:
         assert len(metadata_df) == 2
 
 
+class TestMetadataSampleValidation:
+    """Tests for TRN-1: Validate metadata contains all BIOM samples."""
+
+    def test_validate_metadata_contains_samples_passes_when_all_present(self):
+        """Test validation passes when all sample IDs are in metadata."""
+        from aam.cli.train import validate_metadata_contains_samples
+
+        metadata_df = pd.DataFrame({
+            "sample_id": ["sample1", "sample2", "sample3"],
+            "target": [1.0, 2.0, 3.0],
+        })
+        sample_ids = ["sample1", "sample2", "sample3"]
+
+        # Should not raise
+        validate_metadata_contains_samples(sample_ids, metadata_df)
+
+    def test_validate_metadata_contains_samples_raises_when_missing(self):
+        """Test validation raises ValueError when samples are missing from metadata."""
+        from aam.cli.train import validate_metadata_contains_samples
+
+        metadata_df = pd.DataFrame({
+            "sample_id": ["sample1", "sample2"],
+            "target": [1.0, 2.0],
+        })
+        sample_ids = ["sample1", "sample2", "sample3", "sample4"]
+
+        with pytest.raises(ValueError) as exc_info:
+            validate_metadata_contains_samples(sample_ids, metadata_df)
+
+        error_msg = str(exc_info.value)
+        assert "sample3" in error_msg
+        assert "sample4" in error_msg
+        assert "missing" in error_msg.lower()
+
+    def test_validate_metadata_contains_samples_limits_missing_ids_shown(self):
+        """Test that error message limits the number of missing IDs shown."""
+        from aam.cli.train import validate_metadata_contains_samples
+
+        metadata_df = pd.DataFrame({
+            "sample_id": ["sample1"],
+            "target": [1.0],
+        })
+        # Create 15 missing samples
+        sample_ids = [f"sample{i}" for i in range(1, 16)]
+
+        with pytest.raises(ValueError) as exc_info:
+            validate_metadata_contains_samples(sample_ids, metadata_df, max_missing_to_show=10)
+
+        error_msg = str(exc_info.value)
+        # Should show first 10 and indicate more
+        assert "14" in error_msg  # 14 missing samples total
+        # Should not list all 14 individually
+
+    def test_validate_metadata_contains_samples_works_with_subset(self):
+        """Test validation passes when metadata has extra samples (superset)."""
+        from aam.cli.train import validate_metadata_contains_samples
+
+        metadata_df = pd.DataFrame({
+            "sample_id": ["sample1", "sample2", "sample3", "sample4", "sample5"],
+            "target": [1.0, 2.0, 3.0, 4.0, 5.0],
+        })
+        sample_ids = ["sample1", "sample3"]  # Subset of metadata samples
+
+        # Should not raise - metadata having extra samples is fine
+        validate_metadata_contains_samples(sample_ids, metadata_df)
+
+
 class TestBestMetricCLI:
     """Tests for --best-metric CLI flag."""
 
