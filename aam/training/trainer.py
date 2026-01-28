@@ -30,6 +30,8 @@ from aam.training.evaluation import Evaluator
 
 logger = logging.getLogger(__name__)
 
+CHECKPOINT_VERSION = 1
+
 
 class WarmupCosineScheduler:
     """Learning rate scheduler with warmup + cosine decay."""
@@ -1445,6 +1447,7 @@ class Trainer:
         # Save world size for sharded checkpoints to validate on load
         fsdp_sharded = self.use_sharded_checkpoint and model_is_fsdp
         checkpoint = {
+            "checkpoint_version": CHECKPOINT_VERSION,
             "epoch": epoch,
             "model_state_dict": model_state_dict,
             "optimizer_state_dict": optimizer_state_dict,
@@ -1507,6 +1510,20 @@ class Trainer:
             raise ValueError(
                 f"Invalid checkpoint file '{filepath}': missing required keys {missing_keys}. "
                 f"Found keys: {list(checkpoint.keys())}"
+            )
+
+        # Check checkpoint version compatibility
+        checkpoint_version = checkpoint.get("checkpoint_version")
+        if checkpoint_version is None:
+            logger.warning(
+                f"Checkpoint '{filepath}' has no version field (created with older AAM version). "
+                f"Current version: {CHECKPOINT_VERSION}. The checkpoint should still load correctly."
+            )
+        elif checkpoint_version != CHECKPOINT_VERSION:
+            logger.warning(
+                f"Checkpoint version mismatch: checkpoint has version {checkpoint_version}, "
+                f"but current AAM uses version {CHECKPOINT_VERSION}. "
+                "The checkpoint may have compatibility issues."
             )
 
         # Check if checkpoint was saved with sharded FSDP format

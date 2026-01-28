@@ -1,5 +1,7 @@
 """Unit tests for distributed training utilities."""
 
+import logging
+
 import pytest
 import torch
 import torch.nn as nn
@@ -752,6 +754,55 @@ class TestFSDPCheckpointTrainerIntegration:
 
             with pytest.raises(ValueError, match="missing required keys.*model_state_dict"):
                 trainer.load_checkpoint("/tmp/test.pt")
+
+    def test_load_checkpoint_warns_on_missing_version(self, caplog):
+        """Test load_checkpoint logs warning when checkpoint has no version field."""
+        from aam.training.trainer import Trainer, CHECKPOINT_VERSION
+        from aam.training.losses import MultiTaskLoss
+
+        model = SimpleModel()
+        loss_fn = MultiTaskLoss()
+
+        checkpoint = {
+            "epoch": 1,
+            "best_val_loss": 0.5,
+            "model_state_dict": model.state_dict(),
+        }
+
+        with patch("torch.load", return_value=checkpoint):
+            trainer = Trainer(model=model, loss_fn=loss_fn)
+
+            with caplog.at_level(logging.WARNING):
+                trainer.load_checkpoint("/tmp/test.pt")
+
+            assert "has no version field" in caplog.text
+            assert f"Current version: {CHECKPOINT_VERSION}" in caplog.text
+
+    def test_load_checkpoint_warns_on_version_mismatch(self, caplog):
+        """Test load_checkpoint logs warning when checkpoint version differs."""
+        from aam.training.trainer import Trainer, CHECKPOINT_VERSION
+        from aam.training.losses import MultiTaskLoss
+
+        model = SimpleModel()
+        loss_fn = MultiTaskLoss()
+
+        old_version = CHECKPOINT_VERSION - 1
+        checkpoint = {
+            "checkpoint_version": old_version,
+            "epoch": 1,
+            "best_val_loss": 0.5,
+            "model_state_dict": model.state_dict(),
+        }
+
+        with patch("torch.load", return_value=checkpoint):
+            trainer = Trainer(model=model, loss_fn=loss_fn)
+
+            with caplog.at_level(logging.WARNING):
+                trainer.load_checkpoint("/tmp/test.pt")
+
+            assert "version mismatch" in caplog.text
+            assert f"version {old_version}" in caplog.text
+            assert f"version {CHECKPOINT_VERSION}" in caplog.text
 
 
 class TestGatherEmbeddingsForUnifrac:
