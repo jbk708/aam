@@ -154,12 +154,12 @@ def compute_pairwise_distances(
     # Normalize distances to [0, 1] if requested (for UniFrac distances)
     if normalize:
         # Use tanh normalization with fixed scale to bound distances to [0, 1]
-        # This avoids sigmoid saturation while maintaining consistent scaling across batches
-        # Formula: (tanh(distances / scale) + 1) / 2 maps to [0, 1] with better gradient flow
+        # Since Euclidean distances are always non-negative, tanh(x) for x >= 0 maps to [0, 1)
+        # No shift needed - tanh alone provides proper [0, 1) mapping for positive inputs
         if distances.max() > 0:
-            # Normalize using tanh: maps to [-1, 1], then shift to [0, 1]
+            # Normalize using tanh: for positive inputs, maps to [0, 1)
             normalized = distances / scale
-            normalized_distances = (torch.tanh(normalized) + 1.0) / 2.0
+            normalized_distances = torch.tanh(normalized)
         else:
             # All distances are 0, return zeros
             normalized_distances = torch.zeros_like(distances)
