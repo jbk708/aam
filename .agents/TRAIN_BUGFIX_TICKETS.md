@@ -1,7 +1,7 @@
 # Train CLI Bugfix Tickets
 
 **Last Updated:** 2026-01-28
-**Status:** 7 remaining (8 complete) | ~3 hours estimated
+**Status:** 6 remaining (9 complete) | ~2.5 hours estimated
 **Dev Branch:** `dev/train-bugfix`
 
 All TRN ticket work should branch from and PR into `dev/train-bugfix`.
@@ -151,28 +151,18 @@ gh pr create --base dev/train-bugfix
 ---
 
 ### TRN-9: Validate Sample Weights Shape and Positivity
-**Priority:** MEDIUM | **Effort:** 0.5 hours | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** 0.5 hours | **Status:** Complete
 
 **Location:** `aam/training/trainer.py:274`
 
 **Problem:** Sample weights from batch are moved to device without shape or value validation. Negative or zero weights, or shape mismatches, will cause silent incorrect loss computation.
 
-**Current Code:**
-```python
-if "sample_weights" in batch:
-    sample_weights = batch["sample_weights"].to(self.device)
-# No validation
-```
-
-**Fix:** Add validation that sample_weights:
-1. Has shape matching batch size
-2. Contains only positive values
-3. Is not all zeros
+**Solution:** Added `_validate_sample_weights()` method in Trainer that checks shape matches batch size and all values are positive. Added `validate_sample_weights` parameter (default True) to Trainer.__init__ to allow disabling for performance.
 
 **Acceptance Criteria:**
-- [ ] Error if sample_weights shape doesn't match batch size
-- [ ] Error if sample_weights contains non-positive values
-- [ ] Validation can be disabled via debug flag for performance
+- [x] Error if sample_weights shape doesn't match batch size
+- [x] Error if sample_weights contains non-positive values
+- [x] Validation can be disabled via debug flag for performance
 
 ---
 
@@ -330,7 +320,7 @@ logger.info("Filtering tables for train/val splits...")  # All ranks log this
 | **TRN-6** | Fix distributed cleanup race condition | 0.5h | MEDIUM | Complete |
 | **TRN-7** | Validate quantiles sorted and unique | 0.25h | MEDIUM | Complete |
 | **TRN-8** | Strip whitespace from metadata_column | 0.25h | MEDIUM | Complete |
-| **TRN-9** | Validate sample weights shape/positivity | 0.5h | MEDIUM | Not Started |
+| **TRN-9** | Validate sample weights shape/positivity | 0.5h | MEDIUM | Complete |
 | **TRN-10** | Add finally block to auto batch size finder | 0.5h | MEDIUM | Not Started |
 | **TRN-11** | Validate pretrained encoder weight loading | 0.5h | MEDIUM | Not Started |
 | **TRN-12** | Validate distributed broadcast success | 0.5h | MEDIUM | Not Started |
