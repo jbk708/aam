@@ -16,6 +16,7 @@ from aam.data.biom_loader import BIOMLoader
 from aam.data.unifrac_loader import UniFracLoader
 from aam.data.dataset import ASVDataset, collate_fn
 from skbio import DistanceMatrix
+from aam.models.sample_sequence_encoder import CountEmbeddingMethod
 from aam.models.sequence_encoder import SequenceEncoder
 from aam.models.transformer import AttnImplementation
 from aam.training.losses import MultiTaskLoss
@@ -27,7 +28,7 @@ from aam.training.distributed import (
     create_distributed_dataloader,
     is_main_process,
 )
-from aam.training.memory_profiler import MemoryProfiler, log_gpu_memory_stats
+from aam.training.memory_profiler import log_gpu_memory_stats
 from aam.models.model_summary import log_model_summary
 from aam.cli.utils import (
     setup_logging,
@@ -528,7 +529,7 @@ def pretrain(
             mask_strategy=nuc_mask_strategy,
             attn_implementation=cast(AttnImplementation, attn_implementation),
             count_embedding=count_embedding,
-            count_embedding_method=count_embedding_method,
+            count_embedding_method=cast(CountEmbeddingMethod, count_embedding_method),
         )
 
         log_model_summary(model, logger)
@@ -692,8 +693,6 @@ def pretrain(
         checkpoint_dir = output_path / "checkpoints"
         checkpoint_dir.mkdir(exist_ok=True)
 
-        # Initialize memory profiler if enabled
-        profiler = MemoryProfiler(enabled=memory_profile)
         if memory_profile and torch.cuda.is_available():
             log_gpu_memory_stats(label="before_training", logger=logger)
             logger.info("Memory profiling enabled - will log peak memory per epoch")
