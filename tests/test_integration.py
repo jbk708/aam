@@ -43,17 +43,6 @@ def tree_file(data_dir):
 
 
 @pytest.fixture
-def device():
-    """Get device for testing."""
-    # Clear any previous CUDA errors before each test
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-        # Synchronize to ensure any pending operations complete
-        torch.cuda.synchronize()
-    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
-@pytest.fixture
 def small_model_config():
     """Small model configuration for faster testing."""
     return {
@@ -290,7 +279,7 @@ class TestModelPipelineIntegration:
         tokens = tokens.to(device)
 
         with torch.no_grad():
-            output = model(tokens)
+            output = model(tokens, return_sample_embeddings=True)
 
         assert isinstance(output, dict)
         # For UniFrac, embeddings are returned instead of base_prediction
@@ -320,7 +309,7 @@ class TestModelPipelineIntegration:
         counts = torch.rand(batch_size, num_asvs, 1).to(device)
 
         with torch.no_grad():
-            output = model(tokens)
+            output = model(tokens, return_sample_embeddings=True)
 
         assert isinstance(output, dict)
         assert "target_prediction" in output

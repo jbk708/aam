@@ -20,21 +20,6 @@ def transformer_encoder():
     )
 
 
-@pytest.fixture
-def sample_embeddings():
-    """Create sample embeddings for testing."""
-    batch_size = 2
-    seq_len = 10
-    hidden_dim = 64
-    return torch.randn(batch_size, seq_len, hidden_dim)
-
-
-@pytest.fixture
-def sample_mask():
-    """Create sample mask for testing."""
-    return torch.tensor([[1, 1, 1, 1, 1, 0, 0, 0, 0, 0], [1, 1, 1, 0, 0, 0, 0, 0, 0, 0]])
-
-
 class TestTransformerEncoder:
     """Test suite for TransformerEncoder class."""
 
@@ -65,19 +50,19 @@ class TestTransformerEncoder:
         assert result.shape == sample_embeddings.shape
         assert result.shape == (2, 10, 64)
 
-    def test_forward_different_batch_sizes(self, transformer_encoder):
+    @pytest.mark.parametrize("batch_size", [1, 4, 8])
+    def test_forward_different_batch_sizes(self, transformer_encoder, batch_size):
         """Test forward pass with different batch sizes."""
-        for batch_size in [1, 4, 8]:
-            embeddings = torch.randn(batch_size, 10, 64)
-            result = transformer_encoder(embeddings)
-            assert result.shape == (batch_size, 10, 64)
+        embeddings = torch.randn(batch_size, 10, 64)
+        result = transformer_encoder(embeddings)
+        assert result.shape == (batch_size, 10, 64)
 
-    def test_forward_different_seq_lengths(self, transformer_encoder):
+    @pytest.mark.parametrize("seq_len", [5, 10, 20, 50])
+    def test_forward_different_seq_lengths(self, transformer_encoder, seq_len):
         """Test forward pass with different sequence lengths."""
-        for seq_len in [5, 10, 20, 50]:
-            embeddings = torch.randn(2, seq_len, 64)
-            result = transformer_encoder(embeddings)
-            assert result.shape == (2, seq_len, 64)
+        embeddings = torch.randn(2, seq_len, 64)
+        result = transformer_encoder(embeddings)
+        assert result.shape == (2, seq_len, 64)
 
     def test_forward_no_mask(self, transformer_encoder, sample_embeddings):
         """Test forward pass without mask (all positions valid)."""
@@ -517,29 +502,10 @@ class TestSDPAOptimization:
 class TestSDPAKernelContext:
     """Test suite for sdpa_kernel_context context manager."""
 
-    def test_sdpa_context_none(self):
-        """Test that None attn_implementation uses default behavior."""
-        with sdpa_kernel_context(None):
-            assert True
-
-    def test_sdpa_context_sdpa(self):
-        """Test that 'sdpa' attn_implementation uses default behavior."""
-        with sdpa_kernel_context("sdpa"):
-            assert True
-
-    def test_sdpa_context_math(self):
-        """Test that 'math' attn_implementation configures backends correctly."""
-        with sdpa_kernel_context("math"):
-            pass
-
-    def test_sdpa_context_flash(self):
-        """Test that 'flash' attn_implementation configures backends correctly."""
-        with sdpa_kernel_context("flash"):
-            pass
-
-    def test_sdpa_context_mem_efficient(self):
-        """Test that 'mem_efficient' attn_implementation configures backends correctly."""
-        with sdpa_kernel_context("mem_efficient"):
+    @pytest.mark.parametrize("attn_impl", [None, "sdpa", "math", "flash", "mem_efficient"])
+    def test_sdpa_context_does_not_crash(self, attn_impl):
+        """Test that sdpa_kernel_context works with various attention implementations."""
+        with sdpa_kernel_context(attn_impl):
             pass
 
     def test_sdpa_context_restores_state(self):

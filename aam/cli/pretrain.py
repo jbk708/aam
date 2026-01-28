@@ -26,9 +26,6 @@ from aam.training.distributed import (
     cleanup_distributed,
     create_distributed_dataloader,
     is_main_process,
-    get_local_rank,
-    sync_batch_norm,
-    wrap_model_ddp,
 )
 from aam.training.memory_profiler import MemoryProfiler, log_gpu_memory_stats
 from aam.models.model_summary import log_model_summary
@@ -39,6 +36,13 @@ from aam.cli.utils import (
     setup_random_seed,
     validate_file_path,
     validate_arguments,
+)
+from aam.cli.training_utils import (
+    build_scheduler_kwargs,
+    setup_ddp,
+    setup_fsdp,
+    validate_distributed_options,
+    wrap_data_parallel,
 )
 
 
@@ -97,12 +101,23 @@ from aam.cli.utils import (
 @click.option(
     "--unifrac-metric",
     default="unifrac",
-    type=click.Choice(["unifrac", "faith_pd"]),
-    help="UniFrac metric type (unifrac for pairwise, faith_pd for per-sample values)",
+    type=click.Choice(["unifrac", "weighted", "faith_pd"]),
+    help="UniFrac metric type (unifrac for unweighted pairwise, weighted for weighted pairwise, faith_pd for per-sample values)",
 )
 @click.option("--penalty", default=1.0, type=float, help="Weight for base/UniFrac loss")
 @click.option("--nuc-penalty", default=1.0, type=float, help="Weight for nucleotide loss")
 @click.option("--count-penalty", default=1.0, type=float, help="Weight for count loss (default: 1.0)")
+@click.option(
+    "--count-embedding/--no-count-embedding",
+    default=False,
+    help="Enable count magnitude embeddings. Incorporates ASV abundance as input features (default: disabled).",
+)
+@click.option(
+    "--count-embedding-method",
+    default="add",
+    type=click.Choice(["add", "concat", "film"]),
+    help="How to combine count embeddings with sequence embeddings: add (default), concat, or film.",
+)
 @click.option(
     "--nuc-mask-ratio",
     default=0.15,
@@ -241,6 +256,8 @@ def pretrain(
     penalty: float,
     nuc_penalty: float,
     count_penalty: float,
+    count_embedding: bool,
+    count_embedding_method: str,
     nuc_mask_ratio: float,
     nuc_mask_strategy: str,
     device: str,
@@ -299,18 +316,7 @@ def pretrain(
         )
 
         # Validate mutual exclusivity of distributed training options
-        num_distributed_options = sum([distributed, data_parallel, fsdp])
-        if num_distributed_options > 1:
-            raise click.ClickException(
-                "Cannot use multiple distributed training options together. Choose one of:\n"
-                "  --distributed: DDP (multi-node, but UniFrac has local pairwise issue)\n"
-                "  --data-parallel: DataParallel (single-node, full pairwise UniFrac)\n"
-                "  --fsdp: FSDP (memory-efficient, full pairwise UniFrac via gathering)"
-            )
-
-        # Validate --fsdp-sharded-checkpoint requires --fsdp
-        if fsdp_sharded_checkpoint and not fsdp:
-            raise click.ClickException("--fsdp-sharded-checkpoint requires --fsdp to be enabled.")
+        validate_distributed_options(distributed, data_parallel, fsdp, fsdp_sharded_checkpoint)
 
         setup_expandable_segments(use_expandable_segments)
 
@@ -357,7 +363,7 @@ def pretrain(
         logger.info(f"Total samples: {len(sample_ids)}")
 
         # Determine matrix format based on metric
-        matrix_format = "pairwise" if unifrac_metric == "unifrac" else "faith_pd"
+        matrix_format = "pairwise" if unifrac_metric in ("unifrac", "weighted") else "faith_pd"
 
         # Load the matrix
         unifrac_distances = unifrac_loader.load_matrix(
@@ -366,14 +372,14 @@ def pretrain(
             matrix_format=matrix_format,
         )
 
-        if unifrac_metric == "unifrac":
-            unifrac_metric_name = "unweighted"
-            encoder_type = "unifrac"
-            base_output_dim = None
-        else:
+        if unifrac_metric == "faith_pd":
             unifrac_metric_name = "faith_pd"
             encoder_type = "faith_pd"
             base_output_dim = 1
+        else:
+            unifrac_metric_name = "unweighted" if unifrac_metric == "unifrac" else "weighted"
+            encoder_type = "unifrac"
+            base_output_dim = None
 
         logger.info(
             f"Loaded UniFrac matrix: {type(unifrac_distances).__name__}, shape: {getattr(unifrac_distances, 'shape', 'N/A')}"
@@ -399,7 +405,7 @@ def pretrain(
         # Extract train/val distance matrices
         train_distance_matrix = None
         val_distance_matrix = None
-        if unifrac_metric_name == "unweighted":
+        if unifrac_metric_name in ("unweighted", "weighted"):
             if isinstance(unifrac_distances, DistanceMatrix):
                 train_distance_matrix = unifrac_distances.filter(train_ids)
                 val_distance_matrix = unifrac_distances.filter(val_ids)
@@ -523,6 +529,8 @@ def pretrain(
             mask_ratio=nuc_mask_ratio,
             mask_strategy=nuc_mask_strategy,
             attn_implementation=cast(AttnImplementation, attn_implementation),
+            count_embedding=count_embedding,
+            count_embedding_method=count_embedding_method,
         )
 
         log_model_summary(model, logger)
@@ -610,104 +618,37 @@ def pretrain(
 
         # Handle distributed training setup
         if fsdp:
-            # FSDP requires CUDA - validate upfront with clear message
-            if not torch.cuda.is_available():
-                raise click.ClickException(
-                    "FSDP requires CUDA but no GPU is available. "
-                    "Use --distributed for DDP (which supports CPU via gloo backend), "
-                    "or ensure CUDA is properly installed (run 'nvidia-smi' to check)."
-                )
-
-            # FSDP handles device placement internally, don't move model beforehand
-            # Convert BatchNorm to SyncBatchNorm if requested
-            if sync_batchnorm:
-                model = sync_batch_norm(model)
-                if is_main_process():
-                    logger.info("Converted BatchNorm to SyncBatchNorm for FSDP training")
-
-            # Wrap model with FSDP for memory-efficient distributed training
-            from aam.training.distributed import wrap_model_fsdp
-
-            try:
-                model = wrap_model_fsdp(model)
-            except RuntimeError as e:
-                logger.error(f"Failed to wrap model with FSDP: {e}", exc_info=True)
-                raise click.ClickException(
-                    f"FSDP model wrapping failed: {e}\n"
-                    "Common causes:\n"
-                    "  - Model contains unsupported layer types\n"
-                    "  - Insufficient GPU memory for FSDP initialization\n"
-                    "  - Distributed process group not properly initialized\n"
-                    "Try using --distributed (DDP) instead, or reduce model size."
-                )
-            if is_main_process():
-                logger.info("Model wrapped with FullyShardedDataParallel")
-                logger.info("FSDP gathers embeddings across GPUs for correct UniFrac pairwise distances")
-                if memory_profile:
-                    log_gpu_memory_stats(label="after_model_to_device", logger=logger)
+            model = setup_fsdp(model, sync_batchnorm=sync_batchnorm, logger=logger)
+            if memory_profile and is_main_process():
+                log_gpu_memory_stats(label="after_model_to_device", logger=logger)
 
         elif distributed:
-            # Move model to device
-            model = model.to(device_obj)
-
-            # Convert BatchNorm to SyncBatchNorm if requested
-            if sync_batchnorm:
-                model = sync_batch_norm(model)
-                if is_main_process():
-                    logger.info("Converted BatchNorm to SyncBatchNorm for distributed training")
-
-            # Wrap model with DDP
-            model = wrap_model_ddp(model, device_id=get_local_rank())
-            if is_main_process():
-                logger.info("Model wrapped with DistributedDataParallel")
-                if memory_profile:
-                    log_gpu_memory_stats(label="after_model_to_device", logger=logger)
+            model = setup_ddp(
+                model,
+                device=device_obj,
+                sync_batchnorm=sync_batchnorm,
+                find_unused_parameters=False,
+                logger=logger,
+            )
+            if memory_profile and is_main_process():
+                log_gpu_memory_stats(label="after_model_to_device", logger=logger)
 
         elif data_parallel:
-            # DataParallel for single-node multi-GPU pretraining
-            # Unlike DDP, DP gathers outputs to GPU 0 before loss computation,
-            # preserving full pairwise comparisons for UniFrac loss
-            if not torch.cuda.is_available():
-                raise click.ClickException("--data-parallel requires CUDA GPUs")
-
-            num_gpus = torch.cuda.device_count()
-            if num_gpus < 2:
-                logger.warning(f"--data-parallel specified but only {num_gpus} GPU(s) available. Running on single GPU.")
-
-            # Explicitly specify all available GPUs
-            device_ids = list(range(num_gpus))
-            logger.info(f"Using GPUs: {device_ids}")
-
-            # Move model to primary GPU (device_ids[0])
-            model = model.to(f"cuda:{device_ids[0]}")
-            model = torch.nn.DataParallel(model, device_ids=device_ids)
-            logger.info(f"Model wrapped with DataParallel across {num_gpus} GPU(s)")
-            logger.info("Note: GPU 0 has higher memory usage as it gathers all outputs for loss computation")
-
+            model = wrap_data_parallel(model, logger=logger)
             if memory_profile:
                 log_gpu_memory_stats(label="after_model_to_device", logger=logger)
 
         num_training_steps = len(train_loader) * epochs
         optimizer_obj = create_optimizer(model, optimizer_type=optimizer, lr=lr, weight_decay=weight_decay, freeze_base=False)
-        # Build scheduler kwargs based on scheduler type and provided options
-        scheduler_kwargs = {}
-        if scheduler == "cosine_restarts":
-            if scheduler_t0 is not None:
-                scheduler_kwargs["T_0"] = scheduler_t0
-            if scheduler_t_mult is not None:
-                scheduler_kwargs["T_mult"] = scheduler_t_mult
-            if scheduler_eta_min is not None:
-                scheduler_kwargs["eta_min"] = scheduler_eta_min
-        elif scheduler == "cosine":
-            if scheduler_eta_min is not None:
-                scheduler_kwargs["eta_min"] = scheduler_eta_min
-        elif scheduler == "plateau":
-            if scheduler_patience is not None:
-                scheduler_kwargs["patience"] = scheduler_patience
-            if scheduler_factor is not None:
-                scheduler_kwargs["factor"] = scheduler_factor
-            if scheduler_min_lr is not None:
-                scheduler_kwargs["min_lr"] = scheduler_min_lr
+        scheduler_kwargs = build_scheduler_kwargs(
+            scheduler=scheduler,
+            scheduler_t0=scheduler_t0,
+            scheduler_t_mult=scheduler_t_mult,
+            scheduler_eta_min=scheduler_eta_min,
+            scheduler_patience=scheduler_patience,
+            scheduler_factor=scheduler_factor,
+            scheduler_min_lr=scheduler_min_lr,
+        )
 
         scheduler_obj = create_scheduler(
             optimizer_obj,

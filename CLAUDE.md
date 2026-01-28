@@ -117,9 +117,9 @@ See `.agents/` for ticket-based development workflow:
 ### Key Principles
 - Test-driven: Write tests before implementation
 - Minimize inline comments: Code should be self-documenting
-- Follow plan documents in `_design_plan/` as implementation guides
+- See `docs/` for user guides and `ARCHITECTURE.md` for design decisions
 
 ### Commit Messages
-- Do NOT include Claude attribution or "Generated with Claude Code" in commit messages
+- Do NOT include any Claude attribution (no "Co-Authored-By: Claude", no "Generated with Claude Code")
 - Use conventional commit style: `PYT-{ticket}: Brief description`
 - Include a detailed body explaining the changes

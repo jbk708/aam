@@ -6,7 +6,7 @@ import logging
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from typing import List, Optional, cast
+from typing import Dict, List, Optional, cast
 from functools import partial
 from torch.utils.data import DataLoader
 from sklearn.model_selection import train_test_split
@@ -27,9 +27,6 @@ from aam.training.distributed import (
     cleanup_distributed,
     create_distributed_dataloader,
     is_main_process,
-    get_local_rank,
-    sync_batch_norm,
-    wrap_model_ddp,
 )
 from aam.models.model_summary import log_model_summary
 from aam.cli.utils import (
@@ -39,6 +36,13 @@ from aam.cli.utils import (
     setup_random_seed,
     validate_file_path,
     validate_arguments,
+)
+from aam.cli.training_utils import (
+    build_scheduler_kwargs,
+    setup_ddp,
+    setup_fsdp,
+    validate_distributed_options,
+    wrap_data_parallel,
 )
 
 
@@ -166,8 +170,8 @@ def print_categorical_help(ctx: click.Context, param: click.Parameter, value: bo
 @click.option(
     "--unifrac-metric",
     default="unifrac",
-    type=click.Choice(["unifrac", "faith_pd"]),
-    help="UniFrac metric type (unifrac for pairwise, faith_pd for per-sample values)",
+    type=click.Choice(["unifrac", "weighted", "faith_pd"]),
+    help="UniFrac metric type (unifrac for unweighted pairwise, weighted for weighted pairwise, faith_pd for per-sample values)",
 )
 @click.option("--penalty", default=1.0, type=float, help="Weight for base/UniFrac loss")
 @click.option("--nuc-penalty", default=1.0, type=float, help="Weight for nucleotide loss")
@@ -177,6 +181,17 @@ def print_categorical_help(ctx: click.Context, param: click.Parameter, value: bo
     "--count-prediction/--no-count-prediction",
     default=True,
     help="Enable/disable count prediction head (default: enabled). Use --no-count-prediction to save memory.",
+)
+@click.option(
+    "--count-embedding/--no-count-embedding",
+    default=False,
+    help="Enable count magnitude embeddings. Incorporates ASV abundance as input features (default: disabled).",
+)
+@click.option(
+    "--count-embedding-method",
+    default="add",
+    type=click.Choice(["add", "concat", "film"]),
+    help="How to combine count embeddings with sequence embeddings: add (default), concat, or film.",
 )
 @click.option(
     "--nuc-mask-ratio",
@@ -320,6 +335,13 @@ def print_categorical_help(ctx: click.Context, param: click.Parameter, value: bo
     help="Penalty weight for under-predictions (pred < actual) when using --loss-type=asymmetric. Default: 1.0",
 )
 @click.option(
+    "--loss-config",
+    default=None,
+    help="Per-output loss configuration as JSON. Maps column names or indices to loss types. "
+    'E.g., \'{"pH": "mse", "temp": "huber"}\' or \'{"0": "mse", "1": "mae"}\'. '
+    "Columns not in config use --loss-type as fallback. Only mse, mae, huber supported per-column.",
+)
+@click.option(
     "--no-sequence-cache",
     is_flag=True,
     help="Disable sequence tokenization cache (enabled by default for faster training)",
@@ -378,14 +400,26 @@ def print_categorical_help(ctx: click.Context, param: click.Parameter, value: bo
 @click.option(
     "--categorical-fusion",
     default="concat",
-    type=click.Choice(["concat", "add", "gmu", "cross-attention"]),
-    help="Fusion strategy for categorical embeddings: concat (concatenate + project), add (project + add), gmu (gated multimodal unit after pooling), or cross-attention (position-specific via cross-attention). Default: concat",
+    type=click.Choice(["concat", "add", "gmu", "cross-attention", "perceiver"]),
+    help="Fusion strategy for categorical embeddings: concat (concatenate + project), add (project + add), gmu (gated multimodal unit after pooling), cross-attention (position-specific via cross-attention), or perceiver (learned latent bottleneck). Default: concat",
 )
 @click.option(
     "--cross-attn-heads",
     default=8,
     type=click.IntRange(1, 64),
-    help="Number of attention heads for cross-attention fusion (default: 8). Only used with --categorical-fusion cross-attention.",
+    help="Number of attention heads for cross-attention/perceiver fusion (default: 8). Only used with --categorical-fusion cross-attention or perceiver.",
+)
+@click.option(
+    "--perceiver-num-latents",
+    default=64,
+    type=click.IntRange(1, 1024),
+    help="Number of learned latent vectors for perceiver fusion (default: 64). Only used with --categorical-fusion perceiver.",
+)
+@click.option(
+    "--perceiver-num-layers",
+    default=2,
+    type=click.IntRange(1, 16),
+    help="Number of self-attention refinement layers for perceiver fusion (default: 2). Only used with --categorical-fusion perceiver.",
 )
 @click.option(
     "--output-activation",
@@ -403,6 +437,11 @@ def print_categorical_help(ctx: click.Context, param: click.Parameter, value: bo
     default=0.0,
     type=click.FloatRange(0.0, 1.0, max_open=True),
     help="Dropout rate between MLP regression head layers (default: 0.0, no dropout). Must be in [0.0, 1.0).",
+)
+@click.option(
+    "--residual-regression-head",
+    is_flag=True,
+    help="Add skip connection to regression head: output = Linear(x) + MLP(x). Requires --regressor-hidden-dims.",
 )
 @click.option(
     "--conditional-output-scaling",
@@ -477,6 +516,8 @@ def train(
     target_penalty: float,
     count_penalty: float,
     count_prediction: bool,
+    count_embedding: bool,
+    count_embedding_method: str,
     nuc_mask_ratio: float,
     nuc_mask_strategy: str,
     class_weights: Optional[str],
@@ -512,6 +553,7 @@ def train(
     quantiles: Optional[str],
     over_penalty: float,
     under_penalty: float,
+    loss_config: Optional[str],
     no_sequence_cache: bool,
     distributed: bool,
     data_parallel: bool,
@@ -525,9 +567,12 @@ def train(
     categorical_embed_dim: int,
     categorical_fusion: str,
     cross_attn_heads: int,
+    perceiver_num_latents: int,
+    perceiver_num_layers: int,
     output_activation: str,
     regressor_hidden_dims: Optional[str],
     regressor_dropout: float,
+    residual_regression_head: bool,
     conditional_output_scaling: Optional[str],
     categorical_loss_weights: Optional[str],
     categorical_loss_weight_column: Optional[str],
@@ -607,18 +652,7 @@ def train(
         setup_expandable_segments(use_expandable_segments)
 
         # Validate mutual exclusivity of distributed training options
-        num_distributed_options = sum([distributed, data_parallel, fsdp])
-        if num_distributed_options > 1:
-            raise click.ClickException(
-                "Cannot use multiple distributed training options together. Choose one of:\n"
-                "  --distributed: DDP (multi-node, but UniFrac has local pairwise issue)\n"
-                "  --data-parallel: DataParallel (single-node, full pairwise UniFrac)\n"
-                "  --fsdp: FSDP (memory-efficient, full pairwise UniFrac via gathering)"
-            )
-
-        # Validate --fsdp-sharded-checkpoint requires --fsdp
-        if fsdp_sharded_checkpoint and not fsdp:
-            raise click.ClickException("--fsdp-sharded-checkpoint requires --fsdp to be enabled.")
+        validate_distributed_options(distributed, data_parallel, fsdp, fsdp_sharded_checkpoint)
 
         # Parse and validate quantile regression configuration
         quantiles_list: Optional[List[float]] = None
@@ -656,6 +690,35 @@ def train(
                 )
         if quantiles is not None and loss_type != "quantile":
             raise click.ClickException("--quantiles requires --loss-type quantile")
+
+        # Parse per-output loss config
+        loss_config_dict: Optional[Dict[str, str]] = None
+        if loss_config is not None:
+            import json
+
+            try:
+                loss_config_dict = json.loads(loss_config)
+            except json.JSONDecodeError as e:
+                raise click.ClickException(
+                    f"Invalid --loss-config: could not parse JSON. "
+                    f'Expected format: \'{{"0": "mse", "1": "huber"}}\'. Error: {e}'
+                )
+            if not isinstance(loss_config_dict, dict):
+                raise click.ClickException(
+                    f"Invalid --loss-config: expected JSON object, got {type(loss_config_dict).__name__}"
+                )
+            valid_loss_types = ("mse", "mae", "huber")
+            for col, col_loss_type in loss_config_dict.items():
+                if col_loss_type not in valid_loss_types:
+                    raise click.ClickException(
+                        f"Invalid loss type '{col_loss_type}' for column '{col}' in --loss-config. "
+                        f"Per-column loss must be one of: {valid_loss_types}"
+                    )
+            if loss_type in ("quantile", "asymmetric"):
+                raise click.ClickException(
+                    f"--loss-config cannot be used with --loss-type {loss_type}. Per-column loss only supports mse, mae, huber."
+                )
+            logger.info(f"Using per-column loss config: {loss_config_dict}")
 
         if not count_prediction and count_penalty != 0.0:
             logger.warning(
@@ -743,7 +806,7 @@ def train(
         logger.info(f"Total samples: {len(sample_ids)}")
 
         # Determine matrix format based on metric
-        matrix_format = "pairwise" if unifrac_metric == "unifrac" else "faith_pd"
+        matrix_format = "pairwise" if unifrac_metric in ("unifrac", "weighted") else "faith_pd"
 
         # Load the matrix
         unifrac_distances = unifrac_loader.load_matrix(
@@ -771,12 +834,12 @@ def train(
             table_obj = table_obj.filter(matrix_sample_ids, axis="sample", inplace=False)
             sample_ids = matrix_sample_ids
 
-        if unifrac_metric == "unifrac":
-            unifrac_metric_name = "unweighted"
-            encoder_type = "unifrac"
-        else:
+        if unifrac_metric == "faith_pd":
             unifrac_metric_name = "faith_pd"
             encoder_type = "faith_pd"
+        else:
+            unifrac_metric_name = "unweighted" if unifrac_metric == "unifrac" else "weighted"
+            encoder_type = "unifrac"
 
         logger.info(
             f"Loaded UniFrac matrix: {type(unifrac_distances).__name__}, shape: {getattr(unifrac_distances, 'shape', 'N/A')}"
@@ -846,7 +909,7 @@ def train(
         # Extract train/val distance matrices
         train_distance_matrix = None
         val_distance_matrix = None
-        if unifrac_metric_name == "unweighted":
+        if unifrac_metric_name in ("unweighted", "weighted"):
             if isinstance(unifrac_distances, DistanceMatrix):
                 train_distance_matrix = unifrac_distances.filter(train_ids)
                 val_distance_matrix = unifrac_distances.filter(val_ids)
@@ -1115,7 +1178,10 @@ def train(
                             f"Expected comma-separated positive integers like '64,32'."
                         )
                     regressor_hidden_dims_list.append(dim)
-                logger.info(f"MLP regression head: {regressor_hidden_dims_list}")
+                if residual_regression_head:
+                    logger.info(f"Residual regression head: {regressor_hidden_dims_list}")
+                else:
+                    logger.info(f"MLP regression head: {regressor_hidden_dims_list}")
             except ValueError as e:
                 raise click.ClickException(
                     f"Invalid --regressor-hidden-dims: could not parse '{regressor_hidden_dims}'. "
@@ -1154,12 +1220,17 @@ def train(
             categorical_embed_dim=categorical_embed_dim,
             categorical_fusion=categorical_fusion,
             cross_attn_heads=cross_attn_heads,
+            perceiver_num_latents=perceiver_num_latents,
+            perceiver_num_layers=perceiver_num_layers,
             output_activation=output_activation,
             regressor_hidden_dims=regressor_hidden_dims_list,
             regressor_dropout=regressor_dropout,
+            residual_regression_head=residual_regression_head,
             conditional_scaling_columns=conditional_scaling_columns,
             num_quantiles=num_quantiles,
             count_prediction=count_prediction,
+            count_embedding=count_embedding,
+            count_embedding_method=count_embedding_method,
         )
 
         log_model_summary(model, logger)
@@ -1205,6 +1276,7 @@ def train(
             quantiles=quantiles_list,
             over_penalty=over_penalty,
             under_penalty=under_penalty,
+            loss_config=loss_config_dict,
         )
         if loss_type == "quantile":
             logger.info(f"Using quantile loss with quantiles: {quantiles_list}")
@@ -1289,80 +1361,19 @@ def train(
 
         # Handle distributed training setup
         if fsdp:
-            # FSDP requires CUDA - validate upfront with clear message
-            if not torch.cuda.is_available():
-                raise click.ClickException(
-                    "FSDP requires CUDA but no GPU is available. "
-                    "Use --distributed for DDP (which supports CPU via gloo backend), "
-                    "or ensure CUDA is properly installed (run 'nvidia-smi' to check)."
-                )
-
-            # FSDP handles device placement internally, don't move model beforehand
-            # Convert BatchNorm to SyncBatchNorm if requested
-            if sync_batchnorm:
-                model = sync_batch_norm(model)
-                if is_main_process():
-                    logger.info("Converted BatchNorm to SyncBatchNorm for FSDP training")
-
-            # Wrap model with FSDP for memory-efficient distributed training
-            from aam.training.distributed import wrap_model_fsdp
-
-            try:
-                model = wrap_model_fsdp(model)
-            except Exception as e:
-                logger.error(f"Failed to wrap model with FSDP: {e}", exc_info=True)
-                raise click.ClickException(
-                    f"FSDP model wrapping failed: {e}\n"
-                    "Common causes:\n"
-                    "  - Model contains unsupported layer types\n"
-                    "  - Insufficient GPU memory for FSDP initialization\n"
-                    "  - Distributed process group not properly initialized\n"
-                    "Try using --distributed (DDP) instead, or reduce model size."
-                )
-            if is_main_process():
-                logger.info("Model wrapped with FullyShardedDataParallel")
+            model = setup_fsdp(model, sync_batchnorm=sync_batchnorm, logger=logger)
 
         elif distributed:
-            # Move model to device
-            model = model.to(device_obj)
-
-            # Convert BatchNorm to SyncBatchNorm if requested
-            if sync_batchnorm:
-                model = sync_batch_norm(model)
-                if is_main_process():
-                    logger.info("Converted BatchNorm to SyncBatchNorm for distributed training")
-
-            # Wrap model with DDP
-            # find_unused_parameters needed when freeze_base=True (base model params unused)
-            # or when categorical features may not always contribute to loss
-            model = wrap_model_ddp(
+            model = setup_ddp(
                 model,
-                device_id=get_local_rank(),
+                device=device_obj,
+                sync_batchnorm=sync_batchnorm,
                 find_unused_parameters=freeze_base or bool(categorical_column_list),
+                logger=logger,
             )
-            if is_main_process():
-                logger.info("Model wrapped with DistributedDataParallel")
 
         elif data_parallel:
-            # DataParallel for single-node multi-GPU training
-            # Unlike DDP, DP gathers outputs to GPU 0 before loss computation,
-            # preserving full pairwise comparisons for UniFrac loss
-            if not torch.cuda.is_available():
-                raise click.ClickException("--data-parallel requires CUDA GPUs")
-
-            num_gpus = torch.cuda.device_count()
-            if num_gpus < 2:
-                logger.warning(f"--data-parallel specified but only {num_gpus} GPU(s) available. Running on single GPU.")
-
-            # Explicitly specify all available GPUs
-            device_ids = list(range(num_gpus))
-            logger.info(f"Using GPUs: {device_ids}")
-
-            # Move model to primary GPU (device_ids[0])
-            model = model.to(f"cuda:{device_ids[0]}")
-            model = torch.nn.DataParallel(model, device_ids=device_ids)
-            logger.info(f"Model wrapped with DataParallel across {num_gpus} GPU(s)")
-            logger.info("Note: GPU 0 has higher memory usage as it gathers all outputs for loss computation")
+            model = wrap_data_parallel(model, logger=logger)
 
         effective_batches_per_epoch = len(train_loader) // gradient_accumulation_steps
         num_training_steps = effective_batches_per_epoch * epochs
@@ -1376,25 +1387,15 @@ def train(
         )
         if categorical_lr is not None:
             logger.info(f"Using separate learning rates: base_lr={lr}, categorical_lr={categorical_lr}")
-        # Build scheduler kwargs based on scheduler type and provided options
-        scheduler_kwargs = {}
-        if scheduler == "cosine_restarts":
-            if scheduler_t0 is not None:
-                scheduler_kwargs["T_0"] = scheduler_t0
-            if scheduler_t_mult is not None:
-                scheduler_kwargs["T_mult"] = scheduler_t_mult
-            if scheduler_eta_min is not None:
-                scheduler_kwargs["eta_min"] = scheduler_eta_min
-        elif scheduler == "cosine":
-            if scheduler_eta_min is not None:
-                scheduler_kwargs["eta_min"] = scheduler_eta_min
-        elif scheduler == "plateau":
-            if scheduler_patience is not None:
-                scheduler_kwargs["patience"] = scheduler_patience
-            if scheduler_factor is not None:
-                scheduler_kwargs["factor"] = scheduler_factor
-            if scheduler_min_lr is not None:
-                scheduler_kwargs["min_lr"] = scheduler_min_lr
+        scheduler_kwargs = build_scheduler_kwargs(
+            scheduler=scheduler,
+            scheduler_t0=scheduler_t0,
+            scheduler_t_mult=scheduler_t_mult,
+            scheduler_eta_min=scheduler_eta_min,
+            scheduler_patience=scheduler_patience,
+            scheduler_factor=scheduler_factor,
+            scheduler_min_lr=scheduler_min_lr,
+        )
 
         scheduler_obj = create_scheduler(
             optimizer_obj,
@@ -1474,10 +1475,13 @@ def train(
                 "categorical_embed_dim": categorical_embed_dim,
                 "categorical_fusion": categorical_fusion,
                 "cross_attn_heads": cross_attn_heads,
+                "perceiver_num_latents": perceiver_num_latents,
+                "perceiver_num_layers": perceiver_num_layers,
                 "output_activation": output_activation,
                 "log_transform_targets": log_transform_targets,
                 "regressor_hidden_dims": regressor_hidden_dims_list,
                 "regressor_dropout": regressor_dropout,
+                "residual_regression_head": residual_regression_head,
                 "conditional_scaling_columns": conditional_scaling_columns,
             }
             # Include categorical encoder state if categoricals are used

@@ -27,6 +27,7 @@ from aam.models.sequence_encoder import SequenceEncoder
 from aam.models.sequence_predictor import SequencePredictor
 from aam.training.losses import MultiTaskLoss
 from aam.training.metrics import compute_regression_metrics, compute_count_metrics
+from conftest import MockBatchDataset
 
 
 def is_rocm() -> bool:
@@ -40,57 +41,6 @@ def is_rocm() -> bool:
         return hasattr(torch.version, "hip") and torch.version.hip is not None
     except Exception:
         return False
-
-
-class MockBatchDataset:
-    """Mock dataset that yields dict batches with sample_ids for testing."""
-
-    def __init__(self, num_samples: int, device: torch.device):
-        self.num_samples = num_samples
-        self.device = device
-
-    def __len__(self) -> int:
-        return self.num_samples // 2
-
-    def __iter__(self):
-        from aam.data.tokenizer import SequenceTokenizer
-
-        batch_size = 2
-        for i in range(0, self.num_samples, batch_size):
-            tokens = torch.randint(1, 5, (batch_size, 10, 50))
-            tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
-            yield {
-                "tokens": tokens.to(self.device),
-                "counts": torch.rand(batch_size, 10, 1).to(self.device),
-                "y_target": torch.rand(batch_size, 1).to(self.device),
-                "sample_ids": [f"sample_{i + j}" for j in range(batch_size)],
-            }
-
-
-@pytest.fixture
-def device():
-    """Get device for testing."""
-    return torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-
-@pytest.fixture
-def small_model():
-    """Create a small SequenceEncoder for testing."""
-    return SequenceEncoder(
-        vocab_size=6,
-        embedding_dim=32,
-        max_bp=50,
-        token_limit=64,
-        asv_num_layers=1,
-        asv_num_heads=2,
-        sample_num_layers=1,
-        sample_num_heads=2,
-        encoder_num_layers=1,
-        encoder_num_heads=2,
-        base_output_dim=None,  # UniFrac: no output_head, returns embeddings
-        encoder_type="unifrac",
-        predict_nucleotides=False,
-    )
 
 
 @pytest.fixture
@@ -1561,8 +1511,11 @@ class TestFreezeBase:
 class TestGradientAccumulation:
     """Test gradient accumulation functionality."""
 
-    def test_gradient_accumulation_steps_1(self, small_model, loss_fn, simple_dataloader_encoder, device):
-        """Test gradient accumulation with steps=1 (no accumulation)."""
+    @pytest.mark.parametrize("gradient_accumulation_steps", [1, 2, 4])
+    def test_gradient_accumulation_steps(
+        self, small_model, loss_fn, simple_dataloader_encoder, device, gradient_accumulation_steps
+    ):
+        """Test gradient accumulation with different step values."""
         small_model = small_model.to(device)
         trainer = Trainer(
             model=small_model,
@@ -1571,45 +1524,16 @@ class TestGradientAccumulation:
         )
 
         initial_params = [p.clone() for p in small_model.parameters() if p.requires_grad]
-        losses = trainer.train_epoch(simple_dataloader_encoder, gradient_accumulation_steps=1)
+        losses = trainer.train_epoch(simple_dataloader_encoder, gradient_accumulation_steps=gradient_accumulation_steps)
         updated_params = [p for p in small_model.parameters() if p.requires_grad]
 
         assert "total_loss" in losses
         assert losses["total_loss"] >= 0
-        for init_param, updated_param in zip(initial_params, updated_params):
-            assert not torch.equal(init_param, updated_param)
-
-    def test_gradient_accumulation_steps_2(self, small_model, loss_fn, simple_dataloader_encoder, device):
-        """Test gradient accumulation with steps=2."""
-        small_model = small_model.to(device)
-        trainer = Trainer(
-            model=small_model,
-            loss_fn=loss_fn,
-            device=device,
-        )
-
-        initial_params = [p.clone() for p in small_model.parameters() if p.requires_grad]
-        losses = trainer.train_epoch(simple_dataloader_encoder, gradient_accumulation_steps=2)
-        updated_params = [p for p in small_model.parameters() if p.requires_grad]
-
-        assert "total_loss" in losses
-        assert losses["total_loss"] >= 0
-        for init_param, updated_param in zip(initial_params, updated_params):
-            assert not torch.equal(init_param, updated_param)
-
-    def test_gradient_accumulation_steps_4(self, small_model, loss_fn, simple_dataloader_encoder, device):
-        """Test gradient accumulation with steps=4."""
-        small_model = small_model.to(device)
-        trainer = Trainer(
-            model=small_model,
-            loss_fn=loss_fn,
-            device=device,
-        )
-
-        losses = trainer.train_epoch(simple_dataloader_encoder, gradient_accumulation_steps=4)
-
-        assert "total_loss" in losses
-        assert losses["total_loss"] >= 0
+        # For steps 1 and 2, verify parameters were updated
+        # For steps 4, the dataloader only has 4 samples so only 1 update happens
+        if gradient_accumulation_steps <= 2:
+            for init_param, updated_param in zip(initial_params, updated_params):
+                assert not torch.equal(init_param, updated_param)
 
     def test_gradient_accumulation_equivalent_loss(self, small_model, loss_fn, device):
         """Test that gradient accumulation produces equivalent results."""
@@ -1772,6 +1696,238 @@ class TestTensorBoardLogging:
         )
 
         assert "total_loss" in results
+
+    def test_tensorboard_logs_model_summary(self, small_model, loss_fn, simple_dataloader_encoder, device, tmp_path):
+        """Test that model parameter counts are logged to TensorBoard at training start."""
+        from unittest.mock import patch, MagicMock
+
+        tensorboard_dir = tmp_path / "output"
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+            tensorboard_dir=str(tensorboard_dir),
+        )
+
+        with patch.object(trainer, "_log_model_summary") as mock_log:
+            trainer.train(
+                train_loader=simple_dataloader_encoder,
+                num_epochs=1,
+            )
+            mock_log.assert_called_once()
+
+    def test_tensorboard_logs_epoch_timing(self, small_model, loss_fn, simple_dataloader_encoder, device, tmp_path):
+        """Test that epoch duration and throughput are logged to TensorBoard."""
+        tensorboard_dir = tmp_path / "output"
+        trainer = Trainer(
+            model=small_model,
+            loss_fn=loss_fn,
+            device=device,
+            tensorboard_dir=str(tensorboard_dir),
+        )
+
+        trainer.train(
+            train_loader=simple_dataloader_encoder,
+            num_epochs=2,
+        )
+
+        # Read TensorBoard event files to verify timing metrics were logged
+        from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+
+        tensorboard_path = tensorboard_dir / "tensorboard"
+        event_acc = EventAccumulator(str(tensorboard_path))
+        event_acc.Reload()
+
+        scalar_tags = event_acc.Tags()["scalars"]
+        assert "perf/epoch_duration_sec" in scalar_tags
+        assert "perf/samples_per_sec" in scalar_tags
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required for memory tracking")
+    def test_tensorboard_logs_memory_usage(self, small_model, loss_fn, simple_dataloader_encoder, tmp_path):
+        """Test that GPU memory usage is logged to TensorBoard."""
+        device = torch.device("cuda")
+        tensorboard_dir = tmp_path / "output"
+        trainer = Trainer(
+            model=small_model.to(device),
+            loss_fn=loss_fn,
+            device=device,
+            tensorboard_dir=str(tensorboard_dir),
+        )
+
+        trainer.train(
+            train_loader=simple_dataloader_encoder,
+            num_epochs=1,
+        )
+
+        from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+
+        tensorboard_path = tensorboard_dir / "tensorboard"
+        event_acc = EventAccumulator(str(tensorboard_path))
+        event_acc.Reload()
+
+        scalar_tags = event_acc.Tags()["scalars"]
+        assert "perf/gpu_memory_allocated_mb" in scalar_tags
+
+    def test_tensorboard_logs_best_model_marker(self, small_predictor, loss_fn, simple_dataloader, device, tmp_path):
+        """Test that best model indicator is logged when checkpoint is saved."""
+        tensorboard_dir = tmp_path / "output"
+        checkpoint_dir = tmp_path / "checkpoints"
+        trainer = Trainer(
+            model=small_predictor,
+            loss_fn=loss_fn,
+            device=device,
+            tensorboard_dir=str(tensorboard_dir),
+        )
+
+        trainer.train(
+            train_loader=simple_dataloader,
+            val_loader=simple_dataloader,
+            num_epochs=3,
+            checkpoint_dir=str(checkpoint_dir),
+        )
+
+        from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+
+        tensorboard_path = tensorboard_dir / "tensorboard"
+        event_acc = EventAccumulator(str(tensorboard_path))
+        event_acc.Reload()
+
+        scalar_tags = event_acc.Tags()["scalars"]
+        assert "checkpoint/best_model_saved" in scalar_tags
+
+    def test_tensorboard_logs_cross_attention_entropy(self, loss_fn, simple_dataloader, device, tmp_path):
+        """Test that cross-attention entropy is logged when using cross-attention fusion."""
+        model = SequencePredictor(
+            vocab_size=6,
+            embedding_dim=32,
+            max_bp=50,
+            token_limit=64,
+            asv_num_layers=1,
+            asv_num_heads=2,
+            sample_num_layers=1,
+            sample_num_heads=2,
+            encoder_num_layers=1,
+            encoder_num_heads=2,
+            encoder_type="unifrac",
+            out_dim=1,
+            categorical_cardinalities={"test_col": 5},
+            categorical_embed_dim=8,
+            categorical_fusion="cross-attention",
+            cross_attn_heads=2,
+        )
+        tensorboard_dir = tmp_path / "output"
+        trainer = Trainer(
+            model=model,
+            loss_fn=loss_fn,
+            device=device,
+            tensorboard_dir=str(tensorboard_dir),
+        )
+
+        # Create dataloader with categorical_ids
+        class CategoricalDataset:
+            def __init__(self, num_samples, device):
+                self.num_samples = num_samples
+                self.device = device
+
+            def __len__(self):
+                return self.num_samples // 2
+
+            def __iter__(self):
+                from aam.data.tokenizer import SequenceTokenizer
+
+                batch_size = 2
+                for i in range(0, self.num_samples, batch_size):
+                    tokens = torch.randint(1, 5, (batch_size, 10, 50))
+                    tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
+                    yield {
+                        "tokens": tokens.to(self.device),
+                        "counts": torch.rand(batch_size, 10, 1).to(self.device),
+                        "y_target": torch.rand(batch_size, 1).to(self.device),
+                        "categorical_ids": {"test_col": torch.randint(0, 5, (batch_size,)).to(self.device)},
+                    }
+
+        cat_loader = CategoricalDataset(8, device)
+
+        trainer.train(
+            train_loader=cat_loader,
+            num_epochs=2,
+        )
+
+        from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+
+        tensorboard_path = tensorboard_dir / "tensorboard"
+        event_acc = EventAccumulator(str(tensorboard_path))
+        event_acc.Reload()
+
+        scalar_tags = event_acc.Tags()["scalars"]
+        assert "cross_attn/entropy" in scalar_tags
+
+    def test_tensorboard_logs_conditional_scaling_stats(self, loss_fn, simple_dataloader, device, tmp_path):
+        """Test that conditional scaling stats are logged when using conditional output scaling."""
+        model = SequencePredictor(
+            vocab_size=6,
+            embedding_dim=32,
+            max_bp=50,
+            token_limit=64,
+            asv_num_layers=1,
+            asv_num_heads=2,
+            sample_num_layers=1,
+            sample_num_heads=2,
+            encoder_num_layers=1,
+            encoder_num_heads=2,
+            encoder_type="unifrac",
+            out_dim=1,
+            categorical_cardinalities={"season": 4},
+            categorical_embed_dim=8,
+            conditional_scaling_columns=["season"],
+        )
+        tensorboard_dir = tmp_path / "output"
+        trainer = Trainer(
+            model=model,
+            loss_fn=loss_fn,
+            device=device,
+            tensorboard_dir=str(tensorboard_dir),
+        )
+
+        # Create dataloader with categorical_ids
+        class ScalingDataset:
+            def __init__(self, num_samples, device):
+                self.num_samples = num_samples
+                self.device = device
+
+            def __len__(self):
+                return self.num_samples // 2
+
+            def __iter__(self):
+                from aam.data.tokenizer import SequenceTokenizer
+
+                batch_size = 2
+                for i in range(0, self.num_samples, batch_size):
+                    tokens = torch.randint(1, 5, (batch_size, 10, 50))
+                    tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
+                    yield {
+                        "tokens": tokens.to(self.device),
+                        "counts": torch.rand(batch_size, 10, 1).to(self.device),
+                        "y_target": torch.rand(batch_size, 1).to(self.device),
+                        "categorical_ids": {"season": torch.randint(0, 4, (batch_size,)).to(self.device)},
+                    }
+
+        scaling_loader = ScalingDataset(8, device)
+
+        trainer.train(
+            train_loader=scaling_loader,
+            num_epochs=2,
+        )
+
+        from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
+
+        tensorboard_path = tensorboard_dir / "tensorboard"
+        event_acc = EventAccumulator(str(tensorboard_path))
+        event_acc.Reload()
+
+        scalar_tags = event_acc.Tags()["scalars"]
+        assert "conditional_scaling/season_scale_mean" in scalar_tags
+        assert "conditional_scaling/season_bias_mean" in scalar_tags
 
 
 class TestPredictionPlots:
@@ -3564,49 +3720,25 @@ class TestBestMetricSelection:
         assert trainer.best_metric == "val_loss"
         assert trainer.best_metric_mode == "min"
 
-    def test_trainer_init_best_metric_r2(self, small_model, loss_fn, device):
-        """Test Trainer with best_metric='r2' (higher is better)."""
+    @pytest.mark.parametrize(
+        "metric,expected_mode",
+        [
+            ("r2", "max"),
+            ("mae", "min"),
+            ("accuracy", "max"),
+            ("f1", "max"),
+        ],
+    )
+    def test_trainer_init_best_metric(self, small_model, loss_fn, device, metric, expected_mode):
+        """Test Trainer with different best_metric options."""
         trainer = Trainer(
             model=small_model,
             loss_fn=loss_fn,
             device=device,
-            best_metric="r2",
+            best_metric=metric,
         )
-        assert trainer.best_metric == "r2"
-        assert trainer.best_metric_mode == "max"
-
-    def test_trainer_init_best_metric_mae(self, small_model, loss_fn, device):
-        """Test Trainer with best_metric='mae' (lower is better)."""
-        trainer = Trainer(
-            model=small_model,
-            loss_fn=loss_fn,
-            device=device,
-            best_metric="mae",
-        )
-        assert trainer.best_metric == "mae"
-        assert trainer.best_metric_mode == "min"
-
-    def test_trainer_init_best_metric_accuracy(self, small_model, loss_fn, device):
-        """Test Trainer with best_metric='accuracy' (higher is better)."""
-        trainer = Trainer(
-            model=small_model,
-            loss_fn=loss_fn,
-            device=device,
-            best_metric="accuracy",
-        )
-        assert trainer.best_metric == "accuracy"
-        assert trainer.best_metric_mode == "max"
-
-    def test_trainer_init_best_metric_f1(self, small_model, loss_fn, device):
-        """Test Trainer with best_metric='f1' (higher is better)."""
-        trainer = Trainer(
-            model=small_model,
-            loss_fn=loss_fn,
-            device=device,
-            best_metric="f1",
-        )
-        assert trainer.best_metric == "f1"
-        assert trainer.best_metric_mode == "max"
+        assert trainer.best_metric == metric
+        assert trainer.best_metric_mode == expected_mode
 
     def test_trainer_init_invalid_best_metric(self, small_model, loss_fn, device):
         """Test Trainer raises ValueError for invalid best_metric."""
@@ -3618,16 +3750,17 @@ class TestBestMetricSelection:
                 best_metric="invalid_metric",
             )
 
-    def test_train_saves_checkpoint_by_val_loss(self, small_predictor, loss_fn, simple_dataloader, device, tmp_path):
-        """Test train saves best model based on val_loss (default)."""
+    @pytest.mark.parametrize("best_metric", ["val_loss", "r2", "mae"])
+    def test_train_saves_checkpoint_by_metric(self, small_predictor, loss_fn, simple_dataloader, device, tmp_path, best_metric):
+        """Test train saves best model based on different metrics."""
         trainer = Trainer(
             model=small_predictor,
             loss_fn=loss_fn,
             device=device,
-            best_metric="val_loss",
+            best_metric=best_metric,
         )
 
-        history = trainer.train(
+        trainer.train(
             train_loader=simple_dataloader,
             val_loader=simple_dataloader,
             num_epochs=3,
@@ -3639,56 +3772,9 @@ class TestBestMetricSelection:
         assert checkpoint_path.exists()
 
         checkpoint = torch.load(checkpoint_path, weights_only=True)
-        assert "best_val_loss" in checkpoint
-        assert checkpoint.get("best_metric") == "val_loss"
-
-    def test_train_saves_checkpoint_by_r2(self, small_predictor, loss_fn, simple_dataloader, device, tmp_path):
-        """Test train saves best model based on r2 metric."""
-        trainer = Trainer(
-            model=small_predictor,
-            loss_fn=loss_fn,
-            device=device,
-            best_metric="r2",
-        )
-
-        history = trainer.train(
-            train_loader=simple_dataloader,
-            val_loader=simple_dataloader,
-            num_epochs=3,
-            checkpoint_dir=str(tmp_path),
-            early_stopping_patience=10,
-        )
-
-        checkpoint_path = tmp_path / "best_model.pt"
-        assert checkpoint_path.exists()
-
-        checkpoint = torch.load(checkpoint_path, weights_only=True)
-        assert checkpoint.get("best_metric") == "r2"
-        # best_metric_value should be stored
+        assert checkpoint.get("best_metric") == best_metric
         assert "best_metric_value" in checkpoint
-
-    def test_train_saves_checkpoint_by_mae(self, small_predictor, loss_fn, simple_dataloader, device, tmp_path):
-        """Test train saves best model based on mae metric."""
-        trainer = Trainer(
-            model=small_predictor,
-            loss_fn=loss_fn,
-            device=device,
-            best_metric="mae",
-        )
-
-        history = trainer.train(
-            train_loader=simple_dataloader,
-            val_loader=simple_dataloader,
-            num_epochs=3,
-            checkpoint_dir=str(tmp_path),
-            early_stopping_patience=10,
-        )
-
-        checkpoint_path = tmp_path / "best_model.pt"
-        assert checkpoint_path.exists()
-
-        checkpoint = torch.load(checkpoint_path, weights_only=True)
-        assert checkpoint.get("best_metric") == "mae"
+        assert "best_val_loss" in checkpoint  # backwards compatibility
 
     def test_checkpoint_stores_best_metric_info(self, small_predictor, loss_fn, simple_dataloader, device, tmp_path):
         """Test checkpoint contains best_metric and best_metric_value."""

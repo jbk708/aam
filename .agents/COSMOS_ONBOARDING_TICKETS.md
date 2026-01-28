@@ -1,9 +1,10 @@
 # ROCm/Cosmos Tickets
 
-**Last Updated:** 2026-01-20
-**Status:** 4 tickets remaining (~13-19 hours)
+**Last Updated:** 2026-01-27
+**Status:** 2 tickets remaining (~7-10 hours)
 
-**Completed:** COS-9.1 to COS-9.3, COS-9.9 (see `ARCHIVED_TICKETS.md`)
+**Completed:** COS-9.1 to COS-9.3, COS-9.8, COS-9.9 (see `ARCHIVED_TICKETS.md`)
+**Skipped:** COS-9.5
 
 **Current Config (ROCm 6.3 + PyTorch 2.7+):**
 ```bash
@@ -18,9 +19,11 @@ aam pretrain --data-parallel --batch-size 32 ...
 ## Outstanding Tickets
 
 ### COS-9.5: Kernel Profiling (rocprof)
-**Priority:** LOW | **Effort:** 4-6 hours | **Status:** Not Started
+**Priority:** LOW | **Effort:** 4-6 hours | **Status:** Skipped
 
 Profile training with `rocprof --stats` to identify bottlenecks.
+
+*Skipped: Not needed for current workflow.*
 
 ---
 
@@ -42,18 +45,20 @@ Reproducible container for production runs.
 ---
 
 ### COS-9.8: Documentation
-**Priority:** LOW | **Effort:** 2-3 hours | **Status:** Not Started
+**Priority:** LOW | **Effort:** 2-3 hours | **Status:** Complete
 
 Consolidate ROCm setup and best practices in README.
+
+*Complete: README already contains comprehensive Cosmos/ROCm section (lines 461-498) covering environment setup, compatibility table, limitations, and MI300A specifics.*
 
 ---
 
 ## Summary
 
-| Ticket | Description | Effort | Priority |
-|--------|-------------|--------|----------|
-| **COS-9.5** | Kernel profiling | 4-6h | LOW |
-| **COS-9.6** | SLURM templates | 3-4h | LOW |
-| **COS-9.7** | Singularity container | 4-6h | LOW |
-| **COS-9.8** | Documentation | 2-3h | LOW |
-| **Total** | | **13-19h** | |
+| Ticket | Description | Effort | Priority | Status |
+|--------|-------------|--------|----------|--------|
+| ~~**COS-9.5**~~ | ~~Kernel profiling~~ | ~~4-6h~~ | ~~LOW~~ | Skipped |
+| **COS-9.6** | SLURM templates | 3-4h | LOW | Not Started |
+| **COS-9.7** | Singularity container | 4-6h | LOW | Not Started |
+| ~~**COS-9.8**~~ | ~~Documentation~~ | ~~2-3h~~ | ~~LOW~~ | Complete |
+| **Total** | | **7-10h** | |

@@ -36,28 +36,11 @@ def asv_encoder_with_nucleotides():
 
 
 @pytest.fixture
-def sample_tokens():
-    """Create sample tokens for testing [B, S, L]."""
-    from aam.data.tokenizer import SequenceTokenizer
-
-    batch_size = 2
-    num_asvs = 10
-    seq_len = 50
-    tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
-    tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
-    tokens[:, :, 40:] = 0
-    return tokens
-
-
-@pytest.fixture
 def sample_tokens_full_length():
-    """Create sample tokens with full length sequences."""
+    """Create sample tokens with full length sequences (no padding)."""
     from aam.data.tokenizer import SequenceTokenizer
 
-    batch_size = 2
-    num_asvs = 5
-    seq_len = 50
-    tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
+    tokens = torch.randint(1, 5, (2, 5, 50))
     tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
     return tokens
 
@@ -109,12 +92,12 @@ class TestASVEncoder:
         # mask_indices is None when mask_ratio=0 (default in fixture)
         assert mask_indices is None
 
-    def test_forward_different_batch_sizes(self, asv_encoder):
+    @pytest.mark.parametrize("batch_size", [1, 4, 8])
+    def test_forward_different_batch_sizes(self, asv_encoder, batch_size):
         """Test forward pass with different batch sizes."""
-        for batch_size in [1, 4, 8]:
-            tokens = torch.randint(1, 5, (batch_size, 10, 50))
-            result = asv_encoder(tokens)
-            assert result.shape == (batch_size, 10, 64)
+        tokens = torch.randint(1, 5, (batch_size, 10, 50))
+        result = asv_encoder(tokens)
+        assert result.shape == (batch_size, 10, 64)
 
     def test_forward_different_num_asvs(self, asv_encoder):
         """Test forward pass with different numbers of ASVs."""
@@ -123,12 +106,12 @@ class TestASVEncoder:
             result = asv_encoder(tokens)
             assert result.shape == (2, num_asvs, 64)
 
-    def test_forward_different_seq_lengths(self, asv_encoder):
+    @pytest.mark.parametrize("seq_len", [10, 50, 100, 150])
+    def test_forward_different_seq_lengths(self, asv_encoder, seq_len):
         """Test forward pass with different sequence lengths."""
-        for seq_len in [10, 50, 100, 150]:
-            tokens = torch.randint(1, 5, (2, 10, seq_len))
-            result = asv_encoder(tokens)
-            assert result.shape == (2, 10, 64)
+        tokens = torch.randint(1, 5, (2, 10, seq_len))
+        result = asv_encoder(tokens)
+        assert result.shape == (2, 10, 64)
 
     def test_forward_with_padding(self, asv_encoder, sample_tokens):
         """Test forward pass with padded sequences."""

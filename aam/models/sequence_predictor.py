@@ -5,10 +5,49 @@ import torch.nn as nn
 from typing import Dict, List, Optional
 
 from aam.models.sequence_encoder import SequenceEncoder
+from aam.models.sample_sequence_encoder import CountEmbeddingMethod
 from aam.models.attention_pooling import AttentionPooling
 from aam.models.transformer import AttnImplementation, TransformerEncoder
 from aam.models.categorical_embedder import CategoricalEmbedder
-from aam.models.fusion import CrossAttentionFusion, GMU
+from aam.models.fusion import CrossAttentionFusion, GMU, PerceiverFusion
+
+
+class ResidualRegressionHead(nn.Module):
+    """Regression head with skip connection: output = Linear(x) + MLP(x)."""
+
+    def __init__(
+        self,
+        in_dim: int,
+        out_dim: int,
+        hidden_dims: List[int],
+        dropout: float = 0.0,
+    ):
+        """Initialize ResidualRegressionHead.
+
+        Args:
+            in_dim: Input dimension (embedding_dim)
+            out_dim: Output dimension (number of targets)
+            hidden_dims: Hidden layer dimensions for MLP branch
+            dropout: Dropout rate between MLP layers
+        """
+        super().__init__()
+
+        self.skip = nn.Linear(in_dim, out_dim)
+
+        layers: List[nn.Module] = []
+        current_dim = in_dim
+        for hidden_dim in hidden_dims:
+            layers.append(nn.Linear(current_dim, hidden_dim))
+            layers.append(nn.ReLU())
+            if dropout > 0:
+                layers.append(nn.Dropout(dropout))
+            current_dim = hidden_dim
+        layers.append(nn.Linear(current_dim, out_dim))
+        self.mlp = nn.Sequential(*layers)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass with residual connection."""
+        return self.skip(x) + self.mlp(x)
 
 
 class SequencePredictor(nn.Module):
@@ -71,10 +110,15 @@ class SequencePredictor(nn.Module):
         categorical_dropout: float = 0.1,
         regressor_hidden_dims: Optional[List[int]] = None,
         regressor_dropout: float = 0.0,
+        residual_regression_head: bool = False,
         conditional_scaling_columns: Optional[List[str]] = None,
         cross_attn_heads: int = 8,
+        perceiver_num_latents: int = 64,
+        perceiver_num_layers: int = 2,
         num_quantiles: Optional[int] = None,
         count_prediction: bool = True,
+        count_embedding: bool = False,
+        count_embedding_method: CountEmbeddingMethod = "add",
     ):
         """Initialize SequencePredictor.
 
@@ -134,18 +178,32 @@ class SequencePredictor(nn.Module):
             regressor_hidden_dims: Hidden layer dimensions for MLP regression head. If None, uses single
                 linear layer. E.g., [64, 32] creates MLP: embedding_dim -> 64 -> 32 -> out_dim
             regressor_dropout: Dropout rate between MLP layers (default: 0.0, no dropout)
+            residual_regression_head: Add skip connection: output = Linear(x) + MLP(x). Requires
+                regressor_hidden_dims to be set. Default: False
             conditional_scaling_columns: List of categorical column names to use for conditional output
                 scaling. For each column, learns per-category scale and bias parameters applied after
                 base prediction: output = prediction * scale[cat] + bias[cat]. Requires categorical_cardinalities.
             cross_attn_heads: Number of attention heads for cross-attention fusion (default: 8).
                 Only used when categorical_fusion='cross-attention'.
+            perceiver_num_latents: Number of learned latent vectors for perceiver fusion (default: 64).
+                Only used when categorical_fusion='perceiver'.
+            perceiver_num_layers: Number of self-attention refinement layers for perceiver fusion (default: 2).
+                Only used when categorical_fusion='perceiver'.
             num_quantiles: Number of quantiles for quantile regression. If set, output dimension
                 becomes out_dim * num_quantiles and output is reshaped to [batch, out_dim, num_quantiles].
                 Set to None for standard regression (default: None).
             count_prediction: Whether to include count prediction head (default: True).
                 When False, count_encoder and count_head are not created, saving memory and compute.
+            count_embedding: Whether to incorporate ASV count magnitudes as input features
+            count_embedding_method: How to combine count embeddings with sequence embeddings:
+                - 'add': asv_emb = seq_emb + count_emb
+                - 'concat': asv_emb = proj(cat(seq_emb, count_emb))
+                - 'film': asv_emb = seq_emb * scale + shift (FiLM-style modulation)
         """
         super().__init__()
+
+        self.count_embedding = count_embedding
+        self.count_embedding_method = count_embedding_method
 
         if base_model is None:
             self.base_model = SequenceEncoder(
@@ -176,11 +234,24 @@ class SequencePredictor(nn.Module):
                 asv_chunk_size=asv_chunk_size,
                 mask_ratio=mask_ratio,
                 mask_strategy=mask_strategy,
+                count_embedding=count_embedding,
+                count_embedding_method=count_embedding_method,
             )
             self.embedding_dim = embedding_dim
         else:
             self.base_model = base_model
             self.embedding_dim = base_model.embedding_dim
+            # Check if base_model has different count_embedding settings
+            if hasattr(base_model, "count_embedding") and base_model.count_embedding != count_embedding:
+                import warnings
+
+                warnings.warn(
+                    f"base_model has count_embedding={base_model.count_embedding} "
+                    f"but SequencePredictor was initialized with count_embedding={count_embedding}. "
+                    f"Using base_model's setting."
+                )
+                self.count_embedding = base_model.count_embedding
+                self.count_embedding_method = base_model.count_embedding_method
 
         self.out_dim = out_dim
         self.is_classifier = is_classifier
@@ -253,7 +324,14 @@ class SequencePredictor(nn.Module):
 
         self.regressor_hidden_dims = regressor_hidden_dims
         self.regressor_dropout = regressor_dropout
+        self.residual_regression_head = residual_regression_head
         self.categorical_embed_dim = categorical_embed_dim
+
+        if residual_regression_head and (regressor_hidden_dims is None or len(regressor_hidden_dims) == 0):
+            raise ValueError(
+                "residual_regression_head requires regressor_hidden_dims to be set. "
+                "Use --regressor-hidden-dims to specify MLP hidden dimensions."
+            )
 
         # For quantile regression, expand output dimension
         effective_out_dim = out_dim * num_quantiles if num_quantiles is not None else out_dim
@@ -268,8 +346,10 @@ class SequencePredictor(nn.Module):
 
         self.categorical_fusion = categorical_fusion
         self.cross_attn_heads = cross_attn_heads
+        self.perceiver_num_latents = perceiver_num_latents
+        self.perceiver_num_layers = perceiver_num_layers
         if categorical_cardinalities:
-            valid_fusions = ("concat", "add", "gmu", "cross-attention")
+            valid_fusions = ("concat", "add", "gmu", "cross-attention", "perceiver")
             if categorical_fusion not in valid_fusions:
                 raise ValueError(f"categorical_fusion must be one of {valid_fusions}, got '{categorical_fusion}'")
             self.categorical_embedder: Optional[CategoricalEmbedder] = CategoricalEmbedder(
@@ -285,6 +365,7 @@ class SequencePredictor(nn.Module):
                 )
                 self.gmu: Optional[GMU] = None
                 self.cross_attn_fusion: Optional[CrossAttentionFusion] = None
+                self.perceiver_fusion: Optional[PerceiverFusion] = None
             elif categorical_fusion == "add":
                 self.categorical_projection = nn.Linear(
                     total_cat_dim,
@@ -292,11 +373,13 @@ class SequencePredictor(nn.Module):
                 )
                 self.gmu = None
                 self.cross_attn_fusion = None
+                self.perceiver_fusion = None
             elif categorical_fusion == "gmu":
                 self.categorical_projection = None
                 self.gmu = GMU(seq_dim=self.embedding_dim, cat_dim=total_cat_dim)
                 self.cross_attn_fusion = None
-            else:  # cross-attention
+                self.perceiver_fusion = None
+            elif categorical_fusion == "cross-attention":
                 self.categorical_projection = None
                 self.gmu = None
                 self.cross_attn_fusion = CrossAttentionFusion(
@@ -305,11 +388,25 @@ class SequencePredictor(nn.Module):
                     num_heads=cross_attn_heads,
                     dropout=categorical_dropout,
                 )
+                self.perceiver_fusion = None
+            else:  # perceiver
+                self.categorical_projection = None
+                self.gmu = None
+                self.cross_attn_fusion = None
+                self.perceiver_fusion = PerceiverFusion(
+                    seq_dim=self.embedding_dim,
+                    cat_dim=total_cat_dim,
+                    num_latents=perceiver_num_latents,
+                    num_layers=perceiver_num_layers,
+                    num_heads=cross_attn_heads,
+                    dropout=categorical_dropout,
+                )
         else:
             self.categorical_embedder = None
             self.categorical_projection = None
             self.gmu = None
             self.cross_attn_fusion = None
+            self.perceiver_fusion = None
 
         self.conditional_scaling_columns = conditional_scaling_columns
         self._init_conditional_scaling(categorical_cardinalities)
@@ -317,14 +414,14 @@ class SequencePredictor(nn.Module):
         self._init_weights()
 
     def _build_target_head(self, in_dim: int, out_dim: int) -> nn.Module:
-        """Build target prediction head (single layer or MLP).
+        """Build target prediction head (single layer, MLP, or residual).
 
         Args:
             in_dim: Input dimension (embedding_dim)
             out_dim: Output dimension (number of targets)
 
         Returns:
-            nn.Module: Linear layer or Sequential MLP
+            nn.Module: Linear layer, Sequential MLP, or ResidualRegressionHead
 
         Raises:
             ValueError: If any hidden dimension is not a positive integer
@@ -338,6 +435,14 @@ class SequencePredictor(nn.Module):
                     f"regressor_hidden_dims[{i}] must be a positive integer, got {dim}. "
                     f"Full hidden dims: {self.regressor_hidden_dims}"
                 )
+
+        if self.residual_regression_head:
+            return ResidualRegressionHead(
+                in_dim=in_dim,
+                out_dim=out_dim,
+                hidden_dims=self.regressor_hidden_dims,
+                dropout=self.regressor_dropout,
+            )
 
         layers: List[nn.Module] = []
         current_dim = in_dim
@@ -492,29 +597,38 @@ class SequencePredictor(nn.Module):
     def forward(
         self,
         tokens: torch.Tensor,
+        counts: Optional[torch.Tensor] = None,
         categorical_ids: Optional[Dict[str, torch.Tensor]] = None,
         return_nucleotides: bool = False,
+        return_sample_embeddings: bool = False,
     ) -> Dict[str, torch.Tensor]:
         """Forward pass.
 
         Args:
             tokens: Input tokens [batch_size, num_asvs, seq_len]
+            counts: Optional ASV counts [batch_size, num_asvs] or [batch_size, num_asvs, 1].
+                Required if count_embedding=True.
             categorical_ids: Optional dict mapping column name to category indices [batch_size].
                 Used for categorical conditioning of target predictions.
             return_nucleotides: Whether to return nucleotide predictions
+            return_sample_embeddings: Whether to return base_embeddings in output dict.
+                Default False to save memory during training (loss doesn't use them).
 
         Returns:
             Dictionary with keys:
                 - 'target_prediction': [batch_size, out_dim]
                 - 'count_prediction': [batch_size, num_asvs, 1] (if count_prediction_enabled)
-                - 'base_embeddings': [batch_size, num_asvs, embedding_dim]
+                - 'base_embeddings': [batch_size, num_asvs, embedding_dim] (only if return_sample_embeddings=True)
                 - 'base_prediction': [batch_size, base_output_dim] (if return_nucleotides=True)
                 - 'nuc_predictions': [batch_size, num_asvs, seq_len, vocab_size] (if return_nucleotides=True)
                 - 'mask_indices': [batch_size, num_asvs, seq_len] boolean (if masking, else None)
         """
         asv_mask = (tokens.sum(dim=-1) > 0).long()
 
-        base_outputs = self.base_model(tokens, return_nucleotides=return_nucleotides)
+        # Always request sample_embeddings from base_model - we need them for count/target pathways
+        base_outputs = self.base_model(
+            tokens, counts=counts, return_nucleotides=return_nucleotides, return_sample_embeddings=True
+        )
 
         base_embeddings = base_outputs["sample_embeddings"]
         # For UniFrac, embeddings are returned directly (no base_prediction)
@@ -533,10 +647,14 @@ class SequencePredictor(nn.Module):
         # Fusion strategy determines how categorical embeddings are combined:
         # - gmu: fuses after pooling (handled below)
         # - cross-attention: fuses before target encoder via attention
+        # - perceiver: replaces target encoder + pooling with latent bottleneck
         # - concat/add: fuses via _fuse_categorical
         cross_attn_weights = None
+        perceiver_attn_weights = None
         if self.categorical_fusion == "gmu":
             target_input = base_embeddings
+            target_embeddings = self.target_encoder(target_input, mask=asv_mask)
+            pooled_target = self.target_pooling(target_embeddings, mask=asv_mask)
         elif (
             self.categorical_fusion == "cross-attention"
             and self.cross_attn_fusion is not None
@@ -545,11 +663,21 @@ class SequencePredictor(nn.Module):
         ):
             cat_emb = self.categorical_embedder(categorical_ids)
             target_input, cross_attn_weights = self.cross_attn_fusion(base_embeddings, cat_emb, return_weights=True)
+            target_embeddings = self.target_encoder(target_input, mask=asv_mask)
+            pooled_target = self.target_pooling(target_embeddings, mask=asv_mask)
+        elif (
+            self.categorical_fusion == "perceiver"
+            and self.perceiver_fusion is not None
+            and self.categorical_embedder is not None
+            and categorical_ids is not None
+        ):
+            # Perceiver replaces target encoder + pooling with latent bottleneck
+            cat_emb = self.categorical_embedder(categorical_ids)
+            pooled_target, perceiver_attn_weights = self.perceiver_fusion(base_embeddings, cat_emb, return_weights=True)
         else:
             target_input = self._fuse_categorical(base_embeddings, categorical_ids)
-
-        target_embeddings = self.target_encoder(target_input, mask=asv_mask)
-        pooled_target = self.target_pooling(target_embeddings, mask=asv_mask)
+            target_embeddings = self.target_encoder(target_input, mask=asv_mask)
+            pooled_target = self.target_pooling(target_embeddings, mask=asv_mask)
 
         if self.target_norm is not None:
             pooled_target = self.target_norm(pooled_target)
@@ -580,10 +708,12 @@ class SequencePredictor(nn.Module):
             elif self.output_activation != "none":
                 target_prediction = self._apply_output_activation(target_prediction)
 
-        result = {
+        result: Dict[str, torch.Tensor] = {
             "target_prediction": target_prediction,
-            "base_embeddings": base_embeddings,
         }
+
+        if return_sample_embeddings:
+            result["base_embeddings"] = base_embeddings
 
         if count_prediction is not None:
             result["count_prediction"] = count_prediction
@@ -593,6 +723,9 @@ class SequencePredictor(nn.Module):
 
         if cross_attn_weights is not None:
             result["cross_attn_weights"] = cross_attn_weights
+
+        if perceiver_attn_weights is not None:
+            result["perceiver_attn_weights"] = perceiver_attn_weights
 
         # For UniFrac, pass embeddings through for distance computation
         if embeddings is not None:

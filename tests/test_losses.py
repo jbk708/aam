@@ -351,20 +351,6 @@ class TestQuantileLoss:
         assert loss.dim() == 0
         assert loss.item() >= 0
 
-    def test_quantile_loss_does_not_affect_classification(self):
-        """Test that classification ignores quantile loss type."""
-        loss_fn = MultiTaskLoss(target_loss_type="quantile", quantiles=[0.1, 0.5, 0.9])
-
-        # For classification, should use NLL regardless of loss type
-        target_pred = torch.randn(4, 3)
-        target_pred = nn.functional.log_softmax(target_pred, dim=-1)
-        target_true = torch.randint(0, 3, (4,))
-
-        loss = loss_fn.compute_target_loss(target_pred, target_true, is_classifier=True)
-
-        expected = nn.functional.nll_loss(target_pred, target_true)
-        assert torch.allclose(loss, expected)
-
 
 class TestAsymmetricLoss:
     """Test asymmetric loss computation."""
@@ -484,20 +470,6 @@ class TestAsymmetricLoss:
         assert loss.dim() == 0
         assert loss.item() >= 0
 
-    def test_asymmetric_loss_does_not_affect_classification(self):
-        """Test that classification ignores asymmetric loss type."""
-        loss_fn = MultiTaskLoss(target_loss_type="asymmetric", over_penalty=2.0, under_penalty=1.0)
-
-        # For classification, should use NLL regardless of loss type
-        target_pred = torch.randn(4, 3)
-        target_pred = nn.functional.log_softmax(target_pred, dim=-1)
-        target_true = torch.randint(0, 3, (4,))
-
-        loss = loss_fn.compute_target_loss(target_pred, target_true, is_classifier=True)
-
-        expected = nn.functional.nll_loss(target_pred, target_true)
-        assert torch.allclose(loss, expected)
-
     def test_asymmetric_loss_extreme_penalty_ratios(self):
         """Test asymmetric loss with extreme penalty ratios."""
         # Only overpredictions
@@ -514,6 +486,242 @@ class TestAsymmetricLoss:
 
         # High over_penalty should give 10x higher loss for pure overpredictions
         assert loss_high_over.item() == loss_low_over.item() * 10
+
+
+class TestPerOutputLossConfig:
+    """Tests for per-output loss configuration (REG-8)."""
+
+    def test_loss_config_valid_creation(self):
+        """Test successful creation with valid loss_config."""
+        loss_fn = MultiTaskLoss(
+            loss_config={"0": "mse", "1": "huber"},
+            target_loss_type="mae",
+        )
+        assert loss_fn.loss_config == {"0": "mse", "1": "huber"}
+        assert loss_fn.target_loss_type == "mae"
+
+    def test_loss_config_with_target_columns(self):
+        """Test loss_config with named columns."""
+        loss_fn = MultiTaskLoss(
+            loss_config={"pH": "mse", "temp": "huber"},
+            target_columns=["pH", "temp"],
+            target_loss_type="mae",
+        )
+        assert loss_fn.loss_config == {"pH": "mse", "temp": "huber"}
+        assert loss_fn.target_columns == ["pH", "temp"]
+
+    def test_loss_config_invalid_loss_type_raises_error(self):
+        """Test that invalid loss type in loss_config raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid loss type 'invalid'"):
+            MultiTaskLoss(loss_config={"0": "invalid"})
+
+    def test_loss_config_quantile_not_supported(self):
+        """Test that quantile loss type in loss_config raises ValueError."""
+        with pytest.raises(ValueError, match="Quantile loss type in loss_config"):
+            MultiTaskLoss(loss_config={"0": "quantile"})
+
+    def test_loss_config_asymmetric_not_supported(self):
+        """Test that asymmetric loss type in loss_config raises ValueError."""
+        with pytest.raises(ValueError, match="Asymmetric loss type in loss_config"):
+            MultiTaskLoss(loss_config={"0": "asymmetric"})
+
+    def test_get_loss_type_for_column_by_index(self):
+        """Test _get_loss_type_for_column with index keys."""
+        loss_fn = MultiTaskLoss(
+            loss_config={"0": "mse", "1": "huber"},
+            target_loss_type="mae",
+        )
+        assert loss_fn._get_loss_type_for_column(0) == "mse"
+        assert loss_fn._get_loss_type_for_column(1) == "huber"
+        assert loss_fn._get_loss_type_for_column(2) == "mae"  # Fallback
+
+    def test_get_loss_type_for_column_by_name(self):
+        """Test _get_loss_type_for_column with named columns."""
+        loss_fn = MultiTaskLoss(
+            loss_config={"pH": "mse", "temp": "huber"},
+            target_columns=["pH", "temp", "salinity"],
+            target_loss_type="mae",
+        )
+        assert loss_fn._get_loss_type_for_column(0) == "mse"  # pH
+        assert loss_fn._get_loss_type_for_column(1) == "huber"  # temp
+        assert loss_fn._get_loss_type_for_column(2) == "mae"  # salinity (fallback)
+
+    def test_get_loss_type_index_takes_precedence(self):
+        """Test that index key takes precedence over column name."""
+        loss_fn = MultiTaskLoss(
+            loss_config={"0": "mse", "pH": "huber"},
+            target_columns=["pH", "temp"],
+            target_loss_type="mae",
+        )
+        # Index "0" should take precedence over column name "pH"
+        assert loss_fn._get_loss_type_for_column(0) == "mse"
+
+    def test_compute_single_column_loss_mse(self):
+        """Test _compute_single_column_loss with MSE."""
+        loss_fn = MultiTaskLoss()
+        pred = torch.tensor([1.0, 2.0])
+        true = torch.tensor([0.0, 0.0])
+
+        loss = loss_fn._compute_single_column_loss(pred, true, "mse")
+        expected = nn.functional.mse_loss(pred, true)
+        assert torch.allclose(loss, expected)
+
+    def test_compute_single_column_loss_mae(self):
+        """Test _compute_single_column_loss with MAE."""
+        loss_fn = MultiTaskLoss()
+        pred = torch.tensor([1.0, 2.0])
+        true = torch.tensor([0.0, 0.0])
+
+        loss = loss_fn._compute_single_column_loss(pred, true, "mae")
+        expected = nn.functional.l1_loss(pred, true)
+        assert torch.allclose(loss, expected)
+
+    def test_compute_single_column_loss_huber(self):
+        """Test _compute_single_column_loss with Huber."""
+        loss_fn = MultiTaskLoss()
+        pred = torch.tensor([1.0, 2.0])
+        true = torch.tensor([0.0, 0.0])
+
+        loss = loss_fn._compute_single_column_loss(pred, true, "huber")
+        expected = nn.functional.smooth_l1_loss(pred, true, beta=1.0)
+        assert torch.allclose(loss, expected)
+
+    def test_compute_per_column_loss_different_types(self):
+        """Test _compute_per_column_loss with different loss types per column."""
+        loss_fn = MultiTaskLoss(
+            loss_config={"0": "mse", "1": "mae"},
+            target_loss_type="huber",
+        )
+
+        # 2 samples, 2 columns
+        target_pred = torch.tensor([[1.0, 2.0], [1.0, 2.0]])
+        target_true = torch.tensor([[0.0, 0.0], [0.0, 0.0]])
+
+        loss = loss_fn._compute_per_column_loss(target_pred, target_true)
+
+        # Column 0: MSE = mean((1-0)^2, (1-0)^2) = 1.0
+        # Column 1: MAE = mean(|2-0|, |2-0|) = 2.0
+        # Average: (1.0 + 2.0) / 2 = 1.5
+        expected = torch.tensor(1.5)
+        assert torch.allclose(loss, expected, atol=1e-6)
+
+    def test_compute_per_column_loss_fallback_to_default(self):
+        """Test _compute_per_column_loss falls back to default for unconfigured columns."""
+        loss_fn = MultiTaskLoss(
+            loss_config={"0": "mse"},
+            target_loss_type="mae",  # Default for column 1
+        )
+
+        target_pred = torch.tensor([[1.0, 2.0]])
+        target_true = torch.tensor([[0.0, 0.0]])
+
+        loss = loss_fn._compute_per_column_loss(target_pred, target_true)
+
+        # Column 0: MSE = 1.0
+        # Column 1: MAE (fallback) = 2.0
+        # Average: (1.0 + 2.0) / 2 = 1.5
+        expected = torch.tensor(1.5)
+        assert torch.allclose(loss, expected, atol=1e-6)
+
+    def test_compute_target_loss_uses_loss_config(self):
+        """Test compute_target_loss uses loss_config when provided."""
+        loss_fn = MultiTaskLoss(
+            loss_config={"0": "mse", "1": "mae"},
+            target_loss_type="huber",
+        )
+
+        target_pred = torch.tensor([[1.0, 2.0], [1.0, 2.0]])
+        target_true = torch.tensor([[0.0, 0.0], [0.0, 0.0]])
+
+        loss = loss_fn.compute_target_loss(target_pred, target_true, is_classifier=False)
+
+        # Same as test_compute_per_column_loss_different_types
+        expected = torch.tensor(1.5)
+        assert torch.allclose(loss, expected, atol=1e-6)
+
+    def test_compute_target_loss_single_output_with_config(self):
+        """Test compute_target_loss with loss_config for single output."""
+        loss_fn = MultiTaskLoss(
+            loss_config={"0": "mae"},
+            target_loss_type="mse",
+        )
+
+        target_pred = torch.tensor([[1.0], [2.0]])
+        target_true = torch.tensor([[0.0], [0.0]])
+
+        loss = loss_fn.compute_target_loss(target_pred, target_true, is_classifier=False)
+
+        # Single column uses MAE: mean(|1-0|, |2-0|) = 1.5
+        expected = nn.functional.l1_loss(target_pred, target_true)
+        assert torch.allclose(loss, expected, atol=1e-6)
+
+    def test_compute_target_loss_no_config_uses_default(self):
+        """Test compute_target_loss uses default when loss_config is None."""
+        loss_fn = MultiTaskLoss(target_loss_type="mse")
+
+        target_pred = torch.tensor([[1.0, 2.0], [1.0, 2.0]])
+        target_true = torch.tensor([[0.0, 0.0], [0.0, 0.0]])
+
+        loss = loss_fn.compute_target_loss(target_pred, target_true, is_classifier=False)
+
+        # Standard MSE over all elements
+        expected = nn.functional.mse_loss(target_pred, target_true)
+        assert torch.allclose(loss, expected, atol=1e-6)
+
+    def test_loss_config_with_named_columns_integration(self):
+        """Test full integration with named columns."""
+        loss_fn = MultiTaskLoss(
+            loss_config={"pH": "mse", "temp": "mae"},
+            target_columns=["pH", "temp"],
+            target_loss_type="huber",
+        )
+
+        target_pred = torch.tensor([[1.0, 2.0]])
+        target_true = torch.tensor([[0.0, 0.0]])
+
+        loss = loss_fn.compute_target_loss(target_pred, target_true, is_classifier=False)
+
+        # Column 0 (pH): MSE = 1.0
+        # Column 1 (temp): MAE = 2.0
+        # Average: 1.5
+        expected = torch.tensor(1.5)
+        assert torch.allclose(loss, expected, atol=1e-6)
+
+    def test_loss_config_gradient_flow(self):
+        """Test that gradients flow through per-column loss computation."""
+        loss_fn = MultiTaskLoss(
+            loss_config={"0": "mse", "1": "mae"},
+        )
+
+        target_pred = torch.randn(4, 2, requires_grad=True)
+        target_true = torch.randn(4, 2)
+
+        loss = loss_fn.compute_target_loss(target_pred, target_true, is_classifier=False)
+        loss.backward()
+
+        assert target_pred.grad is not None
+        assert not torch.all(target_pred.grad == 0)
+
+    def test_loss_config_three_columns(self):
+        """Test loss_config with three columns."""
+        loss_fn = MultiTaskLoss(
+            loss_config={"0": "mse", "1": "mae", "2": "huber"},
+        )
+
+        target_pred = torch.tensor([[1.0, 2.0, 3.0]])
+        target_true = torch.tensor([[0.0, 0.0, 0.0]])
+
+        loss = loss_fn.compute_target_loss(target_pred, target_true, is_classifier=False)
+
+        # Column 0: MSE = 1.0
+        # Column 1: MAE = 2.0
+        # Column 2: Huber(3.0) ≈ 2.5 (smooth_l1 with beta=1.0)
+        col0_loss = nn.functional.mse_loss(target_pred[:, 0], target_true[:, 0])
+        col1_loss = nn.functional.l1_loss(target_pred[:, 1], target_true[:, 1])
+        col2_loss = nn.functional.smooth_l1_loss(target_pred[:, 2], target_true[:, 2], beta=1.0)
+        expected = (col0_loss + col1_loss + col2_loss) / 3
+
+        assert torch.allclose(loss, expected, atol=1e-6)
 
 
 class TestSampleWeightedLoss:

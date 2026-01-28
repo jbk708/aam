@@ -93,7 +93,8 @@ class CrossAttentionFusion(nn.Module):
     metadata, allowing position-specific modulation. This contrasts with
     broadcast-based fusion where all positions receive identical conditioning.
 
-    Architecture:
+    Architecture::
+
         Sequence [B, S, D] --query--> MultiHeadAttention <--key/value-- Metadata [B, K, E]
                                               |
                                     Position-specific update [B, S, D]
@@ -157,12 +158,9 @@ class CrossAttentionFusion(nn.Module):
             return_weights: If True, return attention weights for logging.
 
         Returns:
-            If return_weights=False:
-                Fused representations [batch_size, seq_len, seq_dim]
-            If return_weights=True:
-                Tuple of:
-                    - Fused representations [batch_size, seq_len, seq_dim]
-                    - Attention weights [batch_size, num_heads, seq_len, num_cat_tokens]
+            If return_weights=False: Fused representations [batch_size, seq_len, seq_dim].
+            If return_weights=True: Tuple of (fused representations, attention weights)
+            where attention weights is [batch_size, num_heads, seq_len, num_cat_tokens].
         """
         metadata = self.cat_projection(cat_emb).unsqueeze(1)  # [B, 1, seq_dim]
 
@@ -175,6 +173,155 @@ class CrossAttentionFusion(nn.Module):
         )
 
         output = self.norm(seq_repr + attn_out)
+
+        if return_weights:
+            return output, attn_weights
+        return output
+
+
+class PerceiverFusion(nn.Module):
+    """Perceiver-style latent bottleneck for multimodal fusion.
+
+    Uses learned latent vectors that cross-attend to concatenated sequence
+    and categorical inputs, then refine via self-attention layers. This
+    provides linear complexity O(L×(S+K)) rather than quadratic O((S+K)²).
+
+    Architecture:
+        1. Project inputs (sequence + categorical) to latent_dim
+        2. Learned latents cross-attend to projected inputs
+        3. Self-attention refinement on latents
+        4. Mean pool latents for output
+
+    Reference:
+        Inspired by Jaegle et al., "Perceiver IO: A General Architecture
+        for Structured Inputs & Outputs" (arXiv:2107.14795).
+    """
+
+    def __init__(
+        self,
+        seq_dim: int,
+        cat_dim: int,
+        latent_dim: Optional[int] = None,
+        num_latents: int = 64,
+        num_layers: int = 2,
+        num_heads: int = 8,
+        dropout: float = 0.1,
+    ) -> None:
+        """Initialize PerceiverFusion.
+
+        Args:
+            seq_dim: Dimension of sequence representations (embedding_dim).
+            cat_dim: Total dimension of categorical embeddings.
+            latent_dim: Dimension of latent vectors. If None, uses seq_dim.
+            num_latents: Number of learned latent vectors (default: 64).
+            num_layers: Number of self-attention refinement layers (default: 2).
+            num_heads: Number of attention heads (default: 8).
+            dropout: Dropout rate for attention (default: 0.1).
+        """
+        super().__init__()
+        self.seq_dim = seq_dim
+        self.cat_dim = cat_dim
+        self.latent_dim = latent_dim if latent_dim is not None else seq_dim
+        self.num_latents = num_latents
+        self.num_layers = num_layers
+        self.num_heads = num_heads
+
+        # Learned latent vectors
+        self.latents = nn.Parameter(torch.randn(num_latents, self.latent_dim) * 0.02)
+
+        # Input projections
+        self.seq_projection = nn.Linear(seq_dim, self.latent_dim)
+        self.cat_projection = nn.Linear(cat_dim, self.latent_dim)
+
+        # Cross-attention: latents attend to inputs
+        self.cross_attn = nn.MultiheadAttention(
+            embed_dim=self.latent_dim,
+            num_heads=num_heads,
+            dropout=dropout,
+            batch_first=True,
+        )
+        self.cross_norm = nn.LayerNorm(self.latent_dim)
+
+        # Self-attention refinement layers
+        self.self_attn_layers = nn.ModuleList(
+            [
+                nn.TransformerEncoderLayer(
+                    d_model=self.latent_dim,
+                    nhead=num_heads,
+                    dim_feedforward=self.latent_dim * 4,
+                    dropout=dropout,
+                    batch_first=True,
+                    norm_first=True,
+                )
+                for _ in range(num_layers)
+            ]
+        )
+
+        # Output projection to match expected embedding_dim
+        self.output_projection = nn.Linear(self.latent_dim, seq_dim)
+
+        self._init_weights()
+
+    def _init_weights(self) -> None:
+        """Initialize weights with Xavier uniform."""
+        nn.init.xavier_uniform_(self.seq_projection.weight)
+        nn.init.zeros_(self.seq_projection.bias)
+        nn.init.xavier_uniform_(self.cat_projection.weight)
+        nn.init.zeros_(self.cat_projection.bias)
+        nn.init.xavier_uniform_(self.output_projection.weight)
+        nn.init.zeros_(self.output_projection.bias)
+
+    def forward(
+        self,
+        seq_repr: torch.Tensor,
+        cat_emb: torch.Tensor,
+        return_weights: bool = False,
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        """Forward pass through Perceiver-style fusion.
+
+        Args:
+            seq_repr: Sequence representations [batch_size, seq_len, seq_dim].
+            cat_emb: Categorical embeddings [batch_size, cat_dim].
+            return_weights: If True, return cross-attention weights for logging.
+
+        Returns:
+            If return_weights=False: Pooled output [batch_size, seq_dim].
+            If return_weights=True: Tuple of (pooled output, cross-attention weights)
+            where cross-attention weights is [batch_size, num_heads, num_latents, seq_len+1].
+        """
+        batch_size = seq_repr.size(0)
+
+        # Project sequence inputs
+        seq_proj = self.seq_projection(seq_repr)  # [B, S, latent_dim]
+
+        # Project and expand categorical embeddings
+        cat_proj = self.cat_projection(cat_emb).unsqueeze(1)  # [B, 1, latent_dim]
+
+        # Concatenate all inputs
+        inputs = torch.cat([seq_proj, cat_proj], dim=1)  # [B, S+1, latent_dim]
+
+        # Expand latents for batch
+        latents = self.latents.unsqueeze(0).expand(batch_size, -1, -1)  # [B, L, latent_dim]
+
+        # Cross-attention: latents attend to inputs
+        attn_out, attn_weights = self.cross_attn(
+            query=latents,
+            key=inputs,
+            value=inputs,
+            need_weights=return_weights,
+            average_attn_weights=False,
+        )
+        latents = self.cross_norm(latents + attn_out)
+
+        # Self-attention refinement
+        for layer in self.self_attn_layers:
+            latents = layer(latents)
+
+        # Mean pool latents
+        pooled = latents.mean(dim=1)  # [B, latent_dim]
+
+        # Project to output dimension
+        output = self.output_projection(pooled)  # [B, seq_dim]
 
         if return_weights:
             return output, attn_weights

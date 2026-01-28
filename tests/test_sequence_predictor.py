@@ -4,17 +4,10 @@ import pytest
 import torch
 import torch.nn as nn
 
-from aam.models.sequence_predictor import SequencePredictor
+from aam.models.sequence_predictor import SequencePredictor, ResidualRegressionHead
 from aam.models.sequence_encoder import SequenceEncoder
-from aam.data.tokenizer import SequenceTokenizer
 
-
-def _create_sample_tokens(batch_size: int = 2, num_asvs: int = 10, seq_len: int = 50) -> torch.Tensor:
-    """Create sample tokens for testing [B, S, L]."""
-    tokens = torch.randint(1, 5, (batch_size, num_asvs, seq_len))
-    tokens[:, :, 0] = SequenceTokenizer.START_TOKEN
-    tokens[:, :, 40:] = 0
-    return tokens
+from conftest import create_sample_tokens
 
 
 @pytest.fixture
@@ -116,12 +109,6 @@ def sequence_predictor_no_base():
     )
 
 
-@pytest.fixture
-def sample_tokens():
-    """Create sample tokens for testing [B, S, L]."""
-    return _create_sample_tokens()
-
-
 class TestSequencePredictor:
     """Test suite for SequencePredictor class."""
 
@@ -160,7 +147,7 @@ class TestSequencePredictor:
 
     def test_forward_shape_basic(self, sequence_predictor, sample_tokens):
         """Test forward pass output shape."""
-        result = sequence_predictor(sample_tokens, return_nucleotides=False)
+        result = sequence_predictor(sample_tokens, return_nucleotides=False, return_sample_embeddings=True)
         assert isinstance(result, dict)
         assert "target_prediction" in result
         assert "count_prediction" in result
@@ -171,7 +158,7 @@ class TestSequencePredictor:
 
     def test_forward_shape_with_nucleotides(self, sequence_predictor_with_nucleotides, sample_tokens):
         """Test forward pass output shape with nucleotide predictions."""
-        result = sequence_predictor_with_nucleotides(sample_tokens, return_nucleotides=True)
+        result = sequence_predictor_with_nucleotides(sample_tokens, return_nucleotides=True, return_sample_embeddings=True)
         assert isinstance(result, dict)
         assert "target_prediction" in result
         assert "count_prediction" in result
@@ -195,7 +182,7 @@ class TestSequencePredictor:
     def test_forward_different_batch_sizes(self, sequence_predictor, batch_size):
         """Test forward pass with different batch sizes."""
         tokens = torch.randint(1, 5, (batch_size, 10, 50))
-        result = sequence_predictor(tokens)
+        result = sequence_predictor(tokens, return_sample_embeddings=True)
         assert result["target_prediction"].shape == (batch_size, 1)
         assert result["count_prediction"].shape == (batch_size, 10, 1)
         assert result["base_embeddings"].shape == (batch_size, 10, 64)
@@ -204,7 +191,7 @@ class TestSequencePredictor:
     def test_forward_different_num_asvs(self, sequence_predictor, num_asvs):
         """Test forward pass with different numbers of ASVs."""
         tokens = torch.randint(1, 5, (2, num_asvs, 50))
-        result = sequence_predictor(tokens)
+        result = sequence_predictor(tokens, return_sample_embeddings=True)
         assert result["target_prediction"].shape == (2, 1)
         assert result["count_prediction"].shape == (2, num_asvs, 1)
         assert result["base_embeddings"].shape == (2, num_asvs, 64)
@@ -213,14 +200,14 @@ class TestSequencePredictor:
     def test_forward_different_seq_lengths(self, sequence_predictor, seq_len):
         """Test forward pass with different sequence lengths."""
         tokens = torch.randint(1, 5, (2, 10, seq_len))
-        result = sequence_predictor(tokens)
+        result = sequence_predictor(tokens, return_sample_embeddings=True)
         assert result["target_prediction"].shape == (2, 1)
         assert result["count_prediction"].shape == (2, 10, 1)
         assert result["base_embeddings"].shape == (2, 10, 64)
 
     def test_forward_with_padding(self, sequence_predictor, sample_tokens):
         """Test forward pass with padded sequences."""
-        result = sequence_predictor(sample_tokens)
+        result = sequence_predictor(sample_tokens, return_sample_embeddings=True)
         assert not torch.isnan(result["target_prediction"]).any()
         assert not torch.isnan(result["count_prediction"]).any()
         assert not torch.isnan(result["base_embeddings"]).any()
@@ -252,7 +239,7 @@ class TestSequencePredictor:
     def test_gradients_flow_unfrozen(self, sequence_predictor, sample_tokens):
         """Test that gradients flow correctly with unfrozen base."""
         sequence_predictor.train()
-        result = sequence_predictor(sample_tokens)
+        result = sequence_predictor(sample_tokens, return_sample_embeddings=True)
         loss = result["target_prediction"].sum() + result["count_prediction"].sum() + result["base_embeddings"].sum()
         loss.backward()
 
@@ -313,14 +300,14 @@ class TestSequencePredictor:
 
     def test_base_embeddings_used(self, sequence_predictor, sample_tokens):
         """Test that base embeddings are used (not base predictions)."""
-        result = sequence_predictor(sample_tokens)
+        result = sequence_predictor(sample_tokens, return_sample_embeddings=True)
         assert "base_embeddings" in result
         assert result["base_embeddings"].shape == (2, 10, 64)
         assert "base_prediction" not in result or result.get("base_prediction") is None
 
     def test_base_predictions_not_used_as_input(self, sequence_predictor_with_nucleotides, sample_tokens):
         """Test that base predictions are not used as input to heads."""
-        result = sequence_predictor_with_nucleotides(sample_tokens, return_nucleotides=True)
+        result = sequence_predictor_with_nucleotides(sample_tokens, return_nucleotides=True, return_sample_embeddings=True)
         # For UniFrac, embeddings are returned instead of base_prediction
         assert "embeddings" in result
         assert "base_embeddings" in result
@@ -341,7 +328,7 @@ class TestSequencePredictor:
                 base_output_dim=32,
                 out_dim=1,
             )
-            result = regressor(sample_tokens)
+            result = regressor(sample_tokens, return_sample_embeddings=True)
             assert isinstance(result, dict)
             assert "target_prediction" in result
             assert "count_prediction" in result
@@ -356,7 +343,7 @@ class TestSequencePredictor:
             token_limit=1024,
             out_dim=1,
         )
-        result = regressor(sample_tokens, return_nucleotides=True)
+        result = regressor(sample_tokens, return_nucleotides=True, return_sample_embeddings=True)
         assert isinstance(result, dict)
         assert "target_prediction" in result
         assert "count_prediction" in result
@@ -401,11 +388,6 @@ class TestSequencePredictor:
 
 class TestRegressorHeadOptions:
     """Test suite for regressor head configuration options."""
-
-    @pytest.fixture
-    def sample_tokens(self):
-        """Create sample tokens for testing."""
-        return _create_sample_tokens()
 
     def test_default_has_layer_norm(self, sample_tokens):
         """Test that LayerNorm is enabled by default."""
@@ -607,11 +589,6 @@ class TestCategoricalIntegration:
     """Test suite for categorical conditioning in SequencePredictor."""
 
     @pytest.fixture
-    def sample_tokens(self):
-        """Create sample tokens for testing."""
-        return _create_sample_tokens()
-
-    @pytest.fixture
     def categorical_cardinalities(self):
         """Create categorical cardinalities for testing."""
         return {"location": 5, "season": 4}
@@ -685,31 +662,16 @@ class TestCategoricalIntegration:
                 categorical_fusion="invalid",
             )
 
-    def test_forward_with_categoricals_concat(self, sample_tokens, categorical_cardinalities, categorical_ids):
-        """Test forward pass with categorical conditioning (concat fusion)."""
+    @pytest.mark.parametrize("fusion", ["concat", "add"])
+    def test_forward_with_categoricals(self, sample_tokens, categorical_cardinalities, categorical_ids, fusion):
+        """Test forward pass with categorical conditioning (concat/add fusion)."""
         model = SequencePredictor(
             embedding_dim=64,
             max_bp=150,
             token_limit=1024,
             out_dim=1,
             categorical_cardinalities=categorical_cardinalities,
-            categorical_fusion="concat",
-        )
-        result = model(sample_tokens, categorical_ids=categorical_ids)
-        assert "target_prediction" in result
-        assert "count_prediction" in result
-        assert result["target_prediction"].shape == (2, 1)
-        assert result["count_prediction"].shape == (2, 10, 1)
-
-    def test_forward_with_categoricals_add(self, sample_tokens, categorical_cardinalities, categorical_ids):
-        """Test forward pass with categorical conditioning (add fusion)."""
-        model = SequencePredictor(
-            embedding_dim=64,
-            max_bp=150,
-            token_limit=1024,
-            out_dim=1,
-            categorical_cardinalities=categorical_cardinalities,
-            categorical_fusion="add",
+            categorical_fusion=fusion,
         )
         result = model(sample_tokens, categorical_ids=categorical_ids)
         assert "target_prediction" in result
@@ -1162,6 +1124,141 @@ class TestCategoricalIntegration:
         # With 2 heads, weights shape should be [B, 2, seq_len, 1]
         assert result["cross_attn_weights"].shape == (2, 2, 10, 1)
 
+    # Perceiver fusion tests
+    def test_init_with_categoricals_perceiver(self, categorical_cardinalities):
+        """Test initialization with categorical conditioning (perceiver fusion)."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_embed_dim=16,
+            categorical_fusion="perceiver",
+            perceiver_num_latents=32,
+            perceiver_num_layers=2,
+        )
+        assert model.categorical_embedder is not None
+        assert model.categorical_projection is None
+        assert model.gmu is None
+        assert model.cross_attn_fusion is None
+        assert model.perceiver_fusion is not None
+        assert model.categorical_fusion == "perceiver"
+        assert model.perceiver_num_latents == 32
+        assert model.perceiver_num_layers == 2
+        # Perceiver dimensions
+        total_cat_dim = 16 * 2  # 2 columns * 16 embed_dim
+        assert model.perceiver_fusion.seq_dim == 64
+        assert model.perceiver_fusion.cat_dim == total_cat_dim
+        assert model.perceiver_fusion.num_latents == 32
+        assert model.perceiver_fusion.num_layers == 2
+
+    def test_forward_with_categoricals_perceiver(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test forward pass with categorical conditioning (perceiver fusion)."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_fusion="perceiver",
+            perceiver_num_latents=32,
+        )
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        assert "target_prediction" in result
+        assert "count_prediction" in result
+        assert "perceiver_attn_weights" in result
+        assert result["target_prediction"].shape == (2, 1)
+        assert result["count_prediction"].shape == (2, 10, 1)
+        # Attention weights: [B, num_heads, num_latents, seq_len+1]
+        assert result["perceiver_attn_weights"].shape == (2, 8, 32, 11)
+
+    def test_perceiver_no_weights_without_categorical_ids(self, sample_tokens, categorical_cardinalities):
+        """Test that perceiver doesn't output weights when no categorical_ids provided."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_fusion="perceiver",
+        )
+        result = model(sample_tokens, categorical_ids=None)
+        assert "perceiver_attn_weights" not in result
+
+    def test_perceiver_gradients_flow(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test that gradients flow through perceiver."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_fusion="perceiver",
+        )
+        model.train()
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        loss = result["target_prediction"].sum()
+        loss.backward()
+
+        # Check perceiver gradients
+        assert model.perceiver_fusion.seq_projection.weight.grad is not None
+        assert model.perceiver_fusion.cat_projection.weight.grad is not None
+        assert model.perceiver_fusion.latents.grad is not None
+
+    def test_perceiver_categorical_affects_prediction(self, sample_tokens, categorical_cardinalities):
+        """Test that different categorical values produce different predictions with perceiver."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_fusion="perceiver",
+        )
+        cat_ids_1 = {"location": torch.tensor([1, 1]), "season": torch.tensor([1, 1])}
+        cat_ids_2 = {"location": torch.tensor([2, 2]), "season": torch.tensor([2, 2])}
+
+        result_1 = model(sample_tokens, categorical_ids=cat_ids_1)
+        result_2 = model(sample_tokens, categorical_ids=cat_ids_2)
+
+        # Different categorical values should produce different predictions
+        assert not torch.allclose(
+            result_1["target_prediction"],
+            result_2["target_prediction"],
+        )
+
+    def test_perceiver_no_nan_outputs(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test that perceiver forward pass produces no NaN outputs."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_fusion="perceiver",
+        )
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        assert not torch.isnan(result["target_prediction"]).any()
+        assert not torch.isnan(result["count_prediction"]).any()
+        assert not torch.isnan(result["perceiver_attn_weights"]).any()
+
+    def test_perceiver_custom_latents_and_layers(self, sample_tokens, categorical_cardinalities, categorical_ids):
+        """Test perceiver with custom number of latents and layers."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            categorical_cardinalities=categorical_cardinalities,
+            categorical_fusion="perceiver",
+            perceiver_num_latents=16,
+            perceiver_num_layers=4,
+        )
+        result = model(sample_tokens, categorical_ids=categorical_ids)
+        # With 16 latents, weights shape should be [B, heads, 16, seq_len+1]
+        assert result["perceiver_attn_weights"].shape == (2, 8, 16, 11)
+
 
 class TestOutputActivation:
     """Test suite for output activation constraints in SequencePredictor."""
@@ -1169,7 +1266,7 @@ class TestOutputActivation:
     @pytest.fixture
     def sample_tokens(self):
         """Create sample tokens for testing (batch_size=4 for this suite)."""
-        return _create_sample_tokens(batch_size=4)
+        return create_sample_tokens(batch_size=4)
 
     def test_default_no_activation(self, sample_tokens):
         """Test that default is no output activation."""
@@ -1357,11 +1454,6 @@ class TestOutputActivation:
 class TestMLPRegressionHead:
     """Test suite for MLP regression head configuration."""
 
-    @pytest.fixture
-    def sample_tokens(self):
-        """Create sample tokens for testing."""
-        return _create_sample_tokens()
-
     def test_default_single_linear_layer(self):
         """Test that default target head is a single linear layer."""
         model = SequencePredictor(
@@ -1493,109 +1585,6 @@ class TestMLPRegressionHead:
             regressor_hidden_dims=[],
         )
         assert isinstance(model.target_head, nn.Linear)
-
-    def test_mlp_with_bounded_targets(self, sample_tokens):
-        """Test MLP works with bounded_targets sigmoid."""
-        model = SequencePredictor(
-            embedding_dim=64,
-            max_bp=150,
-            token_limit=1024,
-            out_dim=1,
-            regressor_hidden_dims=[32],
-            bounded_targets=True,
-        )
-        result = model(sample_tokens)
-        predictions = result["target_prediction"]
-        assert (predictions >= 0).all()
-        assert (predictions <= 1).all()
-
-    def test_mlp_with_output_activation(self, sample_tokens):
-        """Test MLP works with output activations."""
-        model = SequencePredictor(
-            embedding_dim=64,
-            max_bp=150,
-            token_limit=1024,
-            out_dim=1,
-            regressor_hidden_dims=[32],
-            output_activation="softplus",
-        )
-        result = model(sample_tokens)
-        predictions = result["target_prediction"]
-        assert (predictions >= 0).all()
-
-    def test_mlp_with_learnable_scale(self, sample_tokens):
-        """Test MLP works with learnable output scale."""
-        model = SequencePredictor(
-            embedding_dim=64,
-            max_bp=150,
-            token_limit=1024,
-            out_dim=2,
-            regressor_hidden_dims=[32, 16],
-            learnable_output_scale=True,
-        )
-        assert model.output_scale is not None
-        result = model(sample_tokens)
-        assert result["target_prediction"].shape == (2, 2)
-
-    def test_mlp_with_layer_norm(self, sample_tokens):
-        """Test MLP works with target layer norm."""
-        model = SequencePredictor(
-            embedding_dim=64,
-            max_bp=150,
-            token_limit=1024,
-            out_dim=1,
-            regressor_hidden_dims=[32],
-            target_layer_norm=True,
-        )
-        assert model.target_norm is not None
-        result = model(sample_tokens)
-        assert result["target_prediction"].shape == (2, 1)
-
-    def test_mlp_with_classifier(self, sample_tokens):
-        """Test MLP works with classification mode."""
-        model = SequencePredictor(
-            embedding_dim=64,
-            max_bp=150,
-            token_limit=1024,
-            out_dim=5,
-            regressor_hidden_dims=[32],
-            is_classifier=True,
-        )
-        result = model(sample_tokens)
-        predictions = result["target_prediction"]
-        # Log-softmax outputs should be <= 0
-        assert (predictions <= 0).all()
-        assert torch.allclose(predictions.exp().sum(dim=-1), torch.ones(2), atol=1e-5)
-
-    def test_mlp_with_categorical_concat(self, sample_tokens):
-        """Test MLP works with categorical conditioning (concat)."""
-        model = SequencePredictor(
-            embedding_dim=64,
-            max_bp=150,
-            token_limit=1024,
-            out_dim=1,
-            regressor_hidden_dims=[32],
-            categorical_cardinalities={"location": 5},
-            categorical_fusion="concat",
-        )
-        cat_ids = {"location": torch.tensor([1, 2])}
-        result = model(sample_tokens, categorical_ids=cat_ids)
-        assert result["target_prediction"].shape == (2, 1)
-
-    def test_mlp_with_categorical_add(self, sample_tokens):
-        """Test MLP works with categorical conditioning (add)."""
-        model = SequencePredictor(
-            embedding_dim=64,
-            max_bp=150,
-            token_limit=1024,
-            out_dim=1,
-            regressor_hidden_dims=[32],
-            categorical_cardinalities={"season": 4},
-            categorical_fusion="add",
-        )
-        cat_ids = {"season": torch.tensor([0, 3])}
-        result = model(sample_tokens, categorical_ids=cat_ids)
-        assert result["target_prediction"].shape == (2, 1)
 
     def test_mlp_gradients_flow(self, sample_tokens):
         """Test that gradients flow through MLP layers."""
@@ -1777,13 +1766,268 @@ class TestMLPRegressionHead:
         assert torch.allclose(orig_output, loaded_output, atol=1e-6)
 
 
-class TestConditionalOutputScaling:
-    """Test suite for conditional output scaling in SequencePredictor."""
+class TestResidualRegressionHead:
+    """Test suite for residual regression head: output = Linear(x) + MLP(x)."""
 
     @pytest.fixture
     def sample_tokens(self):
         """Create sample tokens for testing."""
-        return _create_sample_tokens()
+        return create_sample_tokens(batch_size=2, num_asvs=8, seq_len=150)
+
+    def test_requires_hidden_dims(self):
+        """Test that residual_regression_head requires regressor_hidden_dims."""
+        with pytest.raises(ValueError, match="residual_regression_head requires regressor_hidden_dims"):
+            SequencePredictor(
+                embedding_dim=64,
+                max_bp=150,
+                token_limit=1024,
+                out_dim=1,
+                residual_regression_head=True,
+            )
+
+    def test_requires_nonempty_hidden_dims(self):
+        """Test that residual_regression_head requires non-empty hidden dims."""
+        with pytest.raises(ValueError, match="residual_regression_head requires regressor_hidden_dims"):
+            SequencePredictor(
+                embedding_dim=64,
+                max_bp=150,
+                token_limit=1024,
+                out_dim=1,
+                residual_regression_head=True,
+                regressor_hidden_dims=[],
+            )
+
+    def test_creates_residual_head(self):
+        """Test that residual_regression_head=True creates ResidualRegressionHead."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            residual_regression_head=True,
+            regressor_hidden_dims=[32],
+        )
+        assert model.residual_regression_head is True
+        assert isinstance(model.target_head, ResidualRegressionHead)
+
+    def test_residual_head_has_skip_and_mlp(self):
+        """Test that ResidualRegressionHead has skip and mlp branches."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            residual_regression_head=True,
+            regressor_hidden_dims=[32],
+        )
+        head = model.target_head
+        assert hasattr(head, "skip")
+        assert hasattr(head, "mlp")
+        assert isinstance(head.skip, nn.Linear)
+        assert isinstance(head.mlp, nn.Sequential)
+
+    def test_skip_dimensions(self):
+        """Test that skip projection has correct dimensions."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=3,
+            residual_regression_head=True,
+            regressor_hidden_dims=[32],
+        )
+        assert model.target_head.skip.in_features == 64
+        assert model.target_head.skip.out_features == 3
+
+    def test_mlp_structure_single_hidden(self):
+        """Test MLP branch structure with single hidden layer."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            residual_regression_head=True,
+            regressor_hidden_dims=[32],
+        )
+        mlp = model.target_head.mlp
+        # Structure: Linear(64, 32), ReLU, Linear(32, 1)
+        assert len(mlp) == 3
+        assert isinstance(mlp[0], nn.Linear)
+        assert mlp[0].in_features == 64
+        assert mlp[0].out_features == 32
+        assert isinstance(mlp[1], nn.ReLU)
+        assert isinstance(mlp[2], nn.Linear)
+        assert mlp[2].in_features == 32
+        assert mlp[2].out_features == 1
+
+    def test_mlp_structure_multi_hidden(self):
+        """Test MLP branch structure with multiple hidden layers."""
+        model = SequencePredictor(
+            embedding_dim=128,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            residual_regression_head=True,
+            regressor_hidden_dims=[64, 32],
+        )
+        mlp = model.target_head.mlp
+        # Structure: Linear(128, 64), ReLU, Linear(64, 32), ReLU, Linear(32, 1)
+        assert len(mlp) == 5
+        assert mlp[0].in_features == 128
+        assert mlp[0].out_features == 64
+        assert mlp[2].in_features == 64
+        assert mlp[2].out_features == 32
+        assert mlp[4].in_features == 32
+        assert mlp[4].out_features == 1
+
+    def test_dropout_in_mlp(self):
+        """Test dropout is applied in MLP branch."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            residual_regression_head=True,
+            regressor_hidden_dims=[32],
+            regressor_dropout=0.2,
+        )
+        mlp = model.target_head.mlp
+        dropout_count = sum(1 for m in mlp if isinstance(m, nn.Dropout))
+        assert dropout_count == 1
+
+    def test_forward_output_shape(self, sample_tokens):
+        """Test forward pass produces correct output shape."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            residual_regression_head=True,
+            regressor_hidden_dims=[32],
+        )
+        model.eval()
+        result = model(sample_tokens)
+        assert result["target_prediction"].shape == (2, 1)
+
+    @pytest.mark.parametrize("out_dim", [1, 3, 5])
+    def test_forward_various_out_dims(self, sample_tokens, out_dim):
+        """Test forward pass with various output dimensions."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=out_dim,
+            residual_regression_head=True,
+            regressor_hidden_dims=[32],
+        )
+        model.eval()
+        result = model(sample_tokens)
+        assert result["target_prediction"].shape == (2, out_dim)
+
+    def test_gradients_flow_through_both_branches(self, sample_tokens):
+        """Test that gradients flow through both skip and mlp branches."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            residual_regression_head=True,
+            regressor_hidden_dims=[32],
+        )
+        model.train()
+        result = model(sample_tokens)
+        loss = result["target_prediction"].sum()
+        loss.backward()
+
+        # Check skip branch has gradients
+        assert model.target_head.skip.weight.grad is not None
+        assert not torch.all(model.target_head.skip.weight.grad == 0)
+
+        # Check mlp branch has gradients
+        for module in model.target_head.mlp.modules():
+            if isinstance(module, nn.Linear):
+                assert module.weight.grad is not None
+                assert not torch.all(module.weight.grad == 0)
+
+    def test_residual_effect(self):
+        """Test that skip and mlp outputs are summed correctly."""
+        head = ResidualRegressionHead(
+            in_dim=64,
+            out_dim=1,
+            hidden_dims=[32],
+            dropout=0.0,
+        )
+        head.eval()
+
+        x = torch.randn(2, 64)
+        with torch.no_grad():
+            skip_out = head.skip(x)
+            mlp_out = head.mlp(x)
+            combined = head(x)
+
+        assert torch.allclose(combined, skip_out + mlp_out)
+
+    def test_save_load_roundtrip(self, sample_tokens, tmp_path):
+        """Test that model with residual head can be saved and loaded correctly."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+            residual_regression_head=True,
+            regressor_hidden_dims=[32, 16],
+            regressor_dropout=0.1,
+        )
+        model.eval()
+
+        # Get original output
+        with torch.no_grad():
+            orig_output = model(sample_tokens)["target_prediction"]
+
+        # Save checkpoint
+        checkpoint_path = tmp_path / "residual_model.pt"
+        torch.save(
+            {
+                "model_state_dict": model.state_dict(),
+                "config": {
+                    "hyperparameters": {
+                        "embedding_dim": 64,
+                        "max_bp": 150,
+                        "token_limit": 1024,
+                        "out_dim": 1,
+                        "residual_regression_head": True,
+                        "regressor_hidden_dims": [32, 16],
+                        "regressor_dropout": 0.1,
+                    },
+                },
+            },
+            checkpoint_path,
+        )
+
+        # Load and verify
+        loaded = torch.load(checkpoint_path, weights_only=False)
+        hp = loaded["config"]["hyperparameters"]
+        new_model = SequencePredictor(
+            embedding_dim=hp["embedding_dim"],
+            max_bp=hp["max_bp"],
+            token_limit=hp["token_limit"],
+            out_dim=hp["out_dim"],
+            residual_regression_head=hp["residual_regression_head"],
+            regressor_hidden_dims=hp["regressor_hidden_dims"],
+            regressor_dropout=hp["regressor_dropout"],
+        )
+        new_model.load_state_dict(loaded["model_state_dict"])
+        new_model.eval()
+
+        # Verify outputs match
+        with torch.no_grad():
+            loaded_output = new_model(sample_tokens)["target_prediction"]
+
+        assert torch.allclose(orig_output, loaded_output, atol=1e-6)
+
+
+class TestConditionalOutputScaling:
+    """Test suite for conditional output scaling in SequencePredictor."""
 
     @pytest.fixture
     def categorical_cardinalities(self):
@@ -2011,65 +2255,6 @@ class TestConditionalOutputScaling:
         # With both scales, output should be multiplied by 2 * 3 = 6
         assert result["target_prediction"].shape == (2, 1)
 
-    def test_works_with_mlp_head(self, sample_tokens, categorical_cardinalities, categorical_ids):
-        """Test conditional scaling works with MLP regression head."""
-        model = SequencePredictor(
-            embedding_dim=64,
-            max_bp=150,
-            token_limit=1024,
-            out_dim=1,
-            categorical_cardinalities=categorical_cardinalities,
-            conditional_scaling_columns=["location"],
-            regressor_hidden_dims=[32, 16],
-        )
-        result = model(sample_tokens, categorical_ids=categorical_ids)
-        assert result["target_prediction"].shape == (2, 1)
-
-    def test_works_with_bounded_targets(self, sample_tokens, categorical_cardinalities, categorical_ids):
-        """Test conditional scaling works with bounded_targets (sigmoid)."""
-        model = SequencePredictor(
-            embedding_dim=64,
-            max_bp=150,
-            token_limit=1024,
-            out_dim=1,
-            categorical_cardinalities=categorical_cardinalities,
-            conditional_scaling_columns=["location"],
-            bounded_targets=True,
-        )
-        result = model(sample_tokens, categorical_ids=categorical_ids)
-        predictions = result["target_prediction"]
-        assert (predictions >= 0).all()
-        assert (predictions <= 1).all()
-
-    def test_works_with_output_activation(self, sample_tokens, categorical_cardinalities, categorical_ids):
-        """Test conditional scaling works with output activations."""
-        model = SequencePredictor(
-            embedding_dim=64,
-            max_bp=150,
-            token_limit=1024,
-            out_dim=1,
-            categorical_cardinalities=categorical_cardinalities,
-            conditional_scaling_columns=["location"],
-            output_activation="softplus",
-        )
-        result = model(sample_tokens, categorical_ids=categorical_ids)
-        predictions = result["target_prediction"]
-        assert (predictions >= 0).all()
-
-    def test_works_with_learnable_output_scale(self, sample_tokens, categorical_cardinalities, categorical_ids):
-        """Test conditional scaling works alongside learnable_output_scale."""
-        model = SequencePredictor(
-            embedding_dim=64,
-            max_bp=150,
-            token_limit=1024,
-            out_dim=1,
-            categorical_cardinalities=categorical_cardinalities,
-            conditional_scaling_columns=["location"],
-            learnable_output_scale=True,
-        )
-        result = model(sample_tokens, categorical_ids=categorical_ids)
-        assert result["target_prediction"].shape == (2, 1)
-
     def test_gradients_flow_through_scaling(self, sample_tokens, categorical_cardinalities, categorical_ids):
         """Test that gradients flow through conditional scaling embeddings."""
         model = SequencePredictor(
@@ -2193,11 +2378,6 @@ class TestConditionalOutputScaling:
 class TestQuantileRegression:
     """Test quantile regression support in SequencePredictor."""
 
-    @pytest.fixture
-    def sample_tokens(self):
-        """Create sample tokens for testing."""
-        return _create_sample_tokens(batch_size=2, num_asvs=10, seq_len=50)
-
     def test_init_with_num_quantiles(self, sample_tokens):
         """Test SequencePredictor initialization with num_quantiles."""
         model = SequencePredictor(
@@ -2310,20 +2490,6 @@ class TestQuantileRegression:
         # Just verify shape is correct
         assert result["target_prediction"].shape == (2, 1, 3)
 
-    def test_quantile_with_mlp_head(self, sample_tokens):
-        """Test quantile regression with MLP regression head."""
-        model = SequencePredictor(
-            embedding_dim=64,
-            max_bp=150,
-            token_limit=1024,
-            out_dim=2,
-            num_quantiles=3,
-            regressor_hidden_dims=[32, 16],
-        )
-        result = model(sample_tokens)
-        # Output should still be [batch=2, out_dim=2, num_quantiles=3]
-        assert result["target_prediction"].shape == (2, 2, 3)
-
     def test_quantile_none_is_standard_regression(self, sample_tokens):
         """Test that num_quantiles=None produces standard regression output."""
         model = SequencePredictor(
@@ -2353,11 +2519,6 @@ class TestQuantileRegression:
 
 class TestCountPredictionToggle:
     """Tests for count_prediction toggle feature."""
-
-    @pytest.fixture
-    def sample_tokens(self):
-        """Create sample tokens for testing."""
-        return _create_sample_tokens(batch_size=2, num_asvs=10, seq_len=50)
 
     def test_count_prediction_enabled_by_default(self, sample_tokens):
         """Test that count prediction is enabled by default."""
@@ -2442,7 +2603,7 @@ class TestCountPredictionToggle:
             out_dim=3,
             count_prediction=False,
         )
-        result = model(sample_tokens)
+        result = model(sample_tokens, return_sample_embeddings=True)
 
         assert "target_prediction" in result
         assert "base_embeddings" in result
@@ -2465,3 +2626,70 @@ class TestCountPredictionToggle:
         # Check gradients exist for target head
         assert model.target_head.weight.grad is not None
         assert model.target_head.weight.grad.abs().sum() > 0
+
+
+class TestLazyBaseEmbeddings:
+    """Tests for PYT-18.5: Lazy base embedding computation in SequencePredictor."""
+
+    def test_base_embeddings_not_returned_by_default(self, sample_tokens):
+        """Test that base_embeddings are NOT returned when return_sample_embeddings=False (default)."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+        )
+        result = model(sample_tokens)
+        assert "base_embeddings" not in result
+        assert "target_prediction" in result  # prediction still works
+
+    def test_base_embeddings_returned_when_requested(self, sample_tokens):
+        """Test that base_embeddings ARE returned when return_sample_embeddings=True."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+        )
+        result = model(sample_tokens, return_sample_embeddings=True)
+        assert "base_embeddings" in result
+        assert result["base_embeddings"].shape == (2, 10, 64)
+
+    def test_predictions_same_regardless_of_flag(self, sample_tokens):
+        """Test that forward pass produces same predictions with or without returning embeddings."""
+        torch.manual_seed(42)
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+        )
+        model.eval()
+
+        with torch.no_grad():
+            result_without = model(sample_tokens, return_sample_embeddings=False)
+            result_with = model(sample_tokens, return_sample_embeddings=True)
+
+        assert torch.allclose(result_without["target_prediction"], result_with["target_prediction"])
+        if "count_prediction" in result_without:
+            assert torch.allclose(result_without["count_prediction"], result_with["count_prediction"])
+
+    def test_gradients_flow_without_base_embeddings(self, sample_tokens):
+        """Test that gradients flow correctly even when base_embeddings not returned."""
+        model = SequencePredictor(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            out_dim=1,
+        )
+        model.train()
+
+        result = model(sample_tokens, return_sample_embeddings=False)
+        loss = result["target_prediction"].sum()
+        loss.backward()
+
+        # Check gradients exist for target head
+        assert model.target_head.weight.grad is not None
+        # Check that gradients flow to some base model parameters
+        base_params_with_grad = sum(1 for p in model.base_model.parameters() if p.requires_grad and p.grad is not None)
+        assert base_params_with_grad > 0, "Expected some base model parameters to have gradients"

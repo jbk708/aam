@@ -1,7 +1,7 @@
 # Attention Fusion & Code Cleanup Tickets
 
-**Last Updated:** 2026-01-23
-**Status:** 5 tickets remaining (~14-24 hours)
+**Last Updated:** 2026-01-27
+**Status:** All tickets complete
 **Design Doc:** `_design_plan/17_attention_fusion.md`
 
 ---
@@ -79,7 +79,7 @@ Position-specific metadata modulation via cross-attention.
 ---
 
 ### FUS-3: Perceiver-Style Latent Fusion
-**Priority:** LOW | **Effort:** 6-8 hours | **Status:** Not Started
+**Priority:** LOW | **Effort:** 6-8 hours | **Status:** ✅ Complete
 
 Learned latent bottleneck for linear complexity fusion.
 
@@ -90,11 +90,11 @@ Learned latent bottleneck for linear complexity fusion.
 - Add `--categorical-fusion perceiver`
 
 **Acceptance Criteria:**
-- [ ] `--categorical-fusion perceiver` works
-- [ ] `--perceiver-num-latents`, `--perceiver-num-layers` configurable
-- [ ] 15+ unit tests
+- [x] `--categorical-fusion perceiver` works
+- [x] `--perceiver-num-latents`, `--perceiver-num-layers` configurable
+- [x] 36 unit tests (29 PerceiverFusion + 7 integration tests)
 
-**Files:** `aam/models/fusion.py`, `aam/models/sequence_predictor.py`, `aam/cli/train.py`, `tests/test_fusion.py`
+**Files:** `aam/models/fusion.py`, `aam/models/sequence_predictor.py`, `aam/cli/train.py`, `tests/test_fusion.py`, `tests/test_sequence_predictor.py`
 
 ---
 
@@ -129,7 +129,7 @@ Replace fragmented normalization flags with single interface.
 ---
 
 ### CLN-3: Remove Unused Parameters
-**Priority:** LOW | **Effort:** 1-2 hours | **Status:** Not Started
+**Priority:** LOW | **Effort:** 1-2 hours | **Status:** Complete
 
 Remove dead code and unused function parameters.
 
@@ -149,7 +149,7 @@ Remove dead code and unused function parameters.
 ---
 
 ### CLN-4: Extract Shared Training Utilities
-**Priority:** LOW | **Effort:** 2-3 hours | **Status:** Not Started
+**Priority:** LOW | **Effort:** 2-3 hours | **Status:** Complete
 
 Reduce code duplication between `pretrain.py` and `train.py`.
 
@@ -167,13 +167,20 @@ Reduce code duplication between `pretrain.py` and `train.py`.
 - Enhance `--data-parallel requires CUDA` error message to match FSDP's helpful format
 
 **Acceptance Criteria:**
-- [ ] Shared utilities extracted
-- [ ] Both CLIs use shared code
-- [ ] No behavior changes
-- [ ] DataParallel wrapping extracted to shared function
-- [ ] Validation order consistent between pretrain.py and train.py
+- [x] Shared utilities extracted
+- [x] Both CLIs use shared code
+- [x] No behavior changes
+- [x] DataParallel wrapping extracted to shared function
+- [x] Validation order consistent between pretrain.py and train.py
 
-**Files:** `aam/cli/training_utils.py` (new), `aam/cli/pretrain.py`, `aam/cli/train.py`
+**Implementation:** Created `aam/cli/training_utils.py` (228 lines) with:
+- `validate_distributed_options()`
+- `build_scheduler_kwargs()`
+- `wrap_data_parallel()`
+- `setup_fsdp()`
+- `setup_ddp()`
+
+**Files:** `aam/cli/training_utils.py`, `aam/cli/pretrain.py`, `aam/cli/train.py`
 
 ---
 
@@ -546,7 +553,7 @@ The denormalization logic in trainer likely only handles `zscore` normalization,
 ---
 
 ### CLN-BUG-6: Model Converging to Mean Prediction with freeze-base + cross-attention + random ASV sampling
-**Priority:** HIGH | **Effort:** 2-4 hours | **Status:** Not Started
+**Priority:** HIGH | **Effort:** 2-4 hours | **Status:** Complete
 
 Training with `--freeze-base --categorical-fusion cross-attention --asv-sampling random` causes model to converge to predicting the mean, with R² decreasing over epochs.
 
@@ -724,26 +731,213 @@ Add `--val-prediction-passes N` option to `train` command:
 
 ---
 
-### CLN-11: Consolidate Test Suite
-**Priority:** LOW | **Effort:** 4-6 hours | **Status:** Not Started
+### CLN-11: Consolidate Test Suite (Parent Ticket)
+**Priority:** LOW | **Effort:** 8-12 hours | **Status:** Complete
 
 Reduce test code duplication by extracting shared fixtures and utilities.
 
+**Sub-tickets:**
+- CLN-11.1: Consolidate duplicate fixtures to conftest.py
+- CLN-11.2: Parametrize batch/sequence variation tests
+- CLN-11.3: Extract shared test utilities
+
+**Estimated Reduction:** 300-400 lines of duplicated code (~10-15% improvement)
+
+---
+
+### CLN-11.1: Consolidate Duplicate Fixtures to conftest.py
+**Priority:** HIGH | **Effort:** 2-3 hours | **Status:** Complete
+
+Move duplicate fixtures from individual test files to shared `tests/conftest.py`.
+
+**Duplications Found:**
+
+| Fixture | Files | Lines |
+|---------|-------|-------|
+| `sample_tokens` | test_sequence_encoder.py:71, test_sample_sequence_encoder.py:47, test_asv_encoder.py:39 | ~30 |
+| `generate_150bp_sequence()` | test_biom_loader.py:13, test_dataset.py:20, test_tokenizer.py:9 | ~20 |
+| `sample_embeddings` | test_transformer.py:23, test_attention_pooling.py:21 | ~15 |
+| `sample_mask` | test_transformer.py:32, test_attention_pooling.py:30 | ~10 |
+| `simple_table` | test_biom_loader.py:28, test_dataset.py:46 | ~30 |
+
 **Scope:**
-1. Extract shared mock classes (e.g., `MockBatchDataset`) to `tests/conftest.py` or `tests/fixtures.py`
-2. Consolidate similar test fixtures across test files
-3. Extract repeated test setup patterns into shared utilities
-4. Reduce inline class definitions in test methods
-5. Review test organization and consider grouping related tests
+1. Add `generate_150bp_sequence()` helper to conftest.py
+2. Add `sample_embeddings` fixture to conftest.py (batch=2, seq=10, dim=64)
+3. Add `sample_mask` fixture to conftest.py
+4. Add `simple_table` fixture to conftest.py
+5. Remove duplicate definitions from individual test files
 
 **Acceptance Criteria:**
-- [ ] Shared mock classes extracted to central location
-- [ ] Duplicate fixtures consolidated
-- [ ] No functionality changes to tests
-- [ ] All tests pass
-- [ ] Reduced lines of test code
+- [x] All fixtures moved to conftest.py
+- [x] Duplicate definitions removed from test files
+- [x] All 1276 tests pass
+- [x] ~100 lines removed (122 lines removed, 67 added = 40 net reduction)
 
-**Files:** `tests/conftest.py`, `tests/test_trainer.py`, `tests/test_cli.py`
+**Files:**
+- `tests/conftest.py` (expand)
+- `tests/test_sample_sequence_encoder.py` (remove fixture)
+- `tests/test_asv_encoder.py` (remove fixture)
+- `tests/test_biom_loader.py` (remove helper + fixture)
+- `tests/test_dataset.py` (remove helper + fixture)
+- `tests/test_tokenizer.py` (remove helper)
+- `tests/test_transformer.py` (remove fixtures)
+- `tests/test_attention_pooling.py` (remove fixtures)
+
+---
+
+### CLN-11.2: Parametrize Batch/Sequence Variation Tests
+**Priority:** MEDIUM | **Effort:** 3-4 hours | **Status:** Complete
+
+Replace loop-based variation tests with `@pytest.mark.parametrize` for cleaner test output.
+
+**Patterns Found:**
+
+| Pattern | Files | Example |
+|---------|-------|---------|
+| Batch size loops | 5+ files | `for batch_size in [1, 4, 8]: ...` |
+| Sequence length loops | 4+ files | `for seq_len in [10, 50, 100, 150]: ...` |
+| Encoder type loops | 3+ files | `for encoder_type in ["faith_pd", "taxonomy"]: ...` |
+
+**Scope:**
+1. Convert batch size loops to `@pytest.mark.parametrize("batch_size", [1, 4, 8])`
+2. Convert sequence length loops to `@pytest.mark.parametrize("seq_len", [10, 50, 100, 150])`
+3. Convert encoder type loops to `@pytest.mark.parametrize("encoder_type", [...])`
+
+**Benefits:**
+- Better test output (each parameter combination shown separately)
+- Easier to identify which specific parameter fails
+- pytest parallelization works better with parametrized tests
+
+**Acceptance Criteria:**
+- [x] Batch size tests parametrized in test_sequence_encoder.py, test_sample_sequence_encoder.py, test_transformer.py
+- [x] Sequence length tests parametrized
+- [x] Encoder type tests parametrized (where not already done)
+- [x] All tests pass (1301 tests)
+- [x] Improved test output clarity (line reduction minimal, +4 net, but each param shown separately)
+
+**Files:**
+- `tests/test_sequence_encoder.py`
+- `tests/test_sample_sequence_encoder.py`
+- `tests/test_transformer.py`
+- `tests/test_asv_encoder.py`
+- `tests/test_attention_pooling.py`
+
+---
+
+### CLN-11.3: Extract Shared Test Utilities
+**Priority:** LOW | **Effort:** 2-3 hours | **Status:** Complete
+
+Extract shared test classes and utilities to conftest.py for reuse.
+
+**Items to Extract:**
+
+| Item | Location | Description |
+|------|----------|-------------|
+| `MockBatchDataset` | test_trainer.py:45-67 | Mock dataset for trainer tests |
+| Device fixture | Multiple files | `torch.device("cuda" if torch.cuda.is_available() else "cpu")` |
+| Loss function fixtures | test_losses.py, test_trainer.py | `MultiTaskLoss(...)` variations |
+
+**Scope:**
+1. Move `MockBatchDataset` to conftest.py
+2. Create shared `device` fixture with CUDA/MPS/CPU detection
+3. Create parameterized loss function fixture
+4. Standardize tensor assertion helpers
+
+**Acceptance Criteria:**
+- [x] MockBatchDataset in conftest.py
+- [x] Shared device fixture created (with CUDA cleanup)
+- [x] Loss function fixture consolidated
+- [x] small_model fixture consolidated
+- [x] All tests pass (1301 tests)
+- [x] Net 75 lines removed (-136, +61)
+
+**Files:**
+- `tests/conftest.py` (expanded with MockBatchDataset, device, small_model, loss_fn)
+- `tests/test_trainer.py` (removed MockBatchDataset, device, small_model)
+- `tests/test_lr_finder.py` (removed device, small_model, loss_fn)
+- `tests/test_batch_size_finder.py` (removed device, small_model, loss_fn)
+- `tests/test_integration.py` (removed device)
+
+---
+
+### CLN-17: Reduce Total Test Count Through Consolidation
+**Priority:** LOW | **Effort:** 4-6 hours | **Status:** Complete
+
+Analyze test suite (1301 tests) for opportunities to reduce test count while maintaining coverage.
+
+**Motivation:**
+- Large test counts can slow CI/CD pipelines
+- Many tests may overlap in coverage
+- Some parametrized tests may be over-testing with redundant parameter combinations
+
+**Investigation Areas:**
+1. Identify tests with overlapping coverage (e.g., multiple tests checking same code paths)
+2. Review parametrize combinations - are all parameter values necessary?
+3. Look for integration tests that could replace multiple unit tests
+4. Check for tests that verify implementation details vs behavior
+
+**Potential Consolidation Targets:**
+- Model encoder tests (test_asv_encoder, test_sample_sequence_encoder, test_sequence_encoder, test_sequence_predictor) - lots of similar shape/gradient tests
+- Transformer tests - many parameter variation tests
+- CLI tests - may have redundant integration tests
+
+**Acceptance Criteria:**
+- [x] Audit report identifying consolidation opportunities (see CLN-17-AUDIT-REPORT.md)
+- [x] Reduce test count by 10-20% without losing coverage (22 tests removed)
+- [x] Maintain or improve test runtime
+- [x] No reduction in code coverage percentage
+
+**Results:** 22 tests removed, 521 lines reduced. Test count reduced from 1301 to 1279.
+
+**Files:** All test files in `tests/`
+
+---
+
+### CLN-16: Consolidate Lazy Embedding Tests with Parametrize
+**Priority:** HIGH | **Effort:** 1-2 hours | **Status:** Complete
+
+Consolidate repetitive tests in `TestLazySampleEmbeddings` and `TestLazyBaseEmbeddings` using `pytest.mark.parametrize` and shared fixtures.
+
+**Context:**
+PYT-18.5 added 17 new tests for lazy embedding computation. Many tests follow similar patterns:
+- Test for different encoder types (unifrac, faith_pd, combined)
+- Test with/without various flags (nucleotides, categoricals, frozen_base)
+- Test that embeddings are/aren't returned based on flag
+
+**Scope:**
+1. Extract common model creation into pytest fixtures in `conftest.py`
+2. Use `@pytest.mark.parametrize` to test multiple encoder types in single test
+3. Consolidate similar assertion patterns
+4. Reduce test file line count while maintaining coverage
+
+**Example Consolidation:**
+```python
+# Before: 3 separate tests
+def test_sample_embeddings_not_returned_unifrac(...)
+def test_sample_embeddings_not_returned_faith_pd(...)
+def test_sample_embeddings_not_returned_combined(...)
+
+# After: 1 parametrized test
+@pytest.mark.parametrize("encoder_type", ["unifrac", "faith_pd", "combined"])
+def test_sample_embeddings_not_returned_by_default(encoder_type, sample_tokens):
+    encoder = SequenceEncoder(encoder_type=encoder_type, ...)
+    result = encoder(sample_tokens)
+    assert "sample_embeddings" not in result
+```
+
+**Target Files:**
+- `tests/test_sequence_encoder.py` - `TestLazySampleEmbeddings` class
+- `tests/test_sequence_predictor.py` - `TestLazyBaseEmbeddings` class
+- `tests/conftest.py` - shared fixtures
+
+**Acceptance Criteria:**
+- [x] Use `@pytest.mark.parametrize` for encoder type variations
+- [x] Extract shared model fixtures to `conftest.py`
+- [x] Reduce total lines in lazy embedding test classes (32 lines removed)
+- [x] All lazy embedding tests still pass (18 test cases, +1 from added coverage)
+- [x] No loss of test coverage (added combined encoder "returned when requested" test)
+
+**Files:** `tests/test_sequence_encoder.py`, `tests/test_sequence_predictor.py`, `tests/conftest.py`
 
 ---
 
@@ -852,10 +1046,10 @@ pred_std = torch.stack(predictions).std(dim=0)  # Optional confidence
 |--------|-------------|--------|----------|--------|
 | **FUS-1** | GMU baseline | 3-4h | HIGH | Complete |
 | **FUS-2** | Cross-attention fusion | 5-6h | HIGH | Complete |
-| **FUS-3** | Perceiver fusion | 6-8h | LOW | Not Started |
+| **FUS-3** | Perceiver fusion | 6-8h | LOW | Complete |
 | **CLN-2** | Normalization unification | 3-4h | MEDIUM | Complete |
 | **CLN-3** | Remove unused params | 1-2h | LOW | Complete |
-| **CLN-4** | Extract shared utilities | 2-3h | LOW | Not Started |
+| **CLN-4** | Extract shared utilities | 2-3h | LOW | Complete |
 | **CLN-5** | DataParallel in train.py | 2-3h | MEDIUM | Complete |
 | **CLN-6** | Categorical docs/validation | 4-5h | MEDIUM | Complete |
 | **CLN-7** | Toggle count prediction | 2-3h | MEDIUM | Complete |
@@ -867,31 +1061,29 @@ pred_std = torch.stack(predictions).std(dim=0)  # Optional confidence
 | **CLN-BUG-3** | --resume-from ignores new learning rate | 1-2h | HIGH | Complete |
 | **CLN-BUG-4** | LR override undone by double load_checkpoint | 0.5-1h | HIGH | Complete |
 | **CLN-BUG-5** | zscore-cat TensorBoard not denormalized | 1-2h | HIGH | Complete |
-| **CLN-BUG-6** | Model converging to mean with freeze-base+cross-attn | 2-4h | HIGH | Not Started |
+| **CLN-BUG-6** | Model converging to mean with freeze-base+cross-attn | 2-4h | HIGH | Complete |
 | **CLN-BUG-7** | Checkpoints not saved to new output dir on resume | 1-2h | HIGH | Complete |
 | **CLN-BUG-8** | Multi-pass validation fails in distributed training | 1-2h | HIGH | Complete |
 | **CLN-15** | Multi-pass validation during training | 2-3h | MEDIUM | Complete |
-| **CLN-11** | Consolidate test suite | 4-6h | LOW | Not Started |
+| **CLN-11** | Consolidate test suite (parent) | 8-12h | LOW | Complete |
+| **CLN-11.1** | Consolidate duplicate fixtures | 2-3h | HIGH | Complete |
+| **CLN-11.2** | Parametrize variation tests | 3-4h | MEDIUM | Complete |
+| **CLN-11.3** | Extract shared utilities | 2-3h | LOW | Complete |
 | **CLN-12** | Random Forest baseline script | 2-3h | LOW | Complete |
 | **CLN-13** | ASV sampling strategy (abundance/random) | 2-3h | MEDIUM | Complete |
 | **CLN-14** | Multi-pass prediction aggregation | 3-4h | LOW | Complete |
-| **Total** | | **44-69h** | |
+| **CLN-16** | Consolidate lazy embedding tests | 1-2h | HIGH | Complete |
+| **CLN-17** | Reduce total test count | 4-6h | LOW | Complete |
+| **Total** | | **49-77h** | |
 
 ## Recommended Order
 
-**Next Up - High Priority:**
-1. CLN-BUG-6 (model converging to mean - CRITICAL training issue)
-
 **Completed:**
-- CLN-BUG-1 to CLN-BUG-5, CLN-BUG-7, CLN-BUG-8 (bug fixes)
-- FUS-1, FUS-2 (fusion MVP)
-- CLN-2, CLN-5, CLN-6, CLN-7, CLN-8, CLN-9, CLN-10, CLN-12, CLN-13, CLN-14, CLN-15
+- CLN-BUG-1 to CLN-BUG-8 (bug fixes)
+- FUS-1, FUS-2, FUS-3 (all fusion tickets complete)
+- CLN-2, CLN-5, CLN-6, CLN-7, CLN-8, CLN-9, CLN-10, CLN-11.1, CLN-11.2, CLN-12, CLN-13, CLN-14, CLN-15, CLN-16
 
-**Remaining - Low Priority:**
-- CLN-3 (remove unused params)
-- CLN-4 (shared utilities)
-- CLN-11 (consolidate test suite)
-- FUS-3 (perceiver fusion, optional)
+**All tickets complete.**
 
 ---
 
