@@ -4,7 +4,7 @@
 #SBATCH --ntasks-per-node=4
 #SBATCH --exclusive
 #SBATCH --time=06:00:00
-#SBATCH --array=1-19
+#SBATCH --array=1-22
 #SBATCH --output=logs/survey_%A_%a.out
 #SBATCH --error=logs/survey_%A_%a.err
 
@@ -12,8 +12,9 @@
 # SLURM Array Job for Hyperparameter Survey (SDSC COSMOS)
 # Submit with: sbatch submit_survey.slurm
 #
-# To run only new phases (5-6): sbatch --array=12-19 submit_survey.slurm
+# To run only new phases (5-7): sbatch --array=12-22 submit_survey.slurm
 # To run only unfreeze (phase 6): sbatch --array=17-19 submit_survey.slurm
+# To run only simplified (phase 7): sbatch --array=20-22 submit_survey.slurm
 #
 # COSMOS uses AMD MI300A APUs (4 per node, 90 TFLOPS fp64 each)
 # Max walltime: 24 hours, Max nodes: 4
@@ -41,6 +42,7 @@ export ROCR_VISIBLE_DEVICES=0,1,2,3
 # Array task 9-11:  Phase 4 (learning rate) - COMPLETE
 # Array task 12-16: Phase 5 (combinations) - NEW
 # Array task 17-19: Phase 6 (unfreeze base) - NEW
+# Array task 20-22: Phase 7 (simplified baseline) - NEW
 
 case $SLURM_ARRAY_TASK_ID in
     # Phase 1: Loss function (COMPLETE)
@@ -68,6 +70,10 @@ case $SLURM_ARRAY_TASK_ID in
     17) PHASE=6; RUN=1 ;; # unfreeze lr=1e-5
     18) PHASE=6; RUN=2 ;; # unfreeze lr=5e-6
     19) PHASE=6; RUN=3 ;; # unfreeze lr=1e-5, 100 epochs
+    # Phase 7: Simplified baseline (NEW) - match RF approach
+    20) PHASE=7; RUN=1 ;; # minimal: no categoricals, no normalization
+    21) PHASE=7; RUN=2 ;; # minimal + unfreeze base
+    22) PHASE=7; RUN=3 ;; # no normalization with categoricals
     *)
         echo "Invalid array task ID: $SLURM_ARRAY_TASK_ID"
         exit 1

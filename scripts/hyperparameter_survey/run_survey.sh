@@ -165,6 +165,107 @@ run_phase5() {
 # Use lower LR since we're fine-tuning the full model
 # ============================================================================
 
+# ============================================================================
+# PHASE 7: SIMPLIFIED BASELINE (Match RF approach)
+# Remove complexity: no categoricals, no normalization, abundance sampling
+# ============================================================================
+
+run_phase7() {
+    echo "========== PHASE 7: SIMPLIFIED BASELINE =========="
+
+    # 7.1 Minimal: no categoricals, no target normalization, abundance sampling
+    if [[ "$1" == "" || "$1" == "1" ]]; then
+        echo "Running simplified baseline (no categoricals, no normalization)..."
+        mkdir -p "$OUTPUT_BASE/phase7_simplified/minimal"
+
+        torchrun --nproc_per_node=$NUM_GPUS -m aam.cli train \
+            --distributed \
+            --table "$TABLE" \
+            --unifrac-matrix "$UNIFRAC" \
+            --metadata "$METADATA" \
+            --metadata-column "$TARGET" \
+            --pretrained-encoder "$PRETRAINED" \
+            --freeze-base \
+            --target-transform none \
+            --asv-sampling abundance \
+            --loss-type mae \
+            --regressor-hidden-dims "64" \
+            --lr 5e-5 \
+            --scheduler warmup_cosine \
+            --epochs $EPOCHS \
+            --token-limit $TOKEN_LIMIT \
+            --seed $SEED \
+            --embedding-dim $EMBEDDING_DIM \
+            --attention-heads $ATTENTION_HEADS \
+            --attention-layers $ATTENTION_LAYERS \
+            --best-metric mae \
+            --output-dir "$OUTPUT_BASE/phase7_simplified/minimal" \
+            2>&1 | tee "$OUTPUT_BASE/phase7_simplified/minimal/training.log"
+    fi
+
+    # 7.2 Minimal + unfreeze base (highest potential)
+    if [[ "$1" == "" || "$1" == "2" ]]; then
+        echo "Running simplified baseline with unfrozen base..."
+        mkdir -p "$OUTPUT_BASE/phase7_simplified/minimal_unfreeze"
+
+        torchrun --nproc_per_node=$NUM_GPUS -m aam.cli train \
+            --distributed \
+            --table "$TABLE" \
+            --unifrac-matrix "$UNIFRAC" \
+            --metadata "$METADATA" \
+            --metadata-column "$TARGET" \
+            --pretrained-encoder "$PRETRAINED" \
+            --target-transform none \
+            --asv-sampling abundance \
+            --loss-type mae \
+            --regressor-hidden-dims "64" \
+            --lr 1e-5 \
+            --scheduler warmup_cosine \
+            --epochs $EPOCHS \
+            --token-limit $TOKEN_LIMIT \
+            --seed $SEED \
+            --embedding-dim $EMBEDDING_DIM \
+            --attention-heads $ATTENTION_HEADS \
+            --attention-layers $ATTENTION_LAYERS \
+            --best-metric mae \
+            --output-dir "$OUTPUT_BASE/phase7_simplified/minimal_unfreeze" \
+            2>&1 | tee "$OUTPUT_BASE/phase7_simplified/minimal_unfreeze/training.log"
+    fi
+
+    # 7.3 With categoricals but no normalization (isolate normalization effect)
+    if [[ "$1" == "" || "$1" == "3" ]]; then
+        echo "Running with categoricals, no normalization..."
+        mkdir -p "$OUTPUT_BASE/phase7_simplified/no_norm_with_cat"
+
+        torchrun --nproc_per_node=$NUM_GPUS -m aam.cli train \
+            --distributed \
+            --table "$TABLE" \
+            --unifrac-matrix "$UNIFRAC" \
+            --metadata "$METADATA" \
+            --metadata-column "$TARGET" \
+            --categorical-columns "$CATEGORICALS" \
+            --categorical-fusion gmu \
+            --pretrained-encoder "$PRETRAINED" \
+            --freeze-base \
+            --target-transform none \
+            --asv-sampling abundance \
+            --loss-type mae \
+            --regressor-hidden-dims "256,64" \
+            --residual-regression-head \
+            --lr 5e-5 \
+            --scheduler warmup_cosine \
+            --epochs $EPOCHS \
+            --token-limit $TOKEN_LIMIT \
+            --seed $SEED \
+            --embedding-dim $EMBEDDING_DIM \
+            --attention-heads $ATTENTION_HEADS \
+            --attention-layers $ATTENTION_LAYERS \
+            --best-metric mae \
+            --output-dir "$OUTPUT_BASE/phase7_simplified/no_norm_with_cat" \
+            2>&1 | tee "$OUTPUT_BASE/phase7_simplified/no_norm_with_cat/training.log"
+    fi
+}
+
 run_phase6() {
     echo "========== PHASE 6: UNFREEZE BASE MODEL =========="
 
@@ -276,6 +377,7 @@ case $PHASE in
     4) run_phase4 "$RUN_ID" ;;
     5) run_phase5 "$RUN_ID" ;;
     6) run_phase6 "$RUN_ID" ;;
+    7) run_phase7 "$RUN_ID" ;;
     all)
         run_phase1
         run_phase2
@@ -285,6 +387,7 @@ case $PHASE in
     all-new)
         run_phase5
         run_phase6
+        run_phase7
         ;;
     status)
         echo "Survey Status:"
@@ -311,9 +414,10 @@ case $PHASE in
         echo "  3 [1|2|3]      - Regressor (shallow, deep, residual)"
         echo "  4 [1|2|3]      - Learning rate (5e-5, 2e-4, cosine_restarts)"
         echo ""
-        echo "Phases 5-6 (Optimization - Based on Survey Results):"
+        echo "Phases 5-7 (Optimization - Based on Survey Results):"
         echo "  5 [1|2|3|4|5]  - Combinations (best_combo, perceiver, category_weights, categorical_lr, onecycle)"
         echo "  6 [1|2|3]      - Unfreeze base (lr_1e5, lr_5e6, lr_1e5_100ep)"
+        echo "  7 [1|2|3]      - Simplified baseline (minimal, minimal_unfreeze, no_norm_with_cat)"
         echo ""
         echo "Batch Commands:"
         echo "  all            - Run phases 1-4 (initial survey)"
