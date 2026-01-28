@@ -1,7 +1,7 @@
 # Train CLI Bugfix Tickets
 
 **Last Updated:** 2026-01-28
-**Status:** 12 remaining (3 complete) | ~5 hours estimated
+**Status:** 11 remaining (4 complete) | ~4.5 hours estimated
 **Dev Branch:** `dev/train-bugfix`
 
 All TRN ticket work should branch from and PR into `dev/train-bugfix`.
@@ -66,25 +66,18 @@ gh pr create --base dev/train-bugfix
 ---
 
 ### TRN-4: Validate Checkpoint Resume Fields
-**Priority:** HIGH | **Effort:** 0.5 hours | **Status:** Not Started
+**Priority:** HIGH | **Effort:** 0.5 hours | **Status:** Complete
 
-**Location:** `aam/cli/train.py:1437`
+**Location:** `aam/training/trainer.py:1471`
 
 **Problem:** When loading checkpoint for resume, required fields are accessed without validation. Corrupted or incompatible checkpoints will cause KeyError.
 
-**Current Code:**
-```python
-checkpoint_info = trainer.load_checkpoint(resume_from, ...)
-start_epoch = checkpoint_info["epoch"] + 1
-initial_best_metric_value = checkpoint_info.get("best_metric_value", checkpoint_info["best_val_loss"])
-```
-
-**Fix:** Validate that `checkpoint_info` contains required keys (`epoch`, `best_val_loss`) before accessing them.
+**Solution:** Added validation in `Trainer.load_checkpoint()` that checks required keys (`model_state_dict`, `epoch`, `best_val_loss`) and raises `ValueError` with helpful message. Added `CHECKPOINT_VERSION` constant to track checkpoint format versions and log warnings when loading old or mismatched checkpoints.
 
 **Acceptance Criteria:**
-- [ ] Clear error when checkpoint is missing required fields
-- [ ] Error message lists expected vs actual checkpoint keys
-- [ ] Checkpoint version/compatibility warning if format differs
+- [x] Clear error when checkpoint is missing required fields
+- [x] Error message lists expected vs actual checkpoint keys
+- [x] Checkpoint version/compatibility warning if format differs
 
 ---
 
@@ -368,7 +361,7 @@ logger.info("Filtering tables for train/val splits...")  # All ranks log this
 | **TRN-1** | Validate metadata contains BIOM samples | 1h | HIGH | Complete |
 | **TRN-2** | Empty dataset validation after filtering | 0.5h | HIGH | Complete |
 | **TRN-3** | Target column type validation | 0.5h | HIGH | Complete |
-| **TRN-4** | Checkpoint resume field validation | 0.5h | HIGH | Not Started |
+| **TRN-4** | Checkpoint resume field validation | 0.5h | HIGH | Complete |
 | **TRN-5** | Fix drop_last=True for validation DataLoader | 0.5h | HIGH | Not Started |
 | **TRN-6** | Fix distributed cleanup race condition | 0.5h | MEDIUM | Not Started |
 | **TRN-7** | Validate quantiles sorted and unique | 0.25h | MEDIUM | Not Started |
