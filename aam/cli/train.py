@@ -66,10 +66,7 @@ def validate_metadata_contains_samples(
 
     if missing_samples:
         shown_ids = missing_samples[:max_missing_to_show]
-        msg = (
-            f"Metadata is missing {len(missing_samples)} sample(s) from BIOM table.\n"
-            f"Missing samples: {shown_ids}"
-        )
+        msg = f"Metadata is missing {len(missing_samples)} sample(s) from BIOM table.\nMissing samples: {shown_ids}"
         if len(missing_samples) > max_missing_to_show:
             msg += f"\n... and {len(missing_samples) - max_missing_to_show} more"
         raise ValueError(msg)
