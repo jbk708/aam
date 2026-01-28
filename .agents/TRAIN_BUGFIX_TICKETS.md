@@ -1,7 +1,7 @@
 # Train CLI Bugfix Tickets
 
 **Last Updated:** 2026-01-28
-**Status:** 9 remaining (6 complete) | ~3.5 hours estimated
+**Status:** 8 remaining (7 complete) | ~3.25 hours estimated
 **Dev Branch:** `dev/train-bugfix`
 
 All TRN ticket work should branch from and PR into `dev/train-bugfix`.
@@ -119,26 +119,18 @@ gh pr create --base dev/train-bugfix
 ---
 
 ### TRN-7: Validate Quantiles Are Sorted and Unique
-**Priority:** MEDIUM | **Effort:** 0.25 hours | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** 0.25 hours | **Status:** Complete
 
-**Location:** `aam/cli/train.py:671`
+**Location:** `aam/cli/train.py:136`
 
 **Problem:** Quantile values are validated for range (0, 1) but not checked for being sorted or unique. Duplicate or unsorted quantiles may cause undefined behavior in quantile loss.
 
-**Current Code:**
-```python
-for q in quantiles_list:
-    if not (0 < q < 1):
-        raise click.ClickException(...)
-# No check for sorted/unique
-```
-
-**Fix:** Add validation that quantiles are sorted ascending and unique.
+**Solution:** Added `validate_quantiles()` function that checks quantiles are unique and sorted ascending. Raises `click.ClickException` with helpful error message including corrected example.
 
 **Acceptance Criteria:**
-- [ ] Error if quantiles are not sorted ascending
-- [ ] Error if quantiles contain duplicates
-- [ ] Helpful error message with corrected example
+- [x] Error if quantiles are not sorted ascending
+- [x] Error if quantiles contain duplicates
+- [x] Helpful error message with corrected example
 
 ---
 
@@ -342,7 +334,7 @@ logger.info("Filtering tables for train/val splits...")  # All ranks log this
 | **TRN-4** | Checkpoint resume field validation | 0.5h | HIGH | Complete |
 | **TRN-5** | Fix drop_last=True for validation DataLoader | 0.5h | HIGH | Complete |
 | **TRN-6** | Fix distributed cleanup race condition | 0.5h | MEDIUM | Complete |
-| **TRN-7** | Validate quantiles sorted and unique | 0.25h | MEDIUM | Not Started |
+| **TRN-7** | Validate quantiles sorted and unique | 0.25h | MEDIUM | Complete |
 | **TRN-8** | Strip whitespace from metadata_column | 0.25h | MEDIUM | Not Started |
 | **TRN-9** | Validate sample weights shape/positivity | 0.5h | MEDIUM | Not Started |
 | **TRN-10** | Add finally block to auto batch size finder | 0.5h | MEDIUM | Not Started |

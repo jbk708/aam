@@ -27,6 +27,7 @@ from aam.cli.train import (
     validate_metadata_contains_samples,
     validate_filtered_metadata_non_empty,
     validate_target_column_numeric,
+    validate_quantiles,
 )
 from aam.cli.pretrain import pretrain
 from aam.cli.predict import predict
@@ -3317,6 +3318,44 @@ class TestTargetColumnNumericValidation:
 
         error_msg = str(exc_info.value)
         assert "--classifier" in error_msg
+
+
+class TestQuantilesValidation:
+    """Tests for TRN-7: Quantile validation for sorted and unique values."""
+
+    def test_validate_quantiles_passes_with_sorted_unique(self):
+        """Test validation passes when quantiles are sorted and unique."""
+        # Should not raise
+        validate_quantiles([0.1, 0.5, 0.9])
+        validate_quantiles([0.25, 0.5, 0.75])
+        validate_quantiles([0.5])  # Single quantile is valid
+
+    def test_validate_quantiles_raises_with_duplicates(self):
+        """Test validation raises ClickException when quantiles contain duplicates."""
+        with pytest.raises(click.ClickException) as exc_info:
+            validate_quantiles([0.1, 0.5, 0.5, 0.9])
+
+        error_msg = str(exc_info.value)
+        assert "unique" in error_msg.lower()
+        assert "duplicate" in error_msg.lower()
+
+    def test_validate_quantiles_raises_with_unsorted(self):
+        """Test validation raises ClickException when quantiles are not sorted ascending."""
+        with pytest.raises(click.ClickException) as exc_info:
+            validate_quantiles([0.9, 0.5, 0.1])
+
+        error_msg = str(exc_info.value)
+        assert "sorted" in error_msg.lower()
+        assert "[0.1, 0.5, 0.9]" in error_msg  # Shows corrected order
+        assert "--quantiles 0.1,0.5,0.9" in error_msg  # Includes example
+
+    def test_validate_quantiles_raises_with_partially_sorted(self):
+        """Test validation raises when only partially sorted."""
+        with pytest.raises(click.ClickException) as exc_info:
+            validate_quantiles([0.1, 0.9, 0.5])
+
+        error_msg = str(exc_info.value)
+        assert "sorted" in error_msg.lower()
 
 
 class TestBestMetricCLI:
