@@ -9,7 +9,7 @@
 
 | File | Status | Tickets |
 |------|--------|---------|
-| `PRETRAIN_BUGFIX_TICKETS.md` | **5 remaining** | PRE-4 to PRE-8 |
+| `PRETRAIN_BUGFIX_TICKETS.md` | **4 remaining** | PRE-5 to PRE-8 |
 | `DOCUMENTATION_TICKETS.md` | **COMPLETE** | DOC-5 to DOC-13 done |
 | `FUSION_CLEANUP_TICKETS.md` | Complete | All done |
 | `REGRESSOR_OPTIMIZATION_TICKETS.md` | 2 remaining | REG-9, **REG-10 (HIGH)** |
@@ -36,7 +36,7 @@ REG-10 adds count embeddings to close this gap.
 
 | Ticket | Description | Effort | File |
 |--------|-------------|--------|------|
-| **PRE-4** | Remove unused profiler | 0.25h | PRETRAIN_BUGFIX |
+| ~~PRE-4~~ | ~~Remove unused profiler~~ | ~~0.25h~~ | ~~PRETRAIN_BUGFIX~~ |
 | **PRE-5** | Remove unused val_sampler | 0.25h | PRETRAIN_BUGFIX |
 | **PRE-6** | Track actual last epoch | 0.5h | PRETRAIN_BUGFIX |
 | **PRE-7** | CPU auto_batch_size warning | 0.25h | PRETRAIN_BUGFIX |
