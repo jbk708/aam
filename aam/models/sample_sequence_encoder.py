@@ -148,17 +148,16 @@ class SampleSequenceEncoder(nn.Module):
         if self.count_embedding_method == "add":
             count_emb = self.count_embed(log_counts)  # [batch, num_asvs, embedding_dim]
             return asv_embeddings + count_emb
-        elif self.count_embedding_method == "concat":
+
+        if self.count_embedding_method == "concat":
             count_emb = self.count_embed(log_counts)  # [batch, num_asvs, embedding_dim]
             combined = torch.cat([asv_embeddings, count_emb], dim=-1)  # [batch, num_asvs, 2*embedding_dim]
             return self.count_proj(combined)  # [batch, num_asvs, embedding_dim]
-        elif self.count_embedding_method == "film":
-            film_params = self.count_film(log_counts)  # [batch, num_asvs, 2*embedding_dim]
-            scale, shift = film_params.chunk(2, dim=-1)  # Each [batch, num_asvs, embedding_dim]
-            # FiLM modulation: scale centered around 1, shift around 0
-            return asv_embeddings * (1 + scale) + shift
-        else:
-            return asv_embeddings
+
+        # FiLM modulation: scale centered around 1, shift around 0
+        film_params = self.count_film(log_counts)  # [batch, num_asvs, 2*embedding_dim]
+        scale, shift = film_params.chunk(2, dim=-1)  # Each [batch, num_asvs, embedding_dim]
+        return asv_embeddings * (1 + scale) + shift
 
     def forward(
         self,
