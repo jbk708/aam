@@ -1,9 +1,9 @@
 # Regressor Optimization Tickets
 
 **Last Updated:** 2026-01-27
-**Status:** 3 tickets remaining (~11-16 hours) | 2 HIGH priority
+**Status:** 1 ticket remaining (REG-9: ~6-8 hours) | LOW priority
 
-**Completed:** REG-1 to REG-8, REG-BUG-1 (see `ARCHIVED_TICKETS.md`)
+**Completed:** REG-1 to REG-8, REG-10a, REG-10b, REG-BUG-1 (see `ARCHIVED_TICKETS.md`)
 
 ---
 
