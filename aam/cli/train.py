@@ -156,6 +156,24 @@ def validate_quantiles(quantiles: List[float]) -> None:
         )
 
 
+def strip_column_whitespace(column_name: str, warn: bool = False, logger: Optional[logging.Logger] = None) -> str:
+    """Strip leading and trailing whitespace from a column name.
+
+    Args:
+        column_name: The column name to strip.
+        warn: If True, log a warning when whitespace is stripped.
+        logger: Logger to use for warnings. If None and warn=True, uses module logger.
+
+    Returns:
+        The stripped column name.
+    """
+    stripped = column_name.strip()
+    if warn and stripped != column_name:
+        log = logger or logging.getLogger(__name__)
+        log.warning(f"Stripped whitespace from column name: '{column_name}' -> '{stripped}'")
+    return stripped
+
+
 CATEGORICAL_HELP_TEXT = """
 Categorical Conditioning Decision Tree
 ======================================
@@ -888,6 +906,9 @@ def train(
                 f"Expected: 'sample_id'\n"
                 f"Tip: Check for whitespace or encoding issues in column names."
             )
+        # Strip whitespace from metadata_column (users may copy-paste from spreadsheets)
+        metadata_column = strip_column_whitespace(metadata_column, warn=True, logger=logger)
+
         if metadata_column not in metadata_df.columns:
             found_columns = list(metadata_df.columns)
             raise ValueError(
@@ -902,7 +923,9 @@ def train(
         categorical_cardinalities: Optional[dict[str, int]] = None
 
         if categorical_columns:
-            categorical_column_list = [col.strip() for col in categorical_columns.split(",")]
+            categorical_column_list = [
+                strip_column_whitespace(col, warn=True, logger=logger) for col in categorical_columns.split(",")
+            ]
             found_columns = list(metadata_df.columns)
             for col in categorical_column_list:
                 if col not in found_columns:
