@@ -1,7 +1,7 @@
 # Train CLI Bugfix Tickets
 
 **Last Updated:** 2026-01-28
-**Status:** 11 remaining (4 complete) | ~4.5 hours estimated
+**Status:** 10 remaining (5 complete) | ~4 hours estimated
 **Dev Branch:** `dev/train-bugfix`
 
 All TRN ticket work should branch from and PR into `dev/train-bugfix`.
@@ -82,34 +82,21 @@ gh pr create --base dev/train-bugfix
 ---
 
 ### TRN-5: Fix drop_last=True for Validation DataLoader
-**Priority:** HIGH | **Effort:** 0.5 hours | **Status:** Not Started
+**Priority:** HIGH | **Effort:** 0.5 hours | **Status:** Complete
 
-**Location:** `aam/cli/train.py:1131,1152`
+**Location:** `aam/cli/train.py:1228,1249`
 
 **Problem:** Validation DataLoader uses `drop_last=True`, which drops the last incomplete batch. This means some validation samples are never evaluated, which:
 1. Causes inconsistent validation metrics between runs (if batch size changes)
 2. Can drop significant data if val set is small (e.g., 15 samples with batch_size=8 drops 7 samples)
 
-**Current Code:**
-```python
-val_loader = DataLoader(
-    val_dataset,
-    batch_size=batch_size,
-    shuffle=False,
-    ...
-    drop_last=True,  # Should be False for validation
-)
-```
-
-**Fix:** Change `drop_last=True` to `drop_last=False` for validation DataLoader. Keep `drop_last=True` for training DataLoader (required for consistent batch sizes with BatchNorm and UniFrac pairwise losses).
-
-**Note:** The model/loss should handle variable batch sizes gracefully. Verify UniFrac loss handles odd-sized batches.
+**Solution:** Changed `drop_last=True` to `drop_last=False` for validation DataLoader in both distributed and non-distributed cases. Training DataLoader keeps `drop_last=True` for consistent batch sizes with BatchNorm and UniFrac pairwise losses.
 
 **Acceptance Criteria:**
-- [ ] Validation DataLoader uses `drop_last=False`
-- [ ] Training DataLoader still uses `drop_last=True`
-- [ ] Test verifying all validation samples are evaluated
-- [ ] Verify UniFrac loss handles variable batch sizes
+- [x] Validation DataLoader uses `drop_last=False`
+- [x] Training DataLoader still uses `drop_last=True`
+- [x] Test verifying all validation samples are evaluated
+- [x] Verify UniFrac loss handles variable batch sizes (verified: handles batch_size=1 gracefully)
 
 ---
 
@@ -362,7 +349,7 @@ logger.info("Filtering tables for train/val splits...")  # All ranks log this
 | **TRN-2** | Empty dataset validation after filtering | 0.5h | HIGH | Complete |
 | **TRN-3** | Target column type validation | 0.5h | HIGH | Complete |
 | **TRN-4** | Checkpoint resume field validation | 0.5h | HIGH | Complete |
-| **TRN-5** | Fix drop_last=True for validation DataLoader | 0.5h | HIGH | Not Started |
+| **TRN-5** | Fix drop_last=True for validation DataLoader | 0.5h | HIGH | Complete |
 | **TRN-6** | Fix distributed cleanup race condition | 0.5h | MEDIUM | Not Started |
 | **TRN-7** | Validate quantiles sorted and unique | 0.25h | MEDIUM | Not Started |
 | **TRN-8** | Strip whitespace from metadata_column | 0.25h | MEDIUM | Not Started |
