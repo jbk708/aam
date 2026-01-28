@@ -4457,114 +4457,85 @@ class TestStripColumnWhitespace:
 class TestBroadcastConsistencyValidation:
     """Tests for TRN-12: Validate distributed broadcast success."""
 
-    def test_validate_broadcast_passes_in_non_distributed_mode(self):
+    @pytest.fixture
+    def sample_ids(self):
+        """Sample train/val ID lists for testing."""
+        return ["sample1", "sample2", "sample3"], ["sample4", "sample5"]
+
+    @pytest.fixture
+    def dist_mocks(self):
+        """Mock torch.distributed for simulating distributed environment."""
+        with (
+            patch("torch.distributed.is_initialized", return_value=True),
+            patch("torch.distributed.barrier"),
+            patch("torch.distributed.get_world_size", return_value=4),
+        ):
+            yield
+
+    def test_non_distributed_mode_passes(self, sample_ids):
         """Test validation passes when not in distributed mode."""
         from aam.cli.train import validate_broadcast_consistency
 
-        train_ids = ["sample1", "sample2", "sample3"]
-        val_ids = ["sample4", "sample5"]
-
-        # Should not raise when not in distributed mode
+        train_ids, val_ids = sample_ids
         validate_broadcast_consistency(train_ids, val_ids)
-
-    def test_validate_broadcast_passes_with_verify_hash_non_distributed(self):
-        """Test hash verification passes in non-distributed mode."""
-        from aam.cli.train import validate_broadcast_consistency
-
-        train_ids = ["sample1", "sample2", "sample3"]
-        val_ids = ["sample4", "sample5"]
-
-        # Should not raise even with verify_hash=True when not distributed
         validate_broadcast_consistency(train_ids, val_ids, verify_hash=True)
 
-    def test_validate_broadcast_calls_barrier_in_distributed_mode(self):
+    def test_barrier_called_in_distributed_mode(self, sample_ids):
         """Test that barrier is called when in distributed mode."""
         from aam.cli.train import validate_broadcast_consistency
 
-        train_ids = ["sample1", "sample2", "sample3"]
-        val_ids = ["sample4", "sample5"]
+        train_ids, val_ids = sample_ids
+        with patch("torch.distributed.is_initialized", return_value=True), patch("torch.distributed.barrier") as mock_barrier:
+            validate_broadcast_consistency(train_ids, val_ids)
+            mock_barrier.assert_called_once()
 
-        with patch("torch.distributed.is_initialized", return_value=True):
-            with patch("torch.distributed.barrier") as mock_barrier:
-                validate_broadcast_consistency(train_ids, val_ids)
-                mock_barrier.assert_called_once()
-
-    def test_validate_broadcast_hash_check_passes_when_consistent(self):
+    def test_hash_check_passes_when_consistent(self, sample_ids, dist_mocks):
         """Test hash verification passes when data is consistent across ranks."""
         from aam.cli.train import validate_broadcast_consistency
 
-        train_ids = ["sample1", "sample2", "sample3"]
-        val_ids = ["sample4", "sample5"]
-
-        # Simulate consistent hashes across ranks
         def mock_all_gather(output_list, tensor):
-            # All ranks have same hash
-            for i in range(len(output_list)):
-                output_list[i].copy_(tensor)
+            for t in output_list:
+                t.copy_(tensor)
 
-        with patch("torch.distributed.is_initialized", return_value=True):
-            with patch("torch.distributed.barrier"):
-                with patch("torch.distributed.get_world_size", return_value=4):
-                    with patch("torch.distributed.all_gather", side_effect=mock_all_gather):
-                        # Should not raise
-                        validate_broadcast_consistency(train_ids, val_ids, verify_hash=True)
+        train_ids, val_ids = sample_ids
+        with patch("torch.distributed.all_gather", side_effect=mock_all_gather):
+            validate_broadcast_consistency(train_ids, val_ids, verify_hash=True)
 
-    def test_validate_broadcast_hash_check_raises_when_inconsistent(self):
+    def test_hash_check_raises_when_inconsistent(self, sample_ids, dist_mocks):
         """Test hash verification raises RuntimeError when data is inconsistent."""
         from aam.cli.train import validate_broadcast_consistency
 
-        train_ids = ["sample1", "sample2", "sample3"]
-        val_ids = ["sample4", "sample5"]
-
-        # Simulate inconsistent hashes across ranks
         def mock_all_gather_inconsistent(output_list, tensor):
-            for i in range(len(output_list)):
-                # Each rank gets a different hash value
-                output_list[i].fill_(i * 100)
+            for i, t in enumerate(output_list):
+                t.fill_(i * 100)
 
-        with patch("torch.distributed.is_initialized", return_value=True):
-            with patch("torch.distributed.barrier"):
-                with patch("torch.distributed.get_world_size", return_value=4):
-                    with patch("torch.distributed.all_gather", side_effect=mock_all_gather_inconsistent):
-                        with pytest.raises(RuntimeError) as exc_info:
-                            validate_broadcast_consistency(train_ids, val_ids, verify_hash=True)
-                        assert "inconsistent" in str(exc_info.value).lower()
+        train_ids, val_ids = sample_ids
+        with patch("torch.distributed.all_gather", side_effect=mock_all_gather_inconsistent):
+            with pytest.raises(RuntimeError, match="inconsistent"):
+                validate_broadcast_consistency(train_ids, val_ids, verify_hash=True)
 
-    def test_validate_broadcast_logs_debug_on_success(self, caplog):
+    def test_logs_debug_on_success(self, caplog):
         """Test that debug message is logged on successful validation."""
         from aam.cli.train import validate_broadcast_consistency
         import logging
 
-        train_ids = ["sample1", "sample2"]
-        val_ids = ["sample3"]
+        with (
+            caplog.at_level(logging.DEBUG),
+            patch("torch.distributed.is_initialized", return_value=True),
+            patch("torch.distributed.barrier"),
+        ):
+            validate_broadcast_consistency(["sample1"], ["sample2"])
 
-        with caplog.at_level(logging.DEBUG):
-            with patch("torch.distributed.is_initialized", return_value=True):
-                with patch("torch.distributed.barrier"):
-                    validate_broadcast_consistency(train_ids, val_ids)
-
-        # Should log debug message about barrier sync
         assert "barrier" in caplog.text.lower() or "sync" in caplog.text.lower()
 
-    def test_validate_broadcast_empty_lists_pass(self):
+    def test_empty_lists_pass(self, dist_mocks):
         """Test validation handles empty ID lists gracefully."""
         from aam.cli.train import validate_broadcast_consistency
 
-        # Edge case: empty lists should not raise
+        def mock_all_gather(output_list, tensor):
+            for t in output_list:
+                t.copy_(tensor)
+
         validate_broadcast_consistency([], [])
-
-    def test_validate_broadcast_hash_empty_lists_pass(self):
-        """Test hash verification handles empty ID lists gracefully."""
-        from aam.cli.train import validate_broadcast_consistency
-
-        with patch("torch.distributed.is_initialized", return_value=True):
-            with patch("torch.distributed.barrier"):
-                with patch("torch.distributed.get_world_size", return_value=2):
-                    # Mock consistent hashes for empty lists
-                    def mock_all_gather(output_list, tensor):
-                        for i in range(len(output_list)):
-                            output_list[i].copy_(tensor)
-
-                    with patch("torch.distributed.all_gather", side_effect=mock_all_gather):
-                        # Should not raise
-                        validate_broadcast_consistency([], [], verify_hash=True)
+        with patch("torch.distributed.all_gather", side_effect=mock_all_gather):
+            validate_broadcast_consistency([], [], verify_hash=True)

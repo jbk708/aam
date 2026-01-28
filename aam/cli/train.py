@@ -1107,7 +1107,7 @@ def train(
             broadcast_start = time.monotonic()
             split_data = [train_ids, val_ids]
             dist.broadcast_object_list(split_data, src=0)
-            train_ids, val_ids = split_data[0], split_data[1]
+            train_ids, val_ids = split_data
             broadcast_elapsed = time.monotonic() - broadcast_start
 
             if broadcast_elapsed > 5.0:
