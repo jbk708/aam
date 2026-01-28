@@ -122,6 +122,317 @@ run_phase4() {
 }
 
 # ============================================================================
+# PHASE 5: COMBINATION RUNS (Based on Phase 1-4 Results)
+# Best from each phase: mae loss, gmu fusion, residual regressor, lr 5e-5
+# ============================================================================
+
+run_phase5() {
+    echo "========== PHASE 5: COMBINATION RUNS =========="
+
+    # 5.1 Best combo from survey: mae + gmu + residual + lr 5e-5
+    [[ "$1" == "" || "$1" == "1" ]] && run_training \
+        "$OUTPUT_BASE/phase5_combo/best_combo" \
+        "mae" "gmu" "256,64" "5e-5" "warmup_cosine" \
+        "--residual-regression-head"
+
+    # 5.2 Perceiver fusion (new, untested)
+    [[ "$1" == "" || "$1" == "2" ]] && run_training \
+        "$OUTPUT_BASE/phase5_combo/perceiver" \
+        "mae" "perceiver" "256,64" "5e-5" "warmup_cosine" \
+        "--residual-regression-head --perceiver-num-latents 64 --perceiver-num-layers 2"
+
+    # 5.3 Category loss weighting
+    [[ "$1" == "" || "$1" == "3" ]] && run_training \
+        "$OUTPUT_BASE/phase5_combo/category_weights" \
+        "mae" "gmu" "256,64" "5e-5" "warmup_cosine" \
+        "--residual-regression-head --categorical-loss-weights auto --categorical-loss-weight-column season"
+
+    # 5.4 Higher categorical LR
+    [[ "$1" == "" || "$1" == "4" ]] && run_training \
+        "$OUTPUT_BASE/phase5_combo/categorical_lr" \
+        "mae" "gmu" "256,64" "5e-5" "warmup_cosine" \
+        "--residual-regression-head --categorical-lr 5e-4"
+
+    # 5.5 OneCycle scheduler
+    [[ "$1" == "" || "$1" == "5" ]] && run_training \
+        "$OUTPUT_BASE/phase5_combo/onecycle" \
+        "mae" "gmu" "256,64" "5e-5" "onecycle" \
+        "--residual-regression-head"
+}
+
+# ============================================================================
+# PHASE 6: UNFREEZE BASE MODEL (Higher risk, higher reward)
+# Use lower LR since we're fine-tuning the full model
+# ============================================================================
+
+# ============================================================================
+# PHASE 7: SIMPLIFIED BASELINE (Match RF approach)
+# Remove complexity: no categoricals, no normalization, abundance sampling
+# ============================================================================
+
+run_phase7() {
+    echo "========== PHASE 7: SIMPLIFIED BASELINE =========="
+
+    # 7.1 Minimal: no categoricals, minmax normalization, abundance sampling
+    # NOTE: Using minmax instead of none - raw targets cause model to predict zeros
+    if [[ "$1" == "" || "$1" == "1" ]]; then
+        echo "Running simplified baseline (no categoricals, minmax norm)..."
+        mkdir -p "$OUTPUT_BASE/phase7_simplified/minimal"
+
+        torchrun --nproc_per_node=$NUM_GPUS -m aam.cli train \
+            --distributed \
+            --table "$TABLE" \
+            --unifrac-matrix "$UNIFRAC" \
+            --metadata "$METADATA" \
+            --metadata-column "$TARGET" \
+            --pretrained-encoder "$PRETRAINED" \
+            --freeze-base \
+            --target-transform minmax \
+            --asv-sampling abundance \
+            --loss-type mae \
+            --regressor-hidden-dims "64" \
+            --lr 5e-5 \
+            --scheduler warmup_cosine \
+            --epochs $EPOCHS \
+            --token-limit $TOKEN_LIMIT \
+            --seed $SEED \
+            --embedding-dim $EMBEDDING_DIM \
+            --attention-heads $ATTENTION_HEADS \
+            --attention-layers $ATTENTION_LAYERS \
+            --best-metric mae \
+            --output-dir "$OUTPUT_BASE/phase7_simplified/minimal" \
+            2>&1 | tee "$OUTPUT_BASE/phase7_simplified/minimal/training.log"
+    fi
+
+    # 7.2 Minimal + unfreeze base (highest potential)
+    if [[ "$1" == "" || "$1" == "2" ]]; then
+        echo "Running simplified baseline with unfrozen base..."
+        mkdir -p "$OUTPUT_BASE/phase7_simplified/minimal_unfreeze"
+
+        torchrun --nproc_per_node=$NUM_GPUS -m aam.cli train \
+            --distributed \
+            --table "$TABLE" \
+            --unifrac-matrix "$UNIFRAC" \
+            --metadata "$METADATA" \
+            --metadata-column "$TARGET" \
+            --pretrained-encoder "$PRETRAINED" \
+            --target-transform minmax \
+            --asv-sampling abundance \
+            --loss-type mae \
+            --regressor-hidden-dims "64" \
+            --lr 1e-5 \
+            --scheduler warmup_cosine \
+            --epochs $EPOCHS \
+            --token-limit $TOKEN_LIMIT \
+            --seed $SEED \
+            --embedding-dim $EMBEDDING_DIM \
+            --attention-heads $ATTENTION_HEADS \
+            --attention-layers $ATTENTION_LAYERS \
+            --best-metric mae \
+            --output-dir "$OUTPUT_BASE/phase7_simplified/minimal_unfreeze" \
+            2>&1 | tee "$OUTPUT_BASE/phase7_simplified/minimal_unfreeze/training.log"
+    fi
+
+    # 7.3 With categoricals, minmax normalization (isolate categorical effect)
+    if [[ "$1" == "" || "$1" == "3" ]]; then
+        echo "Running with categoricals, minmax normalization..."
+        mkdir -p "$OUTPUT_BASE/phase7_simplified/minmax_with_cat"
+
+        torchrun --nproc_per_node=$NUM_GPUS -m aam.cli train \
+            --distributed \
+            --table "$TABLE" \
+            --unifrac-matrix "$UNIFRAC" \
+            --metadata "$METADATA" \
+            --metadata-column "$TARGET" \
+            --categorical-columns "$CATEGORICALS" \
+            --categorical-fusion gmu \
+            --pretrained-encoder "$PRETRAINED" \
+            --freeze-base \
+            --target-transform minmax \
+            --asv-sampling abundance \
+            --loss-type mae \
+            --regressor-hidden-dims "256,64" \
+            --residual-regression-head \
+            --lr 5e-5 \
+            --scheduler warmup_cosine \
+            --epochs $EPOCHS \
+            --token-limit $TOKEN_LIMIT \
+            --seed $SEED \
+            --embedding-dim $EMBEDDING_DIM \
+            --attention-heads $ATTENTION_HEADS \
+            --attention-layers $ATTENTION_LAYERS \
+            --best-metric mae \
+            --output-dir "$OUTPUT_BASE/phase7_simplified/minmax_with_cat" \
+            2>&1 | tee "$OUTPUT_BASE/phase7_simplified/minmax_with_cat/training.log"
+    fi
+
+    # 7.4 High count penalty (for weighted UniFrac pretrained models)
+    if [[ "$1" == "" || "$1" == "4" ]]; then
+        echo "Running with high count penalty..."
+        mkdir -p "$OUTPUT_BASE/phase7_simplified/high_count_penalty"
+
+        torchrun --nproc_per_node=$NUM_GPUS -m aam.cli train \
+            --distributed \
+            --table "$TABLE" \
+            --unifrac-matrix "$UNIFRAC" \
+            --metadata "$METADATA" \
+            --metadata-column "$TARGET" \
+            --categorical-columns "$CATEGORICALS" \
+            --categorical-fusion gmu \
+            --pretrained-encoder "$PRETRAINED" \
+            --freeze-base \
+            --target-transform minmax \
+            --asv-sampling abundance \
+            --loss-type mae \
+            --regressor-hidden-dims "256,64" \
+            --residual-regression-head \
+            --count-penalty 5.0 \
+            --lr 5e-5 \
+            --scheduler warmup_cosine \
+            --epochs $EPOCHS \
+            --token-limit $TOKEN_LIMIT \
+            --seed $SEED \
+            --embedding-dim $EMBEDDING_DIM \
+            --attention-heads $ATTENTION_HEADS \
+            --attention-layers $ATTENTION_LAYERS \
+            --best-metric mae \
+            --output-dir "$OUTPUT_BASE/phase7_simplified/high_count_penalty" \
+            2>&1 | tee "$OUTPUT_BASE/phase7_simplified/high_count_penalty/training.log"
+    fi
+
+    # 7.5 Learnable output scale (alternative to normalization)
+    if [[ "$1" == "" || "$1" == "5" ]]; then
+        echo "Running with learnable output scale (no normalization)..."
+        mkdir -p "$OUTPUT_BASE/phase7_simplified/learnable_scale"
+
+        torchrun --nproc_per_node=$NUM_GPUS -m aam.cli train \
+            --distributed \
+            --table "$TABLE" \
+            --unifrac-matrix "$UNIFRAC" \
+            --metadata "$METADATA" \
+            --metadata-column "$TARGET" \
+            --categorical-columns "$CATEGORICALS" \
+            --categorical-fusion gmu \
+            --pretrained-encoder "$PRETRAINED" \
+            --freeze-base \
+            --target-transform none \
+            --learnable-output-scale \
+            --asv-sampling abundance \
+            --loss-type mae \
+            --regressor-hidden-dims "256,64" \
+            --residual-regression-head \
+            --lr 5e-5 \
+            --scheduler warmup_cosine \
+            --epochs $EPOCHS \
+            --token-limit $TOKEN_LIMIT \
+            --seed $SEED \
+            --embedding-dim $EMBEDDING_DIM \
+            --attention-heads $ATTENTION_HEADS \
+            --attention-layers $ATTENTION_LAYERS \
+            --best-metric mae \
+            --output-dir "$OUTPUT_BASE/phase7_simplified/learnable_scale" \
+            2>&1 | tee "$OUTPUT_BASE/phase7_simplified/learnable_scale/training.log"
+    fi
+}
+
+run_phase6() {
+    echo "========== PHASE 6: UNFREEZE BASE MODEL =========="
+
+    # 6.1 Unfreeze with very low LR
+    if [[ "$1" == "" || "$1" == "1" ]]; then
+        echo "Running unfrozen base model training..."
+        mkdir -p "$OUTPUT_BASE/phase6_unfreeze/lr_1e5"
+
+        torchrun --nproc_per_node=$NUM_GPUS -m aam.cli train \
+            --distributed \
+            --table "$TABLE" \
+            --unifrac-matrix "$UNIFRAC" \
+            --metadata "$METADATA" \
+            --metadata-column "$TARGET" \
+            --categorical-columns "$CATEGORICALS" \
+            --categorical-fusion gmu \
+            --pretrained-encoder "$PRETRAINED" \
+            --target-transform zscore \
+            --loss-type mae \
+            --regressor-hidden-dims "256,64" \
+            --residual-regression-head \
+            --lr 1e-5 \
+            --scheduler warmup_cosine \
+            --epochs $EPOCHS \
+            --token-limit $TOKEN_LIMIT \
+            --seed $SEED \
+            --embedding-dim $EMBEDDING_DIM \
+            --attention-heads $ATTENTION_HEADS \
+            --attention-layers $ATTENTION_LAYERS \
+            --best-metric mae \
+            --output-dir "$OUTPUT_BASE/phase6_unfreeze/lr_1e5" \
+            2>&1 | tee "$OUTPUT_BASE/phase6_unfreeze/lr_1e5/training.log"
+    fi
+
+    # 6.2 Unfreeze with even lower LR
+    if [[ "$1" == "" || "$1" == "2" ]]; then
+        echo "Running unfrozen base model training with lr 5e-6..."
+        mkdir -p "$OUTPUT_BASE/phase6_unfreeze/lr_5e6"
+
+        torchrun --nproc_per_node=$NUM_GPUS -m aam.cli train \
+            --distributed \
+            --table "$TABLE" \
+            --unifrac-matrix "$UNIFRAC" \
+            --metadata "$METADATA" \
+            --metadata-column "$TARGET" \
+            --categorical-columns "$CATEGORICALS" \
+            --categorical-fusion gmu \
+            --pretrained-encoder "$PRETRAINED" \
+            --target-transform zscore \
+            --loss-type mae \
+            --regressor-hidden-dims "256,64" \
+            --residual-regression-head \
+            --lr 5e-6 \
+            --scheduler warmup_cosine \
+            --epochs $EPOCHS \
+            --token-limit $TOKEN_LIMIT \
+            --seed $SEED \
+            --embedding-dim $EMBEDDING_DIM \
+            --attention-heads $ATTENTION_HEADS \
+            --attention-layers $ATTENTION_LAYERS \
+            --best-metric mae \
+            --output-dir "$OUTPUT_BASE/phase6_unfreeze/lr_5e6" \
+            2>&1 | tee "$OUTPUT_BASE/phase6_unfreeze/lr_5e6/training.log"
+    fi
+
+    # 6.3 Unfreeze + more epochs (100)
+    if [[ "$1" == "" || "$1" == "3" ]]; then
+        echo "Running unfrozen base model with 100 epochs..."
+        mkdir -p "$OUTPUT_BASE/phase6_unfreeze/lr_1e5_100ep"
+
+        torchrun --nproc_per_node=$NUM_GPUS -m aam.cli train \
+            --distributed \
+            --table "$TABLE" \
+            --unifrac-matrix "$UNIFRAC" \
+            --metadata "$METADATA" \
+            --metadata-column "$TARGET" \
+            --categorical-columns "$CATEGORICALS" \
+            --categorical-fusion gmu \
+            --pretrained-encoder "$PRETRAINED" \
+            --target-transform zscore \
+            --loss-type mae \
+            --regressor-hidden-dims "256,64" \
+            --residual-regression-head \
+            --lr 1e-5 \
+            --scheduler warmup_cosine \
+            --epochs 100 \
+            --token-limit $TOKEN_LIMIT \
+            --seed $SEED \
+            --embedding-dim $EMBEDDING_DIM \
+            --attention-heads $ATTENTION_HEADS \
+            --attention-layers $ATTENTION_LAYERS \
+            --best-metric mae \
+            --output-dir "$OUTPUT_BASE/phase6_unfreeze/lr_1e5_100ep" \
+            2>&1 | tee "$OUTPUT_BASE/phase6_unfreeze/lr_1e5_100ep/training.log"
+    fi
+}
+
+# ============================================================================
 # MAIN ENTRY POINT
 # ============================================================================
 
@@ -133,11 +444,19 @@ case $PHASE in
     2) run_phase2 "$RUN_ID" ;;
     3) run_phase3 "$RUN_ID" ;;
     4) run_phase4 "$RUN_ID" ;;
+    5) run_phase5 "$RUN_ID" ;;
+    6) run_phase6 "$RUN_ID" ;;
+    7) run_phase7 "$RUN_ID" ;;
     all)
         run_phase1
         run_phase2
         run_phase3
         run_phase4
+        ;;
+    all-new)
+        run_phase5
+        run_phase6
+        run_phase7
         ;;
     status)
         echo "Survey Status:"
@@ -145,7 +464,7 @@ case $PHASE in
             echo "$(basename $phase_dir):"
             for run_dir in "$phase_dir"*/; do
                 if [ -f "$run_dir/checkpoints/best_model.pt" ]; then
-                    best_mae=$(grep "val_mae" "$run_dir/training.log" 2>/dev/null | tail -1 | grep -oP "val_mae[=:]\s*\K[0-9.]+")
+                    best_mae=$(grep "mae=" "$run_dir/training.log" 2>/dev/null | tail -1 | grep -oP "mae=\K[0-9.]+")
                     echo "  $(basename $run_dir): COMPLETE (MAE: ${best_mae:-unknown})"
                 elif [ -f "$run_dir/training.log" ]; then
                     echo "  $(basename $run_dir): IN PROGRESS"
@@ -158,17 +477,25 @@ case $PHASE in
     *)
         echo "Usage: $0 [phase] [run_id]"
         echo ""
-        echo "Phases:"
-        echo "  1 [1|2|3]  - Loss function (huber, mse, mae)"
-        echo "  2 [1|2]    - Fusion (concat, gmu)"
-        echo "  3 [1|2|3]  - Regressor (shallow, deep, residual)"
-        echo "  4 [1|2|3]  - Learning rate (5e-5, 2e-4, cosine_restarts)"
-        echo "  all        - Run all phases sequentially"
-        echo "  status     - Check completion status"
+        echo "Phases 1-4 (Initial Survey - Complete):"
+        echo "  1 [1|2|3]      - Loss function (huber, mse, mae)"
+        echo "  2 [1|2]        - Fusion (concat, gmu)"
+        echo "  3 [1|2|3]      - Regressor (shallow, deep, residual)"
+        echo "  4 [1|2|3]      - Learning rate (5e-5, 2e-4, cosine_restarts)"
+        echo ""
+        echo "Phases 5-7 (Optimization - Based on Survey Results):"
+        echo "  5 [1|2|3|4|5]  - Combinations (best_combo, perceiver, category_weights, categorical_lr, onecycle)"
+        echo "  6 [1|2|3]      - Unfreeze base (lr_1e5, lr_5e6, lr_1e5_100ep)"
+        echo "  7 [1|2|3|4|5]  - Simplified baseline (minimal, minimal_unfreeze, minmax_with_cat, high_count_penalty, learnable_scale)"
+        echo ""
+        echo "Batch Commands:"
+        echo "  all            - Run phases 1-4 (initial survey)"
+        echo "  all-new        - Run phases 5-6 (optimization runs)"
+        echo "  status         - Check completion status"
         echo ""
         echo "Examples:"
-        echo "  $0 1 1      # Run phase 1, variant 1 (huber)"
-        echo "  $0 3        # Run all phase 3 variants"
-        echo "  $0 all      # Run complete survey"
+        echo "  $0 5 1         # Run phase 5, variant 1 (best combo)"
+        echo "  $0 6           # Run all phase 6 variants (unfreeze)"
+        echo "  $0 all-new     # Run all new optimization runs"
         ;;
 esac

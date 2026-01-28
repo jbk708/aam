@@ -19,14 +19,15 @@ The survey uses a **sequential elimination** strategy:
 
 ### Phase Structure
 
-| Phase | Parameter | Variants | Runs |
-|-------|-----------|----------|------|
-| 1 | Loss function | huber, mse, mae | 3 |
-| 2 | Fusion strategy | concat, cross-attn, gmu | 3 |
-| 3 | Regressor arch | shallow, deep, residual | 3 |
-| 4 | Learning rate | 5e-5, 1e-4, 2e-4 | 3 |
-| 5 | Combinations | best from each phase | 2 |
-| **Total** | | | **14** |
+| Phase | Parameter | Variants | Runs | Status |
+|-------|-----------|----------|------|--------|
+| 1 | Loss function | huber, mse, mae | 3 | ✅ Complete |
+| 2 | Fusion strategy | concat, gmu | 2 | ✅ Complete |
+| 3 | Regressor arch | shallow, deep, residual | 3 | ✅ Complete |
+| 4 | Learning rate | 5e-5, 2e-4, cosine_restarts | 3 | ✅ Complete |
+| 5 | Combinations | best_combo, perceiver, cat_weights, cat_lr, onecycle | 5 | Pending |
+| 6 | Unfreeze base | lr_1e5, lr_5e6, lr_1e5_100ep | 3 | Pending |
+| **Total** | | | **19** |
 
 ---
 
@@ -332,79 +333,198 @@ torchrun --nproc_per_node=4 -m aam.cli train \
 
 ---
 
-## Phase 5: Combination Runs
+## Phase 5: Combination Runs (Based on Survey Results)
 
-After phases 1-4 complete, select best from each and combine.
+Best settings from phases 1-4:
+- **Loss:** mae (MAE: 71.48)
+- **Fusion:** gmu (MAE: 71.68, R²: 0.4413)
+- **Regressor:** residual [256,64] (MAE: 71.47)
+- **LR:** 5e-5 (MAE: 70.10)
 
-### Run 5.1: Best loss + Best regressor
-*(Template - fill in after analyzing phase 1-4 results)*
+### Run 5.1: Best Combo
 ```bash
-# Replace BEST_LOSS and BEST_REGRESSOR_DIMS based on results
 torchrun --nproc_per_node=4 -m aam.cli train \
     --distributed \
-    --table $TABLE \
-    --unifrac-matrix $UNIFRAC \
-    --metadata $METADATA \
-    --metadata-column $TARGET \
-    --categorical-columns "$CATEGORICALS" \
-    --categorical-fusion cross-attention \
-    --pretrained-encoder $PRETRAINED \
-    --freeze-base \
+    --table $TABLE --unifrac-matrix $UNIFRAC --metadata $METADATA \
+    --metadata-column $TARGET --categorical-columns "$CATEGORICALS" \
+    --categorical-fusion gmu \
+    --pretrained-encoder $PRETRAINED --freeze-base \
     --target-transform zscore \
-    --loss-type ${BEST_LOSS} \
-    --regressor-hidden-dims "${BEST_REGRESSOR_DIMS}" \
-    --lr 1e-4 \
-    --epochs $EPOCHS \
-    --token-limit $TOKEN_LIMIT \
-    --seed $SEED \
+    --loss-type mae \
+    --regressor-hidden-dims "256,64" --residual-regression-head \
+    --lr 5e-5 \
+    --epochs $EPOCHS --token-limit $TOKEN_LIMIT --seed $SEED \
     --best-metric mae \
-    --output-dir $OUTPUT_BASE/phase5_combo/best_loss_regressor
+    --output-dir $OUTPUT_BASE/phase5_combo/best_combo
 ```
 
-### Run 5.2: Best fusion + Best LR
-*(Template - fill in after analyzing phase 1-4 results)*
+### Run 5.2: Perceiver Fusion (New Feature)
 ```bash
-# Replace BEST_FUSION and BEST_LR based on results
 torchrun --nproc_per_node=4 -m aam.cli train \
     --distributed \
-    --table $TABLE \
-    --unifrac-matrix $UNIFRAC \
-    --metadata $METADATA \
-    --metadata-column $TARGET \
-    --categorical-columns "$CATEGORICALS" \
-    --categorical-fusion ${BEST_FUSION} \
-    --pretrained-encoder $PRETRAINED \
-    --freeze-base \
+    --table $TABLE --unifrac-matrix $UNIFRAC --metadata $METADATA \
+    --metadata-column $TARGET --categorical-columns "$CATEGORICALS" \
+    --categorical-fusion perceiver \
+    --perceiver-num-latents 64 --perceiver-num-layers 2 \
+    --pretrained-encoder $PRETRAINED --freeze-base \
     --target-transform zscore \
-    --loss-type huber \
-    --regressor-hidden-dims "256,64" \
-    --lr ${BEST_LR} \
-    --epochs $EPOCHS \
-    --token-limit $TOKEN_LIMIT \
-    --seed $SEED \
+    --loss-type mae \
+    --regressor-hidden-dims "256,64" --residual-regression-head \
+    --lr 5e-5 \
+    --epochs $EPOCHS --token-limit $TOKEN_LIMIT --seed $SEED \
     --best-metric mae \
-    --output-dir $OUTPUT_BASE/phase5_combo/best_fusion_lr
+    --output-dir $OUTPUT_BASE/phase5_combo/perceiver
+```
+
+### Run 5.3: Category Loss Weighting
+```bash
+torchrun --nproc_per_node=4 -m aam.cli train \
+    --distributed \
+    --table $TABLE --unifrac-matrix $UNIFRAC --metadata $METADATA \
+    --metadata-column $TARGET --categorical-columns "$CATEGORICALS" \
+    --categorical-fusion gmu \
+    --categorical-loss-weights auto --categorical-loss-weight-column season \
+    --pretrained-encoder $PRETRAINED --freeze-base \
+    --target-transform zscore \
+    --loss-type mae \
+    --regressor-hidden-dims "256,64" --residual-regression-head \
+    --lr 5e-5 \
+    --epochs $EPOCHS --token-limit $TOKEN_LIMIT --seed $SEED \
+    --best-metric mae \
+    --output-dir $OUTPUT_BASE/phase5_combo/category_weights
+```
+
+### Run 5.4: Separate Categorical Learning Rate
+```bash
+torchrun --nproc_per_node=4 -m aam.cli train \
+    --distributed \
+    --table $TABLE --unifrac-matrix $UNIFRAC --metadata $METADATA \
+    --metadata-column $TARGET --categorical-columns "$CATEGORICALS" \
+    --categorical-fusion gmu \
+    --categorical-lr 5e-4 \
+    --pretrained-encoder $PRETRAINED --freeze-base \
+    --target-transform zscore \
+    --loss-type mae \
+    --regressor-hidden-dims "256,64" --residual-regression-head \
+    --lr 5e-5 \
+    --epochs $EPOCHS --token-limit $TOKEN_LIMIT --seed $SEED \
+    --best-metric mae \
+    --output-dir $OUTPUT_BASE/phase5_combo/categorical_lr
+```
+
+### Run 5.5: OneCycle Scheduler
+```bash
+torchrun --nproc_per_node=4 -m aam.cli train \
+    --distributed \
+    --table $TABLE --unifrac-matrix $UNIFRAC --metadata $METADATA \
+    --metadata-column $TARGET --categorical-columns "$CATEGORICALS" \
+    --categorical-fusion gmu \
+    --pretrained-encoder $PRETRAINED --freeze-base \
+    --target-transform zscore \
+    --loss-type mae \
+    --regressor-hidden-dims "256,64" --residual-regression-head \
+    --lr 5e-5 --scheduler onecycle \
+    --epochs $EPOCHS --token-limit $TOKEN_LIMIT --seed $SEED \
+    --best-metric mae \
+    --output-dir $OUTPUT_BASE/phase5_combo/onecycle
+```
+
+---
+
+## Phase 6: Unfreeze Base Model
+
+Higher risk, higher reward: fine-tune the pretrained encoder instead of freezing it.
+Use lower LR to avoid catastrophic forgetting.
+
+### Run 6.1: Unfreeze with lr=1e-5
+```bash
+torchrun --nproc_per_node=4 -m aam.cli train \
+    --distributed \
+    --table $TABLE --unifrac-matrix $UNIFRAC --metadata $METADATA \
+    --metadata-column $TARGET --categorical-columns "$CATEGORICALS" \
+    --categorical-fusion gmu \
+    --pretrained-encoder $PRETRAINED \
+    --target-transform zscore \
+    --loss-type mae \
+    --regressor-hidden-dims "256,64" --residual-regression-head \
+    --lr 1e-5 \
+    --epochs $EPOCHS --token-limit $TOKEN_LIMIT --seed $SEED \
+    --best-metric mae \
+    --output-dir $OUTPUT_BASE/phase6_unfreeze/lr_1e5
+```
+
+### Run 6.2: Unfreeze with lr=5e-6
+```bash
+torchrun --nproc_per_node=4 -m aam.cli train \
+    --distributed \
+    --table $TABLE --unifrac-matrix $UNIFRAC --metadata $METADATA \
+    --metadata-column $TARGET --categorical-columns "$CATEGORICALS" \
+    --categorical-fusion gmu \
+    --pretrained-encoder $PRETRAINED \
+    --target-transform zscore \
+    --loss-type mae \
+    --regressor-hidden-dims "256,64" --residual-regression-head \
+    --lr 5e-6 \
+    --epochs $EPOCHS --token-limit $TOKEN_LIMIT --seed $SEED \
+    --best-metric mae \
+    --output-dir $OUTPUT_BASE/phase6_unfreeze/lr_5e6
+```
+
+### Run 6.3: Unfreeze with 100 Epochs
+```bash
+torchrun --nproc_per_node=4 -m aam.cli train \
+    --distributed \
+    --table $TABLE --unifrac-matrix $UNIFRAC --metadata $METADATA \
+    --metadata-column $TARGET --categorical-columns "$CATEGORICALS" \
+    --categorical-fusion gmu \
+    --pretrained-encoder $PRETRAINED \
+    --target-transform zscore \
+    --loss-type mae \
+    --regressor-hidden-dims "256,64" --residual-regression-head \
+    --lr 1e-5 \
+    --epochs 100 --token-limit $TOKEN_LIMIT --seed $SEED \
+    --best-metric mae \
+    --output-dir $OUTPUT_BASE/phase6_unfreeze/lr_1e5_100ep
 ```
 
 ---
 
 ## Results Tracking
 
-| Run | Phase | Variant | Val MAE | Best Epoch | Notes |
-|-----|-------|---------|---------|------------|-------|
-| 1.1 | Loss | huber | | | baseline |
-| 1.2 | Loss | mse | | | |
-| 1.3 | Loss | mae | | | |
-| 2.1 | Fusion | concat | | | |
-| 2.3 | Fusion | gmu | | | |
-| 3.1 | Regressor | shallow [128] | | | |
-| 3.2 | Regressor | deep [512,256,64] | | | |
-| 3.3 | Regressor | residual [256,64] | | | |
-| 4.1 | LR | 5e-5 | | | |
-| 4.2 | LR | 2e-4 | | | |
-| 4.3 | LR | cosine_restarts | | | |
-| 5.1 | Combo | loss+regressor | | | |
-| 5.2 | Combo | fusion+lr | | | |
+### Phases 1-4 (Initial Survey - Complete)
+
+| Run | Phase | Variant | Val MAE | R² | Best Epoch | Notes |
+|-----|-------|---------|---------|-----|------------|-------|
+| 1.1 | Loss | huber | 71.60 | 0.4023 | 17 | baseline |
+| 1.2 | Loss | mse | 73.40 | 0.3841 | 16 | worst loss |
+| 1.3 | Loss | mae | 71.48 | 0.4216 | 20 | **best loss** |
+| 2.1 | Fusion | concat | 101.22 | -0.1111 | 3 | broken |
+| 2.3 | Fusion | gmu | 71.68 | 0.4413 | 17 | **best R²** |
+| 3.1 | Regressor | shallow [128] | 75.26 | 0.3960 | 21 | |
+| 3.2 | Regressor | deep [512,256,64] | 72.59 | 0.4085 | 30 | |
+| 3.3 | Regressor | residual [256,64] | 71.47 | 0.4231 | 23 | **best regressor** |
+| 4.1 | LR | 5e-5 | 70.10 | 0.4221 | 28 | **best overall** |
+| 4.2 | LR | 2e-4 | 73.21 | 0.4198 | 14 | |
+| 4.3 | LR | cosine_restarts | 74.26 | 0.3964 | 7 | hurt performance |
+
+**Best from each phase:**
+- Loss: `mae` (MAE: 71.48)
+- Fusion: `gmu` (MAE: 71.68, best R²: 0.4413)
+- Regressor: `residual_256_64` (MAE: 71.47)
+- LR: `5e-5` (MAE: 70.10)
+
+### Phases 5-6 (Optimization Runs)
+
+| Run | Phase | Variant | Val MAE | R² | Best Epoch | Notes |
+|-----|-------|---------|---------|-----|------------|-------|
+| 5.1 | Combo | best_combo | | | | mae+gmu+residual+5e-5 |
+| 5.2 | Combo | perceiver | | | | perceiver fusion (new) |
+| 5.3 | Combo | category_weights | | | | auto loss weighting |
+| 5.4 | Combo | categorical_lr | | | | 5e-4 for cat params |
+| 5.5 | Combo | onecycle | | | | onecycle scheduler |
+| 6.1 | Unfreeze | lr_1e5 | | | | unfreeze base, lr=1e-5 |
+| 6.2 | Unfreeze | lr_5e6 | | | | unfreeze base, lr=5e-6 |
+| 6.3 | Unfreeze | lr_1e5_100ep | | | | unfreeze, 100 epochs |
 
 ---
 
