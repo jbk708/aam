@@ -133,6 +133,29 @@ def validate_target_column_numeric(
     raise ValueError(msg)
 
 
+def validate_quantiles(quantiles: List[float]) -> None:
+    """Validate that quantiles are sorted ascending and unique.
+
+    Args:
+        quantiles: List of quantile values (already validated to be in (0, 1)).
+
+    Raises:
+        click.ClickException: If quantiles are not sorted or contain duplicates.
+    """
+    if len(quantiles) != len(set(quantiles)):
+        raise click.ClickException(
+            f"Quantile values must be unique, got duplicates in {quantiles}. Example: --quantiles 0.1,0.5,0.9"
+        )
+
+    sorted_quantiles = sorted(quantiles)
+    if quantiles != sorted_quantiles:
+        raise click.ClickException(
+            f"Quantile values must be sorted in ascending order. "
+            f"Got {quantiles}, expected {sorted_quantiles}. "
+            f"Example: --quantiles 0.1,0.5,0.9"
+        )
+
+
 CATEGORICAL_HELP_TEXT = """
 Categorical Conditioning Decision Tree
 ======================================
@@ -761,6 +784,7 @@ def train(
             for q in quantiles_list:
                 if not (0 < q < 1):
                     raise click.ClickException(f"Quantile values must be in (0, 1), got {q}. Example: --quantiles 0.1,0.5,0.9")
+            validate_quantiles(quantiles_list)
             num_quantiles = len(quantiles_list)
             if classifier:
                 raise click.ClickException("--loss-type quantile cannot be used with --classifier")
