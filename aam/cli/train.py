@@ -174,6 +174,64 @@ def strip_column_whitespace(column_name: str, warn: bool = False, logger: Option
     return stripped
 
 
+# Expected prefixes for encoder weights (SequenceEncoder submodules)
+ENCODER_KEY_PREFIXES = frozenset(
+    {
+        "sample_encoder",
+        "encoder_transformer",
+        "attention_pooling",
+        "uni_ff",
+        "base_ff",
+        "taxo_ff",
+    }
+)
+
+
+def validate_encoder_keys_loaded(
+    load_result: Dict[str, object],
+    logger: Optional[logging.Logger] = None,
+) -> None:
+    """Validate that loaded pretrained encoder keys are actually encoder-related.
+
+    Args:
+        load_result: Result dict from load_pretrained_encoder containing matching_keys.
+        logger: Logger for output messages.
+
+    Raises:
+        click.ClickException: If keys were loaded but none are encoder-related.
+    """
+    log = logger or logging.getLogger(__name__)
+
+    matching_keys = cast(List[str], load_result.get("matching_keys", []))
+    if not matching_keys:
+        return
+
+    prefixes_found: Dict[str, int] = {}
+    for key in matching_keys:
+        prefix = key.split(".")[0] if "." in key else key
+        prefixes_found[prefix] = prefixes_found.get(prefix, 0) + 1
+
+    encoder_prefixes = set(prefixes_found.keys()) & ENCODER_KEY_PREFIXES
+    non_encoder_prefixes = set(prefixes_found.keys()) - ENCODER_KEY_PREFIXES
+
+    prefix_summary = ", ".join(f"{p}({c})" for p, c in sorted(prefixes_found.items()))
+    log.info(f"  Loaded key prefixes: {prefix_summary}")
+
+    if non_encoder_prefixes:
+        log.warning(
+            f"  Unexpected key prefixes in pretrained encoder: {sorted(non_encoder_prefixes)}. "
+            f"Expected encoder prefixes: {sorted(ENCODER_KEY_PREFIXES)}"
+        )
+
+    if not encoder_prefixes:
+        raise click.ClickException(
+            f"Pretrained encoder loaded {load_result['loaded_keys']} keys, but none are encoder-related. "
+            f"Found prefixes: {sorted(prefixes_found.keys())}. "
+            f"Expected at least one of: {sorted(ENCODER_KEY_PREFIXES)}. "
+            f"Check that the checkpoint is from a pretrained SequenceEncoder."
+        )
+
+
 CATEGORICAL_HELP_TEXT = """
 Categorical Conditioning Decision Tree
 ======================================
@@ -1390,6 +1448,7 @@ def train(
                     "No keys were loaded from pretrained encoder. "
                     "Check that pretrain and train use the same model configuration."
                 )
+            validate_encoder_keys_loaded(load_result, logger)
 
         # Auto-disable nuc_penalty when freeze_base is True (frozen encoder can't improve)
         effective_nuc_penalty = nuc_penalty

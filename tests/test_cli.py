@@ -2622,6 +2622,16 @@ class TestPretrainedEncoderLoading:
         mock_model_instance = MagicMock()
         mock_model_class.return_value = mock_model_instance
 
+        mock_load_pretrained_encoder.return_value = {
+            "loaded_keys": 10,
+            "total_checkpoint_keys": 10,
+            "total_model_keys": 10,
+            "missing_keys": [],
+            "unexpected_keys": [],
+            "loaded_params": 1000,
+            "matching_keys": ["sample_encoder.layer.weight", "encoder_transformer.layer.bias"],
+        }
+
         mock_optimizer = MagicMock()
         mock_create_optimizer.return_value = mock_optimizer
 
@@ -2734,6 +2744,16 @@ class TestPretrainedEncoderLoading:
         mock_train_ids = ["sample1", "sample2", "sample3"]
         mock_val_ids = ["sample4"]
         mock_train_test_split.return_value = (mock_train_ids, mock_val_ids)
+
+        mock_load_pretrained_encoder.return_value = {
+            "loaded_keys": 10,
+            "total_checkpoint_keys": 10,
+            "total_model_keys": 10,
+            "missing_keys": [],
+            "unexpected_keys": [],
+            "loaded_params": 1000,
+            "matching_keys": ["sample_encoder.layer.weight", "encoder_transformer.layer.bias"],
+        }
 
         mock_optimizer = MagicMock()
         mock_create_optimizer.return_value = mock_optimizer

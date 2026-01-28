@@ -1898,4 +1898,5 @@ def load_pretrained_encoder(
         "missing_keys": list(missing_keys),
         "unexpected_keys": list(unexpected_keys),
         "loaded_params": loaded_params,
+        "matching_keys": list(matching_keys),
     }
