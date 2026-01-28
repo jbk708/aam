@@ -232,6 +232,29 @@ def validate_encoder_keys_loaded(
         )
 
 
+def validate_broadcast_consistency(
+    train_ids: List[str],
+    val_ids: List[str],
+    verify_hash: bool = False,
+    logger: Optional[logging.Logger] = None,
+) -> None:
+    """Validate that broadcast of train/val splits succeeded across DDP processes.
+
+    Adds a barrier after broadcast to ensure all processes are synchronized,
+    and optionally performs a hash check to verify data consistency.
+
+    Args:
+        train_ids: List of training sample IDs after broadcast.
+        val_ids: List of validation sample IDs after broadcast.
+        verify_hash: If True, compute hash of IDs and verify consistency across ranks.
+        logger: Logger for output messages.
+
+    Raises:
+        RuntimeError: If hash verification fails (data inconsistent across ranks).
+    """
+    raise NotImplementedError("Stub: validate_broadcast_consistency")
+
+
 CATEGORICAL_HELP_TEXT = """
 Categorical Conditioning Decision Tree
 ======================================
