@@ -57,7 +57,7 @@ from aam.cli.training_utils import (
 @click.option("--output-dir", required=True, type=click.Path(), help="Output directory for checkpoints and logs")
 @click.option("--epochs", default=100, type=int, help="Number of training epochs")
 @click.option(
-    "--batch-size", default=8, type=int, help="Batch size (ignored if --auto-batch-size finds a different optimal size)"
+    "--batch-size", default=8, type=int, help="Batch size per GPU (ignored if --auto-batch-size finds a different optimal size)"
 )
 @click.option(
     "--auto-batch-size/--no-auto-batch-size",
@@ -334,13 +334,11 @@ def pretrain(
 
             # Validate batch size for distributed training
             # UniFrac pairwise distances require at least 2 samples per GPU
-            per_gpu_batch_size = batch_size // world_size
-            if per_gpu_batch_size < 2:
+            # Note: --batch-size is per-GPU, effective batch = batch_size * world_size
+            if batch_size < 2:
                 raise click.ClickException(
-                    f"batch_size={batch_size} is too small for {world_size} GPUs. "
-                    f"Each GPU would only get {per_gpu_batch_size} sample(s), but UniFrac "
-                    f"requires at least 2 samples per GPU for pairwise distances. "
-                    f"Use --batch-size {world_size * 2} or higher."
+                    f"--batch-size={batch_size} is too small. UniFrac requires at least "
+                    f"2 samples per GPU for pairwise distances. Use --batch-size 2 or higher."
                 )
         else:
             device_obj = setup_device(device)

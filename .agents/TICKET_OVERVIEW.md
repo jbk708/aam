@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-28
-**Status:** 10 outstanding tickets (~19-25 hours) + backlog | **2 HIGH priority**
+**Status:** 8 outstanding tickets (~17-23 hours) + backlog | **1 HIGH priority**
 
 ---
 
@@ -9,7 +9,7 @@
 
 | File | Status | Tickets |
 |------|--------|---------|
-| `PRETRAIN_BUGFIX_TICKETS.md` | **7 remaining** | **PRE-2 (HIGH)**, PRE-3 to PRE-8 |
+| `PRETRAIN_BUGFIX_TICKETS.md` | **5 remaining** | PRE-4 to PRE-8 |
 | `DOCUMENTATION_TICKETS.md` | **COMPLETE** | DOC-5 to DOC-13 done |
 | `FUSION_CLEANUP_TICKETS.md` | Complete | All done |
 | `REGRESSOR_OPTIMIZATION_TICKETS.md` | 2 remaining | REG-9, **REG-10 (HIGH)** |
@@ -22,24 +22,15 @@
 
 ## Priority Summary
 
-### HIGH (2 tickets, ~4.5-6.5 hours)
+### HIGH (1 ticket, ~4-6 hours)
 
 | Ticket | Description | Effort | File |
 |--------|-------------|--------|------|
-| **PRE-2** | Double checkpoint loading | 0.5h | PRETRAIN_BUGFIX |
 | **REG-10** | Count magnitude embeddings | 4-6h | REGRESSOR |
-
-**PRE-2 Context:** Bug in pretrain.py causing wasteful double checkpoint loading on resume.
 
 **REG-10 Context:** RF baseline achieves MAE=50, R²=0.7 vs AAM's MAE=70, R²=0.42.
 Key difference: AAM ignores count magnitudes as input (only uses for masking).
 REG-10 adds count embeddings to close this gap.
-
-### MEDIUM (1 ticket, ~1 hour)
-
-| Ticket | Description | Effort | File |
-|--------|-------------|--------|------|
-| **PRE-3** | Batch size semantics inconsistency | 1h | PRETRAIN_BUGFIX |
 
 ### LOW (7 tickets, ~13-18 hours)
 
@@ -67,6 +58,8 @@ REG-10 adds count embeddings to close this gap.
 
 | Ticket | Description |
 |--------|-------------|
+| **PRE-3** | Fix batch size semantics for distributed training |
+| **PRE-2** | Fix double checkpoint loading on resume |
 | **PRE-1** | Fix scheduler num_training_steps ignoring gradient accumulation |
 
 ## Completed (2026-01-27)
