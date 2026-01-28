@@ -46,6 +46,24 @@ from aam.cli.training_utils import (
 )
 
 
+def validate_metadata_contains_samples(
+    sample_ids: List[str],
+    metadata_df: pd.DataFrame,
+    max_missing_to_show: int = 10,
+) -> None:
+    """Validate that all sample IDs exist in the metadata DataFrame.
+
+    Args:
+        sample_ids: List of sample IDs that must be present in metadata.
+        metadata_df: DataFrame containing a 'sample_id' column.
+        max_missing_to_show: Maximum number of missing IDs to include in error message.
+
+    Raises:
+        ValueError: If any sample IDs are missing from metadata.
+    """
+    pass  # TRN-1: Implementation pending
+
+
 CATEGORICAL_HELP_TEXT = """
 Categorical Conditioning Decision Tree
 ======================================
