@@ -17,6 +17,7 @@ from aam.data.dataset import ASVDataset, collate_fn
 from aam.data.categorical import CategoricalEncoder
 from aam.data.normalization import CategoryNormalizer, CategoryWeighter, GlobalNormalizer, parse_target_transform
 from skbio import DistanceMatrix
+from aam.models.sample_sequence_encoder import CountEmbeddingMethod
 from aam.models.sequence_predictor import SequencePredictor
 from aam.models.transformer import AttnImplementation
 from aam.training.losses import MultiTaskLoss
@@ -571,7 +572,7 @@ def train(
     count_penalty: float,
     count_prediction: bool,
     count_embedding: bool,
-    count_embedding_method: str,
+    count_embedding_method: CountEmbeddingMethod,
     nuc_mask_ratio: float,
     nuc_mask_strategy: str,
     class_weights: Optional[str],
