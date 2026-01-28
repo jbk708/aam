@@ -738,7 +738,10 @@ def pretrain(
         # Only save final model on main process in distributed mode
         if not use_distributed or is_main_process():
             final_model_path = output_path / "pretrained_encoder.pt"
-            trainer.save_checkpoint(str(final_model_path), epoch=epochs - 1, best_val_loss=best_val_loss, metrics=history)
+            actual_last_epoch = start_epoch + len(history["train_loss"]) - 1
+            trainer.save_checkpoint(
+                str(final_model_path), epoch=actual_last_epoch, best_val_loss=best_val_loss, metrics=history
+            )
             logger.info(f"Pre-trained encoder saved to {final_model_path}")
 
         # Cleanup distributed training

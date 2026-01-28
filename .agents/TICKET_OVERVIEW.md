@@ -1,7 +1,7 @@
 # Ticket Overview
 
 **Last Updated:** 2026-01-28
-**Status:** 8 outstanding tickets (~17-23 hours) + backlog | **1 HIGH priority**
+**Status:** 6 outstanding tickets (~17-22 hours) + backlog | **1 HIGH priority**
 
 ---
 
@@ -9,7 +9,7 @@
 
 | File | Status | Tickets |
 |------|--------|---------|
-| `PRETRAIN_BUGFIX_TICKETS.md` | **4 remaining** | PRE-5 to PRE-8 |
+| `PRETRAIN_BUGFIX_TICKETS.md` | **2 remaining** | PRE-7, PRE-8 |
 | `DOCUMENTATION_TICKETS.md` | **COMPLETE** | DOC-5 to DOC-13 done |
 | `FUSION_CLEANUP_TICKETS.md` | Complete | All done |
 | `REGRESSOR_OPTIMIZATION_TICKETS.md` | 2 remaining | REG-9, **REG-10 (HIGH)** |
@@ -32,13 +32,13 @@
 Key difference: AAM ignores count magnitudes as input (only uses for masking).
 REG-10 adds count embeddings to close this gap.
 
-### LOW (7 tickets, ~13-18 hours)
+### LOW (4 tickets, ~12.5-16.5 hours)
 
 | Ticket | Description | Effort | File |
 |--------|-------------|--------|------|
 | ~~PRE-4~~ | ~~Remove unused profiler~~ | ~~0.25h~~ | ~~PRETRAIN_BUGFIX~~ |
-| **PRE-5** | Remove unused val_sampler | 0.25h | PRETRAIN_BUGFIX |
-| **PRE-6** | Track actual last epoch | 0.5h | PRETRAIN_BUGFIX |
+| ~~PRE-5~~ | ~~Remove unused val_sampler~~ | ~~0.25h~~ | ~~PRETRAIN_BUGFIX~~ |
+| ~~PRE-6~~ | ~~Track actual last epoch~~ | ~~0.5h~~ | ~~PRETRAIN_BUGFIX~~ |
 | **PRE-7** | CPU auto_batch_size warning | 0.25h | PRETRAIN_BUGFIX |
 | **PRE-8** | Logger existence check | 0.25h | PRETRAIN_BUGFIX |
 | **REG-9** | Mixture of Experts | 6-8h | REGRESSOR |
@@ -58,6 +58,8 @@ REG-10 adds count embeddings to close this gap.
 
 | Ticket | Description |
 |--------|-------------|
+| **PRE-6** | Track actual last epoch in final checkpoint |
+| **PRE-5** | Remove unused val_sampler variable |
 | **PRE-3** | Fix batch size semantics for distributed training |
 | **PRE-2** | Fix double checkpoint loading on resume |
 | **PRE-1** | Fix scheduler num_training_steps ignoring gradient accumulation |
