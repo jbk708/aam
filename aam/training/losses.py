@@ -156,27 +156,22 @@ def compute_pairwise_distances(
         )
         raise ValueError(error_msg)
 
-    # Normalize distances if requested (for UniFrac distances)
-    if normalize and normalization_method != "none":
-        if normalization_method == "tanh":
-            # Use tanh normalization with fixed scale to bound distances to [0, 1]
-            # Since Euclidean distances are always non-negative, tanh(x) for x >= 0 maps to [0, 1)
-            # No shift needed - tanh alone provides proper [0, 1) mapping for positive inputs
-            if distances.max() > 0:
-                # Normalize using tanh: for positive inputs, maps to [0, 1)
-                normalized = distances / scale
-                normalized_distances = torch.tanh(normalized)
-            else:
-                # All distances are 0, return zeros
-                normalized_distances = torch.zeros_like(distances)
-            # Preserve diagonal as 0.0 (distance from sample to itself)
-            eye_mask = torch.eye(distances.shape[0], device=distances.device, dtype=distances.dtype)
-            normalized_distances = normalized_distances * (1.0 - eye_mask)
-            return normalized_distances
-        else:
-            raise ValueError(f"Unknown normalization_method: {normalization_method}. Must be 'tanh' or 'none'.")
+    # Apply normalization if requested
+    if not normalize or normalization_method == "none":
+        return distances
 
-    return distances
+    if normalization_method != "tanh":
+        raise ValueError(f"Unknown normalization_method: {normalization_method}. Must be 'tanh' or 'none'.")
+
+    # Use tanh normalization with fixed scale to bound distances to [0, 1)
+    # Since Euclidean distances are always non-negative, tanh(x) for x >= 0 maps to [0, 1)
+    if distances.max() == 0:
+        return torch.zeros_like(distances)
+
+    normalized_distances = torch.tanh(distances / scale)
+    # Preserve diagonal as 0.0 (distance from sample to itself)
+    eye_mask = torch.eye(distances.shape[0], device=distances.device, dtype=distances.dtype)
+    return normalized_distances * (1.0 - eye_mask)
 
 
 def compute_asymmetric_loss(
