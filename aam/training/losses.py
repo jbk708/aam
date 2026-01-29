@@ -652,9 +652,7 @@ class MultiTaskLoss(nn.Module):
             # Compute pairwise distances from embeddings
             # Apply normalization based on distance_normalization setting
             try:
-                base_pred = compute_pairwise_distances(
-                    embeddings, normalization_method=self.distance_normalization
-                )
+                base_pred = compute_pairwise_distances(embeddings, normalization_method=self.distance_normalization)
             except ValueError:
                 # Re-raise with more context
                 import sys
