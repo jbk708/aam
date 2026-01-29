@@ -415,6 +415,12 @@ def print_categorical_help(ctx: click.Context, param: click.Parameter, value: bo
 @click.option("--target-penalty", default=1.0, type=float, help="Weight for target loss (default: 1.0)")
 @click.option("--count-penalty", default=1.0, type=float, help="Weight for count loss (default: 1.0)")
 @click.option(
+    "--distance-normalization",
+    default="tanh",
+    type=click.Choice(["tanh", "none"]),
+    help="Distance normalization method for UniFrac loss: tanh (default, bounds to [0,1)), none (raw Euclidean)",
+)
+@click.option(
     "--count-prediction/--no-count-prediction",
     default=True,
     help="Enable/disable count prediction head (default: enabled). Use --no-count-prediction to save memory.",
@@ -752,6 +758,7 @@ def train(
     nuc_penalty: float,
     target_penalty: float,
     count_penalty: float,
+    distance_normalization: str,
     count_prediction: bool,
     count_embedding: bool,
     count_embedding_method: CountEmbeddingMethod,
@@ -1545,6 +1552,7 @@ def train(
             over_penalty=over_penalty,
             under_penalty=under_penalty,
             loss_config=loss_config_dict,
+            distance_normalization=distance_normalization,
         )
         if loss_type == "quantile":
             logger.info(f"Using quantile loss with quantiles: {quantiles_list}")

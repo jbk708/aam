@@ -111,6 +111,12 @@ logger = logging.getLogger(__name__)
 @click.option("--nuc-penalty", default=1.0, type=float, help="Weight for nucleotide loss")
 @click.option("--count-penalty", default=1.0, type=float, help="Weight for count loss (default: 1.0)")
 @click.option(
+    "--distance-normalization",
+    default="tanh",
+    type=click.Choice(["tanh", "none"]),
+    help="Distance normalization method for UniFrac loss: tanh (default, bounds to [0,1)), none (raw Euclidean)",
+)
+@click.option(
     "--count-embedding/--no-count-embedding",
     default=False,
     help="Enable count magnitude embeddings. Incorporates ASV abundance as input features (default: disabled).",
@@ -259,6 +265,7 @@ def pretrain(
     penalty: float,
     nuc_penalty: float,
     count_penalty: float,
+    distance_normalization: str,
     count_embedding: bool,
     count_embedding_method: str,
     nuc_mask_ratio: float,
@@ -544,6 +551,7 @@ def pretrain(
             count_penalty=count_penalty,
             class_weights=None,
             target_loss_type="huber",  # Default for pretraining (not used, but consistent)
+            distance_normalization=distance_normalization,
         )
 
         # Auto batch size finding (only for single-GPU CUDA training)

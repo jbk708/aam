@@ -79,17 +79,22 @@ def compute_pairwise_distances(
     embeddings: torch.Tensor,
     normalize: bool = True,
     scale: float = 10.0,
+    normalization_method: str = "tanh",
 ) -> torch.Tensor:
     """Compute pairwise Euclidean distances from embeddings.
 
     Args:
         embeddings: Sample embeddings [batch_size, embedding_dim]
-        normalize: If True, normalize distances to [0, 1] using tanh with fixed scale (default: True)
-        scale: Scaling factor for normalization (default: 10.0).
+        normalize: If True, apply normalization according to normalization_method (default: True)
+        scale: Scaling factor for tanh normalization (default: 10.0).
+        normalization_method: Method for normalizing distances (default: "tanh").
+            - "tanh": Apply tanh(distance / scale) to bound to [0, 1)
+            - "none": Return raw Euclidean distances (no normalization)
 
     Returns:
         Pairwise distance matrix [batch_size, batch_size]
-        If normalize=True, distances are bounded to [0, 1] using tanh normalization
+        If normalize=True and normalization_method="tanh", distances are bounded to [0, 1)
+        If normalization_method="none", returns raw Euclidean distances
     """
     # Check for NaN or Inf in embeddings
     if torch.any(torch.isnan(embeddings)):
@@ -151,22 +156,25 @@ def compute_pairwise_distances(
         )
         raise ValueError(error_msg)
 
-    # Normalize distances to [0, 1] if requested (for UniFrac distances)
-    if normalize:
-        # Use tanh normalization with fixed scale to bound distances to [0, 1]
-        # Since Euclidean distances are always non-negative, tanh(x) for x >= 0 maps to [0, 1)
-        # No shift needed - tanh alone provides proper [0, 1) mapping for positive inputs
-        if distances.max() > 0:
-            # Normalize using tanh: for positive inputs, maps to [0, 1)
-            normalized = distances / scale
-            normalized_distances = torch.tanh(normalized)
+    # Normalize distances if requested (for UniFrac distances)
+    if normalize and normalization_method != "none":
+        if normalization_method == "tanh":
+            # Use tanh normalization with fixed scale to bound distances to [0, 1]
+            # Since Euclidean distances are always non-negative, tanh(x) for x >= 0 maps to [0, 1)
+            # No shift needed - tanh alone provides proper [0, 1) mapping for positive inputs
+            if distances.max() > 0:
+                # Normalize using tanh: for positive inputs, maps to [0, 1)
+                normalized = distances / scale
+                normalized_distances = torch.tanh(normalized)
+            else:
+                # All distances are 0, return zeros
+                normalized_distances = torch.zeros_like(distances)
+            # Preserve diagonal as 0.0 (distance from sample to itself)
+            eye_mask = torch.eye(distances.shape[0], device=distances.device, dtype=distances.dtype)
+            normalized_distances = normalized_distances * (1.0 - eye_mask)
+            return normalized_distances
         else:
-            # All distances are 0, return zeros
-            normalized_distances = torch.zeros_like(distances)
-        # Preserve diagonal as 0.0 (distance from sample to itself)
-        eye_mask = torch.eye(distances.shape[0], device=distances.device, dtype=distances.dtype)
-        normalized_distances = normalized_distances * (1.0 - eye_mask)
-        return normalized_distances
+            raise ValueError(f"Unknown normalization_method: {normalization_method}. Must be 'tanh' or 'none'.")
 
     return distances
 
@@ -244,6 +252,7 @@ class MultiTaskLoss(nn.Module):
     """Multi-task loss computation for AAM model."""
 
     VALID_LOSS_TYPES = ("mse", "mae", "huber", "quantile", "asymmetric")
+    VALID_DISTANCE_NORMALIZATIONS = ("tanh", "none")
 
     # Type annotations for attributes
     penalty: float
@@ -257,6 +266,7 @@ class MultiTaskLoss(nn.Module):
     under_penalty: float
     loss_config: Optional[Dict[str, str]]
     target_columns: Optional[List[str]]
+    distance_normalization: str
 
     def __init__(
         self,
@@ -271,6 +281,7 @@ class MultiTaskLoss(nn.Module):
         under_penalty: float = 1.0,
         loss_config: Optional[Dict[str, str]] = None,
         target_columns: Optional[List[str]] = None,
+        distance_normalization: str = "tanh",
     ):
         """Initialize MultiTaskLoss.
 
@@ -290,6 +301,9 @@ class MultiTaskLoss(nn.Module):
                 Columns not in config use target_loss_type as fallback.
             target_columns: Ordered list of target column names. Required when loss_config uses
                 column names instead of indices. E.g., ["pH", "temp"].
+            distance_normalization: Method for normalizing pairwise distances in UniFrac loss.
+                'tanh' (default): Apply tanh(distance / scale) to bound to [0, 1).
+                'none': Use raw Euclidean distances.
         """
         super().__init__()
         self.penalty = penalty
@@ -346,6 +360,13 @@ class MultiTaskLoss(nn.Module):
                     )
         self.loss_config = loss_config
         self.target_columns = target_columns
+
+        if distance_normalization not in self.VALID_DISTANCE_NORMALIZATIONS:
+            raise ValueError(
+                f"Invalid distance_normalization: {distance_normalization}. "
+                f"Must be one of: {self.VALID_DISTANCE_NORMALIZATIONS}"
+            )
+        self.distance_normalization = distance_normalization
 
     def _get_loss_type_for_column(self, col_idx: int) -> str:
         """Get loss type for a specific output column.
@@ -629,9 +650,11 @@ class MultiTaskLoss(nn.Module):
                         base_true, target_mask = _gather_target_matrices(base_true, world_size)
 
             # Compute pairwise distances from embeddings
-            # Normalize to [0, 1] for UniFrac distances (UniFrac distances are bounded)
+            # Apply normalization based on distance_normalization setting
             try:
-                base_pred = compute_pairwise_distances(embeddings)
+                base_pred = compute_pairwise_distances(
+                    embeddings, normalization_method=self.distance_normalization
+                )
             except ValueError:
                 # Re-raise with more context
                 import sys
