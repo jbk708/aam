@@ -3,7 +3,7 @@
 import torch
 import torch.nn as nn
 import torch.distributed as dist
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Union
 
 
 def _format_tensor_stats(tensor: torch.Tensor) -> str:
@@ -78,7 +78,7 @@ def _gather_target_matrices(
 def compute_pairwise_distances(
     embeddings: torch.Tensor,
     normalize: bool = True,
-    scale: float = 10.0,
+    scale: Union[float, torch.Tensor] = 10.0,
     normalization_method: str = "none",
 ) -> torch.Tensor:
     """Compute pairwise Euclidean distances from embeddings.
@@ -86,14 +86,15 @@ def compute_pairwise_distances(
     Args:
         embeddings: Sample embeddings [batch_size, embedding_dim]
         normalize: If True, apply normalization according to normalization_method (default: True)
-        scale: Scaling factor for tanh normalization (default: 10.0).
-        normalization_method: Method for normalizing distances (default: "tanh").
-            - "tanh": Apply tanh(distance / scale) to bound to [0, 1)
+        scale: Scaling factor for tanh normalization (default: 10.0). Can be float or Tensor.
+        normalization_method: Method for normalizing distances (default: "none").
+            - "tanh": Apply tanh(distance / scale) to bound to [0, 1) with fixed scale
             - "none": Return raw Euclidean distances (no normalization)
+            - "learnable": Like tanh, but scale is expected to be a learnable Tensor
 
     Returns:
         Pairwise distance matrix [batch_size, batch_size]
-        If normalize=True and normalization_method="tanh", distances are bounded to [0, 1)
+        If normalize=True and normalization_method in ("tanh", "learnable"), distances are bounded to [0, 1)
         If normalization_method="none", returns raw Euclidean distances
     """
     # Check for NaN or Inf in embeddings
@@ -160,10 +161,12 @@ def compute_pairwise_distances(
     if not normalize or normalization_method == "none":
         return distances
 
-    if normalization_method != "tanh":
-        raise ValueError(f"Unknown normalization_method: {normalization_method}. Must be 'tanh' or 'none'.")
+    if normalization_method not in ("tanh", "learnable"):
+        raise ValueError(f"Unknown normalization_method: {normalization_method}. Must be 'tanh', 'learnable', or 'none'.")
 
-    # Use tanh normalization with fixed scale to bound distances to [0, 1)
+    # Use tanh normalization to bound distances to [0, 1)
+    # For "learnable", scale is expected to be a learnable Tensor
+    # For "tanh", scale is a fixed float (default 10.0)
     # Since Euclidean distances are always non-negative, tanh(x) for x >= 0 maps to [0, 1)
     if distances.max() == 0:
         return torch.zeros_like(distances)
@@ -247,7 +250,7 @@ class MultiTaskLoss(nn.Module):
     """Multi-task loss computation for AAM model."""
 
     VALID_LOSS_TYPES = ("mse", "mae", "huber", "quantile", "asymmetric")
-    VALID_DISTANCE_NORMALIZATIONS = ("tanh", "none")
+    VALID_DISTANCE_NORMALIZATIONS = ("tanh", "none", "learnable")
 
     # Type annotations for attributes
     penalty: float
@@ -578,6 +581,7 @@ class MultiTaskLoss(nn.Module):
         encoder_type: str = "unifrac",
         embeddings: Optional[torch.Tensor] = None,
         gather_for_distributed: bool = False,
+        distance_scale: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """Compute MSE loss for base prediction (UniFrac/Faith PD).
 
@@ -589,6 +593,8 @@ class MultiTaskLoss(nn.Module):
             embeddings: Optional embeddings [batch_size, embedding_dim] for UniFrac distance computation
             gather_for_distributed: If True and in distributed mode, gather embeddings and targets
                 across all ranks for full pairwise distance computation. Used for FSDP pretraining.
+            distance_scale: Optional learnable scale tensor for "learnable" normalization mode.
+                Required when distance_normalization="learnable".
 
         Returns:
             Base loss scalar tensor
@@ -647,7 +653,18 @@ class MultiTaskLoss(nn.Module):
             # Compute pairwise distances from embeddings
             # Apply normalization based on distance_normalization setting
             try:
-                base_pred = compute_pairwise_distances(embeddings, normalization_method=self.distance_normalization)
+                # For learnable normalization, use external scale from model
+                scale_value: Union[float, torch.Tensor] = 10.0
+                if self.distance_normalization == "learnable":
+                    if distance_scale is None:
+                        raise ValueError(
+                            "distance_scale must be provided when distance_normalization='learnable'. "
+                            "Ensure the model has learnable_distance_scale=True."
+                        )
+                    scale_value = distance_scale
+                base_pred = compute_pairwise_distances(
+                    embeddings, normalization_method=self.distance_normalization, scale=scale_value
+                )
             except ValueError:
                 # Re-raise with more context
                 import sys
@@ -919,12 +936,15 @@ class MultiTaskLoss(nn.Module):
                 embeddings = outputs["embeddings"]
                 # Pass dummy base_pred (will be replaced by computed distances in compute_base_loss)
                 base_pred = torch.zeros(1, device=embeddings.device)
+                # Pass distance_scale for learnable normalization mode
+                distance_scale = outputs.get("distance_scale")
                 losses["unifrac_loss"] = self.compute_base_loss(
                     base_pred,
                     targets["base_target"],
                     encoder_type=encoder_type,
                     embeddings=embeddings,
                     gather_for_distributed=gather_for_distributed,
+                    distance_scale=distance_scale,
                 )
             elif "base_prediction" in outputs:
                 # Legacy approach: use base_prediction directly

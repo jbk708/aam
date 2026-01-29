@@ -119,6 +119,7 @@ class SequencePredictor(nn.Module):
         count_prediction: bool = True,
         count_embedding: bool = False,
         count_embedding_method: CountEmbeddingMethod = "add",
+        learnable_distance_scale: bool = False,
     ):
         """Initialize SequencePredictor.
 
@@ -199,6 +200,8 @@ class SequencePredictor(nn.Module):
                 - 'add': asv_emb = seq_emb + count_emb
                 - 'concat': asv_emb = proj(cat(seq_emb, count_emb))
                 - 'film': asv_emb = seq_emb * scale + shift (FiLM-style modulation)
+            learnable_distance_scale: Whether to add a learnable scale parameter for distance
+                normalization (default: False). Used with distance_normalization="learnable".
         """
         super().__init__()
 
@@ -236,6 +239,7 @@ class SequencePredictor(nn.Module):
                 mask_strategy=mask_strategy,
                 count_embedding=count_embedding,
                 count_embedding_method=count_embedding_method,
+                learnable_distance_scale=learnable_distance_scale,
             )
             self.embedding_dim = embedding_dim
         else:

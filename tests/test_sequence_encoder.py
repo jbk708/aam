@@ -558,3 +558,108 @@ class TestLazySampleEmbeddings:
             if param.requires_grad:
                 assert param.grad is not None
                 assert not torch.isnan(param.grad).any()
+
+
+class TestLearnableDistanceScale:
+    """Tests for PRE-2: Learnable distance scale parameter."""
+
+    def test_learnable_distance_scale_disabled_by_default(self):
+        """Test that learnable_distance_scale is disabled by default."""
+        encoder = SequenceEncoder(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            encoder_type="unifrac",
+        )
+        assert encoder.log_distance_scale is None
+
+    def test_learnable_distance_scale_enabled(self):
+        """Test that learnable_distance_scale creates an nn.Parameter when enabled."""
+        encoder = SequenceEncoder(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            encoder_type="unifrac",
+            learnable_distance_scale=True,
+        )
+        assert encoder.log_distance_scale is not None
+        assert isinstance(encoder.log_distance_scale, nn.Parameter)
+        # Initial value should be log(10) ≈ 2.3 so exp(log_scale) ≈ 10.0
+        assert torch.isclose(encoder.log_distance_scale.exp(), torch.tensor(10.0), rtol=0.1)
+
+    def test_distance_scale_in_forward_output(self, sample_tokens):
+        """Test that distance_scale is returned in forward output when enabled."""
+        encoder = SequenceEncoder(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            encoder_type="unifrac",
+            learnable_distance_scale=True,
+        )
+        result = encoder(sample_tokens)
+        assert "distance_scale" in result
+        # Scale should be exp(log_scale) ≈ 10.0
+        assert torch.isclose(result["distance_scale"], torch.tensor(10.0), rtol=0.1)
+
+    def test_distance_scale_not_in_output_when_disabled(self, sample_tokens):
+        """Test that distance_scale is NOT in forward output when disabled."""
+        encoder = SequenceEncoder(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            encoder_type="unifrac",
+            learnable_distance_scale=False,
+        )
+        result = encoder(sample_tokens)
+        assert "distance_scale" not in result
+
+    def test_learnable_scale_requires_grad(self):
+        """Test that learnable scale parameter has requires_grad=True."""
+        encoder = SequenceEncoder(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            encoder_type="unifrac",
+            learnable_distance_scale=True,
+        )
+        assert encoder.log_distance_scale.requires_grad is True
+
+    def test_learnable_scale_in_state_dict(self):
+        """Test that learnable scale is saved in state_dict."""
+        encoder = SequenceEncoder(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            encoder_type="unifrac",
+            learnable_distance_scale=True,
+        )
+        state_dict = encoder.state_dict()
+        assert "log_distance_scale" in state_dict
+
+    def test_learnable_scale_updates_during_training(self, sample_tokens):
+        """Test that learnable scale can be updated via gradient descent."""
+        encoder = SequenceEncoder(
+            embedding_dim=64,
+            max_bp=150,
+            token_limit=1024,
+            encoder_type="unifrac",
+            learnable_distance_scale=True,
+        )
+        encoder.train()
+
+        initial_scale = encoder.log_distance_scale.clone()
+        result = encoder(sample_tokens)
+
+        # Create a dummy loss that depends on the scale
+        loss = result["embeddings"].sum() + result["distance_scale"]
+        loss.backward()
+
+        # log_distance_scale should have a gradient
+        assert encoder.log_distance_scale.grad is not None
+        assert encoder.log_distance_scale.grad.abs() > 0
+
+        # Simulate optimizer step
+        with torch.no_grad():
+            encoder.log_distance_scale -= 0.1 * encoder.log_distance_scale.grad
+
+        assert not torch.equal(encoder.log_distance_scale, initial_scale)

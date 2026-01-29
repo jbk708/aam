@@ -1492,6 +1492,123 @@ class TestBaseLoss:
         with pytest.raises(ValueError, match="Invalid distance_normalization"):
             MultiTaskLoss(distance_normalization="invalid")
 
+    def test_compute_pairwise_distances_learnable_mode(self):
+        """Test that normalization_method='learnable' uses external scale with tanh."""
+        from aam.training.losses import compute_pairwise_distances
+
+        batch_size = 4
+        embedding_dim = 8
+        embeddings = torch.randn(batch_size, embedding_dim)
+
+        # Test with learnable mode and external scale
+        scale = torch.tensor(10.0)
+        distances_learnable = compute_pairwise_distances(
+            embeddings, normalization_method="learnable", scale=scale
+        )
+
+        # Distances should be bounded to [0, 1) like tanh mode
+        assert torch.all(distances_learnable >= 0.0)
+        assert torch.all(distances_learnable < 1.0)
+
+        # Should match tanh with same scale
+        distances_tanh = compute_pairwise_distances(
+            embeddings, normalization_method="tanh", scale=10.0
+        )
+        assert torch.allclose(distances_learnable, distances_tanh)
+
+    def test_compute_pairwise_distances_learnable_different_scales(self):
+        """Test that learnable mode respects different scale values."""
+        from aam.training.losses import compute_pairwise_distances
+
+        batch_size = 4
+        embedding_dim = 8
+        embeddings = torch.randn(batch_size, embedding_dim)
+
+        scale_5 = torch.tensor(5.0)
+        scale_20 = torch.tensor(20.0)
+
+        distances_5 = compute_pairwise_distances(
+            embeddings, normalization_method="learnable", scale=scale_5
+        )
+        distances_20 = compute_pairwise_distances(
+            embeddings, normalization_method="learnable", scale=scale_20
+        )
+
+        # With smaller scale, tanh saturates faster (larger normalized values)
+        # Compare off-diagonal means
+        mask = 1 - torch.eye(batch_size)
+        mean_5 = (distances_5 * mask).sum() / mask.sum()
+        mean_20 = (distances_20 * mask).sum() / mask.sum()
+        assert mean_5 > mean_20  # Smaller scale -> more saturation -> larger values
+
+    def test_compute_pairwise_distances_learnable_gradient_flow(self):
+        """Test that gradients flow through learnable scale."""
+        from aam.training.losses import compute_pairwise_distances
+
+        batch_size = 4
+        embedding_dim = 8
+        embeddings = torch.randn(batch_size, embedding_dim, requires_grad=True)
+        scale = torch.tensor(10.0, requires_grad=True)
+
+        distances = compute_pairwise_distances(
+            embeddings, normalization_method="learnable", scale=scale
+        )
+
+        # Compute loss using off-diagonal elements
+        triu_indices = torch.triu_indices(batch_size, batch_size, offset=1)
+        off_diagonal = distances[triu_indices[0], triu_indices[1]]
+        loss = off_diagonal.sum()
+        loss.backward()
+
+        # Check gradients exist for both embeddings and scale
+        assert embeddings.grad is not None
+        assert scale.grad is not None
+        assert scale.grad.abs() > 1e-8, f"Scale gradient too small: {scale.grad}"
+
+    def test_multi_task_loss_learnable_distance_normalization(self):
+        """Test MultiTaskLoss with learnable distance normalization."""
+        from aam.training.losses import MultiTaskLoss
+
+        loss_fn = MultiTaskLoss(distance_normalization="learnable")
+        assert loss_fn.distance_normalization == "learnable"
+
+    def test_base_loss_with_learnable_normalization(self):
+        """Test base loss uses learnable normalization with external scale."""
+        from aam.training.losses import MultiTaskLoss, compute_pairwise_distances
+
+        batch_size = 4
+        embedding_dim = 8
+        embeddings = torch.randn(batch_size, embedding_dim)
+        scale = torch.tensor(10.0)
+
+        # Create base_true in [0, 1] range
+        base_true = torch.rand(batch_size, batch_size)
+        base_true = (base_true + base_true.T) / 2
+        base_true.fill_diagonal_(0.0)
+
+        loss_fn = MultiTaskLoss(distance_normalization="learnable")
+        loss = loss_fn.compute_base_loss(
+            torch.zeros(1),  # Dummy base_pred
+            base_true,
+            encoder_type="unifrac",
+            embeddings=embeddings,
+            distance_scale=scale,
+        )
+
+        assert loss.dim() == 0
+        assert loss.item() >= 0
+
+        # Verify it matches expected computation
+        learnable_distances = compute_pairwise_distances(
+            embeddings, normalization_method="learnable", scale=scale
+        )
+        triu_indices = torch.triu_indices(batch_size, batch_size, offset=1)
+        expected_loss = nn.functional.mse_loss(
+            learnable_distances[triu_indices[0], triu_indices[1]],
+            base_true[triu_indices[0], triu_indices[1]],
+        )
+        assert torch.allclose(loss, expected_loss)
+
 
 class TestNucleotideLoss:
     """Test nucleotide loss computation."""
