@@ -79,7 +79,7 @@ def compute_pairwise_distances(
     embeddings: torch.Tensor,
     normalize: bool = True,
     scale: float = 10.0,
-    normalization_method: str = "tanh",
+    normalization_method: str = "none",
 ) -> torch.Tensor:
     """Compute pairwise Euclidean distances from embeddings.
 
@@ -276,7 +276,7 @@ class MultiTaskLoss(nn.Module):
         under_penalty: float = 1.0,
         loss_config: Optional[Dict[str, str]] = None,
         target_columns: Optional[List[str]] = None,
-        distance_normalization: str = "tanh",
+        distance_normalization: str = "none",
     ):
         """Initialize MultiTaskLoss.
 

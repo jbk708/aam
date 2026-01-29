@@ -416,9 +416,9 @@ def print_categorical_help(ctx: click.Context, param: click.Parameter, value: bo
 @click.option("--count-penalty", default=1.0, type=float, help="Weight for count loss (default: 1.0)")
 @click.option(
     "--distance-normalization",
-    default="tanh",
+    default="none",
     type=click.Choice(["tanh", "none"]),
-    help="Distance normalization method for UniFrac loss: tanh (default, bounds to [0,1)), none (raw Euclidean)",
+    help="Distance normalization method for UniFrac loss: none (default, raw Euclidean), tanh (bounds to [0,1))",
 )
 @click.option(
     "--count-prediction/--no-count-prediction",

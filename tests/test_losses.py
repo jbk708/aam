@@ -1038,14 +1038,14 @@ class TestPairwiseDistances:
         assert torch.allclose(distances[0, 0], torch.tensor(0.0))  # Distance to self is 0
 
     def test_compute_pairwise_distances_normalized(self):
-        """Test that normalized distances are bounded to [0, 1]."""
+        """Test that tanh-normalized distances are bounded to [0, 1]."""
         from aam.training.losses import compute_pairwise_distances
 
         batch_size = 4
         embedding_dim = 8
         embeddings = torch.randn(batch_size, embedding_dim)
 
-        distances = compute_pairwise_distances(embeddings)
+        distances = compute_pairwise_distances(embeddings, normalization_method="tanh")
 
         assert distances.shape == (batch_size, batch_size)
         # All distances should be in [0, 1]
@@ -1057,14 +1057,14 @@ class TestPairwiseDistances:
         assert torch.allclose(distances, distances.T)
 
     def test_compute_pairwise_distances_normalized_gradient_flow(self):
-        """Test that normalized distances maintain healthy gradient flow (no saturation)."""
+        """Test that tanh-normalized distances maintain healthy gradient flow (no saturation)."""
         from aam.training.losses import compute_pairwise_distances
 
         batch_size = 4
         embedding_dim = 8
         embeddings = torch.randn(batch_size, embedding_dim, requires_grad=True)
 
-        distances = compute_pairwise_distances(embeddings)
+        distances = compute_pairwise_distances(embeddings, normalization_method="tanh")
 
         # Compute a loss using off-diagonal elements to ensure non-zero gradients
         # Sum only off-diagonal elements to avoid gradient cancellation from symmetry
@@ -1081,7 +1081,7 @@ class TestPairwiseDistances:
         assert max_grad > 1e-5, f"Gradients should be healthy (max={max_grad:.2e}), not saturated"
 
     def test_compute_pairwise_distances_normalized_different_scales(self):
-        """Test that different scale values affect normalization (tanh-based)."""
+        """Test that different scale values affect tanh normalization."""
         from aam.training.losses import compute_pairwise_distances
 
         batch_size = 4
@@ -1089,9 +1089,9 @@ class TestPairwiseDistances:
         embeddings = torch.randn(batch_size, embedding_dim)
 
         # Test with different scale values (tanh normalization uses scale parameter)
-        distances_scale_1 = compute_pairwise_distances(embeddings, scale=1.0)
-        distances_scale_5 = compute_pairwise_distances(embeddings, scale=5.0)
-        distances_scale_10 = compute_pairwise_distances(embeddings, scale=10.0)
+        distances_scale_1 = compute_pairwise_distances(embeddings, scale=1.0, normalization_method="tanh")
+        distances_scale_5 = compute_pairwise_distances(embeddings, scale=5.0, normalization_method="tanh")
+        distances_scale_10 = compute_pairwise_distances(embeddings, scale=10.0, normalization_method="tanh")
 
         # All should be in [0, 1]
         assert torch.all(distances_scale_1 >= 0.0) and torch.all(distances_scale_1 <= 1.0)
@@ -1107,7 +1107,7 @@ class TestPairwiseDistances:
         assert not torch.allclose(distances_scale_1, distances_scale_10, atol=1e-6)
 
     def test_compute_pairwise_distances_no_saturation(self):
-        """Test that normalized distances do not saturate at ~0.55 (no sigmoid saturation)."""
+        """Test that tanh-normalized distances do not saturate at ~0.55 (no sigmoid saturation)."""
         from aam.training.losses import compute_pairwise_distances
 
         batch_size = 8
@@ -1117,7 +1117,7 @@ class TestPairwiseDistances:
         # Use diverse embeddings to ensure varied distances
         embeddings = torch.randn(batch_size, embedding_dim) * 2.0
 
-        distances = compute_pairwise_distances(embeddings)  # Use default scale=10.0
+        distances = compute_pairwise_distances(embeddings, normalization_method="tanh")  # Use default scale=10.0
 
         # Extract off-diagonal elements
         triu_indices = torch.triu_indices(batch_size, batch_size, offset=1, device=distances.device)
@@ -1176,16 +1176,14 @@ class TestPairwiseDistances:
         torch.manual_seed(42)
         embeddings = torch.randn(batch_size, embedding_dim)
 
-        # normalization_method="tanh" is the default
+        # normalization_method="tanh" bounds distances to [0, 1)
         distances_tanh = compute_pairwise_distances(embeddings, normalization_method="tanh")
-        distances_default = compute_pairwise_distances(embeddings)
-
-        # Should be identical to default behavior
-        assert torch.allclose(distances_tanh, distances_default)
 
         # Distances should be bounded to [0, 1)
         assert torch.all(distances_tanh >= 0.0)
         assert torch.all(distances_tanh < 1.0)
+        # Diagonal should be 0.0
+        assert torch.allclose(torch.diag(distances_tanh), torch.zeros(batch_size))
 
     def test_compute_pairwise_distances_invalid_normalization_method(self):
         """Test that invalid normalization_method raises ValueError."""
@@ -1254,9 +1252,9 @@ class TestBaseLoss:
         expected_loss = nn.functional.mse_loss(computed_masked, base_true_masked)
         assert torch.allclose(loss, expected_loss)
 
-    def test_base_loss_unifrac_with_embeddings_normalized(self, loss_fn):
-        """Test that UniFrac loss with embeddings produces normalized distances in [0, 1]."""
-        from aam.training.losses import compute_pairwise_distances
+    def test_base_loss_unifrac_with_embeddings_tanh_normalized(self):
+        """Test that UniFrac loss with tanh normalization produces distances in [0, 1]."""
+        from aam.training.losses import compute_pairwise_distances, MultiTaskLoss
 
         batch_size = 4
         embedding_dim = 8
@@ -1267,18 +1265,21 @@ class TestBaseLoss:
         base_true = (base_true + base_true.T) / 2
         base_true.fill_diagonal_(0.0)
 
-        # Compute loss (should use normalized distances internally)
-        loss = loss_fn.compute_base_loss(
+        # Create loss with tanh normalization
+        loss_fn_tanh = MultiTaskLoss(distance_normalization="tanh")
+
+        # Compute loss (should use tanh-normalized distances internally)
+        loss = loss_fn_tanh.compute_base_loss(
             torch.zeros(1),  # Dummy base_pred (ignored when embeddings provided)
             base_true,
             encoder_type="unifrac",
             embeddings=embeddings,
         )
 
-        # Verify that computed distances are normalized
-        computed_distances = compute_pairwise_distances(embeddings, normalize=True)
+        # Verify that computed distances are normalized to [0, 1)
+        computed_distances = compute_pairwise_distances(embeddings, normalization_method="tanh")
         assert torch.all(computed_distances >= 0.0)
-        assert torch.all(computed_distances <= 1.0)
+        assert torch.all(computed_distances < 1.0)
 
         # Loss should be valid
         assert loss.dim() == 0
