@@ -661,6 +661,11 @@ class MultiTaskLoss(nn.Module):
                             "distance_scale must be provided when distance_normalization='learnable'. "
                             "Ensure the model has learnable_distance_scale=True."
                         )
+                    # Handle DataParallel: distance_scale may be gathered from multiple GPUs
+                    # into a tensor of shape [num_gpus]. All values should be identical since
+                    # it's a shared parameter, so take the first element.
+                    if distance_scale.dim() > 0 and distance_scale.numel() > 1:
+                        distance_scale = distance_scale[0]
                     scale_value = distance_scale
                 base_pred = compute_pairwise_distances(
                     embeddings, normalization_method=self.distance_normalization, scale=scale_value

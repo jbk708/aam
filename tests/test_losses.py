@@ -1609,6 +1609,51 @@ class TestBaseLoss:
         )
         assert torch.allclose(loss, expected_loss)
 
+    def test_base_loss_learnable_with_gathered_scale(self):
+        """Test base loss handles DataParallel gathered distance_scale tensor.
+
+        With DataParallel, distance_scale is gathered from all GPUs into a tensor
+        of shape [num_gpus] instead of a scalar. The loss function should handle
+        this by taking the first element.
+        """
+        from aam.training.losses import MultiTaskLoss, compute_pairwise_distances
+
+        batch_size = 4
+        embedding_dim = 8
+        embeddings = torch.randn(batch_size, embedding_dim)
+
+        # Simulate DataParallel gathering: 4 GPUs each return the same scale
+        gathered_scale = torch.tensor([10.0, 10.0, 10.0, 10.0])
+
+        # Create base_true in [0, 1] range
+        base_true = torch.rand(batch_size, batch_size)
+        base_true = (base_true + base_true.T) / 2
+        base_true.fill_diagonal_(0.0)
+
+        loss_fn = MultiTaskLoss(distance_normalization="learnable")
+        loss = loss_fn.compute_base_loss(
+            torch.zeros(1),  # Dummy base_pred
+            base_true,
+            encoder_type="unifrac",
+            embeddings=embeddings,
+            distance_scale=gathered_scale,
+        )
+
+        assert loss.dim() == 0
+        assert loss.item() >= 0
+
+        # Verify it matches expected computation with scalar scale
+        scalar_scale = torch.tensor(10.0)
+        learnable_distances = compute_pairwise_distances(
+            embeddings, normalization_method="learnable", scale=scalar_scale
+        )
+        triu_indices = torch.triu_indices(batch_size, batch_size, offset=1)
+        expected_loss = nn.functional.mse_loss(
+            learnable_distances[triu_indices[0], triu_indices[1]],
+            base_true[triu_indices[0], triu_indices[1]],
+        )
+        assert torch.allclose(loss, expected_loss)
+
 
 class TestNucleotideLoss:
     """Test nucleotide loss computation."""
