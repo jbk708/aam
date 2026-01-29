@@ -1654,6 +1654,212 @@ class TestBaseLoss:
         )
         assert torch.allclose(loss, expected_loss)
 
+    # --- Batch normalization tests (PRE-3) ---
+
+    def test_compute_pairwise_distances_batch_normalization(self):
+        """Test that batch normalization divides by batch max."""
+        from aam.training.losses import compute_pairwise_distances
+
+        batch_size = 4
+        embedding_dim = 8
+        embeddings = torch.randn(batch_size, embedding_dim)
+
+        distances = compute_pairwise_distances(
+            embeddings, normalization_method="batch"
+        )
+
+        # All distances should be in [0, 1]
+        assert distances.min() >= 0.0
+        assert distances.max() <= 1.0
+
+        # Maximum off-diagonal distance should be 1.0 (normalized by max)
+        triu_indices = torch.triu_indices(batch_size, batch_size, offset=1)
+        off_diagonal = distances[triu_indices[0], triu_indices[1]]
+        assert torch.isclose(off_diagonal.max(), torch.tensor(1.0), atol=1e-6)
+
+        # Diagonal should be 0.0
+        assert torch.allclose(distances.diag(), torch.zeros(batch_size))
+
+    def test_compute_pairwise_distances_batch_p95_normalization(self):
+        """Test that batch-p95 normalization divides by 95th percentile."""
+        from aam.training.losses import compute_pairwise_distances
+
+        batch_size = 8
+        embedding_dim = 8
+        # Use fixed seed for reproducibility
+        torch.manual_seed(42)
+        embeddings = torch.randn(batch_size, embedding_dim)
+
+        distances = compute_pairwise_distances(
+            embeddings, normalization_method="batch-p95"
+        )
+
+        # Distances should be mostly in [0, 1] but can exceed 1.0 for outliers
+        assert distances.min() >= 0.0
+
+        # At least 95% of distances should be <= 1.0
+        triu_indices = torch.triu_indices(batch_size, batch_size, offset=1)
+        off_diagonal = distances[triu_indices[0], triu_indices[1]]
+        fraction_below_one = (off_diagonal <= 1.0).float().mean()
+        assert fraction_below_one >= 0.90  # Allow some tolerance
+
+        # Diagonal should be 0.0
+        assert torch.allclose(distances.diag(), torch.zeros(batch_size))
+
+    def test_compute_pairwise_distances_batch_all_zeros(self):
+        """Test batch normalization handles all-zero embeddings."""
+        from aam.training.losses import compute_pairwise_distances
+
+        batch_size = 4
+        embedding_dim = 8
+        embeddings = torch.zeros(batch_size, embedding_dim)
+
+        distances = compute_pairwise_distances(
+            embeddings, normalization_method="batch"
+        )
+
+        # All distances should be 0.0 when all embeddings are identical
+        assert torch.allclose(distances, torch.zeros_like(distances))
+
+    def test_compute_pairwise_distances_batch_single_sample(self):
+        """Test batch normalization handles single sample."""
+        from aam.training.losses import compute_pairwise_distances
+
+        embedding_dim = 8
+        embeddings = torch.randn(1, embedding_dim)
+
+        distances = compute_pairwise_distances(
+            embeddings, normalization_method="batch"
+        )
+
+        # Single sample: only diagonal element which is 0.0
+        assert distances.shape == (1, 1)
+        assert distances[0, 0] == 0.0
+
+    def test_compute_pairwise_distances_batch_gradient_flow(self):
+        """Test that gradients flow through batch normalization."""
+        from aam.training.losses import compute_pairwise_distances
+
+        batch_size = 4
+        embedding_dim = 8
+        embeddings = torch.randn(batch_size, embedding_dim, requires_grad=True)
+
+        distances = compute_pairwise_distances(
+            embeddings, normalization_method="batch"
+        )
+
+        # Compute loss using off-diagonal elements
+        triu_indices = torch.triu_indices(batch_size, batch_size, offset=1)
+        off_diagonal = distances[triu_indices[0], triu_indices[1]]
+        loss = off_diagonal.sum()
+        loss.backward()
+
+        # Check gradients exist
+        assert embeddings.grad is not None
+        assert not torch.all(embeddings.grad == 0)
+
+    def test_compute_pairwise_distances_batch_p95_gradient_flow(self):
+        """Test that gradients flow through batch-p95 normalization."""
+        from aam.training.losses import compute_pairwise_distances
+
+        batch_size = 8
+        embedding_dim = 8
+        embeddings = torch.randn(batch_size, embedding_dim, requires_grad=True)
+
+        distances = compute_pairwise_distances(
+            embeddings, normalization_method="batch-p95"
+        )
+
+        # Compute loss using off-diagonal elements
+        triu_indices = torch.triu_indices(batch_size, batch_size, offset=1)
+        off_diagonal = distances[triu_indices[0], triu_indices[1]]
+        loss = off_diagonal.sum()
+        loss.backward()
+
+        # Check gradients exist
+        assert embeddings.grad is not None
+        assert not torch.all(embeddings.grad == 0)
+
+    def test_multi_task_loss_batch_distance_normalization(self):
+        """Test MultiTaskLoss accepts batch distance normalization."""
+        from aam.training.losses import MultiTaskLoss
+
+        loss_fn = MultiTaskLoss(distance_normalization="batch")
+        assert loss_fn.distance_normalization == "batch"
+
+        loss_fn_p95 = MultiTaskLoss(distance_normalization="batch-p95")
+        assert loss_fn_p95.distance_normalization == "batch-p95"
+
+    def test_base_loss_with_batch_normalization(self):
+        """Test base loss uses batch normalization."""
+        from aam.training.losses import MultiTaskLoss, compute_pairwise_distances
+
+        batch_size = 4
+        embedding_dim = 8
+        embeddings = torch.randn(batch_size, embedding_dim)
+
+        # Create base_true in [0, 1] range
+        base_true = torch.rand(batch_size, batch_size)
+        base_true = (base_true + base_true.T) / 2
+        base_true.fill_diagonal_(0.0)
+
+        loss_fn = MultiTaskLoss(distance_normalization="batch")
+        loss = loss_fn.compute_base_loss(
+            torch.zeros(1),  # Dummy base_pred
+            base_true,
+            encoder_type="unifrac",
+            embeddings=embeddings,
+        )
+
+        assert loss.dim() == 0
+        assert loss.item() >= 0
+
+        # Verify it matches expected computation
+        batch_distances = compute_pairwise_distances(
+            embeddings, normalization_method="batch"
+        )
+        triu_indices = torch.triu_indices(batch_size, batch_size, offset=1)
+        expected_loss = nn.functional.mse_loss(
+            batch_distances[triu_indices[0], triu_indices[1]],
+            base_true[triu_indices[0], triu_indices[1]],
+        )
+        assert torch.allclose(loss, expected_loss)
+
+    def test_base_loss_with_batch_p95_normalization(self):
+        """Test base loss uses batch-p95 normalization."""
+        from aam.training.losses import MultiTaskLoss, compute_pairwise_distances
+
+        batch_size = 8
+        embedding_dim = 8
+        embeddings = torch.randn(batch_size, embedding_dim)
+
+        # Create base_true - can exceed 1.0 for batch-p95
+        base_true = torch.rand(batch_size, batch_size) * 1.2
+        base_true = (base_true + base_true.T) / 2
+        base_true.fill_diagonal_(0.0)
+
+        loss_fn = MultiTaskLoss(distance_normalization="batch-p95")
+        loss = loss_fn.compute_base_loss(
+            torch.zeros(1),  # Dummy base_pred
+            base_true,
+            encoder_type="unifrac",
+            embeddings=embeddings,
+        )
+
+        assert loss.dim() == 0
+        assert loss.item() >= 0
+
+        # Verify it matches expected computation
+        batch_distances = compute_pairwise_distances(
+            embeddings, normalization_method="batch-p95"
+        )
+        triu_indices = torch.triu_indices(batch_size, batch_size, offset=1)
+        expected_loss = nn.functional.mse_loss(
+            batch_distances[triu_indices[0], triu_indices[1]],
+            base_true[triu_indices[0], triu_indices[1]],
+        )
+        assert torch.allclose(loss, expected_loss)
+
 
 class TestNucleotideLoss:
     """Test nucleotide loss computation."""
