@@ -83,6 +83,33 @@ aam train \
 | `--target-penalty` | Weight for target loss | 1.0 |
 | `--count-penalty` | Weight for count loss | 1.0 |
 
+### Distance Normalization
+
+Control how embedding distances are normalized for UniFrac loss with `--distance-normalization`:
+
+| Method | Description | Use Case |
+|--------|-------------|----------|
+| `none` | Raw Euclidean distances | **Default.** Let the network learn natural distance scaling |
+| `tanh` | `tanh(distance / 10)` bounds to [0, 1) | Legacy mode, may cause gradient saturation for high UniFrac targets |
+| `learnable` | Like tanh but with trainable scale parameter | Adaptive scaling, similar to temperature in contrastive learning |
+
+**Background:** The `tanh` normalization can cause gradient imbalance—high UniFrac targets (0.8-0.95) receive weak gradients due to tanh saturation, while low targets (0.1-0.5) have healthy gradients. The `none` mode avoids this by using raw Euclidean distances. The `learnable` mode adds an adaptive scale parameter (initialized to 10.0) that the model can optimize during training.
+
+**Examples:**
+
+```bash
+# Default: raw Euclidean distances (recommended)
+aam pretrain --distance-normalization none ...
+
+# Legacy tanh normalization
+aam pretrain --distance-normalization tanh ...
+
+# Learnable scale parameter (adaptive)
+aam pretrain --distance-normalization learnable ...
+```
+
+**Note:** When using `--pretrained-encoder` in `aam train`, the distance normalization method is automatically inherited from the pretrained checkpoint. A warning is logged if the CLI flag differs from the pretrained setting.
+
 ## Target Normalization
 
 Control how regression targets are normalized with `--target-transform`:

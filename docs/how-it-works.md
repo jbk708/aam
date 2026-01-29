@@ -109,8 +109,11 @@ Like BERT's masked language modeling:
 ### 2. UniFrac Prediction
 
 1. Compute sample embeddings
-2. Predict pairwise UniFrac distances between samples in batch
-3. Model learns phylogenetically-informed representations
+2. Calculate pairwise Euclidean distances between embeddings
+3. Compare predicted distances to true UniFrac distances (MSE loss)
+4. Model learns phylogenetically-informed representations
+
+**Distance Normalization:** By default, raw Euclidean distances are used (`--distance-normalization none`). Alternative modes include `tanh` (bounds to [0,1)) and `learnable` (adaptive scale parameter). See User Guide for details.
 
 ### Why Pre-training Helps
 
