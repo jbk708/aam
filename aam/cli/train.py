@@ -232,6 +232,57 @@ def validate_encoder_keys_loaded(
         )
 
 
+def validate_broadcast_consistency(
+    train_ids: List[str],
+    val_ids: List[str],
+    verify_hash: bool = False,
+    logger: Optional[logging.Logger] = None,
+) -> None:
+    """Validate that broadcast of train/val splits succeeded across DDP processes.
+
+    Adds a barrier after broadcast to ensure all processes are synchronized,
+    and optionally performs a hash check to verify data consistency.
+
+    Args:
+        train_ids: List of training sample IDs after broadcast.
+        val_ids: List of validation sample IDs after broadcast.
+        verify_hash: If True, compute hash of IDs and verify consistency across ranks.
+        logger: Logger for output messages.
+
+    Raises:
+        RuntimeError: If hash verification fails (data inconsistent across ranks).
+    """
+    import torch.distributed as dist
+
+    log = logger or logging.getLogger(__name__)
+
+    if not dist.is_initialized():
+        return
+
+    dist.barrier()
+    log.debug("Broadcast sync: barrier completed, all ranks synchronized")
+
+    if not verify_hash:
+        return
+
+    import hashlib
+
+    combined = ",".join(train_ids) + "|" + ",".join(val_ids)
+    local_hash = int(hashlib.sha256(combined.encode()).hexdigest()[:14], 16)
+
+    world_size = dist.get_world_size()
+    local_tensor = torch.tensor([local_hash], dtype=torch.long)
+    gathered = [torch.zeros(1, dtype=torch.long) for _ in range(world_size)]
+    dist.all_gather(gathered, local_tensor)
+
+    hashes = [t.item() for t in gathered]
+    if len(set(hashes)) != 1:
+        raise RuntimeError(
+            f"Broadcast verification failed: train/val split data is inconsistent across ranks. "
+            f"Hash values: {hashes}. This indicates a broadcast failure in distributed training."
+        )
+
+
 CATEGORICAL_HELP_TEXT = """
 Categorical Conditioning Decision Tree
 ======================================
@@ -1049,11 +1100,21 @@ def train(
 
         # For DDP/FSDP, broadcast train/val splits from rank 0 to ensure consistency
         if distributed or fsdp:
+            import os
+            import time
             import torch.distributed as dist
 
+            broadcast_start = time.monotonic()
             split_data = [train_ids, val_ids]
             dist.broadcast_object_list(split_data, src=0)
-            train_ids, val_ids = split_data[0], split_data[1]
+            train_ids, val_ids = split_data
+            broadcast_elapsed = time.monotonic() - broadcast_start
+
+            if broadcast_elapsed > 5.0:
+                logger.warning(f"Broadcast took {broadcast_elapsed:.1f}s (>5s), check network connectivity")
+
+            verify_hash = os.environ.get("AAM_VERIFY_BROADCAST", "").lower() in ("1", "true", "yes")
+            validate_broadcast_consistency(train_ids, val_ids, verify_hash=verify_hash, logger=logger)
 
         logger.info(f"Train samples: {len(train_ids)}, Validation samples: {len(val_ids)}")
 

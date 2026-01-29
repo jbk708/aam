@@ -1,7 +1,7 @@
 # Train CLI Bugfix Tickets
 
 **Last Updated:** 2026-01-28
-**Status:** 4 remaining (11 complete) | ~1.5 hours estimated
+**Status:** 3 remaining (12 complete) | ~0.75 hours estimated
 **Dev Branch:** `dev/train-bugfix`
 
 All TRN ticket work should branch from and PR into `dev/train-bugfix`.
@@ -199,26 +199,18 @@ gh pr create --base dev/train-bugfix
 ---
 
 ### TRN-12: Validate Distributed Broadcast Success
-**Priority:** MEDIUM | **Effort:** 0.5 hours | **Status:** Not Started
+**Priority:** MEDIUM | **Effort:** 0.5 hours | **Status:** Complete
 
-**Location:** `aam/cli/train.py:852`
+**Location:** `aam/cli/train.py:1101`
 
 **Problem:** After broadcasting train/val splits across DDP processes, there's no validation that all processes received the same data.
 
-**Current Code:**
-```python
-split_data = [train_ids, val_ids]
-dist.broadcast_object_list(split_data, src=0)
-train_ids, val_ids = split_data[0], split_data[1]
-# No validation
-```
-
-**Fix:** Add barrier and optional hash check to verify broadcast consistency.
+**Solution:** Added `validate_broadcast_consistency()` function that adds a barrier after broadcast and optionally performs hash verification to ensure all ranks received identical data. Hash verification is enabled via `AAM_VERIFY_BROADCAST` environment variable. Also added timing check that warns if broadcast takes >5s.
 
 **Acceptance Criteria:**
-- [ ] Barrier after broadcast to ensure all processes synchronized
-- [ ] Debug mode: hash check to verify data consistency across ranks
-- [ ] Warning log if broadcast takes unusually long
+- [x] Barrier after broadcast to ensure all processes synchronized
+- [x] Debug mode: hash check to verify data consistency across ranks
+- [x] Warning log if broadcast takes unusually long
 
 ---
 
@@ -305,7 +297,7 @@ logger.info("Filtering tables for train/val splits...")  # All ranks log this
 | **TRN-9** | Validate sample weights shape/positivity | 0.5h | MEDIUM | Complete |
 | **TRN-10** | Add finally block to auto batch size finder | 0.5h | MEDIUM | Complete |
 | **TRN-11** | Validate pretrained encoder weight loading | 0.5h | MEDIUM | Complete |
-| **TRN-12** | Validate distributed broadcast success | 0.5h | MEDIUM | Not Started |
+| **TRN-12** | Validate distributed broadcast success | 0.5h | MEDIUM | Complete |
 | **TRN-13** | Validate categorical encoder handles empty data | 0.25h | MEDIUM | Not Started |
 | **TRN-14** | Suppress duplicate logging in distributed mode | 0.25h | LOW | Not Started |
 | **TRN-15** | Fix best_metric_value default in checkpoint | 0.25h | LOW | Not Started |
