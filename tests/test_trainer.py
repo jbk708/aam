@@ -1443,6 +1443,120 @@ class TestCheckpointDistanceNormalization:
         assert checkpoint["distance_normalization"] == "none"
 
 
+class TestValidationDistanceNormalization:
+    """Test that validation uses correct distance normalization for metrics/plots."""
+
+    def test_validation_uses_loss_fn_distance_normalization(self, device):
+        """Test that validation metrics use distance normalization from loss_fn."""
+        from aam.training.losses import compute_pairwise_distances
+
+        # Create encoder with learnable distance scale
+        encoder = SequenceEncoder(
+            vocab_size=6,
+            embedding_dim=32,
+            max_bp=50,
+            token_limit=64,
+            asv_num_layers=1,
+            asv_num_heads=2,
+            sample_num_layers=1,
+            sample_num_heads=2,
+            encoder_num_layers=1,
+            encoder_num_heads=2,
+            base_output_dim=None,
+            encoder_type="unifrac",
+            learnable_distance_scale=True,
+        ).to(device)
+
+        # Create loss function with learnable normalization
+        loss_fn = MultiTaskLoss(distance_normalization="learnable")
+
+        # Verify loss_fn has the attribute
+        assert hasattr(loss_fn, "distance_normalization")
+        assert loss_fn.distance_normalization == "learnable"
+
+        # Create sample data
+        batch_size = 4
+        tokens = torch.randint(1, 5, (batch_size, 64, 50)).to(device)
+
+        # Get model outputs
+        with torch.no_grad():
+            outputs = encoder(tokens)
+
+        assert "embeddings" in outputs
+        assert "distance_scale" in outputs
+
+        embeddings = outputs["embeddings"]
+        distance_scale = outputs["distance_scale"]
+
+        # Compute distances with and without normalization
+        raw_distances = compute_pairwise_distances(embeddings, normalization_method="none")
+        learnable_distances = compute_pairwise_distances(embeddings, normalization_method="learnable", scale=distance_scale)
+
+        # Raw distances can be > 1, learnable distances should be bounded by tanh to [0, 1)
+        assert raw_distances.max() >= 0  # Could be > 1 for spread embeddings
+        assert learnable_distances.max() < 1.0  # Bounded by tanh
+        assert learnable_distances.min() >= 0.0
+
+        # Verify they're different (unless embeddings happen to be very close)
+        if raw_distances.max() > 1.0:
+            assert not torch.allclose(raw_distances, learnable_distances)
+
+    def test_validation_metrics_use_normalized_distances(self, device):
+        """Test that Evaluator computes metrics with normalized distances, not raw Euclidean."""
+        # Create encoder with learnable distance scale
+        encoder = SequenceEncoder(
+            vocab_size=6,
+            embedding_dim=32,
+            max_bp=50,
+            token_limit=64,
+            asv_num_layers=1,
+            asv_num_heads=2,
+            sample_num_layers=1,
+            sample_num_heads=2,
+            encoder_num_layers=1,
+            encoder_num_heads=2,
+            base_output_dim=None,
+            encoder_type="unifrac",
+            learnable_distance_scale=True,
+        ).to(device)
+
+        # Create loss function with learnable normalization
+        loss_fn = MultiTaskLoss(distance_normalization="learnable")
+
+        # Create trainer/evaluator
+        trainer = Trainer(
+            model=encoder,
+            loss_fn=loss_fn,
+            device=device,
+        )
+
+        # Create a simple dataloader with UniFrac targets in [0, 1] range
+        batch_size = 4
+        tokens = torch.randint(1, 5, (batch_size, 64, 50))
+        # UniFrac targets should be in [0, 1] range
+        unifrac_targets = torch.rand(batch_size, batch_size) * 0.5 + 0.25  # [0.25, 0.75] range
+        unifrac_targets = (unifrac_targets + unifrac_targets.t()) / 2  # Make symmetric
+        unifrac_targets.fill_diagonal_(0.0)
+
+        from torch.utils.data import DataLoader, TensorDataset
+
+        dataset = TensorDataset(tokens, unifrac_targets)
+        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+
+        # Run validation
+        results = trainer.validate_epoch(dataloader, compute_metrics=True)
+
+        # If normalization is working correctly, the loss should be reasonable
+        # (not huge like it would be if comparing raw Euclidean distances 0-40 to UniFrac 0-1)
+        assert "unifrac_loss" in results
+        # With proper normalization, loss should be < 1 typically
+        # Without normalization, loss would be very high (comparing ~20 to ~0.5 gives MSE ~380)
+        assert results["unifrac_loss"] < 10.0, (
+            f"unifrac_loss={results['unifrac_loss']:.2f} is too high, "
+            "suggesting raw Euclidean distances are being used instead of normalized"
+        )
+
+
 class TestTrainerEdgeCases:
     """Test edge cases for trainer."""
 

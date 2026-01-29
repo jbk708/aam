@@ -677,7 +677,14 @@ class Evaluator:
                                 embeddings = outputs["embeddings"]
                                 if embeddings is not None:
                                     try:
-                                        base_pred_batch = compute_pairwise_distances(embeddings.detach()).detach()
+                                        # Use same normalization as loss function for consistent metrics/plots
+                                        distance_normalization = getattr(self.loss_fn, "distance_normalization", "none")
+                                        distance_scale = outputs.get("distance_scale", 10.0)
+                                        base_pred_batch = compute_pairwise_distances(
+                                            embeddings.detach(),
+                                            normalization_method=distance_normalization,
+                                            scale=distance_scale,
+                                        ).detach()
                                     except Exception:
                                         base_pred_batch = None
 
