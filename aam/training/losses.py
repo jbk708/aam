@@ -88,14 +88,18 @@ def compute_pairwise_distances(
         normalize: If True, apply normalization according to normalization_method (default: True)
         scale: Scaling factor for tanh normalization (default: 10.0). Can be float or Tensor.
         normalization_method: Method for normalizing distances (default: "none").
-            - "tanh": Apply tanh(distance / scale) to bound to [0, 1) with fixed scale
             - "none": Return raw Euclidean distances (no normalization)
+            - "tanh": Apply tanh(distance / scale) to bound to [0, 1) with fixed scale
             - "learnable": Like tanh, but scale is expected to be a learnable Tensor
+            - "batch": Normalize by batch maximum, bounding to [0, 1]
+            - "batch-p95": Normalize by 95th percentile, robust to outliers
 
     Returns:
         Pairwise distance matrix [batch_size, batch_size]
-        If normalize=True and normalization_method in ("tanh", "learnable"), distances are bounded to [0, 1)
         If normalization_method="none", returns raw Euclidean distances
+        If normalization_method in ("tanh", "learnable"), distances are bounded to [0, 1)
+        If normalization_method="batch", max distance is 1.0
+        If normalization_method="batch-p95", ~95% of distances are <= 1.0
     """
     # Check for NaN or Inf in embeddings
     if torch.any(torch.isnan(embeddings)):
@@ -161,8 +165,51 @@ def compute_pairwise_distances(
     if not normalize or normalization_method == "none":
         return distances
 
-    if normalization_method not in ("tanh", "learnable"):
-        raise ValueError(f"Unknown normalization_method: {normalization_method}. Must be 'tanh', 'learnable', or 'none'.")
+    if normalization_method not in ("tanh", "learnable", "batch", "batch-p95"):
+        raise ValueError(
+            f"Unknown normalization_method: {normalization_method}. "
+            "Must be 'tanh', 'learnable', 'batch', 'batch-p95', or 'none'."
+        )
+
+    # Handle batch normalization methods
+    if normalization_method in ("batch", "batch-p95"):
+        # Get off-diagonal distances for normalization
+        batch_size = distances.shape[0]
+        triu_indices = torch.triu_indices(batch_size, batch_size, offset=1, device=distances.device)
+        off_diagonal = distances[triu_indices[0], triu_indices[1]]
+
+        # Handle edge case: no off-diagonal elements (batch_size <= 1)
+        if off_diagonal.numel() == 0:
+            return torch.zeros_like(distances)
+
+        # Use a threshold that accounts for numerical precision in sqrt computation
+        # sqrt(1e-8) ≈ 1e-4, so use 1e-4 as the minimum meaningful distance
+        min_meaningful_dist = 1e-4
+        eps = 1e-8
+        if normalization_method == "batch":
+            # Normalize by batch maximum
+            max_dist = off_diagonal.max()
+            if max_dist > min_meaningful_dist:
+                normalized_distances = distances / (max_dist + eps)
+            else:
+                # All embeddings are essentially identical
+                return torch.zeros_like(distances)
+        else:  # batch-p95
+            # Normalize by 95th percentile for robustness to outliers
+            # Filter out near-zero distances
+            nonzero_distances = off_diagonal[off_diagonal > min_meaningful_dist]
+            if nonzero_distances.numel() == 0:
+                # All embeddings are essentially identical
+                return torch.zeros_like(distances)
+            p95 = torch.quantile(nonzero_distances, 0.95)
+            if p95 > min_meaningful_dist:
+                normalized_distances = distances / (p95 + eps)
+            else:
+                return torch.zeros_like(distances)
+
+        # Preserve diagonal as 0.0
+        eye_mask = torch.eye(batch_size, device=distances.device, dtype=distances.dtype)
+        return normalized_distances * (1.0 - eye_mask)
 
     # Use tanh normalization to bound distances to [0, 1)
     # For "learnable", scale is expected to be a learnable Tensor
@@ -250,7 +297,7 @@ class MultiTaskLoss(nn.Module):
     """Multi-task loss computation for AAM model."""
 
     VALID_LOSS_TYPES = ("mse", "mae", "huber", "quantile", "asymmetric")
-    VALID_DISTANCE_NORMALIZATIONS = ("tanh", "none", "learnable")
+    VALID_DISTANCE_NORMALIZATIONS = ("tanh", "none", "learnable", "batch", "batch-p95")
 
     # Type annotations for attributes
     penalty: float
@@ -661,6 +708,11 @@ class MultiTaskLoss(nn.Module):
                             "distance_scale must be provided when distance_normalization='learnable'. "
                             "Ensure the model has learnable_distance_scale=True."
                         )
+                    # Handle DataParallel: distance_scale may be gathered from multiple GPUs
+                    # into a tensor of shape [num_gpus]. All values should be identical since
+                    # it's a shared parameter, so take the first element.
+                    if distance_scale.dim() > 0 and distance_scale.numel() > 1:
+                        distance_scale = distance_scale[0]
                     scale_value = distance_scale
                 base_pred = compute_pairwise_distances(
                     embeddings, normalization_method=self.distance_normalization, scale=scale_value

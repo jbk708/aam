@@ -417,8 +417,8 @@ def print_categorical_help(ctx: click.Context, param: click.Parameter, value: bo
 @click.option(
     "--distance-normalization",
     default="none",
-    type=click.Choice(["tanh", "none", "learnable"]),
-    help="Distance normalization method for UniFrac loss: none (default, raw Euclidean), tanh (bounds to [0,1)), learnable (trainable scale parameter with tanh)",
+    type=click.Choice(["tanh", "none", "learnable", "batch", "batch-p95"]),
+    help="Distance normalization method for UniFrac loss: none (default, raw Euclidean), tanh (bounds to [0,1)), learnable (trainable scale with tanh), batch (normalize by batch max), batch-p95 (normalize by 95th percentile)",
 )
 @click.option(
     "--count-prediction/--no-count-prediction",
