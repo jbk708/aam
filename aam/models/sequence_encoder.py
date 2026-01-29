@@ -43,6 +43,7 @@ class SequenceEncoder(nn.Module):
         mask_strategy: str = "random",
         count_embedding: bool = False,
         count_embedding_method: CountEmbeddingMethod = "add",
+        learnable_distance_scale: bool = False,
     ):
         """Initialize SequenceEncoder.
 
@@ -76,6 +77,9 @@ class SequenceEncoder(nn.Module):
             mask_strategy: Masking strategy ('random' or 'span')
             count_embedding: Whether to incorporate ASV count magnitudes as input features
             count_embedding_method: How to combine count embeddings with sequence embeddings
+            learnable_distance_scale: Whether to add a learnable scale parameter for distance normalization.
+                When True, creates a trainable log_distance_scale parameter (initialized to log(10) ≈ 2.3).
+                The scale is returned in forward output as 'distance_scale' for use in loss computation.
         """
         super().__init__()
 
@@ -85,6 +89,13 @@ class SequenceEncoder(nn.Module):
         self.predict_nucleotides = predict_nucleotides
         self.count_embedding = count_embedding
         self.count_embedding_method = count_embedding_method
+
+        # Learnable distance scale for "learnable" normalization mode
+        # Initialize log_scale so exp(log_scale) ≈ 10.0 (matches default tanh scale)
+        if learnable_distance_scale:
+            self.log_distance_scale: Optional[nn.Parameter] = nn.Parameter(torch.tensor(2.302585))  # log(10)
+        else:
+            self.log_distance_scale = None
 
         self.sample_encoder = SampleSequenceEncoder(
             vocab_size=vocab_size,
@@ -215,6 +226,9 @@ class SequenceEncoder(nn.Module):
                 result = {
                     "embeddings": pooled_embeddings,
                 }
+                # Include learnable distance scale if enabled
+                if self.log_distance_scale is not None:
+                    result["distance_scale"] = self.log_distance_scale.exp()
             else:
                 # Non-UniFrac encoders: use output_head
                 assert self.output_head is not None  # Set for non-unifrac encoder types

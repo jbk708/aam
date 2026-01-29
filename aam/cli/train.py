@@ -417,8 +417,8 @@ def print_categorical_help(ctx: click.Context, param: click.Parameter, value: bo
 @click.option(
     "--distance-normalization",
     default="none",
-    type=click.Choice(["tanh", "none"]),
-    help="Distance normalization method for UniFrac loss: none (default, raw Euclidean), tanh (bounds to [0,1))",
+    type=click.Choice(["tanh", "none", "learnable"]),
+    help="Distance normalization method for UniFrac loss: none (default, raw Euclidean), tanh (bounds to [0,1)), learnable (trainable scale parameter with tanh)",
 )
 @click.option(
     "--count-prediction/--no-count-prediction",
@@ -1505,6 +1505,7 @@ def train(
             count_prediction=count_prediction,
             count_embedding=count_embedding,
             count_embedding_method=count_embedding_method,
+            learnable_distance_scale=(distance_normalization == "learnable"),
         )
 
         log_model_summary(model, logger)
@@ -1517,6 +1518,15 @@ def train(
                     "Check that pretrain and train use the same model configuration."
                 )
             validate_encoder_keys_loaded(load_result, logger)
+
+            # Inherit distance_normalization from pretrained checkpoint
+            inherited_norm = load_result.get("distance_normalization", "none")
+            if distance_normalization != inherited_norm:
+                logger.warning(
+                    f"Pretrained encoder used distance_normalization='{inherited_norm}', "
+                    f"but --distance-normalization='{distance_normalization}'. Using inherited value."
+                )
+                distance_normalization = inherited_norm
 
         # Auto-disable nuc_penalty when freeze_base is True (frozen encoder can't improve)
         effective_nuc_penalty = nuc_penalty
@@ -1778,6 +1788,7 @@ def train(
                 best_val_loss=best_val_loss,
                 metrics=history,
                 config=model_config,
+                distance_normalization=distance_normalization,
             )
             logger.info(f"Final model saved to {final_model_path}")
 

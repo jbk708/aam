@@ -1328,6 +1328,120 @@ class TestLoadPretrainedEncoder:
         with pytest.raises(ValueError, match="Shape mismatch"):
             load_pretrained_encoder(str(checkpoint_path), predictor, strict=False)
 
+    def test_load_pretrained_encoder_returns_distance_normalization(self, small_predictor, device, tmp_path):
+        """Test that load_pretrained_encoder returns distance_normalization from checkpoint metadata."""
+        encoder = SequenceEncoder(
+            vocab_size=6,
+            embedding_dim=32,
+            max_bp=50,
+            token_limit=64,
+            asv_num_layers=1,
+            asv_num_heads=2,
+            sample_num_layers=1,
+            sample_num_heads=2,
+            encoder_num_layers=1,
+            encoder_num_heads=2,
+            base_output_dim=None,
+            encoder_type="unifrac",
+        ).to(device)
+
+        # Save checkpoint with distance_normalization metadata
+        checkpoint = {
+            "model_state_dict": encoder.state_dict(),
+            "distance_normalization": "learnable",
+        }
+        checkpoint_path = tmp_path / "encoder_with_metadata.pt"
+        torch.save(checkpoint, checkpoint_path)
+
+        small_predictor = small_predictor.to(device)
+        result = load_pretrained_encoder(str(checkpoint_path), small_predictor, strict=False)
+
+        assert "distance_normalization" in result
+        assert result["distance_normalization"] == "learnable"
+
+    def test_load_pretrained_encoder_defaults_distance_normalization_none(self, small_predictor, device, tmp_path):
+        """Test that load_pretrained_encoder defaults distance_normalization to 'none' for old checkpoints."""
+        encoder = SequenceEncoder(
+            vocab_size=6,
+            embedding_dim=32,
+            max_bp=50,
+            token_limit=64,
+            asv_num_layers=1,
+            asv_num_heads=2,
+            sample_num_layers=1,
+            sample_num_heads=2,
+            encoder_num_layers=1,
+            encoder_num_heads=2,
+            base_output_dim=None,
+            encoder_type="unifrac",
+        ).to(device)
+
+        # Save checkpoint without distance_normalization metadata (old format)
+        checkpoint_path = tmp_path / "encoder_old_format.pt"
+        torch.save({"model_state_dict": encoder.state_dict()}, checkpoint_path)
+
+        small_predictor = small_predictor.to(device)
+        result = load_pretrained_encoder(str(checkpoint_path), small_predictor, strict=False)
+
+        assert "distance_normalization" in result
+        assert result["distance_normalization"] == "none"
+
+
+class TestCheckpointDistanceNormalization:
+    """Test checkpoint save/load with distance_normalization metadata."""
+
+    def test_save_checkpoint_includes_distance_normalization(self, small_predictor, device, tmp_path):
+        """Test that save_checkpoint includes distance_normalization in checkpoint."""
+        model = small_predictor.to(device)
+        loss_fn = MultiTaskLoss(distance_normalization="learnable")
+        optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
+
+        trainer = Trainer(
+            model=model,
+            loss_fn=loss_fn,
+            optimizer=optimizer,
+            scheduler=None,
+            device=device,
+        )
+
+        checkpoint_path = tmp_path / "checkpoint_with_norm.pt"
+        trainer.save_checkpoint(
+            str(checkpoint_path),
+            epoch=0,
+            best_val_loss=1.0,
+            distance_normalization="learnable",
+        )
+
+        checkpoint = torch.load(checkpoint_path, weights_only=True)
+        assert "distance_normalization" in checkpoint
+        assert checkpoint["distance_normalization"] == "learnable"
+
+    def test_save_checkpoint_defaults_none_distance_normalization(self, small_predictor, device, tmp_path):
+        """Test that save_checkpoint defaults to 'none' when distance_normalization not specified."""
+        model = small_predictor.to(device)
+        loss_fn = MultiTaskLoss()  # Default distance_normalization="none"
+        optimizer = torch.optim.AdamW(model.parameters(), lr=1e-4)
+
+        trainer = Trainer(
+            model=model,
+            loss_fn=loss_fn,
+            optimizer=optimizer,
+            scheduler=None,
+            device=device,
+        )
+
+        checkpoint_path = tmp_path / "checkpoint_default.pt"
+        trainer.save_checkpoint(
+            str(checkpoint_path),
+            epoch=0,
+            best_val_loss=1.0,
+        )
+
+        checkpoint = torch.load(checkpoint_path, weights_only=True)
+        # distance_normalization should be saved
+        assert "distance_normalization" in checkpoint
+        assert checkpoint["distance_normalization"] == "none"
+
 
 class TestTrainerEdgeCases:
     """Test edge cases for trainer."""

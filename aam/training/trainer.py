@@ -1427,6 +1427,7 @@ class Trainer:
         best_metric_value: Optional[float] = None,
         metrics: Optional[Dict[str, Any]] = None,
         config: Optional[Dict[str, Any]] = None,
+        distance_normalization: str = "none",
     ) -> None:
         """Save training checkpoint.
 
@@ -1442,6 +1443,8 @@ class Trainer:
             best_metric_value: Best value of the selected metric (e.g., r2, mae)
             metrics: Optional metrics dictionary (can contain floats or lists)
             config: Optional model configuration dictionary for inference
+            distance_normalization: Distance normalization method used during training
+                (default: "none"). Saved in checkpoint for inheritance by downstream training.
         """
         # Handle FSDP models specially
         model_is_fsdp = is_fsdp_model(cast(nn.Module, self.model))
@@ -1479,6 +1482,7 @@ class Trainer:
             "config": config or {},
             "fsdp_sharded": fsdp_sharded,
             "fsdp_world_size": get_world_size() if fsdp_sharded else None,
+            "distance_normalization": distance_normalization,
         }
 
         if self.scheduler is not None:
@@ -1891,6 +1895,9 @@ def load_pretrained_encoder(
             f"({loaded_params:,} parameters, {loaded_params / total_model_params * 100:.1f}% of {target_name})"
         )
 
+    # Extract distance_normalization from checkpoint metadata (default to "none" for old checkpoints)
+    distance_normalization = checkpoint.get("distance_normalization", "none")
+
     return {
         "loaded_keys": len(matching_keys),
         "total_checkpoint_keys": len(checkpoint_keys),
@@ -1899,4 +1906,5 @@ def load_pretrained_encoder(
         "unexpected_keys": list(unexpected_keys),
         "loaded_params": loaded_params,
         "matching_keys": list(matching_keys),
+        "distance_normalization": distance_normalization,
     }

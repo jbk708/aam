@@ -113,8 +113,8 @@ logger = logging.getLogger(__name__)
 @click.option(
     "--distance-normalization",
     default="none",
-    type=click.Choice(["tanh", "none"]),
-    help="Distance normalization method for UniFrac loss: none (default, raw Euclidean), tanh (bounds to [0,1))",
+    type=click.Choice(["tanh", "none", "learnable"]),
+    help="Distance normalization method for UniFrac loss: none (default, raw Euclidean), tanh (bounds to [0,1)), learnable (trainable scale parameter with tanh)",
 )
 @click.option(
     "--count-embedding/--no-count-embedding",
@@ -537,6 +537,7 @@ def pretrain(
             attn_implementation=cast(AttnImplementation, attn_implementation),
             count_embedding=count_embedding,
             count_embedding_method=cast(CountEmbeddingMethod, count_embedding_method),
+            learnable_distance_scale=(distance_normalization == "learnable"),
         )
 
         log_model_summary(model, logger)
@@ -752,7 +753,11 @@ def pretrain(
             final_model_path = output_path / "pretrained_encoder.pt"
             actual_last_epoch = start_epoch + len(history["train_loss"]) - 1
             trainer.save_checkpoint(
-                str(final_model_path), epoch=actual_last_epoch, best_val_loss=best_val_loss, metrics=history
+                str(final_model_path),
+                epoch=actual_last_epoch,
+                best_val_loss=best_val_loss,
+                metrics=history,
+                distance_normalization=distance_normalization,
             )
             logger.info(f"Pre-trained encoder saved to {final_model_path}")
 
