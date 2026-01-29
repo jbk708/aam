@@ -680,12 +680,20 @@ class Evaluator:
                                         # Use same normalization as loss function for consistent metrics/plots
                                         distance_normalization = getattr(self.loss_fn, "distance_normalization", "none")
                                         distance_scale = outputs.get("distance_scale", 10.0)
+                                        # Handle DataParallel: distance_scale becomes a vector when gathered
+                                        # across GPUs. All values are identical (shared parameter), so take first.
+                                        if isinstance(distance_scale, torch.Tensor) and distance_scale.dim() > 0:
+                                            distance_scale = distance_scale[0]
                                         base_pred_batch = compute_pairwise_distances(
                                             embeddings.detach(),
                                             normalization_method=distance_normalization,
                                             scale=distance_scale,
                                         ).detach()
-                                    except Exception:
+                                    except Exception as e:
+                                        import logging
+                                        logging.getLogger(__name__).warning(
+                                            f"Failed to compute pairwise distances for metrics: {type(e).__name__}: {e}"
+                                        )
                                         base_pred_batch = None
 
                             if base_pred_batch is None and "base_prediction" in outputs:
@@ -1155,7 +1163,11 @@ class Evaluator:
                     true_np = targets_dict["unifrac"].cpu().numpy().flatten()
                     r2 = r2_score(true_np, pred_np)
                     mae = float(np.abs(pred_np - true_np).mean())
-                except Exception:
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        f"Failed to compute R² for unifrac plot: {type(e).__name__}: {e}"
+                    )
                     r2 = None
                     mae = None
             else:
